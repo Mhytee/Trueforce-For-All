@@ -12,7 +12,10 @@ namespace SimHubTrueforce.SineTest
         private enum Waveform { Sine, Square, Saw, Triangle, Noise }
 
         private const double SampleRateHz = 1000.0;
-        private const int    BatchSamples = 8;   // 8 ms batch -> low UI -> haptic latency
+        // One packet's worth per push: matches the consumer's drain quantum so
+        // the producer-consumer cadence is clean (push 4, drain 4, push 4, ...).
+        // Lower latency than larger batches; matches Trueforce's NewPerPacket.
+        private const int    BatchSamples = 4;
 
         private TrueforceDevice _device;
         private WheelMatch _match;

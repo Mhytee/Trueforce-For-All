@@ -21,11 +21,13 @@ namespace SimHubTrueforce.SineTest
         public const int PacketLen = 64;
         public const int Window = 13;          // total slots in rolling window
         public const int NewPerPacket = 4;     // new samples shifted in per packet
-        // Ring sized for low control latency: 128 samples = 128 ms at 1 kHz.
+        // Ring sized for low control latency: 32 samples = 32 ms at 1 kHz.
         // libtrueforce uses 4096 because a game might push large bursts when
         // convenient; a real-time control loop (slider, telemetry) wants a
-        // tight buffer instead so producer changes reach the wheel quickly.
-        public const int RingSize = 128;       // power of two
+        // tight buffer so producer changes reach the wheel quickly. 32 ms is
+        // imperceptible for haptics and gives ~24 ms of headroom for Gen1 GC
+        // pauses before we underrun. Lower is risky on .NET.
+        public const int RingSize = 32;        // power of two
         public const int PacketHz = 250;       // 1000 Hz / NewPerPacket
 
         private const int InitInterPacketUs = 2000; // 2 ms between init packets
