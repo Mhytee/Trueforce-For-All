@@ -14,9 +14,9 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using HidSharp;
 
-namespace SimHubTrueforce.SineTest
+namespace SimHubTrueforce.Core
 {
-    internal sealed class TrueforceDevice : IDisposable
+    public sealed class TrueforceDevice : IDisposable
     {
         public const int PacketLen = 64;
         public const int Window = 13;          // total slots in rolling window

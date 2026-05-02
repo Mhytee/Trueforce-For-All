@@ -5,9 +5,9 @@
 
 using System;
 
-namespace SimHubTrueforce.SineTest
+namespace SimHubTrueforce.Core
 {
-    internal static class InitData
+    public static class InitData
     {
         public const int PacketCount = 68;
         public const int PacketLen = 64;

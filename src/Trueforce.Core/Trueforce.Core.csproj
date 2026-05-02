@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- netstandard2.0 lets this library be referenced by both the modern
+         WPF SineTest exe (net10.0-windows) and the SimHub plugin (net48). -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>SimHubTrueforce.Core</RootNamespace>
+    <AssemblyName>SimHubTrueforce.Core</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HidSharp" Version="2.1.0" />
+  </ItemGroup>
+
+</Project>

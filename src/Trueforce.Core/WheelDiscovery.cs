@@ -9,9 +9,9 @@ using System;
 using System.Collections.Generic;
 using HidSharp;
 
-namespace SimHubTrueforce.SineTest
+namespace SimHubTrueforce.Core
 {
-    internal sealed class WheelMatch
+    public sealed class WheelMatch
     {
         public HidDevice Device;
         public ushort Vid;
@@ -19,7 +19,7 @@ namespace SimHubTrueforce.SineTest
         public string Model;
     }
 
-    internal static class WheelDiscovery
+    public static class WheelDiscovery
     {
         public const ushort LogitechVid = 0x046D;
 

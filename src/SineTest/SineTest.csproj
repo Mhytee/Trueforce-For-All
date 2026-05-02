@@ -28,7 +28,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HidSharp" Version="2.1.0" />
+    <ProjectReference Include="..\Trueforce.Core\Trueforce.Core.csproj" />
   </ItemGroup>
 
 </Project>

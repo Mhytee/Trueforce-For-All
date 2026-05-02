@@ -119,7 +119,7 @@
                     </Grid.ColumnDefinitions>
                     <Slider Grid.Column="0"
                             x:Name="AmpSlider"
-                            Minimum="0" Maximum="1" Value="0.3"
+                            Minimum="0" Maximum="0.7" Value="0.3"
                             TickFrequency="0.05"
                             ValueChanged="AmpSlider_ValueChanged"/>
                     <TextBlock Grid.Column="1"

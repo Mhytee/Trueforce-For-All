@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Windows;
+using SimHubTrueforce.Core;
 
 namespace SimHubTrueforce.SineTest
 {
