@@ -4,3 +4,5 @@ obj/
 .vs/
 *.suo
 packages/
+.DS_Store
+**/.DS_Store

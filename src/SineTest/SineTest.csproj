@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <!-- net48 is the long-term target for the SimHub plugin (Phase 2);
          the standalone smoke test uses a modern TFM so it cross-compiles
          cleanly from macOS without the .NET Framework reference pack. -->
@@ -16,7 +16,10 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <UseWPF>true</UseWPF>
     <UseWindowsForms>false</UseWindowsForms>
+    <!-- Required to cross-compile a WPF target from non-Windows hosts. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,0 +1,160 @@
+<Window x:Class="SimHubTrueforce.SineTest.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SimHub Trueforce — Sine Test"
+        Width="560" Height="620"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanMinimize"
+        Background="#1B1F23">
+    <Window.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style TargetType="GroupBox">
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="BorderBrush" Value="#30363D"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="Margin" Value="0,0,16,0"/>
+        </Style>
+        <Style TargetType="Slider">
+            <Setter Property="Margin" Value="0,4,0,4"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="MinWidth" Value="120"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Safety banner -->
+        <Border Grid.Row="0"
+                Background="#3D2A1F"
+                BorderBrush="#A06030" BorderThickness="1"
+                CornerRadius="4"
+                Padding="12,8"
+                Margin="0,0,0,12">
+            <TextBlock Text="⚠  HOLD THE WHEEL  —  direct-drive can rotate during init"
+                       FontWeight="Bold"
+                       Foreground="#FFC58B"
+                       HorizontalAlignment="Center"/>
+        </Border>
+
+        <!-- Device row -->
+        <GroupBox Grid.Row="1" Header="Device">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock x:Name="DeviceText" Text="Searching..." FontWeight="SemiBold"/>
+                    <TextBlock x:Name="StatusText" Text="Idle" Foreground="#8B949E" Margin="0,2,0,0"/>
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="RefreshBtn" Content="Refresh"
+                        MinWidth="90" Click="RefreshBtn_Click"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Waveform picker -->
+        <GroupBox Grid.Row="2" Header="Waveform">
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="WaveSine"     Content="Sine"     IsChecked="True"
+                             Checked="Wave_Checked" Tag="Sine"/>
+                <RadioButton x:Name="WaveSquare"   Content="Square"   Checked="Wave_Checked" Tag="Square"/>
+                <RadioButton x:Name="WaveSaw"      Content="Saw"      Checked="Wave_Checked" Tag="Saw"/>
+                <RadioButton x:Name="WaveTriangle" Content="Triangle" Checked="Wave_Checked" Tag="Triangle"/>
+                <RadioButton x:Name="WaveNoise"    Content="Noise"    Checked="Wave_Checked" Tag="Noise"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Frequency slider -->
+        <GroupBox Grid.Row="3" Header="Frequency (Hz)">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Slider Grid.Column="0"
+                            x:Name="FreqSlider"
+                            Minimum="1" Maximum="500" Value="50"
+                            TickFrequency="10" IsSnapToTickEnabled="False"
+                            ValueChanged="FreqSlider_ValueChanged"/>
+                    <TextBlock Grid.Column="1"
+                               x:Name="FreqText" Text="50 Hz"
+                               MinWidth="70" TextAlignment="Right"
+                               VerticalAlignment="Center"
+                               FontFamily="Consolas" FontSize="14"/>
+                </Grid>
+                <TextBlock Foreground="#6E7681" FontSize="11"
+                           Text="1 - 500 Hz. Drag while playing to feel the pitch sweep."/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Amplitude slider -->
+        <GroupBox Grid.Row="4" Header="Amplitude">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Slider Grid.Column="0"
+                            x:Name="AmpSlider"
+                            Minimum="0" Maximum="1" Value="0.3"
+                            TickFrequency="0.05"
+                            ValueChanged="AmpSlider_ValueChanged"/>
+                    <TextBlock Grid.Column="1"
+                               x:Name="AmpText" Text="0.30"
+                               MinWidth="70" TextAlignment="Right"
+                               VerticalAlignment="Center"
+                               FontFamily="Consolas" FontSize="14"/>
+                </Grid>
+                <TextBlock Foreground="#6E7681" FontSize="11"
+                           Text="0.0 - 1.0. Start low and ramp up."/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Frequency sweep -->
+        <GroupBox Grid.Row="5" Header="Frequency sweep">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="SweepBtn" Content="Sweep 20 → 500 Hz"
+                        Click="SweepBtn_Click"/>
+                <TextBlock VerticalAlignment="Center"
+                           Foreground="#6E7681" FontSize="11"
+                           Text="Sweeps frequency upward over 5 s. Useful diagnostic."/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Start / stop -->
+        <Grid Grid.Row="6" VerticalAlignment="Top">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button x:Name="StartBtn" Content="▶ Start" Click="StartBtn_Click"
+                        Background="#1F6F33" Foreground="White"
+                        BorderBrush="#2EA043"/>
+                <Button x:Name="StopBtn"  Content="■ Stop"  Click="StopBtn_Click"
+                        Background="#6F1F1F" Foreground="White"
+                        BorderBrush="#A03030"
+                        IsEnabled="False"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
