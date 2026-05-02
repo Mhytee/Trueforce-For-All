@@ -2,13 +2,21 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net48</TargetFramework>
+    <!-- net48 is the long-term target for the SimHub plugin (Phase 2);
+         the standalone smoke test uses a modern TFM so it cross-compiles
+         cleanly from macOS without the .NET Framework reference pack. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>SimHubTrueforce.SineTest</RootNamespace>
     <AssemblyName>sinetest</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <UseWindowsForms>false</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
