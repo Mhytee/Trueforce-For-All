@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SineTest", "src\SineTest\Si
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trueforce.Core", "src\Trueforce.Core\Trueforce.Core.csproj", "{2E0A3F2A-2222-4444-AAAA-000000000002}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimHubTrueforce.Plugin", "src\SimHubTrueforce.Plugin\SimHubTrueforce.Plugin.csproj", "{3E0A3F2A-3333-4444-AAAA-000000000003}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -18,5 +20,9 @@ Global
 		{2E0A3F2A-2222-4444-AAAA-000000000002}.Debug|x64.Build.0 = Debug|Any CPU
 		{2E0A3F2A-2222-4444-AAAA-000000000002}.Release|x64.ActiveCfg = Release|Any CPU
 		{2E0A3F2A-2222-4444-AAAA-000000000002}.Release|x64.Build.0 = Release|Any CPU
+		{3E0A3F2A-3333-4444-AAAA-000000000003}.Debug|x64.ActiveCfg = Debug|x64
+		{3E0A3F2A-3333-4444-AAAA-000000000003}.Debug|x64.Build.0 = Debug|x64
+		{3E0A3F2A-3333-4444-AAAA-000000000003}.Release|x64.ActiveCfg = Release|x64
+		{3E0A3F2A-3333-4444-AAAA-000000000003}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal

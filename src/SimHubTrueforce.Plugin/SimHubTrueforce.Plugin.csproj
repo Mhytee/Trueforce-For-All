@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- SimHub itself runs on .NET Framework 4.8; plugins must match. -->
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>SimHubTrueforce.Plugin</RootNamespace>
+    <!-- "User." is the SimHub convention for community plugins. -->
+    <AssemblyName>User.SimHubTrueforce</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <!-- AnyCPU: SimHub runs as 32-bit (it's installed under Program Files
+         (x86)), so an x64-targeted plugin fails with BadImageFormatException
+         at load time. AnyCPU lets the plugin adopt whichever bitness the
+         SimHub host process uses. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <!-- This project is Windows-only (depends on SimHub install + WPF).
+         Cross-compiles from non-Windows hosts need EnableWindowsTargeting,
+         but the SimHub file refs below will fail there anyway. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <!-- Override on the command line or in a Directory.Build.props if SimHub
+       is installed elsewhere:
+         dotnet build -p:SimHubPath="D:\Games\SimHub" -->
+  <PropertyGroup>
+    <SimHubPath Condition="'$(SimHubPath)' == ''">C:\Program Files (x86)\SimHub</SimHubPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Trueforce.Core\Trueforce.Core.csproj" />
+  </ItemGroup>
+
+  <!-- SimHub provides these at runtime; don't copy them to the output dir. -->
+  <ItemGroup>
+    <Reference Include="SimHub.Plugins">
+      <HintPath>$(SimHubPath)\SimHub.Plugins.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="GameReaderCommon">
+      <HintPath>$(SimHubPath)\GameReaderCommon.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="SimHub.Logging">
+      <HintPath>$(SimHubPath)\SimHub.Logging.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- SimHub.Logging.Current returns an ILog from log4net. -->
+    <Reference Include="log4net">
+      <HintPath>$(SimHubPath)\log4net.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+</Project>
