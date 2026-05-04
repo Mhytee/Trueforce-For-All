@@ -1,14 +1,14 @@
-﻿// TrueforceForAll.LoopbackHelper
+// TrueforceForAll.LoopbackHelper
 //
 // Tiny child process spawned by the TrueforceForAll SimHub plugin to perform
 // per-process audio loopback. Communicates with the parent via stdin/stdout.
 //
 // Wire protocol (binary):
-//   parent â†’ helper (stdin):  4 bytes little-endian uint32 = target PID.
+//   parent → helper (stdin):  4 bytes little-endian uint32 = target PID.
 //                              0 means "stop capture, wait for next PID".
-//   helper â†’ parent (stdout): raw 48 kHz / 2-channel / 32-bit IEEE float
+//   helper → parent (stdout): raw 48 kHz / 2-channel / 32-bit IEEE float
 //                              audio frames as captured.
-//   helper â†’ parent (stderr): one line of text per error/info message.
+//   helper → parent (stderr): one line of text per error/info message.
 //
 // The helper exits when stdin reaches EOF (parent closed the pipe), or when
 // the parent process tracked via the first command-line arg dies.
@@ -49,7 +49,7 @@ var pidBuf = new byte[4];
 while (true)
 {
     int got = ReadFull(stdin, pidBuf, 4);
-    if (got < 4) break;  // EOF â€” parent closed stdin
+    if (got < 4) break;  // EOF — parent closed stdin
     uint pid = (uint)pidBuf[0] | ((uint)pidBuf[1] << 8) | ((uint)pidBuf[2] << 16) | ((uint)pidBuf[3] << 24);
 
     try { current?.Dispose(); } catch { }
@@ -76,7 +76,7 @@ while (true)
             }
             catch
             {
-                // stdout broken (parent died) â†’ bail.
+                // stdout broken (parent died) → bail.
                 Environment.Exit(0);
             }
         };

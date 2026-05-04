@@ -1,8 +1,8 @@
-﻿// Persisted plugin settings. SimHub serializes this to JSON via
+// Persisted plugin settings. SimHub serializes this to JSON via
 // PluginManager.GetCommonSettings / SaveCommonSettings.
 //
 // The same shape is also written/read by the Export / Import buttons in the
-// settings panel â€” keep field names stable across versions so shared presets
+// settings panel — keep field names stable across versions so shared presets
 // stay valid.
 
 using System.Collections.Generic;
@@ -16,7 +16,7 @@ namespace TrueforceForAll.Plugin
     public sealed class TrueforceSettings
     {
         // Master enable. When false, ProducerLoop skips rendering and the
-        // wheel is told to return to its native FFB/Trueforce path â€” useful
+        // wheel is told to return to its native FFB/Trueforce path — useful
         // for games that ship native Trueforce support (iRacing) where our
         // ep3 stream would conflict with the game's own.
         public bool PluginEnabled { get; set; } = true;

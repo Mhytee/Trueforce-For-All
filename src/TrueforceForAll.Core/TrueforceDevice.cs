@@ -1,4 +1,4 @@
-﻿// Trueforce session + audio-haptic stream.
+// Trueforce session + audio-haptic stream.
 //
 // Ported from mescon/logitech-rs50-linux-driver:
 //   userspace/libtrueforce/src/session.c   (Open + InitSequence)
@@ -21,10 +21,10 @@ namespace TrueforceForAll.Core
         public const int PacketLen = 64;
         public const int Window = 13;          // total slots in rolling window
         public const int NewPerPacket = 4;     // new samples shifted in per packet
-        // 1000 packet/s Ã— 4 new samples = 4 kHz audio-haptic rate. This is what
+        // 1000 packet/s × 4 new samples = 4 kHz audio-haptic rate. This is what
         // AC EVO empirically does on this wheel; at that rate the wheel firmware
         // allows our content to coexist with DirectInput FFB provided per-sample
-        // amplitudes are small (â‰ˆ Â±0.6% of full scale). mescon's docs claim
+        // amplitudes are small (≈ ±0.6% of full scale). mescon's docs claim
         // 250 pps / 1 kHz, but at that rate any audibly-felt amplitude trips
         // the wheel into Trueforce-dominant mode and FFB attenuates.
         public const int PacketHz = 1000;
@@ -32,7 +32,7 @@ namespace TrueforceForAll.Core
         // steady state (producer back-pressures on PushFloats), so its depth
         // sets the audio latency. With timeBeginPeriod(1) and AboveNormal
         // priority on both producer and stream threads, StreamTick is reliable
-        // to ~1 ms, so 4 ms gives ~3 ms of jitter headroom â€” tight but workable.
+        // to ~1 ms, so 4 ms gives ~3 ms of jitter headroom — tight but workable.
         // If underruns appear (audible dropouts), bump back to 32.
         public const int RingSize = 16;        // power of two
 
@@ -70,7 +70,7 @@ namespace TrueforceForAll.Core
         //
         // Threshold is large (10 seconds) because AC drops its HID++ FFB update
         // rate dramatically when the FFB target hasn't changed (stationary wheel,
-        // straight road) â€” a tight threshold makes us flap between active and
+        // straight road) — a tight threshold makes us flap between active and
         // keepalive on every quiet moment, which drops Trueforce audio. The
         // wheel firmware itself maintains the last-commanded force indefinitely
         // when AC stops sending updates, so mirroring that semantic is correct.
@@ -78,7 +78,7 @@ namespace TrueforceForAll.Core
         public int FfbTargetMaxAgeMs { get; set; } = 10000;
 
         // FFB pass-through tuning. AC's HID++ feature 0x0e and the wheel's ep3
-        // cur field use OPPOSITE sign conventions â€” empirically: turning right
+        // cur field use OPPOSITE sign conventions — empirically: turning right
         // and releasing produces a centering force in AC at negative LSBs, but
         // when copied as-is into ep3 cur the motor pulls in the direction of
         // the last input rather than toward center. So we negate by default.
@@ -98,7 +98,7 @@ namespace TrueforceForAll.Core
         private float _smoothedFfb;
 
         // Force-active override. When the deadline is in the future, StreamTick
-        // emits active packets even if the FFB tap is stale â€” so the settings
+        // emits active packets even if the FFB tap is stale — so the settings
         // UI's "Test" button can drive audio through the wheel while AC isn't
         // running (otherwise we'd be in keepalive mode and the test would
         // be silent). Set via ForceActiveFor(durationMs).
@@ -203,9 +203,9 @@ namespace TrueforceForAll.Core
         public void Resume() => _paused = false;
 
         // Protocol-level mode commands. Per mescon's protocol doc:
-        //   type 0x04 = stop/clear (init packet #67)  â†’ wheel returns to its
+        //   type 0x04 = stop/clear (init packet #67)  → wheel returns to its
         //               internal FFB-only mode; further sample packets ignored.
-        //   type 0x03 = start/play (init packet #68)  â†’ wheel re-enters
+        //   type 0x03 = start/play (init packet #68)  → wheel re-enters
         //               Trueforce-active mode; sample packets drive the motor.
         // We queue a one-byte intent here; StreamTick fires the actual command
         // packet on its next tick (single-threaded write to the device).
@@ -299,7 +299,7 @@ namespace TrueforceForAll.Core
                     nextTick += periodTicks;
 
                     // If we slipped more than one period (long stall), don't try to catch up
-                    // by burst-writing â€” emit one packet per loop iteration.
+                    // by burst-writing — emit one packet per loop iteration.
                     if (sw.ElapsedTicks - nextTick > periodTicks)
                         nextTick = sw.ElapsedTicks + periodTicks;
                 }
@@ -345,17 +345,17 @@ namespace TrueforceForAll.Core
             //   "active"  bytes[10..11] = 04 0d, cur (bytes 6-9) drives the motor
             //             directly, window carries 4 new audio samples for overlay.
             //             While streaming active packets, the wheel uses cur as the
-            //             motor torque target â€” overriding AC's ep0 HID++ FFB.
+            //             motor torque target — overriding AC's ep0 HID++ FFB.
             //   "keepalive" bytes[10..11] = 00 00, window all zeros, cur=0x8000.
             //             The wheel ignores us and uses its normal ep0 HID++ FFB path.
             //
             // Decision: send "active" whenever the FFB tap has a fresh value. We
             // STAY in active mode continuously while AC is running, regardless of
-            // whether Trueforce audio is currently playing â€” empirically, the
+            // whether Trueforce audio is currently playing — empirically, the
             // wheel's motor feel differs between ep0 PID FFB (keepalive mode) and
             // ep3 cur (active mode), and switching between them at audio start/end
             // is felt as "jerky" FFB. Window carries audio if we have any, else
-            // silence-center samples (additive zero â€” wheel feels only cur).
+            // silence-center samples (additive zero — wheel feels only cur).
             // Keepalive only fires when the FFB tap is stale (AC closed / idle
             // > FfbTargetMaxAgeMs), so any other game's native FFB still works
             // when our plugin is running but AC isn't.
@@ -393,7 +393,7 @@ namespace TrueforceForAll.Core
                 }
                 else
                 {
-                    // No audio content â€” fill the window with silence-center so
+                    // No audio content — fill the window with silence-center so
                     // the wheel's audio overlay contributes zero force, leaving
                     // only cur as the motor torque target.
                     for (int i = 0; i < Window; i++) _window[i] = 0x8000;
@@ -404,7 +404,7 @@ namespace TrueforceForAll.Core
                 // equivalent to interpolating between AC's 7ms-spaced HID++ FFB
                 // updates (which we'd otherwise emit as a step waveform).
                 // When sendActive triggered via forceActive (test mode without
-                // AC running), ffbTargetMaybe is null â€” fall back to 0x8000.
+                // AC running), ffbTargetMaybe is null — fall back to 0x8000.
                 ushort ffbCur = (ushort)0x8000;
                 if (ffbTargetMaybe.HasValue)
                 {

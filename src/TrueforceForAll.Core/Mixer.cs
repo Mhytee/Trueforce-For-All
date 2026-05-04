@@ -1,8 +1,8 @@
-﻿// Multi-voice mixer for the Trueforce sample stream.
+// Multi-voice mixer for the Trueforce sample stream.
 //
 // Sums all active ISampleSources, applies a master gain, and clamps to
 // [-1, 1] before handing samples off to TrueforceDevice. The master gain
-// defaults to a conservative 0.5 â€” see Phase 1 testing notes: the G PRO's
+// defaults to a conservative 0.5 — see Phase 1 testing notes: the G PRO's
 // DD motor crosses from "vibration" into "FFB pull" somewhere around
 // 0.7 effective amplitude, depending on frequency. 0.5 is comfortably
 // inside the vibration regime.

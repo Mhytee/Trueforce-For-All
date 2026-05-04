@@ -1,4 +1,4 @@
-﻿# Installer
+# Installer
 
 Inno Setup script and supporting files that produce `TrueforceForAll-Setup.exe`,
 the user-facing installer.
@@ -9,14 +9,14 @@ A single setup `.exe` that:
 
 1. Detects SimHub via its Inno-Setup uninstall registry key (`{019253FE-...}_is1`),
    with fallbacks (registry `DisplayName` scan, then default install path).
-   No SimHub on this PC â†’ dialog with link to `https://www.simhubdash.com/`,
+   No SimHub on this PC → dialog with link to `https://www.simhubdash.com/`,
    abort install.
 2. Copies the plugin DLL, helper exe, and shared deps into SimHub's install dir.
 3. If USBPcap isn't already installed, runs the bundled `USBPcapSetup.exe`
    silently, then registers the `NonStandardHWIDs` key (`USBPcapCMD -I`) so
    USB 3.0 ports are captured too.
 
-The user never picks an install path â€” it's locked to wherever SimHub lives.
+The user never picks an install path — it's locked to wherever SimHub lives.
 
 ## How releases get built
 
@@ -51,7 +51,7 @@ Output goes to `installer\output\TrueforceForAll-Setup.exe`.
 |---|---|---|
 | Plugin DLL + helper exe | This repo | GPL-2.0 (see [../LICENSE](../LICENSE)) |
 | HidSharp, NAudio | NuGet, copied from plugin build output | (Apache 2.0 / MIT) |
-| USBPcap setup | `installer/vendor/USBPcapSetup.exe`, built by Tomasz MoÅ„ | BSD 2-Clause (see [USBPcap-LICENSE.txt](USBPcap-LICENSE.txt)) |
+| USBPcap setup | `installer/vendor/USBPcapSetup.exe`, built by Tomasz Moń | BSD 2-Clause (see [USBPcap-LICENSE.txt](USBPcap-LICENSE.txt)) |
 
 The bundled USBPcap version is pinned per release; we don't track upstream
 USBPcap releases. USBPcap is a low-churn project and the user-mode CLI we

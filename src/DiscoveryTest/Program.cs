@@ -1,9 +1,9 @@
-﻿// Tiny harness for TrueforceForAll.Core.WheelUsbDiscovery.Find().
+// Tiny harness for TrueforceForAll.Core.WheelUsbDiscovery.Find().
 //
 // Run:  dotnet run --project src\DiscoveryTest
 //
 // Prints every log line discovery emits, then the final result. Use this to
-// verify discovery works on a given machine before launching SimHub â€” if it
+// verify discovery works on a given machine before launching SimHub — if it
 // finds the wheel here, it'll find it from the plugin too.
 
 using System;

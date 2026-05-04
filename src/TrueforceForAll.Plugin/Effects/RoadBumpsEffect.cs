@@ -1,4 +1,4 @@
-﻿// Road bumps / curb-rumble buzz: noise gated by the magnitude of vertical
+// Road bumps / curb-rumble buzz: noise gated by the magnitude of vertical
 // acceleration (GameData.NewData.AccelerationHeave) so that hitting a kerb
 // or driving over rough terrain gives a tactile rumble through the wheel.
 //
@@ -17,7 +17,7 @@ namespace TrueforceForAll.Plugin.Effects
     {
         public override string Name => "Road bumps";
 
-        /// <summary>Heave magnitude (m/sÂ² ish, game-dependent) at which the buzz begins.</summary>
+        /// <summary>Heave magnitude (m/s² ish, game-dependent) at which the buzz begins.</summary>
         public float Threshold { get; set; } = 0.5f;
 
         /// <summary>Heave magnitude that produces full-output buzz.</summary>
@@ -51,7 +51,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override double ActivityLevel
         {
-            // _noise.Amp peaks at ~0.30 Ã— Gain at full intensity. Normalize.
+            // _noise.Amp peaks at ~0.30 × Gain at full intensity. Normalize.
             get
             {
                 double maxAmp = 0.30 * Math.Max(0.01, Gain);
@@ -84,7 +84,7 @@ namespace TrueforceForAll.Plugin.Effects
                 double dist = phase01 - pulseCenter;
                 if (dist >= 0 && dist < 0.08)
                 {
-                    // exponential decay 1 â†’ 0 across 80 ms slice
+                    // exponential decay 1 → 0 across 80 ms slice
                     double e = Math.Exp(-dist / 0.025);
                     if (e > envelope) envelope = e;
                 }
@@ -99,7 +99,7 @@ namespace TrueforceForAll.Plugin.Effects
             if (d == null) { _noise.Amp = 0; return; }
             if (d.SpeedKmh < MinSpeedKmh) { _noise.Amp = 0; return; }
 
-            // AccelerationHeave is double? â€” null when the source game doesn't
+            // AccelerationHeave is double? — null when the source game doesn't
             // surface it. Treat null as silent.
             double heave = d.AccelerationHeave.GetValueOrDefault();
             double mag = Math.Abs(heave);

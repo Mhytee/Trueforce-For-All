@@ -1,4 +1,4 @@
-﻿// Manages the lifetime of TrueforceForAll.LoopbackHelper.exe (a separate child
+// Manages the lifetime of TrueforceForAll.LoopbackHelper.exe (a separate child
 // process that performs per-process audio loopback in modern .NET, where the
 // COM interop for ActivateAudioInterfaceAsync works reliably).
 //
@@ -120,8 +120,8 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var stream = _helper.StandardOutput.BaseStream;
-                // 16 KB chunks: at 48 kHz Ã— 2 ch Ã— 4 bytes = 384 KB/s steady-state
-                // â†’ ~24 reads per second. Plenty granular for haptics latency.
+                // 16 KB chunks: at 48 kHz × 2 ch × 4 bytes = 384 KB/s steady-state
+                // → ~24 reads per second. Plenty granular for haptics latency.
                 var buf = new byte[16384];
                 while (!_shuttingDown && !_helper.HasExited)
                 {

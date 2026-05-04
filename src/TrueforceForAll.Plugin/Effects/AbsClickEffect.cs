@@ -1,10 +1,10 @@
-﻿// ABS engagement haptic. Two modes:
-//   Pulse  â€” continuous carrier modulated by an internal pulse rate (12 Hz
+// ABS engagement haptic. Two modes:
+//   Pulse  — continuous carrier modulated by an internal pulse rate (12 Hz
 //            default). The "rrr-rrr-rrr" feel that's stable regardless of
 //            how the game reports ABSActive.
-//   PerTick â€” fires a single short click envelope on each rising edge of
+//   PerTick — fires a single short click envelope on each rising edge of
 //            ABSActive. If the game's ABSActive flag tracks the actual ABS
-//            valve cycle, this gives the most authentic feel â€” what you
+//            valve cycle, this gives the most authentic feel — what you
 //            feel matches what the simulated pump is doing.
 
 using System;
@@ -17,7 +17,7 @@ namespace TrueforceForAll.Plugin.Effects
 {
     public enum AbsMode
     {
-        Pulse,    // continuous carrier Ã— internal pulse modulator
+        Pulse,    // continuous carrier × internal pulse modulator
         PerTick,  // one click envelope per ABSActive rising edge
     }
 
@@ -31,7 +31,7 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>Carrier tone freq within each pulse / tick (Hz).</summary>
         public float Freq { get; set; } = 80.0f;
 
-        /// <summary>Pulse rate (Hz) â€” Pulse mode only. Real ABS valves cycle
+        /// <summary>Pulse rate (Hz) — Pulse mode only. Real ABS valves cycle
         /// at 10-15 Hz; default 12.</summary>
         public float PulseFreq { get; set; } = 12.0f;
 
@@ -129,7 +129,7 @@ namespace TrueforceForAll.Plugin.Effects
             {
                 // Fire a few ticks across the test duration so the user feels the
                 // shape of the click envelope. Trigger now; the test loop won't
-                // re-fire â€” that's fine, single tick demos the timbre.
+                // re-fire — that's fine, single tick demos the timbre.
                 TriggerTick();
                 StartTest(500);
                 return 500;
@@ -177,7 +177,7 @@ namespace TrueforceForAll.Plugin.Effects
 
             if (Mode == AbsMode.PerTick)
             {
-                // Rising edge â†’ fire one tick. Ignore the level itself; AC reports
+                // Rising edge → fire one tick. Ignore the level itself; AC reports
                 // the ACTUAL pump cycle, so each rising edge is one valve-close.
                 if (absValue > 0 && _lastAbsValue == 0)
                     TriggerTick();
@@ -194,7 +194,7 @@ namespace TrueforceForAll.Plugin.Effects
                 _lastAbsValue = absValue;
             }
 
-            // Diagnostic â€” log when ABSActive changes value or every 2s while active.
+            // Diagnostic — log when ABSActive changes value or every 2s while active.
             if (absValue != _lastLoggedAbsValue
                 || (absValue > 0 && now - _lastAbsLogTicks > 2 * TimeSpan.TicksPerSecond))
             {

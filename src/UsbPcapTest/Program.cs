@@ -1,4 +1,4 @@
-﻿// Standalone USBPcap FFB-tap proof of concept.
+// Standalone USBPcap FFB-tap proof of concept.
 //
 // Spawns USBPcapCMD.exe with stdout piped to us. Parses the pcap stream
 // (global header + record headers + USBPcap pseudo-header + control-transfer
@@ -10,7 +10,7 @@
 // Usage:
 //   1. Run AC and start driving.
 //   2. Run this exe (no args). It auto-detects USBPcap interfaces.
-//   3. Drive into a wall, hit a curb, etc. â€” watch the printed FFB value
+//   3. Drive into a wall, hit a curb, etc. — watch the printed FFB value
 //      track. Quiet straight = small values; impacts = larger.
 
 using System;
@@ -116,7 +116,7 @@ namespace TrueforceForAll.UsbPcapTest
             if (linkType != DLT_USBPCAP)
                 throw new InvalidDataException($"Not USBPcap link type (got {linkType}, expected 249)");
             Console.Error.WriteLine($"pcap stream OK (linktype DLT_USBPCAP={linkType})");
-            Console.Error.WriteLine("Reading packets â€” drive in AC and watch FFB target update.");
+            Console.Error.WriteLine("Reading packets — drive in AC and watch FFB target update.");
             Console.Error.WriteLine();
 
             int packetCount = 0;

@@ -1,7 +1,7 @@
-﻿// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
+// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
 //
 // Lifecycle:
-//   Init: load settings â†’ discover wheel â†’ open + init + start stream â†’
+//   Init: load settings → discover wheel → open + init + start stream →
 //         create AudioCaptureSource (per-process loopback, retargeted on
 //         game start/stop) and add it to the Mixer.
 //   DataUpdate: track current game name / process for the capture timer.
@@ -161,7 +161,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Trigger an effect's test playback. Forces the device into
         /// active ep3 mode for the duration so the test is audible even when
-        /// AC isn't running (no FFB tap data â†’ would otherwise be keepalive).
+        /// AC isn't running (no FFB tap data → would otherwise be keepalive).
         /// Drives effect.TestUpdate(phase) at ~60 Hz over the test window so
         /// effects can simulate dynamic behavior (RPM ramps, slip pulses, etc).</summary>
         public void TestEffect(TelemetryEffect effect)
@@ -236,13 +236,13 @@ namespace TrueforceForAll.Plugin
                 // Init sequence is required: empirically, skipping it leaves the
                 // wheel in slower-default-rate mode and Trueforce response is
                 // noticeably delayed (~game tick of latency). It does NOT cause
-                // the FFB-suppression problem either way â€” diagnosed 2026-05-03.
+                // the FFB-suppression problem either way — diagnosed 2026-05-03.
                 SimHub.Logging.Current.Info("[Trueforce] Sending init sequence (68 packets x 2)...");
                 _device.RunInitSequence();
 
                 // Spawn the USBPcap FFB tap. Reads AC's outgoing HID++ FFB target
                 // off the bus and feeds it to TrueforceDevice so we can mirror it
-                // into ep3 bytes 6-9 â€” without this, our ep3 stream overrides AC's
+                // into ep3 bytes 6-9 — without this, our ep3 stream overrides AC's
                 // FFB with zero motor torque whenever Trueforce content plays.
                 // No args = auto-discover via WheelUsbDiscovery; env vars override
                 // for debugging or unusual setups.
@@ -379,7 +379,7 @@ namespace TrueforceForAll.Plugin
                 }
 
                 // Per-game master enable: default true for unseen games, else
-                // honor the saved choice. Don't persist here â€” game-change
+                // honor the saved choice. Don't persist here — game-change
                 // shouldn't write back the same value we just read.
                 if (Settings != null)
                 {
@@ -550,7 +550,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>One-time migration of legacy per-game presets (keyed by
         /// game name with no separate "preset library" concept) into the new
         /// model: each becomes a preset named after the game, and the game's
-        /// default is bound to it. Idempotent â€” runs once when GamePresets is
+        /// default is bound to it. Idempotent — runs once when GamePresets is
         /// non-empty and the new fields are still empty.</summary>
         private void MigrateLegacyGamePresets()
         {
@@ -711,7 +711,7 @@ namespace TrueforceForAll.Plugin
         // ---------- single-preset export/import (sharing) ----------
 
         /// <summary>Snapshot of the current top-level settings + per-car overrides
-        /// â€” used by both "Save preset for game" and "Export game preset", so the
+        /// — used by both "Save preset for game" and "Export game preset", so the
         /// exported file always reflects what the user is hearing right now.</summary>
         private GameSettingsSnapshot SnapshotCurrentAsPreset()
         {
@@ -751,7 +751,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Read a preset file and store it in the library under the
         /// name embedded in the file. Does NOT auto-apply or auto-bind to a
-        /// game â€” the user explicitly chooses what to do with it next.</summary>
+        /// game — the user explicitly chooses what to do with it next.</summary>
         /// <returns>The preset name imported (for UI feedback).</returns>
         public string ImportPreset(string path)
         {
@@ -852,7 +852,7 @@ namespace TrueforceForAll.Plugin
 
         // ---------- capture targeting ----------
 
-        // exe-basename â†’ friendly label. Process names from Process.GetProcesses()
+        // exe-basename → friendly label. Process names from Process.GetProcesses()
         // are the basename (no ".exe"), case-insensitive on Windows.
         private static readonly Dictionary<string, string> ExeLabels = BuildExeLabels(new Dictionary<string, string[]>
         {
@@ -907,7 +907,7 @@ namespace TrueforceForAll.Plugin
                     try { stillAlive = !_capturedProcess.HasExited; } catch { /* invalid handle */ }
                     if (stillAlive) return;
 
-                    // Process exited â€” tear down and fall through to the scan.
+                    // Process exited — tear down and fall through to the scan.
                     SimHub.Logging.Current.Info($"[Trueforce] Captured process {_capturedProcess.Id} exited; releasing.");
                     try { _capturedProcess.Dispose(); } catch { }
                     _capturedProcess = null;
@@ -958,13 +958,13 @@ namespace TrueforceForAll.Plugin
         // ---------- producer ----------
 
         // Float-space silence floor. Samples with |v| < this are zeroed so the
-        // u16 conversion produces exactly 0x8000 â€” TrueforceDevice's silence
+        // u16 conversion produces exactly 0x8000 — TrueforceDevice's silence
         // detection requires exact-center samples to choose the keepalive packet
-        // shape. ~3e-4 corresponds to Â±10 LSB out of 32767, well below any
+        // shape. ~3e-4 corresponds to ±10 LSB out of 32767, well below any
         // perceptible content but above floating-point noise.
         private const float SilenceFloor = 3e-4f;
 
-        // Sidechain ducking state. Smoothed envelope tracks (1 - depth Ã— activity).
+        // Sidechain ducking state. Smoothed envelope tracks (1 - depth × activity).
         private float _duckSmoothed = 1.0f;
 
         private void UpdateDucking()
@@ -982,7 +982,7 @@ namespace TrueforceForAll.Plugin
 
             float target = (float)Math.Max(0.0, 1.0 - depth * maxTransient);
 
-            // IIR with attack-or-release time constant (dt â‰ˆ 1 ms â€” producer
+            // IIR with attack-or-release time constant (dt ≈ 1 ms — producer
             // pushes ~1 batch per ms). alpha = 1 - exp(-dt/tau).
             float tauMs = (target < _duckSmoothed) ? attackMs : releaseMs;
             float alpha = (float)(1.0 - Math.Exp(-1.0 / Math.Max(0.5, tauMs)));
@@ -1000,7 +1000,7 @@ namespace TrueforceForAll.Plugin
             {
                 // Master disable: skip rendering entirely. The wheel was told
                 // to Stop in SetPluginEnabled, so it's running on native FFB.
-                // Sleep ~the duration of one batch (4 samples Ã— 0.25 ms) before
+                // Sleep ~the duration of one batch (4 samples × 0.25 ms) before
                 // re-checking, to avoid a hot spin.
                 if (Settings != null && !Settings.PluginEnabled)
                 {

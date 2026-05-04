@@ -1,19 +1,19 @@
-﻿// Traction-loss buzz: vibrates when the car loses grip â€” wheelspin under
+// Traction-loss buzz: vibrates when the car loses grip — wheelspin under
 // throttle, lockup under braking, oversteer/drift, etc.
 //
 // Detection approach (works for AC, ACC, AC EVO and any game whose SimHub
 // reader populates the standard StatusDataBase fields):
 //
-//   1. Wheelspin / lockup â€” abs(SpeedKmh - GroundSpeedKmH).
+//   1. Wheelspin / lockup — abs(SpeedKmh - GroundSpeedKmH).
 //      SpeedKmh comes from the wheel speedometer; GroundSpeedKmH is the car's
 //      true ground speed from physics. When wheels spin faster than ground
 //      (drag-strip launch, throttle-on oversteer) or slower (lockup under
 //      braking), the difference IS the slip. Clean, unambiguous.
 //
-//   2. Drift / oversteer â€” yaw rate exceeding what the lateral G implies.
+//   2. Drift / oversteer — yaw rate exceeding what the lateral G implies.
 //      In steady-state cornering the centripetal balance gives
-//      lateral_g â‰ˆ speed Ã— yaw_rate. If actual yaw rate >> lateral_g / speed,
-//      the car is rotating faster than its grip can sustain â€” that's drift.
+//      lateral_g ≈ speed × yaw_rate. If actual yaw rate >> lateral_g / speed,
+//      the car is rotating faster than its grip can sustain — that's drift.
 //
 // Both signals are normalized to [0, 1] and combined with max() so any one
 // path triggers the effect. EMA smoothing prevents single-frame jitter.
@@ -75,7 +75,7 @@ namespace TrueforceForAll.Plugin.Effects
         private bool   _loggedSource;
 
         // RPM/speed heuristic state for wheelspin detection (AC's SpeedKmh and
-        // GroundSpeedKmH are always identical, so we can't use that diff â€”
+        // GroundSpeedKmH are always identical, so we can't use that diff —
         // need to fall back to "RPM rising faster than speed under throttle").
         private double _prevRpm;
         private double _prevSpeed;
@@ -99,7 +99,7 @@ namespace TrueforceForAll.Plugin.Effects
         }
 
         /// <summary>Test simulation: slip builds up, holds at peak (drift in
-        /// progress), then decays. Speed sweeps 50â†’150 km/h so the pitch
+        /// progress), then decays. Speed sweeps 50→150 km/h so the pitch
         /// scaling is audible if a tonal waveform is selected.</summary>
         public override void TestUpdate(double phase01)
         {
@@ -189,19 +189,19 @@ namespace TrueforceForAll.Plugin.Effects
             double yawRateDeg = Math.Abs(d.YawChangeVelocity ?? d.OrientationYawVelocity);
             double yawRate    = yawRateDeg * Math.PI / 180.0;          // rad/s
             double swayRaw    = d.AccelerationSway ?? 0;
-            double lateralG   = Math.Abs(swayRaw);                    // m/sÂ²
+            double lateralG   = Math.Abs(swayRaw);                    // m/s²
 
-            // Detector A â€” SLIP ANGLE (the physical signal we actually want).
-            // For any car in circular motion: AccelerationSway = v Ã— yaw_rate Ã— cos(Î²),
-            // where Î² is the slip angle (heading vs velocity-vector angle). Solving:
-            //   Î² = acos( lateral_g / (speed Ã— yaw_rate) )
-            // Î²=0 means tires grip perfectly; Î²>5Â° means tires are sliding; Î²>30Â°
-            // is a hard drift. Units are degrees â†’ the THRESHOLD is car-independent.
-            // Math is unstable at low yaw_rate Ã— speed (denominator small), so we
+            // Detector A — SLIP ANGLE (the physical signal we actually want).
+            // For any car in circular motion: AccelerationSway = v × yaw_rate × cos(β),
+            // where β is the slip angle (heading vs velocity-vector angle). Solving:
+            //   β = acos( lateral_g / (speed × yaw_rate) )
+            // β=0 means tires grip perfectly; β>5° means tires are sliding; β>30°
+            // is a hard drift. Units are degrees → the THRESHOLD is car-independent.
+            // Math is unstable at low yaw_rate × speed (denominator small), so we
             // gate the slip-angle detector behind a small centripetal-magnitude
             // floor and let detector B handle low-speed transients.
             double slipAngleDeg = 0;
-            double centripetalRequired = speedMs * yawRate;            // m/sÂ²
+            double centripetalRequired = speedMs * yawRate;            // m/s²
             if (centripetalRequired > 1.0)
             {
                 double cosBeta = lateralG / centripetalRequired;
@@ -209,16 +209,16 @@ namespace TrueforceForAll.Plugin.Effects
                 if (cosBeta < -1.0) cosBeta = -1.0;
                 slipAngleDeg = Math.Acos(cosBeta) * 180.0 / Math.PI;
             }
-            // 5Â° deadband (allow natural slip), 50Â° = full effect. Wider range
-            // than the previous 25Â° so heavy drifts have headroom to feel
-            // "louder than" moderate ones â€” gives ~5Ã— dynamic range from
-            // light slip to heavy across Î²=10Â°â†’50Â°, addressing "feels static."
+            // 5° deadband (allow natural slip), 50° = full effect. Wider range
+            // than the previous 25° so heavy drifts have headroom to feel
+            // "louder than" moderate ones — gives ~5× dynamic range from
+            // light slip to heavy across β=10°→50°, addressing "feels static."
             double slipDeadband = 5.0  / Math.Max(0.3, Sensitivity);
             double slipFullDeg  = 50.0 / Math.Max(0.3, Sensitivity);
             double slipExcess   = Math.Max(0, slipAngleDeg - slipDeadband);
             double driftFromSlipAngle = Math.Min(1.0, slipExcess / Math.Max(5.0, slipFullDeg));
 
-            // Detector B â€” centripetal imbalance (transient breakaway).
+            // Detector B — centripetal imbalance (transient breakaway).
             // Catches the moment of rear breakout at speeds too low for the
             // slip-angle formula to be reliable, and during rapid yaw acceleration.
             double expectedYaw = (speedMs > 0.1) ? lateralG / speedMs : 0;
@@ -234,7 +234,7 @@ namespace TrueforceForAll.Plugin.Effects
             // of ringing on for half a second.
             if (rawTraction < 0.05)
             {
-                _slipEma *= 0.5;       // ~50% per tick â†’ near-zero in 4 ticks
+                _slipEma *= 0.5;       // ~50% per tick → near-zero in 4 ticks
                 if (_slipEma < 0.01) _slipEma = 0;
             }
             else
@@ -244,14 +244,14 @@ namespace TrueforceForAll.Plugin.Effects
             }
             _noise.Amp = (float)(_slipEma * 0.40 * Gain);
 
-            // Diagnostic â€” once per second, only when something interesting.
+            // Diagnostic — once per second, only when something interesting.
             if (rawTraction > _peakSlipSinceLastLog) _peakSlipSinceLastLog = rawTraction;
             if (now - _lastDiagLogTicks > TimeSpan.TicksPerSecond)
             {
                 if (_peakSlipSinceLastLog > 0.05)
                 {
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] traction diag | spd={speedKmh:F1} thr={d.Throttle:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} Î²={slipAngleDeg:F1}Â° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
+                        $"[Trueforce] traction diag | spd={speedKmh:F1} thr={d.Throttle:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
                 }
                 _lastDiagLogTicks = now;
                 _peakSlipSinceLastLog = 0;

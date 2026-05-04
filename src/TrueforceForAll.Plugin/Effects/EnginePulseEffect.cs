@@ -1,8 +1,8 @@
-﻿// The signature Trueforce sensation: a periodic pulse at the engine's firing
+// The signature Trueforce sensation: a periodic pulse at the engine's firing
 // frequency. Scales amplitude with RPM relative to the redline so idle is a
 // gentle hum and pulling toward redline gives meaningful kick.
 //
-// Firing frequency for a 4-stroke: RPM/60 Ã— cyl/2 â€” each cylinder fires once
+// Firing frequency for a 4-stroke: RPM/60 × cyl/2 — each cylinder fires once
 // every two crankshaft revolutions. At 6000 RPM 4-cyl that's 200 Hz; at 1000
 // RPM 4-cyl, 33 Hz. Right in the haptic sweet spot.
 
@@ -24,7 +24,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         /// <summary>Idle hum amplitude when the engine is on but throttle is closed.
         /// We can afford larger amplitudes now that the FFB pass-through tap
-        /// writes AC's torque target into ep3 cur â€” the audio in the rolling
+        /// writes AC's torque target into ep3 cur — the audio in the rolling
         /// window is purely additive on top, no longer competing with the
         /// wheel firmware's "Trueforce vs FFB priority" decision.</summary>
         public float IdleAmp { get; set; } = 0.05f;
@@ -34,7 +34,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         /// <summary>Extra amplitude scaled by throttle position (0..1). Real engines
         /// sound louder the moment the throttle opens, even before RPM has caught
-        /// up â€” without this, throttle-stabs feel "delayed" because the user is
+        /// up — without this, throttle-stabs feel "delayed" because the user is
         /// only feeling the (slow) engine RPM ramp curve. 0.4 = up to 40% peak
         /// of immediate kick from throttle alone.</summary>
         public float ThrottleBoost { get; set; } = 0.4f;
@@ -64,12 +64,12 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override double ActivityLevel
         {
-            // Engine pulse is a continuous effect â€” it doesn't trigger ducking,
+            // Engine pulse is a continuous effect — it doesn't trigger ducking,
             // but we still report its current amplitude relative to peak so the
             // UI's live activity meter can show what it's doing.
             get
             {
-                double max = PeakAmp * Math.Max(0.01, Gain) * 1.5; // ThrottleBoost can push to 1.5Ã—
+                double max = PeakAmp * Math.Max(0.01, Gain) * 1.5; // ThrottleBoost can push to 1.5×
                 return Math.Min(1.0, Math.Max(0.0, _osc.Amp / max));
             }
         }

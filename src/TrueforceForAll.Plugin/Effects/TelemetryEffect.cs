@@ -1,12 +1,12 @@
-﻿// Base class for telemetry-driven haptic effects. Each effect is an
-// ISampleSource that the Mixer renders alongside the audio-capture source â€”
+// Base class for telemetry-driven haptic effects. Each effect is an
+// ISampleSource that the Mixer renders alongside the audio-capture source —
 // so audio loopback and telemetry voices stack additively on the wheel.
 //
 // OnTelemetry runs on SimHub's data tick (60-200 Hz typical, varies by game).
 // RenderAdd runs on the Trueforce producer thread (1 kHz). Effects mutate
 // their internal state in OnTelemetry; RenderAdd reads that state to produce
 // samples. Cross-thread reads/writes of primitive fields are atomic on .NET
-// for our purposes â€” eventual consistency is fine for haptics.
+// for our purposes — eventual consistency is fine for haptics.
 
 using System;
 using GameReaderCommon;
@@ -24,7 +24,7 @@ namespace TrueforceForAll.Plugin.Effects
         public abstract void   RenderAdd(float[] buffer, int count);
         public virtual  void   OnTelemetry(GameData data) { }
 
-        // Test mode â€” used by the settings UI's "Test" button to play the effect
+        // Test mode — used by the settings UI's "Test" button to play the effect
         // at representative max parameters for a short duration without needing
         // the game to drive it via telemetry. Subclasses set their internal
         // parameters in TestPlay() and call StartTest(durationMs); OnTelemetry
@@ -43,7 +43,7 @@ namespace TrueforceForAll.Plugin.Effects
         public virtual int TestPlay() => 0;
 
         /// <summary>Per-frame update during a test. The plugin calls this
-        /// periodically (every ~16 ms) with a phase value 0.0 â†’ 1.0 over the
+        /// periodically (every ~16 ms) with a phase value 0.0 → 1.0 over the
         /// test duration. Effects override this to simulate dynamic behavior
         /// (RPM ramps, slip pulses, etc.) during the test rather than just
         /// playing a static value.</summary>

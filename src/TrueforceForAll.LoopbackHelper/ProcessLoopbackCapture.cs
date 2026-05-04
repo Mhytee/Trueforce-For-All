@@ -1,8 +1,8 @@
-﻿// Per-process audio loopback via the Windows process-loopback API.
+// Per-process audio loopback via the Windows process-loopback API.
 //
 // This is the second attempt. The first used CLR auto-marshaling (typed
 // interfaces with [ComImport], typed completion handler with [ComVisible]) and
-// failed with E_ILLEGAL_METHOD_CALL from ActivateAudioInterfaceAsync itself â€”
+// failed with E_ILLEGAL_METHOD_CALL from ActivateAudioInterfaceAsync itself —
 // despite MTA pinning, IAgileObject markers, and explicit CoInitializeEx.
 //
 // This rewrite does it all by hand:
@@ -11,7 +11,7 @@
 //     and PROPVARIANT ourselves.
 //   - The completion handler is implemented by emitting a VTable pointer
 //     manually (via Marshal.AllocHGlobal + delegate function pointers) so we
-//     have full control over QueryInterface â€” including reporting IAgileObject
+//     have full control over QueryInterface — including reporting IAgileObject
 //     so the activation accepts our handler as agile.
 //   - The activation runs on a thread that's both MTA-state and CoInitializeEx'd.
 //
@@ -222,7 +222,7 @@ namespace TrueforceForAll.LoopbackHelper
                 const int  AUDCLNT_STREAMFLAGS_EVENTCALLBACK = 0x00040000;
                 int streamFlags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
 
-                // Try IAudioClient3 first â€” gives us a shared-mode engine period
+                // Try IAudioClient3 first — gives us a shared-mode engine period
                 // as low as ~3ms (vs 10ms default). Falls back to legacy
                 // IAudioClient::Initialize at 10ms if IAudioClient3 is
                 // unavailable (older Windows, or process-loopback restriction).
@@ -429,7 +429,7 @@ namespace TrueforceForAll.LoopbackHelper
 
         // ---------- IAudioClient / IAudioCaptureClient method-by-vtable-slot ----------
         //
-        // We don't use C# COM-imported interfaces here â€” the CLR's auto-marshaling for
+        // We don't use C# COM-imported interfaces here — the CLR's auto-marshaling for
         // those was implicated in the original failure. Instead we call the vtable
         // entries directly. Slot indices are taken from the public Windows headers.
         // IAudioClient inherits IUnknown (3 slots), then has 12 methods. IAudioCaptureClient
@@ -468,7 +468,7 @@ namespace TrueforceForAll.LoopbackHelper
         //  17 GetSharedModeEnginePeriod, 18 GetCurrentSharedModeEnginePeriod,
         //  19 InitializeSharedAudioStream.
         // IAudioClient3 lets us request a shared-mode engine period below the
-        // default 10ms â€” typically as low as 3ms on Win10 RS1+. It supersedes
+        // default 10ms — typically as low as 3ms on Win10 RS1+. It supersedes
         // IAudioClient::Initialize for low-latency capture.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int IAudioClient3_GetSharedModeEnginePeriod_t(
@@ -487,7 +487,7 @@ namespace TrueforceForAll.LoopbackHelper
             int streamFlags, uint periodInFrames, IntPtr fmt, IntPtr sessionGuid)
             => GetMethod<IAudioClient3_InitializeSharedAudioStream_t>(p, 19)(p, streamFlags, periodInFrames, fmt, sessionGuid);
 
-        // IUnknown::QueryInterface (slot 0). Used to upgrade IAudioClient â†’ IAudioClient3.
+        // IUnknown::QueryInterface (slot 0). Used to upgrade IAudioClient → IAudioClient3.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int IUnknown_QueryInterface_t(IntPtr pThis, ref Guid riid, out IntPtr ppv);
         private static int Unknown_QueryInterface(IntPtr p, ref Guid iid, out IntPtr ppv)

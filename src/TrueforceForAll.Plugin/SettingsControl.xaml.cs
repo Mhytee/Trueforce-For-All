@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -186,7 +186,7 @@ namespace TrueforceForAll.Plugin
             }
             if (_plugin != null) FfbTapText.Text = _plugin.FfbTapStatus;
 
-            // Live activity meters â€” only updated when the Expander is open.
+            // Live activity meters — only updated when the Expander is open.
             // Peak-hold smoothing with 25% decay per tick (~80 ms half-life)
             // so bars feel responsive but don't flicker on every sample.
             if (LiveActivityExpander?.IsExpanded == true)
@@ -578,10 +578,10 @@ namespace TrueforceForAll.Plugin
 
             ActiveGameText.Text     = string.IsNullOrEmpty(game)    ? "(none)" : game;
             DefaultPresetText.Text  = string.IsNullOrEmpty(defName) ? "(none)" : defName;
-            ActivePresetText.Text   = string.IsNullOrEmpty(activeP) ? "(none â€” unsaved)" : activeP;
+            ActivePresetText.Text   = string.IsNullOrEmpty(activeP) ? "(none — unsaved)" : activeP;
 
             // Repopulate dropdown without re-firing SelectionChanged into our
-            // handler â€” _suppressEvents wraps the whole RefreshFromPlugin call.
+            // handler — _suppressEvents wraps the whole RefreshFromPlugin call.
             string keepSelected = PresetCombo.SelectedItem as string ?? activeP;
             PresetCombo.Items.Clear();
             if (_plugin.PresetNames != null)
@@ -612,7 +612,7 @@ namespace TrueforceForAll.Plugin
 
         private void PresetCombo_Changed(object sender, SelectionChangedEventArgs e)
         {
-            // Selection alone doesn't apply â€” user must click Apply. Just
+            // Selection alone doesn't apply — user must click Apply. Just
             // refresh button-enabled states so Delete/Apply enable correctly.
             if (_suppressEvents) return;
             bool hasSelection = SelectedPresetName != null;
@@ -637,7 +637,7 @@ namespace TrueforceForAll.Plugin
             string name = _plugin.ActivePresetName;
             if (string.IsNullOrEmpty(name))
             {
-                // No active preset â€” fall through to Save as.
+                // No active preset — fall through to Save as.
                 SaveAsPreset_Click(sender, e);
                 return;
             }
@@ -815,7 +815,7 @@ namespace TrueforceForAll.Plugin
                 bool applied = carId == _plugin.ActiveCarId;
                 MessageBox.Show(applied
                     ? $"Imported car preset for '{carId}'. Applied (this is the active car)."
-                    : $"Imported car preset for '{carId}'. Stored â€” will apply when you drive that car.",
+                    : $"Imported car preset for '{carId}'. Stored — will apply when you drive that car.",
                     "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
                 RefreshFromPlugin();
             }

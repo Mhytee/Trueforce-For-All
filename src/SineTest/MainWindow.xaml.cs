@@ -1,4 +1,4 @@
-﻿// Live test rig for the Trueforce wire path: pick a waveform, drag freq /
+// Live test rig for the Trueforce wire path: pick a waveform, drag freq /
 // amplitude sliders, hear the wheel respond in real time.
 //
 // As of Phase 2b this drives a Mixer + OscillatorSource (single voice for
@@ -207,7 +207,7 @@ namespace TrueforceForAll.SineTest
             }
             _sweepStartUtc = DateTime.UtcNow;
             _sweepActive = true;
-            StatusText.Text = "Sweeping 30 â†’ 500 Hz over 5 s...";
+            StatusText.Text = "Sweeping 30 → 500 Hz over 5 s...";
         }
 
         // ---------- synth thread ----------

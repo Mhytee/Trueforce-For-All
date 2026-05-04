@@ -1,4 +1,4 @@
-﻿; Inno Setup script for Trueforce For All.
+; Inno Setup script for Trueforce For All.
 ;
 ; What it does:
 ;   1. Detects SimHub via its Inno-Setup registry key, with fallbacks.
@@ -9,7 +9,7 @@
 ;      ports too (matters because users plug wheels into anything).
 ;
 ; Compile with: iscc.exe TrueforceForAll.iss
-; (Inno Setup 6+ â€” older versions don't have RegGetSubkeyNames.)
+; (Inno Setup 6+ — older versions don't have RegGetSubkeyNames.)
 
 #define AppName       "Trueforce For All"
 #define AppPublisher  "Mhytee"
@@ -57,12 +57,12 @@ LicenseFile=..\LICENSE
 SetupIconFile=
 
 [Files]
-; Our own files â€” always overwrite on upgrade.
+; Our own files — always overwrite on upgrade.
 Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; Shared deps â€” install if missing, but never remove on uninstall (SimHub
+; Shared deps — install if missing, but never remove on uninstall (SimHub
 ; or other plugins may be using them).
 Source: "{#PluginBin}\HidSharp.dll";          DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 Source: "{#PluginBin}\NAudio.dll";            DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
@@ -80,7 +80,7 @@ Source: "{#UsbPcapSetup}"; DestDir: "{tmp}"; DestName: "USBPcapSetup.exe"; Flags
 Source: "USBPcap-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 
 [Run]
-; Chained USBPcap install â€” silent, only if not already present. /S is the
+; Chained USBPcap install — silent, only if not already present. /S is the
 ; NSIS silent-install flag USBPcap's own installer accepts.
 Filename: "{tmp}\USBPcapSetup.exe"; \
     Parameters: "/S"; \
@@ -188,7 +188,7 @@ begin
   begin
     if MsgBox(
         'SimHub doesn''t appear to be installed on this PC.' + #13#10 + #13#10 +
-        'Trueforce For All is a plugin for SimHub â€” it needs SimHub installed first.' + #13#10 + #13#10 +
+        'Trueforce For All is a plugin for SimHub — it needs SimHub installed first.' + #13#10 + #13#10 +
         'Click OK to open the SimHub download page, then re-run this installer once SimHub is installed.',
         mbInformation, MB_OKCANCEL) = IDOK then
     begin

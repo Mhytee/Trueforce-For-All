@@ -1,4 +1,4 @@
-﻿// Reads AC's outgoing HID++ FFB target from the USB bus by spawning USBPcapCMD
+// Reads AC's outgoing HID++ FFB target from the USB bus by spawning USBPcapCMD
 // as a child process, parsing its pcap stdout, and latching the most-recent
 // FFB target value for the Trueforce stream to inject into ep3 bytes 6-9.
 //
@@ -11,7 +11,7 @@
 //
 // USBPcap installs as a kernel-mode USB filter driver. USBPcapCMD.exe streams
 // pcap to stdout when invoked with -o -. We don't require admin in our
-// process â€” USBPcap's own access checks happen in its CMD process.
+// process — USBPcap's own access checks happen in its CMD process.
 
 using System;
 using System.Diagnostics;
@@ -154,7 +154,7 @@ namespace TrueforceForAll.Core
         private void ReaderLoop()
         {
             // Outer loop auto-restarts USBPcapCMD if it crashes (rare but
-            // possible â€” we don't want a single failure to permanently disable
+            // possible — we don't want a single failure to permanently disable
             // FFB pass-through).
             while (!_stopping)
             {

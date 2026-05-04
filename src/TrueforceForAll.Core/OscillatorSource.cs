@@ -1,4 +1,4 @@
-﻿// Single-oscillator audio-haptic voice: sine / square / saw / triangle / noise
+// Single-oscillator audio-haptic voice: sine / square / saw / triangle / noise
 // at a controllable frequency and amplitude. Composable into a Mixer.
 //
 // Properties (Waveform / Freq / Amp / Enabled) are intentionally just fields
@@ -42,7 +42,7 @@ namespace TrueforceForAll.Core
         /// <summary>For Noise waveform only: 1-pole low-pass cutoff (Hz) applied
         /// to the noise output. White noise above ~400 Hz can't be reproduced
         /// faithfully by a wheel motor and just adds graininess; cutting it
-        /// gives a smoother rumble feel. Set â‰¤ 0 to disable. Ignored for
+        /// gives a smoother rumble feel. Set ≤ 0 to disable. Ignored for
         /// non-Noise waveforms.</summary>
         public double NoiseLowpassHz { get; set; } = 400.0;
 
@@ -66,7 +66,7 @@ namespace TrueforceForAll.Core
             // For Noise: apply a 1-pole IIR low-pass to remove high-frequency
             // graininess that the wheel motor can't reproduce as smooth rumble.
             // Compensate for energy loss with a small gain bump (sqrt(2/alpha)
-            // is the analytic bandwidth-energy correction; ~1.6Ã— at Î±=0.5).
+            // is the analytic bandwidth-energy correction; ~1.6× at α=0.5).
             if (w == Waveform.Noise && NoiseLowpassHz > 0 && NoiseLowpassHz < SampleRate * 0.5)
             {
                 float alpha = (float)(1.0 - Math.Exp(-2.0 * Math.PI * NoiseLowpassHz / SampleRate));

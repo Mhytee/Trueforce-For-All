@@ -1,4 +1,4 @@
-﻿// Discover which USBPcap interface and USB device address a supported Trueforce
+// Discover which USBPcap interface and USB device address a supported Trueforce
 // wheel is on, so the FFB tap doesn't depend on hardcoded values that vary
 // per-machine and per-replug.
 //
@@ -37,8 +37,8 @@ namespace TrueforceForAll.Core
         private const int DLT_USBPCAP = 249;
 
         // Per-interface budget. Descriptor injection happens within the first
-        // few packets, so 1.5 s is generous; total worst case is ~N Ã— 1.5 s
-        // across N interfaces (typically 2â€“3 on a desktop).
+        // few packets, so 1.5 s is generous; total worst case is ~N × 1.5 s
+        // across N interfaces (typically 2–3 on a desktop).
         private const int DefaultPerInterfaceTimeoutMs = 1500;
 
         public static WheelDiscoveryResult Find(
@@ -202,7 +202,7 @@ namespace TrueforceForAll.Core
             }
 
             if (result == null && sawPermissionError)
-                log?.Invoke($"WheelUsbDiscovery: {iface} access denied â€” try running SimHub as administrator");
+                log?.Invoke($"WheelUsbDiscovery: {iface} access denied — try running SimHub as administrator");
 
             return result;
         }

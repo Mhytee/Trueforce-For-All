@@ -1,10 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <!-- Modern .NET so the COM interop for ActivateAudioInterfaceAsync's
          async completion handler works (the same approach in net48 was
-         rejected by Windows with E_ILLEGAL_METHOD_CALL â€” the .NET 8 CLR's
+         rejected by Windows with E_ILLEGAL_METHOD_CALL — the .NET 8 CLR's
          CCW handles agility correctly). -->
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>TrueforceForAll.LoopbackHelper</RootNamespace>
@@ -19,7 +19,7 @@
     <PlatformTarget>x64</PlatformTarget>
 
     <!-- Single-file self-contained so users don't need a .NET runtime
-         installed. ~12 MB after compression â€” fine for a sim haptics tool. -->
+         installed. ~12 MB after compression — fine for a sim haptics tool. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -27,7 +27,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 
     <!-- We use one minor reflection bit (Marshal.GetDelegateForFunctionPointer);
-         leave trimming OFF for safety â€” size delta is small. -->
+         leave trimming OFF for safety — size delta is small. -->
     <PublishTrimmed>false</PublishTrimmed>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>

@@ -1,4 +1,4 @@
-﻿// Gear-shift thud: a short low-freq waveform burst with a linear-decay
+// Gear-shift thud: a short low-freq waveform burst with a linear-decay
 // envelope, retriggered each time GameData.Gear changes.
 //
 // The synth is inline (per-sample envelope is simpler hand-rolled than
@@ -23,7 +23,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         /// <summary>Peak amplitude at the start of the envelope. Sized to the
         /// FFB pass-through writes AC's torque target into ep3 cur, so the
-        /// audio in the rolling window is purely additive â€” no longer
+        /// audio in the rolling window is purely additive — no longer
         /// constrained to small amplitudes for FFB coexistence.</summary>
         public float PeakAmp { get; set; } = 0.35f;
 
@@ -71,7 +71,7 @@ namespace TrueforceForAll.Plugin.Effects
 
             for (int i = 0; i < count && remaining > 0; i++)
             {
-                float env = (float)remaining / total;            // linear 1 â†’ 0
+                float env = (float)remaining / total;            // linear 1 → 0
                 float v   = SampleAt(w, _phase, _rng);
                 buffer[i] += v * env * scale;
                 _phase += phaseStep;
@@ -98,7 +98,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override int TestPlay()
         {
-            // Trigger one envelope at full amp â€” decays naturally over EnvelopeMs.
+            // Trigger one envelope at full amp — decays naturally over EnvelopeMs.
             // StartTest() keeps IsTesting=true so IsActive returns true even
             // when Enabled=false in settings (otherwise the Mixer would skip
             // RenderAdd and the test would be silent).
@@ -123,8 +123,8 @@ namespace TrueforceForAll.Plugin.Effects
             if (_lastGear != null && _lastGear != gear)
             {
                 // Sequential gearboxes pass through "N" between every gear, so
-                // every shift triggers two transitions: gearâ†’N then Nâ†’gear.
-                // We scale the gearâ†’N bump by NeutralAmp (default 0.4) so the
+                // every shift triggers two transitions: gear→N then N→gear.
+                // We scale the gear→N bump by NeutralAmp (default 0.4) so the
                 // destination-gear landing feels dominant, and let users tune
                 // the neutral component down to 0 (disabled) or up to 1 (equal).
                 bool goingToNeutral = string.Equals(gear, "N", StringComparison.OrdinalIgnoreCase);

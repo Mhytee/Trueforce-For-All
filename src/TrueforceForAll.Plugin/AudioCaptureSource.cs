@@ -1,19 +1,19 @@
-﻿// DSP pipeline that downsamples per-process loopback audio to 1 kHz mono
+// DSP pipeline that downsamples per-process loopback audio to 1 kHz mono
 // and exposes it as an ISampleSource for the Mixer / TrueforceDevice path.
 //
 // Audio frames are pushed in via Feed() (called by HelperHost when the
 // TrueforceForAll.LoopbackHelper child process delivers a chunk over stdout).
-// The actual loopback runs in a separate .NET 8 process â€” this class is
+// The actual loopback runs in a separate .NET 8 process — this class is
 // agnostic to the source, it just consumes byte buffers in the agreed
 // format (48 kHz / 2-channel / 32-bit IEEE float) or whatever the WaveFormat
 // passed to Start() declares.
 //
 // Pipeline per input frame:
-//   stereo float @ 48 kHz   â†’  per-channel 2nd-order Butterworth LPF @ 400 Hz
-//                           â†’  L+R / 2 (mono)
-//                           â†’  decimate to 1 kHz via phase accumulator
-//                           â†’  ring buffer
-//   1 kHz ring              â†’  RenderAdd pulls + applies Gain
+//   stereo float @ 48 kHz   →  per-channel 2nd-order Butterworth LPF @ 400 Hz
+//                           →  L+R / 2 (mono)
+//                           →  decimate to 1 kHz via phase accumulator
+//                           →  ring buffer
+//   1 kHz ring              →  RenderAdd pulls + applies Gain
 
 using System;
 using System.Threading;
@@ -29,7 +29,7 @@ namespace TrueforceForAll.Plugin
         // 8 ms of buffering at 4 kHz mono. WASAPI callback fires every ~10 ms
         // delivering ~40 samples post-decimation; consumer drains 4 samples per
         // 1 ms. 32-sample ring fits ~31 samples at peak, slightly less than one
-        // full callback's worth â€” so a callback-aligned burst overflows by ~9
+        // full callback's worth — so a callback-aligned burst overflows by ~9
         // samples (lapping logic drops oldest). The trade is: small periodic
         // sample loss for max latency capped at 8 ms, vs slightly higher
         // latency with no lapping. We pick latency since the ear (and motor)
@@ -39,7 +39,7 @@ namespace TrueforceForAll.Plugin
         // Default lowpass cutoff. 350 Hz keeps the haptic-relevant rumble
         // band (0-300 Hz feels good through the wheel) while stripping
         // 400+ Hz "graininess" that doesn't translate well to motor torque.
-        // Tunable at runtime â€” the previous 1500 Hz default brought through
+        // Tunable at runtime — the previous 1500 Hz default brought through
         // too much high-frequency content; 350 is a better starting point.
         public const double DefaultLowpassCutoffHz  = 350.0;
         public const double DefaultHighpassCutoffHz =  30.0;
@@ -105,7 +105,7 @@ namespace TrueforceForAll.Plugin
         public float Gain { get; set; } = 1.0f;
 
         /// <summary>Extra gain scaled by current throttle position. Real engines
-        /// produce more audible kick the moment the throttle opens â€” without
+        /// produce more audible kick the moment the throttle opens — without
         /// this multiplier, the captured game audio's natural mix can feel
         /// flat compared to native Trueforce. 0.5 = up to +50% gain at full
         /// throttle on top of base Gain. Set to 0 to disable.</summary>
@@ -238,8 +238,8 @@ namespace TrueforceForAll.Plugin
             int frameCount = e.BytesRecorded / bytesPerFrame;
             if (frameCount == 0) return;
 
-            // Local scratch â€” accumulate emitted output samples, push to ring once.
-            // At 48 kHz input â†’ 1 kHz output, frameCount/48 emissions per callback (~10 frames).
+            // Local scratch — accumulate emitted output samples, push to ring once.
+            // At 48 kHz input → 1 kHz output, frameCount/48 emissions per callback (~10 frames).
             int maxEmissions = frameCount + 1;
             float[] outBuf = new float[maxEmissions];
             int outIdx = 0;
@@ -270,13 +270,13 @@ namespace TrueforceForAll.Plugin
                 }
                 else
                 {
-                    // Unsupported (24-bit, etc.) â€” skip frame.
+                    // Unsupported (24-bit, etc.) — skip frame.
                     continue;
                 }
 
                 // Lowpass per-channel before mixing avoids the slight phase weirdness
                 // of filtering after the L+R sum (cheap to do separately).
-                // Filter chain: highpass â†’ lowpass = bandpass for haptic-relevant
+                // Filter chain: highpass → lowpass = bandpass for haptic-relevant
                 // frequency range (default 30-350 Hz). Highpass first removes DC
                 // drift / sub-haptic content; lowpass cuts grainy high freq.
                 float hL = _highpassL.Process(L);

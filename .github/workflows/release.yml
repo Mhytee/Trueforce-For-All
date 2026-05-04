@@ -1,8 +1,8 @@
-﻿# Builds TrueforceForAll-Setup.exe and uploads it to a draft GitHub release.
+# Builds TrueforceForAll-Setup.exe and uploads it to a draft GitHub release.
 #
 # Triggers:
-#   - push of a `v*` tag (e.g. v0.1.0)  â†’ release named after the tag
-#   - manual run via the Actions UI     â†’ builds artifacts only, no release
+#   - push of a `v*` tag (e.g. v0.1.0)  → release named after the tag
+#   - manual run via the Actions UI     → builds artifacts only, no release
 #
 # Inno Setup 6 is preinstalled on GitHub's windows-latest images at
 #   C:\Program Files (x86)\Inno Setup 6\iscc.exe
@@ -80,7 +80,7 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) {
-            throw "Inno Setup 6 not found at $iscc â€” runner image may have changed."
+            throw "Inno Setup 6 not found at $iscc — runner image may have changed."
           }
           & $iscc installer\TrueforceForAll.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
