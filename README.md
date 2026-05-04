@@ -22,7 +22,8 @@ SimHub can read telemetry from.
 | Logitech RS50 | `046D:C276` |
 
 The G PRO and RS50 use byte-identical Trueforce packets (verified by the
-[mescon Linux driver project][mescon] against fresh G HUB captures).
+[mescon Linux driver project][mescon]). 
+G923 support may come in the future.
 
 ## What it does
 
