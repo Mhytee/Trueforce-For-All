@@ -6,7 +6,6 @@
 // users can pick the feel they prefer.
 
 using System;
-using GameReaderCommon;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -111,9 +110,9 @@ namespace TrueforceForAll.Plugin.Effects
             return duration;
         }
 
-        public override void OnTelemetry(GameData data)
+        public override void OnTelemetry(TelemetryFrame f)
         {
-            string gear = data?.NewData?.Gear;
+            string gear = f.Gear;
             if (string.IsNullOrEmpty(gear))
             {
                 _lastGear = gear;

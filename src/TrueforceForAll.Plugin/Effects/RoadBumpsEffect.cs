@@ -8,7 +8,6 @@
 // the-wheel sensation.
 
 using System;
-using GameReaderCommon;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -92,16 +91,14 @@ namespace TrueforceForAll.Plugin.Effects
             _noise.Amp = envelope * 0.30 * Gain;
         }
 
-        public override void OnTelemetry(GameData data)
+        public override void OnTelemetry(TelemetryFrame f)
         {
             if (IsTesting) return;
-            var d = data?.NewData;
-            if (d == null) { _noise.Amp = 0; return; }
-            if (d.SpeedKmh < MinSpeedKmh) { _noise.Amp = 0; return; }
+            if (f.SpeedKmh < MinSpeedKmh) { _noise.Amp = 0; return; }
 
-            // AccelerationHeave is double? — null when the source game doesn't
-            // surface it. Treat null as silent.
-            double heave = d.AccelerationHeave.GetValueOrDefault();
+            // AccelerationHeave is nullable — sources that don't surface
+            // vertical accel report null and the effect stays silent.
+            double heave = f.AccelerationHeave.GetValueOrDefault();
             double mag = Math.Abs(heave);
             if (mag < Threshold) { _noise.Amp = 0; return; }
 

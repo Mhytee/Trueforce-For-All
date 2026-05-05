@@ -58,6 +58,17 @@ namespace TrueforceForAll.Plugin
         public AbsClickEffect     AbsClick     { get; private set; }
         private TelemetryEffect[] _effects;
 
+        // Active telemetry source. The plugin currently always uses
+        // SimHubTelemetrySource (universal, ~60 Hz from the SimHub data
+        // pipeline). Per-game enhanced sources (AC native MMF, etc.) will
+        // be hot-swapped here on game change. _simHubSource is held as a
+        // typed field because we feed it from DataUpdate; _telemetrySource
+        // is what the rest of the plugin treats as "the current source"
+        // for status / UI / future polymorphic dispatch.
+        private SimHubTelemetrySource _simHubSource;
+        private ITelemetrySource      _telemetrySource;
+        public  ITelemetrySource      TelemetrySource => _telemetrySource;
+
         // Per-car override tracking. Updated on each DataUpdate; if the CarId
         // changes we re-apply per-section overrides (or fall back to globals).
         private string _activeCarId;
@@ -314,7 +325,8 @@ namespace TrueforceForAll.Plugin
             _mixer.Sources.Add(_audio);
 
             // Telemetry effects: instantiate from settings, register in the
-            // mixer in display order. Each effect is fed via DataUpdate dispatch.
+            // mixer in display order. Each effect is fed via the active
+            // ITelemetrySource's OnFrame callback (see DispatchFrame below).
             EnginePulse  = new EnginePulseEffect();
             RoadBumps    = new RoadBumpsEffect();
             TractionLoss = new TractionLossEffect();
@@ -324,6 +336,13 @@ namespace TrueforceForAll.Plugin
             foreach (var fx in _effects) _mixer.Sources.Add(fx);
             // Pull initial values from globals (no car detected yet).
             ApplyActiveCarOverride();
+
+            // Telemetry source: SimHub fallback for now. AC enhanced source
+            // and game-keyed selection land in a follow-up commit.
+            _simHubSource = new SimHubTelemetrySource { OnFrame = DispatchFrame };
+            _simHubSource.Start();
+            _telemetrySource = _simHubSource;
+            SimHub.Logging.Current.Info($"[Trueforce] Telemetry source: {_telemetrySource.Name}.");
 
             _capturePollThread = new Thread(CapturePollLoop)
             {
@@ -347,6 +366,12 @@ namespace TrueforceForAll.Plugin
 
             try { _capturePollThread?.Join(2000); } catch { }
             _capturePollThread = null;
+
+            // Stop the active telemetry source so PushFromGameData becomes a
+            // no-op for any late SimHub tick that lands during teardown.
+            try { _telemetrySource?.Dispose(); } catch { }
+            _telemetrySource = null;
+            _simHubSource    = null;
 
             // UI changes are written through to Settings on the fly, so just save.
             if (Settings != null) this.SaveCommonSettings("GeneralSettings", Settings);
@@ -424,19 +449,30 @@ namespace TrueforceForAll.Plugin
                 ApplyActiveCarOverride();
             }
 
-            // Forward throttle normalized to AudioCaptureSource so it can apply
-            // a throttle-driven gain boost (mirrors EnginePulseEffect's boost).
-            if (_audio != null && data?.NewData != null)
-                _audio.ThrottleNormalized = (float)Math.Max(0.0, Math.Min(1.0, data.NewData.Throttle / 100.0));
+            // Hand the GameData to the SimHub source. It builds a
+            // TelemetryFrame and fires OnFrame → DispatchFrame, which is
+            // where we update audio gain and fan out to effects. Done this
+            // way so an enhanced source (AC MMF, etc.) drives the same
+            // dispatch path at its native rate without forking effect code.
+            _simHubSource?.PushFromGameData(data);
+        }
 
-            // Forward telemetry to each effect. Effects are responsible for
-            // their own state; if any throws we swallow it so a single bad
-            // effect can't take down the SimHub data tick.
+        /// <summary>OnFrame handler bound to whichever ITelemetrySource is
+        /// currently active. Runs on the source's polling thread (SimHub's
+        /// data tick today; an MMF reader thread once enhanced sources land).
+        /// Updates audio-throttle modulation and dispatches to each effect;
+        /// per-effect exceptions are swallowed so one bad effect can't
+        /// break the rest of the haptic pipeline.</summary>
+        private void DispatchFrame(TelemetryFrame frame)
+        {
+            if (_audio != null)
+                _audio.ThrottleNormalized = (float)frame.Throttle01;
+
             if (_effects != null)
             {
                 for (int i = 0; i < _effects.Length; i++)
                 {
-                    try { _effects[i].OnTelemetry(data); }
+                    try { _effects[i].OnTelemetry(frame); }
                     catch (Exception ex)
                     {
                         SimHub.Logging.Current.Error($"[Trueforce] {_effects[i].Name} telemetry error", ex);

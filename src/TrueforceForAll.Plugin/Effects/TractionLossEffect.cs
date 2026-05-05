@@ -23,7 +23,6 @@
 // Noise has no fundamental.
 
 using System;
-using GameReaderCommon;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -72,7 +71,6 @@ namespace TrueforceForAll.Plugin.Effects
         private double _slipEma;
         private long   _lastDiagLogTicks;
         private double _peakSlipSinceLastLog;
-        private bool   _loggedSource;
 
         // RPM/speed heuristic state for wheelspin detection (AC's SpeedKmh and
         // GroundSpeedKmH are always identical, so we can't use that diff —
@@ -114,26 +112,18 @@ namespace TrueforceForAll.Plugin.Effects
             _noise.Amp  = slipNorm * 0.40 * Gain;
         }
 
-        public override void OnTelemetry(GameData data)
+        public override void OnTelemetry(TelemetryFrame f)
         {
             if (IsTesting) return;
-            var d = data?.NewData;
-            if (d == null) { _slipEma = 0; _noise.Amp = 0; return; }
 
             // Pitch scales with vehicle speed (tonal waveforms only).
-            double speedKmh = d.SpeedKmh;
+            double speedKmh = f.SpeedKmh;
             double speedNormForPitch = Math.Min(1.0, Math.Max(0.0, speedKmh / Math.Max(1.0, PitchMaxKmh)));
             _noise.Freq = PitchBaseHz + speedNormForPitch * (PitchMaxHz - PitchBaseHz);
 
-            if (!_loggedSource)
-            {
-                SimHub.Logging.Current.Info($"[Trueforce] Traction loss using Speed/GroundSpeed/YawRate/LateralG signals on {d.GetType().Name}.");
-                _loggedSource = true;
-            }
-
             // Engine free-revs in neutral; speed-based signals are still valid
             // but RPM is not. Skip during shifts to avoid false-fires.
-            string gear = d.Gear;
+            string gear = f.Gear;
             if (string.Equals(gear, "N", StringComparison.OrdinalIgnoreCase))
             {
                 _slipEma *= 0.4;
@@ -155,16 +145,17 @@ namespace TrueforceForAll.Plugin.Effects
             // heuristic: RPM rising sharply while speed isn't. Gated on
             // throttle and on RPM being well below redline (rules out limiter).
             long now = DateTime.UtcNow.Ticks;
+            double throttlePct = f.Throttle01 * 100.0;
             double wheelspinNorm = 0;
             if (_prevTicks != 0)
             {
                 double dtSec = (now - _prevTicks) / 10_000_000.0;
                 if (dtSec >= 0.005 && dtSec <= 0.5
-                    && d.Throttle >= 25.0
-                    && d.MaxRpm > 0 && d.Rpms < d.MaxRpm * 0.95)   // not at limiter
+                    && throttlePct >= 25.0
+                    && f.MaxRpm > 0 && f.Rpms < f.MaxRpm * 0.95)   // not at limiter
                 {
-                    double dRpm   = (d.Rpms     - _prevRpm)   / dtSec;   // RPM/s
-                    double dSpeed = (d.SpeedKmh - _prevSpeed) / dtSec;   // (km/h)/s
+                    double dRpm   = (f.Rpms     - _prevRpm)   / dtSec;   // RPM/s
+                    double dSpeed = (f.SpeedKmh - _prevSpeed) / dtSec;   // (km/h)/s
                     double rpmRise   = Math.Max(0.0, dRpm);
                     double speedRise = Math.Max(0.0, dSpeed);
                     // Threshold rebased to 500 RPM/s (was 1500); empirically
@@ -180,15 +171,15 @@ namespace TrueforceForAll.Plugin.Effects
                 }
             }
             _prevTicks = now;
-            _prevRpm   = d.Rpms;
-            _prevSpeed = d.SpeedKmh;
+            _prevRpm   = f.Rpms;
+            _prevSpeed = f.SpeedKmh;
 
             // ---------- Drift / oversteer (slip angle + transient detectors) ----------
-            // SimHub reports yaw rate in deg/s for AC; convert to rad/s.
+            // Source delivers yaw rate in deg/s; convert to rad/s here.
             double speedMs    = speedKmh / 3.6;
-            double yawRateDeg = Math.Abs(d.YawChangeVelocity ?? d.OrientationYawVelocity);
+            double yawRateDeg = Math.Abs(f.YawRateDegPerSec ?? 0);
             double yawRate    = yawRateDeg * Math.PI / 180.0;          // rad/s
-            double swayRaw    = d.AccelerationSway ?? 0;
+            double swayRaw    = f.AccelerationSway ?? 0;
             double lateralG   = Math.Abs(swayRaw);                    // m/s²
 
             // Detector A — SLIP ANGLE (the physical signal we actually want).
@@ -251,7 +242,7 @@ namespace TrueforceForAll.Plugin.Effects
                 if (_peakSlipSinceLastLog > 0.05)
                 {
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] traction diag | spd={speedKmh:F1} thr={d.Throttle:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
+                        $"[Trueforce] traction diag | spd={speedKmh:F1} thr={throttlePct:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
                 }
                 _lastDiagLogTicks = now;
                 _peakSlipSinceLastLog = 0;

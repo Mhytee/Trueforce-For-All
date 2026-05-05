@@ -2,14 +2,16 @@
 // ISampleSource that the Mixer renders alongside the audio-capture source —
 // so audio loopback and telemetry voices stack additively on the wheel.
 //
-// OnTelemetry runs on SimHub's data tick (60-200 Hz typical, varies by game).
-// RenderAdd runs on the Trueforce producer thread (1 kHz). Effects mutate
-// their internal state in OnTelemetry; RenderAdd reads that state to produce
-// samples. Cross-thread reads/writes of primitive fields are atomic on .NET
-// for our purposes — eventual consistency is fine for haptics.
+// OnTelemetry runs on the active ITelemetrySource's polling thread —
+// SimHub's data tick (~60 Hz, capped by the IDataPlugin pipeline) for the
+// fallback source, or a game-native MMF/UDP polling thread (e.g. ~333 Hz
+// for AC) when an enhanced source is selected. RenderAdd runs on the
+// Trueforce producer thread (1 kHz). Effects mutate their internal state
+// in OnTelemetry; RenderAdd reads that state to produce samples.
+// Cross-thread reads/writes of primitive fields are atomic on .NET for
+// our purposes — eventual consistency is fine for haptics.
 
 using System;
-using GameReaderCommon;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -22,7 +24,7 @@ namespace TrueforceForAll.Plugin.Effects
         public abstract string Name { get; }
         public abstract bool   IsActive { get; }
         public abstract void   RenderAdd(float[] buffer, int count);
-        public virtual  void   OnTelemetry(GameData data) { }
+        public virtual  void   OnTelemetry(TelemetryFrame frame) { }
 
         // Test mode — used by the settings UI's "Test" button to play the effect
         // at representative max parameters for a short duration without needing

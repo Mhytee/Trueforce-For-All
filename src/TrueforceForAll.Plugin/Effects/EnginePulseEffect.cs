@@ -7,7 +7,6 @@
 // RPM 4-cyl, 33 Hz. Right in the haptic sweet spot.
 
 using System;
-using GameReaderCommon;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -162,28 +161,24 @@ namespace TrueforceForAll.Plugin.Effects
             _osc.Amp = amp;
         }
 
-        public override void OnTelemetry(GameData data)
+        public override void OnTelemetry(TelemetryFrame f)
         {
             if (IsTesting) return;
-            var d = data?.NewData;
-            if (d == null) { _osc.Amp = 0; return; }
 
-            double rpm = d.Rpms;
+            double rpm = f.Rpms;
             if (rpm < 100) { _osc.Amp = 0; return; }   // engine off
 
             int cyl = Cylinders;
             if (cyl < 1) cyl = 1; else if (cyl > 12) cyl = 12;
             _osc.Freq = rpm / 60.0 * cyl / 2.0 * PitchMultiplier;
 
-            double maxRpm = d.MaxRpm > 0 ? d.MaxRpm : 8000.0;
+            double maxRpm = f.MaxRpm > 0 ? f.MaxRpm : 8000.0;
             double rpmNorm = Math.Min(1.0, rpm / maxRpm);
             double rpmAmp  = IdleAmp + (PeakAmp - IdleAmp) * rpmNorm;
 
             // Throttle-driven boost responds instantly to user input, masking
-            // AC's engine-RPM ramp curve. SimHub's d.Throttle is 0..100.
-            double throttleNorm = 0.0;
-            if (d.Throttle > 0) throttleNorm = Math.Min(1.0, d.Throttle / 100.0);
-            double throttleAmp = throttleNorm * ThrottleBoost * PeakAmp;
+            // AC's engine-RPM ramp curve. Source has already normalized 0..1.
+            double throttleAmp = f.Throttle01 * ThrottleBoost * PeakAmp;
 
             double amp = Math.Min(rpmAmp + throttleAmp, PeakAmp * 1.5);
             _osc.Amp = amp * Gain;

@@ -8,7 +8,6 @@
 //            feel matches what the simulated pump is doing.
 
 using System;
-using GameReaderCommon;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using TrueforceForAll.Core;
@@ -161,18 +160,11 @@ namespace TrueforceForAll.Plugin.Effects
         }
         private int _testTicksFiredCount;
 
-        public override void OnTelemetry(GameData data)
+        public override void OnTelemetry(TelemetryFrame f)
         {
             if (IsTesting) return;
-            var d = data?.NewData;
-            if (d == null)
-            {
-                _amp = 0;
-                _lastAbsValue = 0;
-                return;
-            }
 
-            int absValue = d.ABSActive;
+            int absValue = f.AbsActive;
             long now = DateTime.UtcNow.Ticks;
 
             if (Mode == AbsMode.PerTick)
