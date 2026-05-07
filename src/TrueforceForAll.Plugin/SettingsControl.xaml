@@ -458,53 +458,6 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Sidechain ducking -->
-            <Border Style="{StaticResource SectionHeaderBorder}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Sidechain ducking" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
-                    <Button Grid.Column="1" x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                    <Button Grid.Column="2" x:Name="DuckingSaveBtn"   Content="Save…" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                </Grid>
-            </Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="When transient effects (gear shift, ABS, road bumps, traction loss) fire, continuous effects (engine pulse, audio capture) duck to make room."/>
-            <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Depth:" Style="{StaticResource LabelText}"/>
-                <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
-                            Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                            TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
-            </Grid>
-            <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,20">
-                <Expander.Header>
-                    <TextBlock Text="Advanced (envelope)" FontSize="12"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Attack (ms):" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
-                                    Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
-                                    TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
-                    </Grid>
-                    <Grid Margin="0,0,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Release (ms):" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
-                                    Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
-                                    TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
-                    </Grid>
-                </StackPanel>
-            </Expander>
-
             <!-- Presets -->
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Presets" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
@@ -644,6 +597,55 @@
                             </Grid>
                         </StackPanel>
                     </Expander>
+                </StackPanel>
+            </Expander>
+
+            <!-- Sidechain ducking — sits between audio capture and the
+                 telemetry effects because it controls how those mix together
+                 (transients duck the continuous voices for clarity). -->
+            <Border Style="{StaticResource SectionHeaderBorder}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Sidechain ducking" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                    <Button Grid.Column="2" x:Name="DuckingSaveBtn"   Content="Save…" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                </Grid>
+            </Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                Text="When transient effects (gear shift, ABS, road bumps, traction loss) fire, continuous effects (engine pulse, audio capture) duck to make room."/>
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Depth:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
+                            Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                            TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+            </Grid>
+            <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,20">
+                <Expander.Header>
+                    <TextBlock Text="Advanced (envelope)" FontSize="12"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Attack (ms):" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
+                                    Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
+                                    TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
+                    </Grid>
+                    <Grid Margin="0,0,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Release (ms):" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
+                                    Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
+                                    TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
+                    </Grid>
                 </StackPanel>
             </Expander>
 
