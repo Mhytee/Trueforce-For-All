@@ -14,6 +14,70 @@ namespace TrueforceForAll.Plugin
         private bool _suppressEvents;
         private string _lastShownCarId;
         private string _lastShownGame;
+        // Dirty = current tuning has drifted from the active preset's saved
+        // snapshot. Set by user changes; cleared by Apply/Save/Import and by
+        // game-change auto-apply. Drives the "★ unsaved" suffix and the
+        // unsaved-tuning confirmation prompts.
+        private bool _dirty;
+
+        // Per-section dirty state. The amber per-section "Save…" button is
+        // itself the unsaved-changes indicator: visible only when the
+        // section's dirty bit is set. The grey "↶" Revert button next to it
+        // shows under the same condition AND when an active preset exists
+        // (nothing to revert to otherwise). Master + Ducking are global-only;
+        // their popover collapses to the preset choices (no per-car option).
+        // Values mirror TrueforcePlugin.SectionKind so we can pass through.
+        private enum EffectKind { Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, Master = 0, Ducking = 1 }
+        private readonly bool[] _effectDirty = new bool[8];
+        private System.Windows.Controls.Button GetEffectSaveBtn(EffectKind which)
+        {
+            switch (which)
+            {
+                case EffectKind.Master:   return MasterSaveBtn;
+                case EffectKind.Ducking:  return DuckingSaveBtn;
+                case EffectKind.Audio:    return AudioSaveBtn;
+                case EffectKind.Engine:   return EngineSaveBtn;
+                case EffectKind.Bumps:    return BumpsSaveBtn;
+                case EffectKind.Traction: return TractionSaveBtn;
+                case EffectKind.Shift:    return ShiftSaveBtn;
+                case EffectKind.Abs:      return AbsSaveBtn;
+            }
+            return null;
+        }
+        private System.Windows.Controls.Button GetEffectRevertBtn(EffectKind which)
+        {
+            switch (which)
+            {
+                case EffectKind.Master:   return MasterRevertBtn;
+                case EffectKind.Ducking:  return DuckingRevertBtn;
+                case EffectKind.Audio:    return AudioRevertBtn;
+                case EffectKind.Engine:   return EngineRevertBtn;
+                case EffectKind.Bumps:    return BumpsRevertBtn;
+                case EffectKind.Traction: return TractionRevertBtn;
+                case EffectKind.Shift:    return ShiftRevertBtn;
+                case EffectKind.Abs:      return AbsRevertBtn;
+            }
+            return null;
+        }
+        private static string EffectLabel(EffectKind which)
+        {
+            switch (which)
+            {
+                case EffectKind.Master:   return "Master";
+                case EffectKind.Ducking:  return "Sidechain ducking";
+                case EffectKind.Audio:    return "Audio capture";
+                case EffectKind.Engine:   return "Engine pulse";
+                case EffectKind.Bumps:    return "Road bumps";
+                case EffectKind.Traction: return "Traction loss";
+                case EffectKind.Shift:    return "Gear shift";
+                case EffectKind.Abs:      return "ABS pulse";
+            }
+            return "section";
+        }
+        // Master + Ducking are global-only. The save popover hides the
+        // per-car option for these (no override concept).
+        private static bool SectionHasCarScope(EffectKind w)
+            => w != EffectKind.Master && w != EffectKind.Ducking;
 
         public SettingsControl()
         {
@@ -24,12 +88,14 @@ namespace TrueforceForAll.Plugin
         {
             _plugin = plugin;
 
+            // Diagnostics expander (collapsed by default) — verbose status.
             WheelText.Text  = plugin.WheelStatus;
             StreamText.Text = plugin.StreamStatus;
             FfbTapText.Text = plugin.FfbTapStatus;
             VoicesText.Text = plugin.ActiveVoiceCount.ToString();
 
             RefreshFromPlugin();
+            UpdateStatusPill();
 
             // 60 Hz meter updates (matches WPF compositor) with exponential
             // interpolation = visibly smoother than 30 Hz + abrupt width snaps.
@@ -58,7 +124,8 @@ namespace TrueforceForAll.Plugin
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
                 FfbScaleText.Text      = FfbScaleSlider.Value.ToString("F2");
                 FfbInvertCheck.IsChecked = _plugin.Settings?.FfbInvertSign ?? true;
-                FfbSmoothSlider.Value  = _plugin.Settings?.FfbSmoothTimeConstantMs ?? 3.0;
+                FfbSkipPassthroughCheck.IsChecked = _plugin.Settings?.SkipFfbPassthrough ?? false;
+                FfbSmoothSlider.Value  = _plugin.Settings?.FfbSmoothTimeConstantMs ?? 0.0;
                 FfbSmoothText.Text     = FfbSmoothSlider.Value.ToString("F1");
                 FfbSpikeLimitSlider.Value = _plugin.Settings?.FfbSpikeMaxLsbPerMs ?? 0.0;
                 FfbSpikeLimitText.Text    = FfbSpikeLimitSlider.Value <= 0
@@ -76,29 +143,44 @@ namespace TrueforceForAll.Plugin
                 DuckReleaseSlider.Value = _plugin.Settings?.DuckReleaseMs ?? 80.0;
                 DuckReleaseText.Text    = ((int)DuckReleaseSlider.Value).ToString();
 
-                AudioEnabledCheck.IsChecked = _plugin.AudioCapture?.Enabled ?? false;
-                AudioGainSlider.Value       = _plugin.AudioCapture?.Gain ?? 1.0;
-                AudioGainText.Text          = AudioGainSlider.Value.ToString("F2");
-                AudioFilterSlider.Value     = _plugin.AudioCapture?.LowpassCutoffHz ?? 350.0;
-                AudioFilterText.Text        = ((int)AudioFilterSlider.Value).ToString();
-                AudioHighpassSlider.Value   = _plugin.AudioCapture?.HighpassCutoffHz ?? 30.0;
-                AudioHighpassText.Text      = ((int)AudioHighpassSlider.Value).ToString();
+                var audio = _plugin.ActiveAudio;
+                AudioEnabledCheck.IsChecked      = audio?.Enabled ?? false;
+                AudioGainSlider.Value            = audio?.Gain ?? 1.0;
+                AudioGainText.Text               = AudioGainSlider.Value.ToString("F2");
+                AudioFilterSlider.Value          = audio?.LowpassCutoffHz ?? 350.0;
+                AudioFilterText.Text             = ((int)AudioFilterSlider.Value).ToString();
+                AudioHighpassSlider.Value        = audio?.HighpassCutoffHz ?? 30.0;
+                AudioHighpassText.Text           = ((int)AudioHighpassSlider.Value).ToString();
 
                 RefreshPresetSection();
 
-                ActiveCarText.Text = string.IsNullOrEmpty(_plugin.ActiveCarId) ? "(none)" : _plugin.ActiveCarId;
+                CaptureExeOverrideBox.Text = _plugin.ActiveCaptureExeOverride ?? "";
+
+                // Header strip context.
+                HeaderGameText.Text = string.IsNullOrEmpty(game) ? "(none)" : game;
+                HeaderCarText.Text  = string.IsNullOrEmpty(_plugin.ActiveCarId) ? "(none)" : _plugin.ActiveCarId;
+
                 bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
                 ResetCarOverridesButton.IsEnabled = carDetected;
                 ExportCarPresetButton.IsEnabled   = carDetected;
                 ImportCarPresetButton.IsEnabled   = true;
+
+                // Skip-passthrough makes the FFB tuning controls (scale/smooth/invert/
+                // safety limiters) irrelevant — game writes the wheel directly. Grey
+                // them so users don't waste time tuning controls that don't apply.
+                FfbPassthroughControls.IsEnabled = !(_plugin.Settings?.SkipFfbPassthrough ?? false);
+
+                // Hint text below "Active car" header gets a more useful line when
+                // no car is detected.
+                ActiveCarHint.Text = carDetected
+                    ? "Per-car tuning is saved automatically when you click 'Save…' on an effect and pick 'For this car'. Each car gets its own preset file under PluginsData/Common/TrueforceCars; sharing one is just sharing the file."
+                    : "No car detected yet. The 'For this car' save option in each effect's popover will become available once telemetry identifies a car.";
 
                 // Engine
                 var es = _plugin.ActiveEngine;
                 if (es != null)
                 {
                     EngineEnabledCheck.IsChecked      = es.Enabled;
-                    EngineCarOverrideCheck.IsChecked  = _plugin.IsEngineOverridden;
-                    EngineCarOverrideCheck.IsEnabled  = carDetected;
                     EngineGainSlider.Value            = es.Gain;
                     EngineGainText.Text               = es.Gain.ToString("F2");
                     EngineCylindersSlider.Value       = es.Cylinders;
@@ -114,8 +196,6 @@ namespace TrueforceForAll.Plugin
                 if (bs != null)
                 {
                     SlipEnabledCheck.IsChecked     = bs.Enabled;
-                    BumpsCarOverrideCheck.IsChecked = _plugin.IsBumpsOverridden;
-                    BumpsCarOverrideCheck.IsEnabled = carDetected;
                     SlipGainSlider.Value           = bs.Gain;
                     SlipGainText.Text              = bs.Gain.ToString("F2");
                     SelectWaveform(BumpsWaveformCombo, bs.Waveform);
@@ -127,8 +207,6 @@ namespace TrueforceForAll.Plugin
                 if (ts != null)
                 {
                     TractionEnabledCheck.IsChecked       = ts.Enabled;
-                    TractionCarOverrideCheck.IsChecked   = _plugin.IsTractionOverridden;
-                    TractionCarOverrideCheck.IsEnabled   = carDetected;
                     TractionGainSlider.Value             = ts.Gain;
                     TractionGainText.Text                = ts.Gain.ToString("F2");
                     TractionSensitivitySlider.Value      = ts.Sensitivity;
@@ -146,8 +224,6 @@ namespace TrueforceForAll.Plugin
                 if (ss != null)
                 {
                     ShiftEnabledCheck.IsChecked      = ss.Enabled;
-                    ShiftCarOverrideCheck.IsChecked  = _plugin.IsShiftOverridden;
-                    ShiftCarOverrideCheck.IsEnabled  = carDetected;
                     ShiftGainSlider.Value            = ss.Gain;
                     ShiftGainText.Text               = ss.Gain.ToString("F2");
                     ShiftFreqSlider.Value            = ss.Freq;
@@ -159,8 +235,6 @@ namespace TrueforceForAll.Plugin
                 if (abs != null)
                 {
                     AbsEnabledCheck.IsChecked     = abs.Enabled;
-                    AbsCarOverrideCheck.IsChecked = _plugin.IsAbsOverridden;
-                    AbsCarOverrideCheck.IsEnabled = carDetected;
                     AbsGainSlider.Value           = abs.Gain;
                     AbsGainText.Text              = abs.Gain.ToString("F2");
                     AbsFreqSlider.Value           = abs.Freq;
@@ -172,8 +246,32 @@ namespace TrueforceForAll.Plugin
                     AbsModeCombo.SelectedIndex    = (int)abs.Mode;
                     SelectWaveform(AbsWaveformCombo, abs.Waveform);
                 }
+
+                // Override badges in expander headers — visible only when this
+                // section has its own per-car override active.
+                AudioOverrideBadge.Visibility    = (_plugin.IsAudioOverridden    && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                EngineOverrideBadge.Visibility   = (_plugin.IsEngineOverridden   && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                BumpsOverrideBadge.Visibility    = (_plugin.IsBumpsOverridden    && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                TractionOverrideBadge.Visibility = (_plugin.IsTractionOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                ShiftOverrideBadge.Visibility    = (_plugin.IsShiftOverridden    && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                AbsOverrideBadge.Visibility      = (_plugin.IsAbsOverridden      && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+
+                // Conditional dimming/hiding on dependent settings:
+                //  - Traction noise LP/HP only matter for the Noise waveform.
+                //  - ABS pulse rate/duty only matter in Pulse mode.
+                bool tractionIsNoise = ts != null && ts.Waveform == Waveform.Noise;
+                TractionNoiseLpRow.Visibility = tractionIsNoise ? Visibility.Visible : Visibility.Collapsed;
+                TractionNoiseHpRow.Visibility = tractionIsNoise ? Visibility.Visible : Visibility.Collapsed;
+                AbsPulseControls.IsEnabled    = abs == null || abs.Mode == AbsMode.Pulse;
             }
             finally { _suppressEvents = false; }
+
+            // After all UI controls have been re-synced from plugin state,
+            // re-derive each section's dirty bit from the (now-current)
+            // values vs the active preset's snapshot. This catches scope
+            // changes (override on/off), preset apply, game/car switches,
+            // and toggles back to original values.
+            RecomputeAllEffectDirty();
         }
 
         private static void SelectWaveform(ComboBox combo, Waveform w) => combo.SelectedIndex = (int)w;
@@ -196,23 +294,41 @@ namespace TrueforceForAll.Plugin
                 AudioLevelMeter.Value = peak > cur ? peak : cur * 0.85;
                 CaptureStatusText.Text = _plugin.CaptureStatus;
             }
-            if (_plugin != null) FfbTapText.Text = _plugin.FfbTapStatus;
+            if (_plugin != null)
+            {
+                FfbTapText.Text = _plugin.FfbTapStatus;
+                StreamText.Text = _plugin.StreamStatus;
+                VoicesText.Text = _plugin.ActiveVoiceCount.ToString();
+            }
 
-            // Telemetry-source badge: "Enhanced Effects · NNN Hz" while a
-            // physics-rate source is feeding effects, "SimHub · NN Hz"
-            // otherwise. The Hz reading is the live measured rate (EMA on
-            // inter-frame timing) — not a hardcoded number, so curious users
-            // can verify the enhanced source is actually delivering at AC's
-            // 333 Hz physics rate.
+            // Telemetry-source line in Diagnostics: source name + live measured Hz,
+            // plus an "audio only" suffix when frames are arriving but contain no
+            // useful physics data (custom SimHub games without telemetry).
             var telSrc = _plugin?.TelemetrySource;
             if (telSrc != null)
             {
                 string label = telSrc.IsEnhanced ? "Enhanced Effects" : "SimHub";
                 double hz = telSrc.MeasuredHz;
-                TelemetrySourceText.Text = hz > 0
-                    ? $"{label} · {hz:0} Hz"
-                    : $"{label} · idle";
+                string baseText = hz > 0 ? $"{label} · {hz:0} Hz" : $"{label} · idle";
+                bool gameRunning = !string.IsNullOrEmpty(_plugin.ActiveGame);
+                bool audioOnly   = gameRunning && hz > 0 && !_plugin.HasUsefulTelemetry;
+                if (audioOnly) baseText += " · audio only";
+                TelemetrySourceText.Text = baseText;
+
+                // Grey out the telemetry-effect controls (engine pulse, road
+                // bumps, traction loss, gear shift, ABS) ONLY when a game is
+                // running and we've established it provides no telemetry.
+                // No game → keep enabled so the user can still tune presets
+                // for any future session. Test buttons stay reachable from
+                // the disabled panel because IsEnabled=false dims but doesn't
+                // remove access — actually IsEnabled=false on a StackPanel
+                // disables children, so Test buttons would be inert too.
+                // That matches "no data, no point testing" intent.
+                if (TelemetryEffectsPanel != null)
+                    TelemetryEffectsPanel.IsEnabled = !audioOnly;
             }
+
+            UpdateStatusPill();
 
             // Live activity meters — only updated when the Expander is open.
             // Peak-hold smoothing with 25% decay per tick (~80 ms half-life)
@@ -235,7 +351,80 @@ namespace TrueforceForAll.Plugin
             {
                 _lastShownCarId = carId;
                 _lastShownGame  = game;
+                // Game change → plugin may have auto-applied a preset for the
+                // new game. Treat the resulting state as the saved baseline so
+                // the "★ unsaved" indicator doesn't fire spuriously when the
+                // user hasn't changed anything yet.
+                ClearDirty();
                 RefreshFromPlugin();
+            }
+        }
+
+        // Status-pill colors. Cached as static brushes so the 60 Hz tick
+        // doesn't allocate a fresh brush on every refresh.
+        private static readonly System.Windows.Media.SolidColorBrush PillGreenBg   = MakeBrush("#3D8B40");
+        private static readonly System.Windows.Media.SolidColorBrush PillGreenDot  = MakeBrush("#A5D6A7");
+        private static readonly System.Windows.Media.SolidColorBrush PillAmberBg   = MakeBrush("#B26A00");
+        private static readonly System.Windows.Media.SolidColorBrush PillAmberDot  = MakeBrush("#FFCC80");
+        private static readonly System.Windows.Media.SolidColorBrush PillGreyBg    = MakeBrush("#666666");
+        private static readonly System.Windows.Media.SolidColorBrush PillGreyDot   = MakeBrush("#BDBDBD");
+        private static readonly System.Windows.Media.SolidColorBrush PillMutedBg   = MakeBrush("#5D8B40");
+        private static readonly System.Windows.Media.SolidColorBrush PillMutedDot  = MakeBrush("#C5E1A5");
+        private static System.Windows.Media.SolidColorBrush MakeBrush(string hex)
+        {
+            var b = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString(hex);
+            b.Freeze();
+            return b;
+        }
+
+        /// <summary>Drives the single colored status pill in the header strip.
+        /// Boils all the wheel/stream/telemetry strings down to one of:
+        /// Disabled / Wheel not detected / Stream stopped / Ready /
+        /// Active / Audio only / Waiting for telemetry. The optional
+        /// "✨ Enhanced N Hz" hype badge appears only when a per-game
+        /// enhanced telemetry source is actively delivering frames.</summary>
+        private void UpdateStatusPill()
+        {
+            if (_plugin == null) return;
+
+            bool   enabled    = _plugin.PluginEnabled;
+            string wheelStr   = _plugin.WheelStatus  ?? "";
+            string streamStr  = _plugin.StreamStatus ?? "";
+            bool   wheelOk    = !wheelStr.StartsWith("Not detected");
+            bool   streamOk   = streamStr.StartsWith("Streaming");
+            bool   gameOn     = !string.IsNullOrEmpty(_plugin.ActiveGame);
+
+            var    telSrc     = _plugin.TelemetrySource;
+            double hz         = telSrc?.MeasuredHz ?? 0;
+            bool   isEnhanced = telSrc?.IsEnhanced ?? false;
+            bool   useful     = _plugin.HasUsefulTelemetry;
+
+            string text;
+            System.Windows.Media.SolidColorBrush bg, dot;
+
+            if (!enabled)                       { text = "Disabled";              bg = PillGreyBg;  dot = PillGreyDot;  }
+            else if (!wheelOk)                  { text = "Wheel not detected";    bg = PillAmberBg; dot = PillAmberDot; }
+            else if (!streamOk)                 { text = "Stream stopped";        bg = PillAmberBg; dot = PillAmberDot; }
+            else if (!gameOn)                   { text = "Ready";                 bg = PillGreenBg; dot = PillGreenDot; }
+            else if (hz > 0 && useful)          { text = "Active";                bg = PillGreenBg; dot = PillGreenDot; }
+            else if (hz > 0)                    { text = "Audio only";            bg = PillMutedBg; dot = PillMutedDot; }
+            else                                { text = "Waiting for telemetry"; bg = PillAmberBg; dot = PillAmberDot; }
+
+            StatusPillText.Text   = text;
+            StatusPill.Background = bg;
+            StatusPillDot.Fill    = dot;
+
+            // Enhanced hype badge: only when actually delivering frames from
+            // a per-game source (not the generic SimHub pipe), and the plugin
+            // is actually doing something with them.
+            if (enabled && wheelOk && streamOk && isEnhanced && hz > 0)
+            {
+                EnhancedBadge.Visibility = Visibility.Visible;
+                EnhancedBadgeText.Text   = $"✨ Enhanced · {hz:0} Hz";
+            }
+            else
+            {
+                EnhancedBadge.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -252,13 +441,184 @@ namespace TrueforceForAll.Plugin
             fill.Width = cur + (target - cur) * alpha;
         }
 
-        private void Apply() => _plugin.ApplyActiveCarOverride();
+        // Apply() is called by per-effect handlers AFTER the _suppressEvents
+        // guard, so reaching it implies a real user change → push to live
+        // device and recompute the affected effect's dirty state. Per-car
+        // file is NOT auto-written: saves are explicit (Save… → For this car).
+        private void Apply(EffectKind which)
+        {
+            _plugin.ApplyActiveCarOverride();
+            MarkEffectDirty(which);
+        }
+
+        private void MarkDirty()
+        {
+            if (_dirty) return;
+            _dirty = true;
+            UpdateHeaderPresetDisplay();
+        }
+
+        private void ClearDirty()
+        {
+            // Always cascade through per-section dirty too: every place that
+            // calls ClearDirty (preset apply / save / import / game change)
+            // implies a fresh baseline for the entire state, not just the
+            // global-drift indicator.
+            ClearAllEffectDirty();
+            if (!_dirty) return;
+            _dirty = false;
+            UpdateHeaderPresetDisplay();
+        }
+
+        /// <summary>Recompute the section's dirty state by asking the plugin
+        /// whether its values still match the active preset's snapshot. This
+        /// replaces sticky-bit MarkEffectDirty so that changing a value and
+        /// changing it back clears the dirty indicator.</summary>
+        private void MarkEffectDirty(EffectKind which)
+        {
+            bool dirty;
+            if (_plugin == null || string.IsNullOrEmpty(_plugin.ActivePresetName))
+            {
+                // No active preset = no anchor → fall back to sticky-true
+                // behavior. (Auto-save flow will create a preset on first
+                // save, eliminating this state in normal use.)
+                dirty = true;
+            }
+            else
+            {
+                dirty = _plugin.IsSectionDirty((TrueforcePlugin.SectionKind)(int)which);
+            }
+
+            if (_effectDirty[(int)which] == dirty) return;
+            _effectDirty[(int)which] = dirty;
+
+            var saveBtn   = GetEffectSaveBtn(which);
+            var revertBtn = GetEffectRevertBtn(which);
+            if (saveBtn != null) saveBtn.Visibility = dirty ? Visibility.Visible : Visibility.Collapsed;
+            // Revert only makes sense with an anchor.
+            if (revertBtn != null)
+                revertBtn.Visibility = (dirty && !string.IsNullOrEmpty(_plugin?.ActivePresetName))
+                    ? Visibility.Visible : Visibility.Collapsed;
+
+            // Recompute global dirty from the per-section bits.
+            UpdateGlobalDirtyFromEffects();
+        }
+
+        /// <summary>Recompute every section's dirty state from the plugin —
+        /// called from the end of RefreshFromPlugin (so override toggles,
+        /// game/car switches, preset apply, etc. all sync the per-section
+        /// indicators correctly without each handler having to enumerate).</summary>
+        private void RecomputeAllEffectDirty()
+        {
+            if (_plugin == null) return;
+            bool hasPreset = !string.IsNullOrEmpty(_plugin.ActivePresetName);
+            for (int i = 0; i < _effectDirty.Length; i++)
+            {
+                bool dirty;
+                if (!hasPreset)
+                {
+                    // No anchor — preserve sticky bit (don't auto-clear).
+                    dirty = _effectDirty[i];
+                }
+                else
+                {
+                    dirty = _plugin.IsSectionDirty((TrueforcePlugin.SectionKind)i);
+                }
+                if (_effectDirty[i] == dirty) continue;
+                _effectDirty[i] = dirty;
+                var saveBtn   = GetEffectSaveBtn((EffectKind)i);
+                var revertBtn = GetEffectRevertBtn((EffectKind)i);
+                if (saveBtn   != null) saveBtn.Visibility   = dirty ? Visibility.Visible : Visibility.Collapsed;
+                if (revertBtn != null) revertBtn.Visibility = (dirty && hasPreset) ? Visibility.Visible : Visibility.Collapsed;
+            }
+            UpdateGlobalDirtyFromEffects();
+        }
+
+        private void UpdateGlobalDirtyFromEffects()
+        {
+            bool any = false;
+            int dirtyCount = 0;
+            for (int i = 0; i < _effectDirty.Length; i++) if (_effectDirty[i]) { any = true; dirtyCount++; }
+            if (any != _dirty)
+            {
+                _dirty = any;
+                UpdateHeaderPresetDisplay();
+            }
+            // Drive the main Save preset button's prominent-amber styling +
+            // content based on dirty count. Tag="dirty" lights up the amber
+            // template trigger; content escalates to "Save all" when 2+
+            // sections need committing.
+            if (SavePresetButton != null)
+            {
+                SavePresetButton.Tag = any ? "dirty" : null;
+                SavePresetButton.Content = !any
+                    ? "Save preset"
+                    : (dirtyCount >= 2 ? "★ Save all changes" : "★ Save preset");
+            }
+        }
+
+        private void ClearEffectDirty(EffectKind which)
+        {
+            if (!_effectDirty[(int)which]) return;
+            _effectDirty[(int)which] = false;
+            var saveBtn   = GetEffectSaveBtn(which);
+            var revertBtn = GetEffectRevertBtn(which);
+            if (saveBtn   != null) saveBtn.Visibility   = Visibility.Collapsed;
+            if (revertBtn != null) revertBtn.Visibility = Visibility.Collapsed;
+        }
+
+        private void ClearAllEffectDirty()
+        {
+            for (int i = 0; i < _effectDirty.Length; i++)
+            {
+                _effectDirty[i] = false;
+                var saveBtn   = GetEffectSaveBtn((EffectKind)i);
+                var revertBtn = GetEffectRevertBtn((EffectKind)i);
+                if (saveBtn   != null) saveBtn.Visibility   = Visibility.Collapsed;
+                if (revertBtn != null) revertBtn.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>Composes the preset header line based on active preset, game
+        /// default, and whether tuning has drifted from the saved snapshot.
+        ///
+        ///   "MyGT3"                                  active matches saved snapshot
+        ///   "MyGT3 · default for this game"          active is also the game default
+        ///   "MyGT3 · game default: Stock"            active set, different default exists
+        ///   "MyGT3 · ★ unsaved"                       active set, tuning has drifted
+        ///   "MyGT3 · default for this game · ★ unsaved" both
+        ///   "(unsaved tuning)"                        no active preset, user tuning live
+        ///   "(unsaved tuning) · game default: Stock"  same with a known default
+        ///   "(none)"                                  no preset, no default, no dirty
+        /// </summary>
+        private void UpdateHeaderPresetDisplay()
+        {
+            if (_plugin == null || HeaderPresetText == null) return;
+            string activeP = _plugin.ActivePresetName;
+            string defName = _plugin.DefaultPresetForActiveGame;
+
+            if (string.IsNullOrEmpty(activeP) && string.IsNullOrEmpty(defName) && !_dirty)
+            {
+                HeaderPresetText.Text = "(none)";
+                return;
+            }
+            string main   = string.IsNullOrEmpty(activeP) ? "(unsaved tuning)" : activeP;
+            string suffix = "";
+            if (!string.IsNullOrEmpty(activeP) && activeP == defName) suffix += " · default for this game";
+            else if (!string.IsNullOrEmpty(defName))                  suffix += $" · game default: {defName}";
+            // The "(unsaved tuning)" main label already conveys the dirty state
+            // when there's no active preset, so don't double up the suffix.
+            if (_dirty && !string.IsNullOrEmpty(activeP))             suffix += " · ★ unsaved";
+            HeaderPresetText.Text = main + suffix;
+        }
 
         // ---------- Master / Audio ----------
 
         private void PluginEnabled_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
+            // Plugin-enabled is a per-game preference (GameEnabled dict), not
+            // part of preset content — so it doesn't dirty the active preset.
             _plugin.SetPluginEnabled(PluginEnabledCheck.IsChecked == true);
         }
 
@@ -268,6 +628,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             MasterGainText.Text = v.ToString("F2");
             _plugin.MasterGain = v;
+            MarkEffectDirty(EffectKind.Master);
         }
         private void FfbScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -275,11 +636,52 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             FfbScaleText.Text = v.ToString("F2");
             _plugin.SetFfbScale(v);
+            MarkEffectDirty(EffectKind.Master);
         }
         private void FfbInvert_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetFfbInvertSign(FfbInvertCheck.IsChecked == true);
+            MarkEffectDirty(EffectKind.Master);
+        }
+        private void FfbSkipPassthrough_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            bool skip = FfbSkipPassthroughCheck.IsChecked == true;
+            _plugin.SetSkipFfbPassthrough(skip);
+            // Grey/ungrey the passthrough-only controls live, without a full Refresh.
+            FfbPassthroughControls.IsEnabled = !skip;
+            MarkEffectDirty(EffectKind.Master);
+        }
+
+        private void CaptureExeOverride_LostFocus(object sender, RoutedEventArgs e)
+        {
+            CommitCaptureExeOverride();
+        }
+        private void CaptureExeOverride_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            // Enter commits and moves focus off the textbox so the LostFocus
+            // handler doesn't fire a duplicate save.
+            if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                CommitCaptureExeOverride();
+                System.Windows.Input.Keyboard.ClearFocus();
+                e.Handled = true;
+            }
+        }
+        private void CommitCaptureExeOverride()
+        {
+            if (_suppressEvents || _plugin == null) return;
+            string game = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(game))
+            {
+                // No active game — nothing to scope the override under.
+                // Clear any stale text so it's not misleading.
+                if (!string.IsNullOrEmpty(CaptureExeOverrideBox.Text))
+                    CaptureExeOverrideBox.Text = "";
+                return;
+            }
+            _plugin.SetAudioCaptureExeOverride(game, CaptureExeOverrideBox.Text);
         }
         private void FfbSmoothSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -287,6 +689,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             FfbSmoothText.Text = v.ToString("F1");
             _plugin.SetFfbSmoothMs(v);
+            MarkEffectDirty(EffectKind.Master);
         }
         private void FfbSpikeLimitSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -294,6 +697,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             FfbSpikeLimitText.Text = v <= 0 ? "off" : ((int)v).ToString();
             _plugin.SetFfbSpikeMaxLsbPerMs(v);
+            MarkEffectDirty(EffectKind.Master);
         }
         private void FfbPeakLimitSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -301,6 +705,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             FfbPeakLimitText.Text = v <= 0 ? "off" : ((int)v).ToString();
             _plugin.SetFfbPeakSoftLimitLsb(v);
+            MarkEffectDirty(EffectKind.Master);
         }
         private void DuckDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -308,6 +713,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             DuckDepthText.Text = v.ToString("F2");
             _plugin.Settings.DuckDepth = v;
+            MarkEffectDirty(EffectKind.Ducking);
         }
         private void DuckAttackSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -315,6 +721,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             DuckAttackText.Text = ((int)v).ToString();
             _plugin.Settings.DuckAttackMs = v;
+            MarkEffectDirty(EffectKind.Ducking);
         }
         private void DuckReleaseSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -322,6 +729,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             DuckReleaseText.Text = ((int)v).ToString();
             _plugin.Settings.DuckReleaseMs = v;
+            MarkEffectDirty(EffectKind.Ducking);
         }
 
         private void EngineTest_Click   (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.EnginePulse);
@@ -331,33 +739,33 @@ namespace TrueforceForAll.Plugin
         private void AbsTest_Click      (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.AbsClick);
         private void AudioEnabled_Changed(object sender, RoutedEventArgs e)
         {
-            if (_suppressEvents || _plugin?.AudioCapture == null) return;
-            _plugin.AudioCapture.Enabled = AudioEnabledCheck.IsChecked == true;
-            if (_plugin.Settings != null) _plugin.Settings.AudioCapture.Enabled = _plugin.AudioCapture.Enabled;
+            if (_suppressEvents || _plugin?.ActiveAudio == null) return;
+            _plugin.ActiveAudio.Enabled = AudioEnabledCheck.IsChecked == true;
+            Apply(EffectKind.Audio);
         }
         private void AudioGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (_suppressEvents || _plugin?.AudioCapture == null) return;
+            if (_suppressEvents || _plugin?.ActiveAudio == null) return;
             float v = (float)e.NewValue;
             AudioGainText.Text = v.ToString("F2");
-            _plugin.AudioCapture.Gain = v;
-            if (_plugin.Settings != null) _plugin.Settings.AudioCapture.Gain = v;
+            _plugin.ActiveAudio.Gain = v;
+            Apply(EffectKind.Audio);
         }
         private void AudioFilterSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (_suppressEvents || _plugin?.AudioCapture == null) return;
+            if (_suppressEvents || _plugin?.ActiveAudio == null) return;
             double v = e.NewValue;
             AudioFilterText.Text = ((int)v).ToString();
-            _plugin.AudioCapture.LowpassCutoffHz = v;
-            if (_plugin.Settings != null) _plugin.Settings.AudioCapture.LowpassCutoffHz = v;
+            _plugin.ActiveAudio.LowpassCutoffHz = v;
+            Apply(EffectKind.Audio);
         }
         private void AudioHighpassSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (_suppressEvents || _plugin?.AudioCapture == null) return;
+            if (_suppressEvents || _plugin?.ActiveAudio == null) return;
             double v = e.NewValue;
             AudioHighpassText.Text = ((int)v).ToString();
-            _plugin.AudioCapture.HighpassCutoffHz = v;
-            if (_plugin.Settings != null) _plugin.Settings.AudioCapture.HighpassCutoffHz = v;
+            _plugin.ActiveAudio.HighpassCutoffHz = v;
+            Apply(EffectKind.Audio);
         }
 
         // ---------- Active car ----------
@@ -365,14 +773,12 @@ namespace TrueforceForAll.Plugin
         private void ResetCarOverrides_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null || string.IsNullOrEmpty(_plugin.ActiveCarId)) return;
-            if (MessageBox.Show($"Clear all per-car overrides for '{_plugin.ActiveCarId}'? Sections will revert to global settings.",
-                                "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            string carId = _plugin.ActiveCarId;
+            if (MessageBox.Show(
+                    $"Reset '{carId}' to game defaults? Deletes this car's per-car preset file; the car will use the active game preset's globals.",
+                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;
-            _plugin.SetEngineOverride(false);
-            _plugin.SetBumpsOverride(false);
-            _plugin.SetTractionOverride(false);
-            _plugin.SetShiftOverride(false);
-            _plugin.SetAbsOverride(false);
+            _plugin.ResetCarToGameDefaults(carId);
             RefreshFromPlugin();
         }
 
@@ -382,13 +788,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveEngine.Enabled = EngineEnabledCheck.IsChecked == true;
-            Apply();
-        }
-        private void EngineCarOverride_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            _plugin.SetEngineOverride(EngineCarOverrideCheck.IsChecked == true);
-            RefreshFromPlugin();
+            Apply(EffectKind.Engine);
         }
         private void EngineGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -396,7 +796,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             EngineGainText.Text = v.ToString("F2");
             _plugin.ActiveEngine.Gain = v;
-            Apply();
+            Apply(EffectKind.Engine);
         }
         private void EngineCylindersSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -404,7 +804,7 @@ namespace TrueforceForAll.Plugin
             int v = (int)Math.Round(e.NewValue);
             EngineCylindersText.Text = v.ToString();
             _plugin.ActiveEngine.Cylinders = v;
-            Apply();
+            Apply(EffectKind.Engine);
         }
         private void EnginePitchSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -412,7 +812,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             EnginePitchText.Text = v.ToString("F2");
             _plugin.ActiveEngine.Pitch = v;
-            Apply();
+            Apply(EffectKind.Engine);
         }
         private void EngineLowpassSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -420,13 +820,13 @@ namespace TrueforceForAll.Plugin
             double v = e.NewValue;
             EngineLowpassText.Text = ((int)v).ToString();
             _plugin.ActiveEngine.LowpassHz = v;
-            Apply();
+            Apply(EffectKind.Engine);
         }
         private void EngineWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveEngine.Waveform = WaveformOf(EngineWaveformCombo);
-            Apply();
+            Apply(EffectKind.Engine);
         }
 
         // ---------- Road bumps ----------
@@ -435,13 +835,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveBumps.Enabled = SlipEnabledCheck.IsChecked == true;
-            Apply();
-        }
-        private void BumpsCarOverride_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            _plugin.SetBumpsOverride(BumpsCarOverrideCheck.IsChecked == true);
-            RefreshFromPlugin();
+            Apply(EffectKind.Bumps);
         }
         private void SlipGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -449,13 +843,13 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             SlipGainText.Text = v.ToString("F2");
             _plugin.ActiveBumps.Gain = v;
-            Apply();
+            Apply(EffectKind.Bumps);
         }
         private void BumpsWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveBumps.Waveform = WaveformOf(BumpsWaveformCombo);
-            Apply();
+            Apply(EffectKind.Bumps);
         }
         private void BumpsFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -463,7 +857,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             BumpsFreqText.Text = ((int)v).ToString();
             _plugin.ActiveBumps.Freq = v;
-            Apply();
+            Apply(EffectKind.Bumps);
         }
 
         // ---------- Traction loss ----------
@@ -472,13 +866,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveTraction.Enabled = TractionEnabledCheck.IsChecked == true;
-            Apply();
-        }
-        private void TractionCarOverride_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            _plugin.SetTractionOverride(TractionCarOverrideCheck.IsChecked == true);
-            RefreshFromPlugin();
+            Apply(EffectKind.Traction);
         }
         private void TractionGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -486,7 +874,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             TractionGainText.Text = v.ToString("F2");
             _plugin.ActiveTraction.Gain = v;
-            Apply();
+            Apply(EffectKind.Traction);
         }
         private void TractionSensitivitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -494,13 +882,18 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             TractionSensitivityText.Text = v.ToString("F2");
             _plugin.ActiveTraction.Sensitivity = v;
-            Apply();
+            Apply(EffectKind.Traction);
         }
         private void TractionWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
-            _plugin.ActiveTraction.Waveform = WaveformOf(TractionWaveformCombo);
-            Apply();
+            var wf = WaveformOf(TractionWaveformCombo);
+            _plugin.ActiveTraction.Waveform = wf;
+            // Show/hide noise filter rows live — they only matter for Noise.
+            var vis = wf == Waveform.Noise ? Visibility.Visible : Visibility.Collapsed;
+            TractionNoiseLpRow.Visibility = vis;
+            TractionNoiseHpRow.Visibility = vis;
+            Apply(EffectKind.Traction);
         }
         private void TractionFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -508,7 +901,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             TractionFreqText.Text = ((int)v).ToString();
             _plugin.ActiveTraction.Freq = v;
-            Apply();
+            Apply(EffectKind.Traction);
         }
         private void TractionNoiseLpSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -516,7 +909,7 @@ namespace TrueforceForAll.Plugin
             double v = e.NewValue;
             TractionNoiseLpText.Text = ((int)v).ToString();
             _plugin.ActiveTraction.NoiseLowpassHz = v;
-            Apply();
+            Apply(EffectKind.Traction);
         }
         private void TractionNoiseHpSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -524,7 +917,7 @@ namespace TrueforceForAll.Plugin
             double v = e.NewValue;
             TractionNoiseHpText.Text = ((int)v).ToString();
             _plugin.ActiveTraction.NoiseHighpassHz = v;
-            Apply();
+            Apply(EffectKind.Traction);
         }
 
         // ---------- Gear shift ----------
@@ -533,13 +926,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveShift.Enabled = ShiftEnabledCheck.IsChecked == true;
-            Apply();
-        }
-        private void ShiftCarOverride_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            _plugin.SetShiftOverride(ShiftCarOverrideCheck.IsChecked == true);
-            RefreshFromPlugin();
+            Apply(EffectKind.Shift);
         }
         private void ShiftGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -547,7 +934,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             ShiftGainText.Text = v.ToString("F2");
             _plugin.ActiveShift.Gain = v;
-            Apply();
+            Apply(EffectKind.Shift);
         }
         private void ShiftFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -555,13 +942,13 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             ShiftFreqText.Text = ((int)v).ToString();
             _plugin.ActiveShift.Freq = v;
-            Apply();
+            Apply(EffectKind.Shift);
         }
         private void ShiftWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveShift.Waveform = WaveformOf(ShiftWaveformCombo);
-            Apply();
+            Apply(EffectKind.Shift);
         }
 
         // ---------- ABS ----------
@@ -570,13 +957,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveAbs.Enabled = AbsEnabledCheck.IsChecked == true;
-            Apply();
-        }
-        private void AbsCarOverride_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            _plugin.SetAbsOverride(AbsCarOverrideCheck.IsChecked == true);
-            RefreshFromPlugin();
+            Apply(EffectKind.Abs);
         }
         private void AbsGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -584,7 +965,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             AbsGainText.Text = v.ToString("F2");
             _plugin.ActiveAbs.Gain = v;
-            Apply();
+            Apply(EffectKind.Abs);
         }
         private void AbsFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -592,7 +973,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             AbsFreqText.Text = ((int)v).ToString();
             _plugin.ActiveAbs.Freq = v;
-            Apply();
+            Apply(EffectKind.Abs);
         }
         private void AbsPulseFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -600,7 +981,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             AbsPulseFreqText.Text = v.ToString("F1");
             _plugin.ActiveAbs.PulseFreq = v;
-            Apply();
+            Apply(EffectKind.Abs);
         }
         private void AbsDutyCycleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -608,20 +989,232 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             AbsDutyCycleText.Text = v.ToString("F2");
             _plugin.ActiveAbs.DutyCycle = v;
-            Apply();
+            Apply(EffectKind.Abs);
         }
         private void AbsMode_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             int idx = AbsModeCombo.SelectedIndex; if (idx < 0) idx = 0;
-            _plugin.ActiveAbs.Mode = (AbsMode)idx;
-            Apply();
+            var mode = (AbsMode)idx;
+            _plugin.ActiveAbs.Mode = mode;
+            // Pulse rate / duty are unused in PerTick mode — grey them live.
+            AbsPulseControls.IsEnabled = mode == AbsMode.Pulse;
+            Apply(EffectKind.Abs);
         }
         private void AbsWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveAbs.Waveform = WaveformOf(AbsWaveformCombo);
-            Apply();
+            Apply(EffectKind.Abs);
+        }
+
+        // ---------- Per-effect Save popover ----------
+
+        private void EffectSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (!(sender is System.Windows.Controls.Button b) || !(b.Tag is string tag)) return;
+            if (!Enum.TryParse<EffectKind>(tag, out var which)) return;
+            ShowEffectSavePopover(which);
+        }
+
+        private void EffectRevert_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (!(sender is System.Windows.Controls.Button b) || !(b.Tag is string tag)) return;
+            if (!Enum.TryParse<EffectKind>(tag, out var which)) return;
+            string activeP = _plugin.ActivePresetName;
+            if (string.IsNullOrEmpty(activeP)) return;  // nothing to revert to
+            string label = EffectLabel(which);
+            if (MessageBox.Show(
+                    $"Revert {label} to the saved values in preset '{activeP}'? Your unsaved {label} changes will be discarded.",
+                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+            // EffectKind values mirror SectionKind, so pass through directly.
+            if (_plugin.RevertSection((TrueforcePlugin.SectionKind)(int)which))
+            {
+                ClearEffectDirty(which);
+                // Global ★ unsaved indicator: clear only when ALL sections
+                // are now clean.
+                bool anyDirty = false;
+                for (int i = 0; i < _effectDirty.Length; i++) if (_effectDirty[i]) { anyDirty = true; break; }
+                if (!anyDirty) ClearDirty();
+                RefreshFromPlugin();
+            }
+        }
+
+        /// <summary>Per-effect Save popover. Two adaptive choices:
+        ///   • "For [car]" — toggles the override on (snapshotting current
+        ///     section values into the per-car override) when not already
+        ///     overridden; just clears the section's dirty dot if it was.
+        ///   • "Update preset 'X'" — updates the active preset in place
+        ///     (whole-snapshot save; clears global dirty too).
+        ///   • "Save as new preset…" — appears when there's no active preset;
+        ///     opens the existing name-prompt flow.
+        /// Choices are individually disabled when their precondition isn't
+        /// met (no car detected → no per-car save; no preset → no update).</summary>
+        private void ShowEffectSavePopover(EffectKind which)
+        {
+            string carId       = _plugin.ActiveCarId;
+            bool   carDetected = !string.IsNullOrEmpty(carId);
+            string activeP     = _plugin.ActivePresetName;
+            bool   hasPreset   = !string.IsNullOrEmpty(activeP);
+            bool   builtin     = hasPreset && _plugin.IsBuiltinPreset(activeP);
+            string label       = EffectLabel(which);
+            bool   carScope    = SectionHasCarScope(which);
+
+            var win = new Window
+            {
+                Title  = $"Save {label}",
+                Width  = 420,
+                Height = carScope ? 240 : 170,  // shorter when no per-car option
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode    = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Owner = Window.GetWindow(this),
+            };
+            if (win.Owner == null) win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+            var sp = new StackPanel { Margin = new Thickness(14) };
+            sp.Children.Add(new TextBlock
+            {
+                Text = $"Save current {label} settings to…",
+                FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 10),
+            });
+
+            // Choice 1: per-car override (only for sections with a per-car concept).
+            Button carBtn = null;
+            if (carScope)
+            {
+                carBtn = new Button
+                {
+                    Content = carDetected ? $"For this car ({carId})" : "For this car (no car detected)",
+                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                    IsEnabled = carDetected,
+                    ToolTip = carDetected
+                        ? "Saves these settings just for this car. Won't affect global tuning or other cars."
+                        : "No car detected yet — drive a car to enable this option.",
+                };
+                sp.Children.Add(carBtn);
+                sp.Children.Add(new TextBlock
+                {
+                    Text = carDetected
+                        ? $"Toggles 'Override for this car' on and snapshots the current {label} values into the per-car override."
+                        : "Per-car save needs the active car to be identified by telemetry first.",
+                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 10),
+                });
+            }
+
+            // Choice 2: update game defaults, fork from built-in, or save as new.
+            string presetLabel;
+            string presetHint;
+            if (!hasPreset)
+            {
+                presetLabel = "Save as game defaults";
+                presetHint  = "Saves your current tuning as a new preset and binds it as this game's default.";
+            }
+            else if (builtin)
+            {
+                presetLabel = "Save as game defaults";
+                presetHint  = $"'{activeP}' is a built-in default that can't be overwritten. Saves your current tuning as a new user preset (named after the game) and binds it as this game's default. The built-in stays available as fallback.";
+            }
+            else
+            {
+                presetLabel = "Update game defaults";
+                presetHint  = $"Overwrites '{activeP}' (this game's default preset) with your current tuning. Per-car preset files are independent and not touched.";
+            }
+            var presetBtn = new Button
+            {
+                Content = presetLabel,
+                Height = 32, Margin = new Thickness(0, 0, 0, 6),
+            };
+            sp.Children.Add(presetBtn);
+            sp.Children.Add(new TextBlock
+            {
+                Text = presetHint,
+                FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 12),
+            });
+
+            var btnRow = new StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
+            var cancel = new Button { Content = "Cancel", Width = 80, IsCancel = true };
+            btnRow.Children.Add(cancel);
+            sp.Children.Add(btnRow);
+
+            win.Content = sp;
+
+            if (carBtn != null)
+            {
+                carBtn.Click += (s, args) =>
+                {
+                    ApplyEffectSaveForCar(which);
+                    win.DialogResult = true;
+                };
+            }
+            presetBtn.Click += (s, args) =>
+            {
+                // If this section has a per-car override active, lift its
+                // values up to the global section first — so the values the
+                // user is looking at become the new game-default for this
+                // section. Drops the override (the new global takes effect
+                // for this car too).
+                _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
+
+                if (!hasPreset)        SaveAsNewPresetFromUi();
+                else if (builtin)      ForkAndSaveAsGamePreset();
+                else                   UpdateActivePresetFromUi();
+                win.DialogResult = true;
+            };
+
+            win.ShowDialog();
+        }
+
+        /// <summary>Per-car save for one effect: writes the section's
+        /// current values to the per-car file. If the section had no
+        /// override, snapshots from globals; if it had one, just persists
+        /// the existing values. After save, the file matches in-memory →
+        /// section is clean.</summary>
+        private void ApplyEffectSaveForCar(EffectKind which)
+        {
+            _plugin.SaveSectionForCar((TrueforcePlugin.SectionKind)(int)which);
+            RefreshFromPlugin();
+        }
+
+        /// <summary>Update active preset in place — whole-snapshot save.
+        /// Clears all dirty indicators (global + every section).</summary>
+        private void UpdateActivePresetFromUi()
+        {
+            string name = _plugin.ActivePresetName;
+            if (string.IsNullOrEmpty(name)) return;
+            _plugin.SavePresetAs(name);
+            ClearDirty();
+            RefreshFromPlugin();
+        }
+
+        /// <summary>Save current full state as a new named preset — same flow
+        /// as the existing "Save as new" preset library button.</summary>
+        private void SaveAsNewPresetFromUi()
+        {
+            string suggested = _plugin.ActiveGame ?? "My preset";
+            string name = PromptForName("Save as new preset", "Preset name:", suggested);
+            if (string.IsNullOrWhiteSpace(name)) return;
+            name = name.Trim();
+            // Confirm overwrite if the name collides.
+            bool exists = false;
+            if (_plugin.PresetNames != null)
+                foreach (var n in _plugin.PresetNames) { if (n == name) { exists = true; break; } }
+            if (exists && MessageBox.Show($"A preset called '{name}' already exists. Overwrite?",
+                                          "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+            _plugin.SavePresetAs(name);
+            ClearDirty();
+            RefreshFromPlugin();
         }
 
         // ---------- Preset library ----------
@@ -634,9 +1227,7 @@ namespace TrueforceForAll.Plugin
             string defName  = _plugin.DefaultPresetForActiveGame;
             string activeP  = _plugin.ActivePresetName;
 
-            ActiveGameText.Text     = string.IsNullOrEmpty(game)    ? "(none)" : game;
-            DefaultPresetText.Text  = string.IsNullOrEmpty(defName) ? "(none)" : defName;
-            ActivePresetText.Text   = string.IsNullOrEmpty(activeP) ? "(none — unsaved)" : activeP;
+            UpdateHeaderPresetDisplay();
 
             // Repopulate dropdown without re-firing SelectionChanged into our
             // handler — _suppressEvents wraps the whole RefreshFromPlugin call.
@@ -652,14 +1243,18 @@ namespace TrueforceForAll.Plugin
             else if (!string.IsNullOrEmpty(keepSelected) && PresetCombo.Items.Contains(keepSelected))
                 PresetCombo.SelectedItem = keepSelected;
 
-            bool hasSelection = PresetCombo.SelectedItem is string;
-            bool gameDetected = !string.IsNullOrEmpty(game);
+            bool hasSelection   = PresetCombo.SelectedItem is string;
+            bool gameDetected   = !string.IsNullOrEmpty(game);
             bool gameHasDefault = !string.IsNullOrEmpty(defName);
+            bool selBuiltin     = hasSelection && _plugin.IsBuiltinPreset((string)PresetCombo.SelectedItem);
 
             ApplyPresetButton.IsEnabled   = hasSelection;
-            SavePresetButton.IsEnabled    = !string.IsNullOrEmpty(activeP);  // only when an active preset exists to overwrite
+            // Save is always available now: if active preset is built-in or
+            // missing, ForkAndSaveAsGamePreset takes over.
+            SavePresetButton.IsEnabled    = true;
             SaveAsPresetButton.IsEnabled  = true;
-            DeletePresetButton.IsEnabled  = hasSelection;
+            // Built-in presets are factory defaults — refuse delete.
+            DeletePresetButton.IsEnabled  = hasSelection && !selBuiltin;
             SetDefaultButton.IsEnabled    = hasSelection && gameDetected;
             ClearDefaultButton.IsEnabled  = gameDetected && gameHasDefault;
             ExportPresetButton.IsEnabled  = hasSelection;
@@ -673,9 +1268,11 @@ namespace TrueforceForAll.Plugin
             // Selection alone doesn't apply — user must click Apply. Just
             // refresh button-enabled states so Delete/Apply enable correctly.
             if (_suppressEvents) return;
-            bool hasSelection = SelectedPresetName != null;
+            string sel = SelectedPresetName;
+            bool hasSelection = sel != null;
+            bool selBuiltin   = hasSelection && _plugin != null && _plugin.IsBuiltinPreset(sel);
             ApplyPresetButton.IsEnabled  = hasSelection;
-            DeletePresetButton.IsEnabled = hasSelection;
+            DeletePresetButton.IsEnabled = hasSelection && !selBuiltin;
             SetDefaultButton.IsEnabled   = hasSelection && !string.IsNullOrEmpty(_plugin?.ActiveGame);
             ExportPresetButton.IsEnabled = hasSelection;
         }
@@ -684,26 +1281,86 @@ namespace TrueforceForAll.Plugin
         {
             string name = SelectedPresetName;
             if (_plugin == null || string.IsNullOrEmpty(name)) return;
+            if (_dirty)
+            {
+                var r = MessageBox.Show(
+                    $"Apply preset '{name}'? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
+                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (r != MessageBoxResult.Yes) return;
+            }
             if (!_plugin.ApplyPreset(name))
                 MessageBox.Show($"Could not apply '{name}' (preset missing).", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
+            ClearDirty();
             RefreshFromPlugin();
         }
 
         private void SavePreset_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            string name = _plugin.ActivePresetName;
-            if (string.IsNullOrEmpty(name))
+            string activeP = _plugin.ActivePresetName;
+            bool builtin = !string.IsNullOrEmpty(activeP) && _plugin.IsBuiltinPreset(activeP);
+
+            // Fork case: no active preset, or active is a built-in we can't
+            // overwrite. Auto-create a game-named user preset and bind it as
+            // the game's default.
+            if (string.IsNullOrEmpty(activeP) || builtin)
             {
-                // No active preset — fall through to Save as.
-                SaveAsPreset_Click(sender, e);
+                ForkAndSaveAsGamePreset();
                 return;
             }
-            if (MessageBox.Show($"Overwrite preset '{name}' with current settings?",
+            // Regular overwrite
+            if (MessageBox.Show($"Overwrite preset '{activeP}' with current settings?",
                                 "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
                 return;
-            _plugin.SavePresetAs(name);
+            _plugin.SavePresetAs(activeP);
+            ClearDirty();
             RefreshFromPlugin();
+        }
+
+        /// <summary>Fork-on-save flow: create a new user preset named after
+        /// the game (or after the built-in being forked, minus the
+        /// " (default)" suffix) and bind it as the game's default. If a
+        /// preset with that name already exists, append " (1)", " (2)" until
+        /// unique. Falls back to the Save as… name prompt when there's no
+        /// game context to derive a name from.</summary>
+        private void ForkAndSaveAsGamePreset()
+        {
+            string activeP = _plugin.ActivePresetName;
+            string game    = _plugin.ActiveGame;
+            string baseName;
+            // Prefer "<built-in> minus (default)" so fork inherits the friendly name.
+            const string defaultSuffix = " (default)";
+            if (!string.IsNullOrEmpty(activeP) && activeP.EndsWith(defaultSuffix))
+                baseName = activeP.Substring(0, activeP.Length - defaultSuffix.Length);
+            else if (!string.IsNullOrEmpty(game))
+                baseName = game;
+            else
+            {
+                // No game and no built-in to fork from — fall back to name prompt.
+                SaveAsNewPresetFromUi();
+                return;
+            }
+
+            string newName = baseName;
+            // De-dupe if collision.
+            if (_plugin.PresetNames != null)
+            {
+                var existing = new System.Collections.Generic.HashSet<string>(_plugin.PresetNames);
+                int i = 1;
+                while (existing.Contains(newName)) newName = $"{baseName} ({i++})";
+            }
+
+            _plugin.SavePresetAs(newName);
+            // Auto-bind as game's default if a game is loaded.
+            if (!string.IsNullOrEmpty(game))
+                _plugin.SetDefaultPresetForActiveGame(newName);
+            ClearDirty();
+            RefreshFromPlugin();
+            MessageBox.Show(
+                string.IsNullOrEmpty(game)
+                    ? $"Saved as '{newName}'."
+                    : $"Saved as '{newName}' and bound as the default for '{game}'. The built-in default stays available as fallback.",
+                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void SaveAsPreset_Click(object sender, RoutedEventArgs e)
@@ -723,6 +1380,7 @@ namespace TrueforceForAll.Plugin
                 return;
 
             _plugin.SavePresetAs(name);
+            ClearDirty();
             RefreshFromPlugin();
         }
 
@@ -875,6 +1533,8 @@ namespace TrueforceForAll.Plugin
                     ? $"Imported car preset for '{carId}'. Applied (this is the active car)."
                     : $"Imported car preset for '{carId}'. Stored — will apply when you drive that car.",
                     "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+                // RefreshFromPlugin → RecomputeAllEffectDirty syncs the dirty
+                // dots with whatever sections the import touched.
                 RefreshFromPlugin();
             }
             catch (Exception ex)
@@ -931,6 +1591,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 _plugin.ImportSettings(dlg.FileName);
+                ClearDirty();
                 RefreshFromPlugin();
                 MessageBox.Show("Settings imported.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
             }

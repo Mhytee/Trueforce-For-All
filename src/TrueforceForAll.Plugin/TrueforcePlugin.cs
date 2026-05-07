@@ -14,6 +14,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -39,6 +40,19 @@ namespace TrueforceForAll.Plugin
         public TrueforceSettings Settings { get; private set; }
 
         private readonly Mixer _mixer = new Mixer();
+
+        // Per-car preset files — one .tfcar.json per car, the canonical
+        // home for car-specific tuning post-Model G refactor. Game presets
+        // no longer carry CarOverrides; switching presets doesn't touch
+        // per-car values.
+        private CarPresetStore _carStore;
+
+        // Snapshot of each car's override AS OF its last save. Used by
+        // IsSectionDirty to tell whether an override section has been
+        // edited since the last "For this car" save, without re-reading
+        // the file. Updated on every PersistActiveCarOverride; invalidated
+        // by ResetCarToGameDefaults.
+        private Dictionary<string, CarOverride> _lastPersistedCarOverrides = new Dictionary<string, CarOverride>();
 
         private TrueforceDevice _device;
         private AudioCaptureSource _audio;
@@ -68,6 +82,17 @@ namespace TrueforceForAll.Plugin
         private SimHubTelemetrySource _simHubSource;
         private ITelemetrySource      _telemetrySource;
         public  ITelemetrySource      TelemetrySource => _telemetrySource;
+
+        /// <summary>True when the active game is one SimHub has a telemetry
+        /// reader for — i.e. anything with a non-Custom GameName. SimHub's
+        /// "Custom_*" code is a definitive marker that the user added the
+        /// game manually and SimHub has no built-in way to source telemetry,
+        /// so engine/RPM/speed-driven effects can't fire. Built-in games
+        /// keep this true even at the main menu / paused — we don't grey
+        /// out the panel just because telemetry isn't flowing right now.</summary>
+        public bool HasUsefulTelemetry =>
+            !string.IsNullOrEmpty(_activeGame)
+            && !_activeGame.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase);
 
         // Cached slow-rate fields from the most recent SimHub DataUpdate.
         // When an enhanced source is active, DispatchFrame overlays these
@@ -202,6 +227,57 @@ namespace TrueforceForAll.Plugin
             if (Settings != null) Settings.FfbPeakSoftLimitLsb = v;
         }
 
+        public void SetSkipFfbPassthrough(bool v)
+        {
+            // Stored on Settings only; the FfbTargetProvider lambda reads it
+            // each tick so the change takes effect immediately without
+            // touching the device.
+            if (Settings != null) Settings.SkipFfbPassthrough = v;
+        }
+
+        /// <summary>Set or clear the audio-capture exe override for a game.
+        /// Pass null/whitespace to clear. Drops any currently-captured
+        /// process so the next capture tick re-evaluates against the new
+        /// override within ~1 s.</summary>
+        public void SetAudioCaptureExeOverride(string game, string exe)
+        {
+            if (Settings == null || string.IsNullOrEmpty(game)) return;
+            if (Settings.AudioCaptureExeOverrides == null)
+                Settings.AudioCaptureExeOverrides = new Dictionary<string, string>();
+
+            string trimmed = exe?.Trim();
+            if (!string.IsNullOrEmpty(trimmed) && trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                trimmed = trimmed.Substring(0, trimmed.Length - 4);
+
+            if (string.IsNullOrEmpty(trimmed))
+                Settings.AudioCaptureExeOverrides.Remove(game);
+            else
+                Settings.AudioCaptureExeOverrides[game] = trimmed;
+
+            this.SaveCommonSettings("GeneralSettings", Settings);
+
+            // Force a re-scan: drop the cached process so the next CaptureTick
+            // doesn't fast-path the alive-check on the wrong process.
+            var prev = System.Threading.Interlocked.Exchange(ref _capturedProcess, null);
+            if (prev != null)
+            {
+                try { prev.Dispose(); } catch { }
+                try { _audio?.Stop(); } catch { }
+                try { _helperHost?.SetTargetPid(0); } catch { }
+            }
+        }
+
+        /// <summary>The exe override currently configured for the active
+        /// game (or null if none). Used by the UI to populate the textbox.</summary>
+        public string ActiveCaptureExeOverride
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_activeGame) || Settings?.AudioCaptureExeOverrides == null) return null;
+                return Settings.AudioCaptureExeOverrides.TryGetValue(_activeGame, out var v) ? v : null;
+            }
+        }
+
         /// <summary>Trigger an effect's test playback. Forces the device into
         /// active ep3 mode for the duration so the test is audible even when
         /// AC isn't running (no FFB tap data → would otherwise be keepalive).
@@ -256,6 +332,16 @@ namespace TrueforceForAll.Plugin
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
             MigrateLegacyGamePresets();
+            InstallBuiltinPresetsIfMissing();
+
+            // Per-car file store: load files into Settings.CarOverrides
+            // (file wins on conflict), then migrate any existing
+            // Settings.CarOverrides / preset.CarOverrides into files for
+            // cars that don't already have one. Files become the canonical
+            // store; Settings.CarOverrides is now an in-memory cache only.
+            _carStore = new CarPresetStore(msg => SimHub.Logging.Current.Info(msg));
+            LoadAndMigrateCarPresets();
+
             _mixer.MasterGain = Settings.MasterGain;
 
             SimHub.Logging.Current.Info("[Trueforce] Discovering wheel...");
@@ -297,7 +383,17 @@ namespace TrueforceForAll.Plugin
                 {
                     Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
                 };
-                _device.FfbTargetProvider = () => _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                _device.FfbTargetProvider = () =>
+                {
+                    // SkipFfbPassthrough: return Some(0) so the device sends
+                    // active packets (audio plays) but writes center to ep3
+                    // bytes 6-9, leaving the wheel's actual force to the
+                    // game's native FFB path. Used for games with built-in
+                    // Trueforce (AC Rally, iRacing) where mirroring our
+                    // captured FFB target fights with the game's own writes.
+                    if (Settings != null && Settings.SkipFfbPassthrough) return (short?)0;
+                    return _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                };
                 _device.FfbScale                 = Settings.FfbScale;
                 _device.FfbInvertSign            = Settings.FfbInvertSign;
                 _device.FfbSmoothTimeConstantMs  = Settings.FfbSmoothTimeConstantMs;
@@ -634,6 +730,7 @@ namespace TrueforceForAll.Plugin
             ApplyTractionSettings(ovr?.TractionLoss ?? Settings.TractionLoss);
             ApplyShiftSettings (ovr?.GearShift    ?? Settings.GearShift);
             ApplyAbsSettings   (ovr?.AbsClick     ?? Settings.AbsClick);
+            ApplyAudioCaptureSettings(ovr?.AudioCapture ?? Settings.AudioCapture);
         }
 
         // ----- per-section: is this section overridden for the active car? -----
@@ -642,6 +739,7 @@ namespace TrueforceForAll.Plugin
         public bool IsTractionOverridden=> GetActiveCarOverride()?.TractionLoss != null;
         public bool IsShiftOverridden   => GetActiveCarOverride()?.GearShift    != null;
         public bool IsAbsOverridden     => GetActiveCarOverride()?.AbsClick     != null;
+        public bool IsAudioOverridden   => GetActiveCarOverride()?.AudioCapture != null;
 
         // ----- per-section: toggle override on/off (snapshots globals when on) -----
         public void SetEngineOverride(bool on)   => ToggleSectionOverride(on, get: o => o.EnginePulse,  set: (o, v) => o.EnginePulse  = v, snapshot: () => Clone(Settings.EnginePulse));
@@ -649,6 +747,7 @@ namespace TrueforceForAll.Plugin
         public void SetTractionOverride(bool on) => ToggleSectionOverride(on, get: o => o.TractionLoss, set: (o, v) => o.TractionLoss = v, snapshot: () => Clone(Settings.TractionLoss));
         public void SetShiftOverride(bool on)    => ToggleSectionOverride(on, get: o => o.GearShift,    set: (o, v) => o.GearShift    = v, snapshot: () => Clone(Settings.GearShift));
         public void SetAbsOverride(bool on)      => ToggleSectionOverride(on, get: o => o.AbsClick,     set: (o, v) => o.AbsClick     = v, snapshot: () => Clone(Settings.AbsClick));
+        public void SetAudioOverride(bool on)    => ToggleSectionOverride(on, get: o => o.AudioCapture, set: (o, v) => o.AudioCapture = v, snapshot: () => CloneOrNull(Settings.AudioCapture));
 
         private void ToggleSectionOverride<T>(bool on,
             Func<CarOverride, T> get,
@@ -664,6 +763,7 @@ namespace TrueforceForAll.Plugin
             }
             set(ovr, on ? snapshot() : null);
             if (ovr.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
+            PersistActiveCarOverride();
             ApplyActiveCarOverride();
         }
 
@@ -674,6 +774,7 @@ namespace TrueforceForAll.Plugin
         public TractionLossSettings ActiveTraction => GetActiveCarOverride()?.TractionLoss ?? Settings.TractionLoss;
         public GearShiftSettings    ActiveShift    => GetActiveCarOverride()?.GearShift    ?? Settings.GearShift;
         public AbsClickSettings     ActiveAbs      => GetActiveCarOverride()?.AbsClick     ?? Settings.AbsClick;
+        public AudioCaptureSettings ActiveAudio    => GetActiveCarOverride()?.AudioCapture ?? Settings.AudioCapture;
 
         // ----- apply settings to live effect -----
         private void ApplyEngineSettings(EnginePulseSettings s)
@@ -725,6 +826,14 @@ namespace TrueforceForAll.Plugin
             AbsClick.Mode           = s.Mode;
             AbsClick.Waveform       = s.Waveform;
         }
+        private void ApplyAudioCaptureSettings(AudioCaptureSettings s)
+        {
+            if (_audio == null || s == null) return;
+            _audio.Enabled          = s.Enabled;
+            _audio.Gain             = s.Gain;
+            _audio.LowpassCutoffHz  = s.LowpassCutoffHz;
+            _audio.HighpassCutoffHz = s.HighpassCutoffHz;
+        }
 
         // ----- shallow clones used when toggling override on -----
         private static EnginePulseSettings  Clone(EnginePulseSettings s)
@@ -739,6 +848,210 @@ namespace TrueforceForAll.Plugin
             => new AbsClickSettings     { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, TickDurationMs = s.TickDurationMs, Mode = s.Mode, Waveform = s.Waveform };
 
         // ---------- preset library ----------
+
+        /// <summary>Install any built-in preset that isn't already in the
+        /// user's library. Run on every Init — idempotent. Also auto-binds
+        /// the matching <see cref="BuiltinPresets.GameDefaultBindings"/>
+        /// entries as the game's default IF the user has no default for
+        /// that game yet (we don't override their custom choice).</summary>
+        private void InstallBuiltinPresetsIfMissing()
+        {
+            if (Settings == null) return;
+            if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
+            if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
+            int added = 0;
+            foreach (var kv in BuiltinPresets.BuiltinPresetJsons)
+            {
+                if (Settings.Presets.ContainsKey(kv.Key)) continue;
+                try
+                {
+                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value);
+                    if (snap != null)
+                    {
+                        Settings.Presets[kv.Key] = snap;
+                        added++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to install built-in preset '{kv.Key}': {ex.Message}");
+                }
+            }
+            // Bind game defaults if user hasn't chosen one for that game.
+            foreach (var kv in BuiltinPresets.GameDefaultBindings)
+            {
+                if (!Settings.GameDefaults.ContainsKey(kv.Key)
+                    && Settings.Presets.ContainsKey(kv.Value))
+                {
+                    Settings.GameDefaults[kv.Key] = kv.Value;
+                }
+            }
+            if (added > 0)
+            {
+                this.SaveCommonSettings("GeneralSettings", Settings);
+                SimHub.Logging.Current.Info($"[Trueforce] Installed {added} built-in preset(s).");
+            }
+        }
+
+        /// <summary>One-shot migration + initial load for per-car preset files.
+        /// Files are the canonical store post-Model-G; this routine seeds
+        /// the store from any existing Settings.CarOverrides / preset.CarOverrides
+        /// data on first run after upgrade, then loads files back into the
+        /// in-memory cache (Settings.CarOverrides) so reads are fast.
+        ///
+        /// File-wins-on-conflict ordering: pre-existing files are authoritative,
+        /// so re-running migration won't clobber files the user has already
+        /// edited.</summary>
+        private void LoadAndMigrateCarPresets()
+        {
+            if (Settings == null || _carStore == null) return;
+            if (Settings.CarOverrides == null) Settings.CarOverrides = new Dictionary<string, CarOverride>();
+
+            // 1) Migrate Settings.CarOverrides → files (only if no file yet).
+            int migrated = 0;
+            foreach (var kv in new Dictionary<string, CarOverride>(Settings.CarOverrides))
+            {
+                if (kv.Value == null || kv.Value.IsEmpty) continue;
+                if (_carStore.Exists(kv.Key)) continue;
+                _carStore.Save(kv.Key, _activeGame ?? "", kv.Value);
+                migrated++;
+            }
+            // 2) Migrate each preset's CarOverrides → files (file-wins).
+            //    Game presets going forward don't include CarOverrides, but
+            //    legacy data may still be present in saved presets.
+            if (Settings.Presets != null)
+            {
+                foreach (var presetKv in Settings.Presets)
+                {
+                    var snap = presetKv.Value;
+                    if (snap?.CarOverrides == null) continue;
+                    foreach (var carKv in snap.CarOverrides)
+                    {
+                        if (carKv.Value == null || carKv.Value.IsEmpty) continue;
+                        if (_carStore.Exists(carKv.Key)) continue;
+                        _carStore.Save(carKv.Key, "", carKv.Value);
+                        migrated++;
+                    }
+                }
+            }
+            // 3) Load all files back into the in-memory cache AND seed the
+            //    last-persisted snapshot so freshly-loaded cars start clean.
+            var loaded = _carStore.LoadAll();
+            foreach (var kv in loaded)
+            {
+                Settings.CarOverrides[kv.Key] = kv.Value;
+                _lastPersistedCarOverrides[kv.Key] = CloneCarOverride(kv.Value);
+            }
+            if (migrated > 0)
+                SimHub.Logging.Current.Info($"[Trueforce] Migrated {migrated} per-car override(s) to per-car files.");
+        }
+
+        /// <summary>Deep-clone a CarOverride so the last-persisted snapshot
+        /// is independent of the live in-memory override.</summary>
+        private static CarOverride CloneCarOverride(CarOverride o)
+        {
+            if (o == null) return null;
+            return new CarOverride
+            {
+                EnginePulse  = o.EnginePulse  == null ? null : Clone(o.EnginePulse),
+                RoadBumps    = o.RoadBumps    == null ? null : Clone(o.RoadBumps),
+                TractionLoss = o.TractionLoss == null ? null : Clone(o.TractionLoss),
+                GearShift    = o.GearShift    == null ? null : Clone(o.GearShift),
+                AbsClick     = o.AbsClick     == null ? null : Clone(o.AbsClick),
+                AudioCapture = CloneOrNull(o.AudioCapture),
+            };
+        }
+
+        /// <summary>Write the active car's override to its per-car file
+        /// and update the last-persisted snapshot used for dirty checks.
+        /// Called by explicit user save actions ("For this car",
+        /// "Update game defaults"). NOT auto-called from slider edits —
+        /// per-car saves are explicit.</summary>
+        public void PersistActiveCarOverride()
+        {
+            if (_carStore == null || string.IsNullOrEmpty(_activeCarId) || Settings?.CarOverrides == null) return;
+            Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
+            _carStore.Save(_activeCarId, _activeGame ?? "", ovr);
+            // Refresh dirty baseline. Empty / null override → no saved file
+            // exists, so drop from the snapshot too.
+            if (ovr == null || ovr.IsEmpty)
+                _lastPersistedCarOverrides.Remove(_activeCarId);
+            else
+                _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(ovr);
+        }
+
+        /// <summary>Wipe a car's per-car file AND its in-memory override.
+        /// The car will fall back to the game preset's globals on its next
+        /// detection.</summary>
+        public void ResetCarToGameDefaults(string carId)
+        {
+            if (_carStore == null || string.IsNullOrEmpty(carId)) return;
+            _carStore.Delete(carId);
+            if (Settings?.CarOverrides != null) Settings.CarOverrides.Remove(carId);
+            _lastPersistedCarOverrides.Remove(carId);
+            if (carId == _activeCarId) ApplyActiveCarOverride();
+        }
+
+        /// <summary>"For this car" save action: ensures the section has a
+        /// per-car override containing the section's current values, then
+        /// persists the file. If no override exists yet, snapshots from
+        /// globals (where current edits live). If override already exists,
+        /// keeps the existing values (where current edits live) and just
+        /// writes them through. Either way, the file matches the in-memory
+        /// state after this call.</summary>
+        public void SaveSectionForCar(SectionKind kind)
+        {
+            if (string.IsNullOrEmpty(_activeCarId) || Settings == null) return;
+            if (Settings.CarOverrides == null) Settings.CarOverrides = new Dictionary<string, CarOverride>();
+            if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr) || ovr == null)
+            {
+                ovr = new CarOverride();
+                Settings.CarOverrides[_activeCarId] = ovr;
+            }
+            switch (kind)
+            {
+                case SectionKind.Engine:   if (ovr.EnginePulse  == null) ovr.EnginePulse  = Clone(Settings.EnginePulse);    break;
+                case SectionKind.Bumps:    if (ovr.RoadBumps    == null) ovr.RoadBumps    = Clone(Settings.RoadBumps);      break;
+                case SectionKind.Traction: if (ovr.TractionLoss == null) ovr.TractionLoss = Clone(Settings.TractionLoss);   break;
+                case SectionKind.Shift:    if (ovr.GearShift    == null) ovr.GearShift    = Clone(Settings.GearShift);      break;
+                case SectionKind.Abs:      if (ovr.AbsClick     == null) ovr.AbsClick     = Clone(Settings.AbsClick);       break;
+                case SectionKind.Audio:    if (ovr.AudioCapture == null) ovr.AudioCapture = CloneOrNull(Settings.AudioCapture); break;
+                default: return;  // Master / Ducking aren't per-car
+            }
+            PersistActiveCarOverride();
+            ApplyActiveCarOverride();
+        }
+
+        /// <summary>"Update game defaults" save action when the section is
+        /// car-overridden: lifts the override values up to the global
+        /// section, then drops the override (so the new global takes
+        /// effect for this car too). Caller should follow with
+        /// SavePresetAs to commit the new global into the active preset.</summary>
+        public void PromoteSectionToGlobal(SectionKind kind)
+        {
+            if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
+            if (Settings.CarOverrides == null
+                || !Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr)
+                || ovr == null) return;
+            switch (kind)
+            {
+                case SectionKind.Engine:   if (ovr.EnginePulse  != null) { Settings.EnginePulse  = Clone(ovr.EnginePulse);    ovr.EnginePulse  = null; } break;
+                case SectionKind.Bumps:    if (ovr.RoadBumps    != null) { Settings.RoadBumps    = Clone(ovr.RoadBumps);      ovr.RoadBumps    = null; } break;
+                case SectionKind.Traction: if (ovr.TractionLoss != null) { Settings.TractionLoss = Clone(ovr.TractionLoss);   ovr.TractionLoss = null; } break;
+                case SectionKind.Shift:    if (ovr.GearShift    != null) { Settings.GearShift    = Clone(ovr.GearShift);      ovr.GearShift    = null; } break;
+                case SectionKind.Abs:      if (ovr.AbsClick     != null) { Settings.AbsClick     = Clone(ovr.AbsClick);       ovr.AbsClick     = null; } break;
+                case SectionKind.Audio:    if (ovr.AudioCapture != null) { Settings.AudioCapture = CloneOrNull(ovr.AudioCapture); ovr.AudioCapture = null; } break;
+                default: return;
+            }
+            if (ovr.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
+            PersistActiveCarOverride();
+            ApplyActiveCarOverride();
+        }
+
+        /// <summary>True if the named preset is a built-in / read-only one.
+        /// Built-ins refuse delete and refuse in-place overwrite — the UI
+        /// forks to a user-named preset instead.</summary>
+        public bool IsBuiltinPreset(string presetName) => BuiltinPresets.IsBuiltin(presetName);
 
         /// <summary>One-time migration of legacy per-game presets (keyed by
         /// game name with no separate "preset library" concept) into the new
@@ -768,6 +1081,314 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // ---------- per-section dirty check (vs active preset) ----------
+
+        /// <summary>True iff the current values for this section differ from
+        /// the active preset's snapshot. False when there's no active preset
+        /// (no anchor). Used by the UI to show/hide per-section "Save" /
+        /// "Revert" buttons based on actual drift, not on a sticky flag —
+        /// so changing a value and changing it back clears the dirty state.</summary>
+        public bool IsSectionDirty(SectionKind kind)
+        {
+            if (Settings == null || string.IsNullOrEmpty(_activePresetName)) return false;
+            if (Settings.Presets == null || !Settings.Presets.TryGetValue(_activePresetName, out var snap) || snap == null) return false;
+
+            switch (kind)
+            {
+                case SectionKind.Master:   return !MasterEquals(snap);
+                case SectionKind.Ducking:  return !DuckingEquals(snap);
+                case SectionKind.Audio:    return !EffectEquals(snap, EffectField.Audio);
+                case SectionKind.Engine:   return !EffectEquals(snap, EffectField.Engine);
+                case SectionKind.Bumps:    return !EffectEquals(snap, EffectField.Bumps);
+                case SectionKind.Traction: return !EffectEquals(snap, EffectField.Traction);
+                case SectionKind.Shift:    return !EffectEquals(snap, EffectField.Shift);
+                case SectionKind.Abs:      return !EffectEquals(snap, EffectField.Abs);
+            }
+            return false;
+        }
+
+        private bool MasterEquals(GameSettingsSnapshot snap)
+        {
+            return EqF2(Settings.MasterGain,              snap.MasterGain)
+                && EqF2(Settings.FfbScale,                snap.FfbScale)
+                &&     Settings.FfbInvertSign          == snap.FfbInvertSign
+                && EqF1(Settings.FfbSmoothTimeConstantMs, snap.FfbSmoothTimeConstantMs)
+                && EqI (Settings.FfbSpikeMaxLsbPerMs,     snap.FfbSpikeMaxLsbPerMs)
+                && EqI (Settings.FfbPeakSoftLimitLsb,     snap.FfbPeakSoftLimitLsb)
+                &&     Settings.SkipFfbPassthrough     == snap.SkipFfbPassthrough;
+        }
+
+        private bool DuckingEquals(GameSettingsSnapshot snap)
+        {
+            return EqF2(Settings.DuckDepth,    snap.DuckDepth)
+                && EqI (Settings.DuckAttackMs, snap.DuckAttackMs)
+                && EqI (Settings.DuckReleaseMs, snap.DuckReleaseMs);
+        }
+
+        // Tolerances match the UI's display precision so that two values
+        // displayed as the same string (e.g. "0.07", "60", "0.0") count as
+        // equal — which is what users expect when they drag a slider away
+        // and back. Without these, slider-snap noise stays "dirty" forever.
+        private static bool EqF2(double a, double b) => Math.Abs(a - b) < 0.005;
+        private static bool EqF1(double a, double b) => Math.Abs(a - b) < 0.05;
+        private static bool EqI (double a, double b) => Math.Abs(a - b) < 0.5;
+
+        private enum EffectField { Audio, Engine, Bumps, Traction, Shift, Abs }
+
+        /// <summary>Scope-aware equals for dirty detection.
+        ///
+        /// • If the active car has a per-car override for this section, the
+        ///   "saved baseline" is the per-car file's content (tracked via
+        ///   _lastPersistedCarOverrides). Edits to the override since the
+        ///   last "For this car" save show as dirty.
+        /// • Otherwise, the saved baseline is the active preset's global
+        ///   section. Edits show as dirty until "Update game defaults".</summary>
+        private bool EffectEquals(GameSettingsSnapshot snap, EffectField f)
+        {
+            string carId = _activeCarId;
+            CarOverride liveCo = null;
+            CarOverride savedCo = null;
+            if (carId != null)
+            {
+                if (Settings.CarOverrides != null) Settings.CarOverrides.TryGetValue(carId, out liveCo);
+                _lastPersistedCarOverrides.TryGetValue(carId, out savedCo);
+            }
+            switch (f)
+            {
+                case EffectField.Audio:
+                    if (liveCo?.AudioCapture != null) return Eq(liveCo.AudioCapture, savedCo?.AudioCapture);
+                    return Eq(Settings.AudioCapture, snap.AudioCapture);
+                case EffectField.Engine:
+                    if (liveCo?.EnginePulse  != null) return Eq(liveCo.EnginePulse,  savedCo?.EnginePulse);
+                    return Eq(Settings.EnginePulse,  snap.EnginePulse);
+                case EffectField.Bumps:
+                    if (liveCo?.RoadBumps    != null) return Eq(liveCo.RoadBumps,    savedCo?.RoadBumps);
+                    return Eq(Settings.RoadBumps,    snap.RoadBumps);
+                case EffectField.Traction:
+                    if (liveCo?.TractionLoss != null) return Eq(liveCo.TractionLoss, savedCo?.TractionLoss);
+                    return Eq(Settings.TractionLoss, snap.TractionLoss);
+                case EffectField.Shift:
+                    if (liveCo?.GearShift    != null) return Eq(liveCo.GearShift,    savedCo?.GearShift);
+                    return Eq(Settings.GearShift,    snap.GearShift);
+                case EffectField.Abs:
+                    if (liveCo?.AbsClick     != null) return Eq(liveCo.AbsClick,     savedCo?.AbsClick);
+                    return Eq(Settings.AbsClick,     snap.AbsClick);
+            }
+            return true;
+        }
+
+        private static bool Eq(EnginePulseSettings a, EnginePulseSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain,      b.Gain)
+                && a.Cylinders == b.Cylinders
+                && EqF2(a.Pitch,     b.Pitch)
+                && EqI (a.LowpassHz, b.LowpassHz)
+                && a.Waveform == b.Waveform;
+        }
+        private static bool Eq(RoadBumpsSettings a, RoadBumpsSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain, b.Gain)
+                && EqI (a.Freq, b.Freq)
+                && a.Waveform == b.Waveform;
+        }
+        private static bool Eq(TractionLossSettings a, TractionLossSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain,            b.Gain)
+                && EqF2(a.Sensitivity,     b.Sensitivity)
+                && EqI (a.Freq,            b.Freq)
+                && EqI (a.NoiseLowpassHz,  b.NoiseLowpassHz)
+                && EqI (a.NoiseHighpassHz, b.NoiseHighpassHz)
+                && a.Waveform == b.Waveform;
+        }
+        private static bool Eq(GearShiftSettings a, GearShiftSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain, b.Gain)
+                && EqI (a.Freq, b.Freq)
+                && a.Waveform == b.Waveform;
+        }
+        private static bool Eq(AbsClickSettings a, AbsClickSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain,           b.Gain)
+                && EqI (a.Freq,           b.Freq)
+                && EqF1(a.PulseFreq,      b.PulseFreq)
+                && EqF2(a.DutyCycle,      b.DutyCycle)
+                && EqI (a.TickDurationMs, b.TickDurationMs)
+                && a.Mode == b.Mode && a.Waveform == b.Waveform;
+        }
+        private static bool Eq(AudioCaptureSettings a, AudioCaptureSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain,             b.Gain)
+                && EqI (a.LowpassCutoffHz,  b.LowpassCutoffHz)
+                && EqI (a.HighpassCutoffHz, b.HighpassCutoffHz);
+        }
+
+        // ---------- per-section revert (from active preset) ----------
+
+        /// <summary>Section identifier used by <see cref="RevertSection"/>.
+        /// Mirrors the per-section "Save…" / "Revert" buttons in the UI:
+        /// Master and Ducking are global-only; the rest have a per-car
+        /// override component that revert respects.</summary>
+        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs }
+
+        /// <summary>Revert one section to the active preset's saved snapshot.
+        /// Scope-aware: if the snapshot has a per-car override for the
+        /// current car, that override is restored; otherwise the override is
+        /// dropped and the global section is restored. No-op when there's
+        /// no active preset (nothing to revert to).</summary>
+        public bool RevertSection(SectionKind kind)
+        {
+            if (Settings == null || string.IsNullOrEmpty(_activePresetName)) return false;
+            if (Settings.Presets == null || !Settings.Presets.TryGetValue(_activePresetName, out var snap) || snap == null) return false;
+
+            switch (kind)
+            {
+                case SectionKind.Master:
+                    Settings.MasterGain              = snap.MasterGain;
+                    Settings.FfbScale                = snap.FfbScale;
+                    Settings.FfbInvertSign           = snap.FfbInvertSign;
+                    Settings.FfbSmoothTimeConstantMs = snap.FfbSmoothTimeConstantMs;
+                    Settings.FfbSpikeMaxLsbPerMs     = snap.FfbSpikeMaxLsbPerMs;
+                    Settings.FfbPeakSoftLimitLsb     = snap.FfbPeakSoftLimitLsb;
+                    Settings.SkipFfbPassthrough      = snap.SkipFfbPassthrough;
+                    _mixer.MasterGain = Settings.MasterGain;
+                    if (_device != null)
+                    {
+                        _device.FfbScale                = Settings.FfbScale;
+                        _device.FfbInvertSign           = Settings.FfbInvertSign;
+                        _device.FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs;
+                        _device.FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs;
+                        _device.FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb;
+                    }
+                    return true;
+
+                case SectionKind.Ducking:
+                    Settings.DuckDepth     = snap.DuckDepth;
+                    Settings.DuckAttackMs  = snap.DuckAttackMs;
+                    Settings.DuckReleaseMs = snap.DuckReleaseMs;
+                    return true;
+
+                case SectionKind.Engine:
+                    RevertEffectScopeAware(
+                        snap.EnginePulse,
+                        snap.CarOverrides,
+                        co => co?.EnginePulse,
+                        s => Settings.EnginePulse = Clone(s),
+                        (co, v) => co.EnginePulse = Clone(v),
+                        co => co.EnginePulse = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.Bumps:
+                    RevertEffectScopeAware(
+                        snap.RoadBumps,
+                        snap.CarOverrides,
+                        co => co?.RoadBumps,
+                        s => Settings.RoadBumps = Clone(s),
+                        (co, v) => co.RoadBumps = Clone(v),
+                        co => co.RoadBumps = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.Traction:
+                    RevertEffectScopeAware(
+                        snap.TractionLoss,
+                        snap.CarOverrides,
+                        co => co?.TractionLoss,
+                        s => Settings.TractionLoss = Clone(s),
+                        (co, v) => co.TractionLoss = Clone(v),
+                        co => co.TractionLoss = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.Shift:
+                    RevertEffectScopeAware(
+                        snap.GearShift,
+                        snap.CarOverrides,
+                        co => co?.GearShift,
+                        s => Settings.GearShift = Clone(s),
+                        (co, v) => co.GearShift = Clone(v),
+                        co => co.GearShift = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.Abs:
+                    RevertEffectScopeAware(
+                        snap.AbsClick,
+                        snap.CarOverrides,
+                        co => co?.AbsClick,
+                        s => Settings.AbsClick = Clone(s),
+                        (co, v) => co.AbsClick = Clone(v),
+                        co => co.AbsClick = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.Audio:
+                    RevertEffectScopeAware(
+                        snap.AudioCapture,
+                        snap.CarOverrides,
+                        co => co?.AudioCapture,
+                        s => Settings.AudioCapture = CloneOrNull(s),
+                        (co, v) => co.AudioCapture = CloneOrNull(v),
+                        co => co.AudioCapture = null);
+                    ApplyActiveCarOverride();
+                    if (_audio != null && Settings.AudioCapture != null)
+                    {
+                        _audio.Enabled          = Settings.AudioCapture.Enabled;
+                        _audio.Gain             = Settings.AudioCapture.Gain;
+                        _audio.LowpassCutoffHz  = Settings.AudioCapture.LowpassCutoffHz;
+                        _audio.HighpassCutoffHz = Settings.AudioCapture.HighpassCutoffHz;
+                    }
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Generic per-effect revert: routes the snapshot's saved
+        /// section into either the per-car override slot (if the snapshot
+        /// had one for the current car) or the global slot (otherwise,
+        /// dropping any current car override). Caller is responsible for
+        /// pushing the resulting state live (ApplyActiveCarOverride etc.).</summary>
+        private void RevertEffectScopeAware<TSection>(
+            TSection snapGlobal,
+            Dictionary<string, CarOverride> snapOverrides,
+            Func<CarOverride, TSection> getSnapCarSection,
+            Action<TSection> applyToGlobal,
+            Action<CarOverride, TSection> applyToCarOverride,
+            Action<CarOverride> clearCarOverride) where TSection : class
+        {
+            string carId = _activeCarId;
+            CarOverride snapCar = null;
+            if (carId != null && snapOverrides != null) snapOverrides.TryGetValue(carId, out snapCar);
+            var snapCarSection = snapCar != null ? getSnapCarSection(snapCar) : null;
+
+            if (snapCarSection != null && carId != null)
+            {
+                if (Settings.CarOverrides == null) Settings.CarOverrides = new Dictionary<string, CarOverride>();
+                if (!Settings.CarOverrides.TryGetValue(carId, out var liveCo) || liveCo == null)
+                    Settings.CarOverrides[carId] = liveCo = new CarOverride();
+                applyToCarOverride(liveCo, snapCarSection);
+            }
+            else
+            {
+                if (carId != null && Settings.CarOverrides != null
+                    && Settings.CarOverrides.TryGetValue(carId, out var liveCo) && liveCo != null)
+                    clearCarOverride(liveCo);
+                if (snapGlobal != null) applyToGlobal(snapGlobal);
+            }
+        }
+
         /// <summary>Apply a named preset from the library. Sets it as the
         /// currently-active preset. No game default is changed.</summary>
         /// <returns>true if applied; false if the preset name doesn't exist.</returns>
@@ -783,10 +1404,16 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Snapshot the current settings into the library under the
         /// given name. Overwrites any existing preset with that name. Sets it
-        /// as the active preset.</summary>
+        /// as the active preset. Refuses to overwrite built-in presets — the
+        /// UI must fork to a user-named preset for those.</summary>
         public void SavePresetAs(string presetName)
         {
             if (Settings == null || string.IsNullOrEmpty(presetName)) return;
+            if (IsBuiltinPreset(presetName))
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Refusing to overwrite built-in preset '{presetName}'.");
+                return;
+            }
             if (Settings.Presets == null) Settings.Presets = new Dictionary<string, GameSettingsSnapshot>();
             Settings.Presets[presetName] = SnapshotCurrentAsPreset();
             _activePresetName = presetName;
@@ -795,10 +1422,17 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Delete a preset from the library. Also clears any
-        /// GameDefaults entries that pointed to this preset.</summary>
+        /// GameDefaults entries that pointed to this preset. Refuses on
+        /// built-in presets — they're factory defaults the user can always
+        /// fall back to.</summary>
         public bool DeletePreset(string presetName)
         {
             if (Settings?.Presets == null || string.IsNullOrEmpty(presetName)) return false;
+            if (IsBuiltinPreset(presetName))
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Refusing to delete built-in preset '{presetName}'.");
+                return false;
+            }
             if (!Settings.Presets.Remove(presetName)) return false;
 
             // Drop any game defaults that pointed to this preset.
@@ -850,6 +1484,7 @@ namespace TrueforceForAll.Plugin
             Settings.FfbSmoothTimeConstantMs = snap.FfbSmoothTimeConstantMs;
             Settings.FfbSpikeMaxLsbPerMs     = snap.FfbSpikeMaxLsbPerMs;
             Settings.FfbPeakSoftLimitLsb     = snap.FfbPeakSoftLimitLsb;
+            Settings.SkipFfbPassthrough      = snap.SkipFfbPassthrough;
             Settings.DuckDepth               = snap.DuckDepth;
             Settings.DuckAttackMs            = snap.DuckAttackMs;
             Settings.DuckReleaseMs           = snap.DuckReleaseMs;
@@ -860,7 +1495,12 @@ namespace TrueforceForAll.Plugin
             if (snap.TractionLoss != null) Settings.TractionLoss = Clone(snap.TractionLoss);
             if (snap.GearShift    != null) Settings.GearShift    = Clone(snap.GearShift);
             if (snap.AbsClick     != null) Settings.AbsClick     = Clone(snap.AbsClick);
-            if (snap.CarOverrides != null) Settings.CarOverrides = CloneOverrides(snap.CarOverrides);
+            // Per-car overrides are no longer carried by game presets (Model G):
+            // they live in <plugin data>/Cars/<carId>.tfcar.json files,
+            // independent of the active preset. Switching presets doesn't
+            // touch per-car tuning. Legacy snap.CarOverrides (from old
+            // saved presets) is intentionally ignored here — migration
+            // already extracted any useful data into per-car files.
 
             // Push live: master, FFB tap, audio, and effects (via car-override apply).
             _mixer.MasterGain = Settings.MasterGain;
@@ -900,6 +1540,7 @@ namespace TrueforceForAll.Plugin
                     TractionLoss = o.TractionLoss == null ? null : Clone(o.TractionLoss),
                     GearShift    = o.GearShift    == null ? null : Clone(o.GearShift),
                     AbsClick     = o.AbsClick     == null ? null : Clone(o.AbsClick),
+                    AudioCapture = CloneOrNull(o.AudioCapture),
                 };
             }
             return d;
@@ -907,9 +1548,11 @@ namespace TrueforceForAll.Plugin
 
         // ---------- single-preset export/import (sharing) ----------
 
-        /// <summary>Snapshot of the current top-level settings + per-car overrides
-        /// — used by both "Save preset for game" and "Export game preset", so the
-        /// exported file always reflects what the user is hearing right now.</summary>
+        /// <summary>Snapshot of the current top-level settings — used by
+        /// both "Save preset" and "Export preset". Per-car overrides are
+        /// intentionally omitted: in Model G they live in per-car files
+        /// independent of game presets, so applying a preset never touches
+        /// per-car tuning.</summary>
         private GameSettingsSnapshot SnapshotCurrentAsPreset()
         {
             return new GameSettingsSnapshot
@@ -920,6 +1563,7 @@ namespace TrueforceForAll.Plugin
                 FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs,
                 FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs,
                 FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb,
+                SkipFfbPassthrough      = Settings.SkipFfbPassthrough,
                 DuckDepth               = Settings.DuckDepth,
                 DuckAttackMs            = Settings.DuckAttackMs,
                 DuckReleaseMs           = Settings.DuckReleaseMs,
@@ -929,7 +1573,8 @@ namespace TrueforceForAll.Plugin
                 TractionLoss            = Clone(Settings.TractionLoss),
                 GearShift               = Clone(Settings.GearShift),
                 AbsClick                = Clone(Settings.AbsClick),
-                CarOverrides            = CloneOverrides(Settings.CarOverrides),
+                // CarOverrides intentionally omitted — per-car tuning is
+                // managed via per-car .tfcar.json files post-Model-G.
             };
         }
 
@@ -990,6 +1635,7 @@ namespace TrueforceForAll.Plugin
                     TractionLoss = Clone(ActiveTraction),
                     GearShift    = Clone(ActiveShift),
                     AbsClick     = Clone(ActiveAbs),
+                    AudioCapture = CloneOrNull(ActiveAudio),
                 };
             }
             var file = new CarPresetFile { GameName = _activeGame, CarId = _activeCarId, Override = ovr };
@@ -1051,8 +1697,13 @@ namespace TrueforceForAll.Plugin
 
         // ---------- capture targeting ----------
 
-        // exe-basename → friendly label. Process names from Process.GetProcesses()
-        // are the basename (no ".exe"), case-insensitive on Windows.
+        // Curated exe-basename → friendly label map for known sims. AC's
+        // "acs" exe is too short for the fuzzy fallback to match safely
+        // (collisions with random 3-letter process names), so the curated
+        // dict stays the primary lookup. The fuzzy fallback handles unknown
+        // games where the exe name resembles the SimHub GameName, and a
+        // per-game user override (Settings.AudioCaptureExeOverrides) covers
+        // anything neither catches.
         private static readonly Dictionary<string, string> ExeLabels = BuildExeLabels(new Dictionary<string, string[]>
         {
             { "AssettoCorsa",             new[] { "AssettoCorsa", "acs" } },
@@ -1071,6 +1722,112 @@ namespace TrueforceForAll.Plugin
                 foreach (var exe in kv.Value)
                     d[exe] = kv.Key;
             return d;
+        }
+
+        // SimHub stores user-added "Custom Game" profiles in CustomGames.json
+        // under the SimHub install dir's PluginsData folder. Each entry has
+        // Code (the "Custom_<guid>" string SimHub reports as data.GameName),
+        // Name (the friendly name the user typed), and ProcessNames
+        // (comma-separated exe basenames the user configured for detection).
+        // We pull the same data SimHub uses for game detection — the user
+        // doesn't have to configure their exe in two places.
+        private sealed class CustomGameInfo
+        {
+            public string Name;
+            public string[] ProcessNames;     // basenames (no .exe), case-insensitive lookup
+        }
+        private Dictionary<string, CustomGameInfo> _customGamesCache;
+        private DateTime _customGamesCacheLoadedAt;
+        private const int CustomGamesCacheStaleSeconds = 60;
+
+        /// <summary>Resolve a SimHub Custom_xxx GameName to its user-configured
+        /// friendly name and exe list. Returns null for non-custom games or
+        /// when the entry isn't present. Cached for 60 s; cache is bypassed
+        /// when the requested code isn't already cached, so newly-added
+        /// custom games are picked up within one capture tick.</summary>
+        private CustomGameInfo TryGetCustomGameInfo(string gameCode)
+        {
+            if (string.IsNullOrEmpty(gameCode)
+                || !gameCode.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var now = DateTime.UtcNow;
+            bool cacheStale = _customGamesCache == null
+                              || (now - _customGamesCacheLoadedAt).TotalSeconds > CustomGamesCacheStaleSeconds;
+            bool cacheMissForCode = _customGamesCache != null && !_customGamesCache.ContainsKey(gameCode);
+            if (cacheStale || cacheMissForCode) LoadCustomGames();
+
+            return _customGamesCache != null && _customGamesCache.TryGetValue(gameCode, out var info) ? info : null;
+        }
+
+        private void LoadCustomGames()
+        {
+            var newCache = new Dictionary<string, CustomGameInfo>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                // Plugin DLL lives in the SimHub install dir, so this resolves
+                // wherever SimHub is installed.
+                string simHubDir = Path.GetDirectoryName(typeof(TrueforcePlugin).Assembly.Location);
+                string path = Path.Combine(simHubDir, "PluginsData", "CustomGames.json");
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var arr = Newtonsoft.Json.Linq.JArray.Parse(json);
+                    foreach (var item in arr)
+                    {
+                        string code = item["Code"]?.ToString();
+                        if (string.IsNullOrEmpty(code)) continue;
+                        string name = item["Name"]?.ToString()?.Trim();
+                        if (string.IsNullOrEmpty(name)) name = code;
+                        string procStr = item["ProcessNames"]?.ToString() ?? "";
+                        var procs = new List<string>();
+                        foreach (var raw in procStr.Split(','))
+                        {
+                            string p = raw.Trim();
+                            if (p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                                p = p.Substring(0, p.Length - 4);
+                            if (!string.IsNullOrEmpty(p)) procs.Add(p);
+                        }
+                        newCache[code] = new CustomGameInfo
+                        {
+                            Name = name,
+                            ProcessNames = procs.ToArray(),
+                        };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[Trueforce] Could not read CustomGames.json: {ex.Message}");
+            }
+            _customGamesCache = newCache;
+            _customGamesCacheLoadedAt = DateTime.UtcNow;
+        }
+
+        /// <summary>True if <paramref name="procName"/> looks like a sensible
+        /// match for SimHub's <paramref name="gameName"/>. Compares after
+        /// stripping non-alphanumeric chars (so "NASCAR 25" matches "NASCAR25"
+        /// and "Nascar25-Win64-Shipping"), case-insensitive, with substring
+        /// containment in either direction. Empty inputs never match.</summary>
+        private static bool ProcessMatchesGameName(string procName, string gameName)
+        {
+            string normProc = NormalizeForMatch(procName);
+            string normGame = NormalizeForMatch(gameName);
+            // Require at least 4 chars on the shorter side so generic 1-3
+            // letter names ("F1") don't pull in wildcards across the system.
+            int min = Math.Min(normProc.Length, normGame.Length);
+            if (min < 4) return false;
+            return normProc.IndexOf(normGame, StringComparison.OrdinalIgnoreCase) >= 0
+                || normGame.IndexOf(normProc, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string NormalizeForMatch(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char c in s)
+                if (char.IsLetterOrDigit(c)) sb.Append(c);
+            return sb.ToString();
         }
 
         // The Process handle for the game we're currently capturing (or null).
@@ -1114,26 +1871,67 @@ namespace TrueforceForAll.Plugin
                     _helperHost?.SetTargetPid(0);
                 }
 
-                // Scan path: walk the process table once and match against our
-                // pre-built basename lookup. Disposes every Process we don't keep
-                // so handles aren't leaked.
+                // Scan path: walk the process table once. Match priority:
+                //   1. Per-game user override (Settings.AudioCaptureExeOverrides)
+                //      — highest priority so users can fix any miss.
+                //   2. Curated exe→label dict (known-quirky exes like ACC's
+                //      "AC2-Win64-Shipping" or AC's short "acs").
+                //   3. SimHub Custom-game ProcessNames (read from
+                //      CustomGames.json — same source SimHub uses for game
+                //      detection, so the user only configures their exe once).
+                //   4. Fuzzy match against the active GameName (or the
+                //      Custom-game friendly Name) so non-custom games whose
+                //      exe naturally resembles their SimHub name auto-resolve.
+                // Disposes every Process we don't keep so handles aren't leaked.
                 Process keep = null;
                 string label = null;
+                string activeGame = _activeGame;   // snapshot for thread safety
+                string overrideExe = null;
+                if (Settings?.AudioCaptureExeOverrides != null
+                    && !string.IsNullOrEmpty(activeGame)
+                    && Settings.AudioCaptureExeOverrides.TryGetValue(activeGame, out var ovr))
+                    overrideExe = ovr;
+                CustomGameInfo customInfo = TryGetCustomGameInfo(activeGame);
+                HashSet<string> customProcs = null;
+                if (customInfo?.ProcessNames != null && customInfo.ProcessNames.Length > 0)
+                    customProcs = new HashSet<string>(customInfo.ProcessNames, StringComparer.OrdinalIgnoreCase);
+                string fuzzyTarget = !string.IsNullOrEmpty(customInfo?.Name) ? customInfo.Name : activeGame;
+                string overrideLabel = customInfo?.Name ?? activeGame;
+
                 Process[] all;
                 try { all = Process.GetProcesses(); }
                 catch { all = Array.Empty<Process>(); }
 
                 foreach (var p in all)
                 {
-                    if (keep == null && ExeLabels.TryGetValue(p.ProcessName, out string lbl))
+                    if (keep != null) { p.Dispose(); continue; }
+                    if (overrideExe != null
+                        && p.ProcessName.Equals(overrideExe, StringComparison.OrdinalIgnoreCase))
+                    {
+                        keep = p;
+                        label = overrideLabel;
+                        continue;
+                    }
+                    if (ExeLabels.TryGetValue(p.ProcessName, out string lbl))
                     {
                         keep = p;
                         label = lbl;
+                        continue;
                     }
-                    else
+                    if (customProcs != null && customProcs.Contains(p.ProcessName))
                     {
-                        p.Dispose();
+                        keep = p;
+                        label = customInfo.Name;
+                        continue;
                     }
+                    if (!string.IsNullOrEmpty(fuzzyTarget)
+                        && ProcessMatchesGameName(p.ProcessName, fuzzyTarget))
+                    {
+                        keep = p;
+                        label = fuzzyTarget;
+                        continue;
+                    }
+                    p.Dispose();
                 }
 
                 if (keep == null)

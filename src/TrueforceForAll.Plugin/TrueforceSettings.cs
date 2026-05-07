@@ -26,6 +26,14 @@ namespace TrueforceForAll.Plugin
         // true for games never seen before). Independent of preset assignment.
         public Dictionary<string, bool> GameEnabled { get; set; } = new Dictionary<string, bool>();
 
+        // Per-game audio-capture exe override. Keyed by SimHub GameName
+        // (including Custom_xxx codes for user-added games), value is the
+        // exe basename (no ".exe" suffix). Takes priority over the curated
+        // ExeLabels dict and the fuzzy GameName matcher in CaptureTick. Use
+        // when a game doesn't get found automatically — type its exe name
+        // here and we'll capture from it.
+        public Dictionary<string, string> AudioCaptureExeOverrides { get; set; } = new Dictionary<string, string>();
+
         public float MasterGain { get; set; } = 1.0f;
 
         // FFB pass-through tuning. Scale lets users dial down the felt strength
@@ -36,13 +44,21 @@ namespace TrueforceForAll.Plugin
         // (0 ms = no smoothing).
         public float FfbScale                 { get; set; } = 1.0f;
         public bool  FfbInvertSign            { get; set; } = true;
-        public float FfbSmoothTimeConstantMs  { get; set; } = 3.0f;
+        public float FfbSmoothTimeConstantMs  { get; set; } = 0.0f;
 
         // Slew-rate limit on the captured FFB target — caps how fast the
         // signal can change per ms. Lets users run higher FFB scale safely
         // (a 30000-LSB curb spike gets spread over 30+ ms instead of yanking
         // the wheel). 0 = off.
         public float FfbSpikeMaxLsbPerMs      { get; set; } = 0f;
+
+        // For games with native Trueforce support (AC Rally, iRacing, etc.)
+        // — when on, the plugin still streams audio-haptic effects on ep3
+        // but leaves bytes 6-9 (cur) at center so the wheel's actual force
+        // comes from the game's own FFB path rather than our captured /
+        // mirrored value. Avoids fighting with the game's native ep3 cur
+        // writes. Default off.
+        public bool  SkipFfbPassthrough       { get; set; } = false;
 
         // Soft peak cap (LSB) on the post-scale FFB target. Caps how large
         // a spike can get rather than how fast — pairs with FfbSpikeMaxLsbPerMs
@@ -95,9 +111,10 @@ namespace TrueforceForAll.Plugin
         public float MasterGain                { get; set; } = 1.0f;
         public float FfbScale                  { get; set; } = 1.0f;
         public bool  FfbInvertSign             { get; set; } = true;
-        public float FfbSmoothTimeConstantMs   { get; set; } = 3.0f;
+        public float FfbSmoothTimeConstantMs   { get; set; } = 0.0f;
         public float FfbSpikeMaxLsbPerMs       { get; set; } = 0f;
         public float FfbPeakSoftLimitLsb       { get; set; } = 0f;
+        public bool  SkipFfbPassthrough        { get; set; } = false;
         public float DuckDepth                 { get; set; } = 0.5f;
         public float DuckAttackMs              { get; set; } = 5.0f;
         public float DuckReleaseMs             { get; set; } = 80.0f;
@@ -225,9 +242,10 @@ namespace TrueforceForAll.Plugin
         public TractionLossSettings TractionLoss { get; set; }
         public GearShiftSettings    GearShift    { get; set; }
         public AbsClickSettings     AbsClick     { get; set; }
+        public AudioCaptureSettings AudioCapture { get; set; }
 
         public bool IsEmpty =>
             EnginePulse == null && RoadBumps == null && TractionLoss == null &&
-            GearShift   == null && AbsClick  == null;
+            GearShift   == null && AbsClick  == null && AudioCapture == null;
     }
 }

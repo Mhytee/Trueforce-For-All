@@ -1,10 +1,12 @@
-// Reads AC's physics shared memory page (Local\acpmf_physics) at 333 Hz —
-// the same rate AC's native physics solver runs at, and 5.5x finer than the
-// ~60 Hz SimHub IDataPlugin tick. The fidelity gain is most audible in
-// RoadBumpsEffect (sharp curb leading edges get aliased at 60 Hz but stay
-// crisp at 333 Hz) and in TractionLossEffect (which uses AC's direct
-// wheelSlip[] reading instead of the inferred-slip heuristic SimHub mode
-// has to fall back to).
+// Reads AC's physics shared memory page (Local\acpmf_physics) at 1 kHz.
+// AC's native solver runs at 333 Hz, so polling faster than that re-reads
+// the same data — but at 1 kHz any new physics tick is observed within
+// ≤1 ms of being written and lines up with our 1 kHz Trueforce packet
+// cadence, so events never get aliased against packet boundaries. The
+// fidelity gain over the 60 Hz SimHub IDataPlugin tick is most audible
+// in RoadBumpsEffect (sharp curb leading edges) and TractionLossEffect
+// (direct wheelSlip[] reading instead of the heuristic SimHub falls back
+// to).
 //
 // Fields that don't need physics-rate fidelity — MaxRpm (static per car),
 // AbsActive (slow pump events) — are deliberately left for the SimHub
@@ -21,6 +23,7 @@
 using System;
 using System.Diagnostics;
 using System.IO.MemoryMappedFiles;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace TrueforceForAll.Core
@@ -34,6 +37,7 @@ namespace TrueforceForAll.Core
         private const string PhysicsName = "Local\\acpmf_physics";
 
         // Physics page field offsets (Pack=4 sequential layout).
+        private const int OFF_PACKET_ID       = 0;     // int, increments each AC physics tick
         private const int OFF_GAS             = 4;     // float, 0..1
         private const int OFF_GEAR            = 16;    // int, 0=R 1=N 2..N=fwd
         private const int OFF_RPMS            = 20;    // int
@@ -49,9 +53,10 @@ namespace TrueforceForAll.Core
         private const int OFF_WHEEL_SLIP_RR   = 68;
         private const int OFF_LOCAL_ANG_VEL_Y = 300;   // float, yaw rad/s
 
-        // Match AC's native physics rate. Stopwatch-paced so we hit ~333 Hz
-        // despite Windows' default Thread.Sleep granularity of ~15 ms.
-        private const int TickPeriodMs = 3;
+        // 1 kHz poll cadence — see header comment for rationale. Requires
+        // timeBeginPeriod(1), set explicitly inside PollLoop, for Thread.Sleep
+        // to honor 1 ms instead of the OS default ~15 ms.
+        private const int TickPeriodMs = 1;
 
         private MemoryMappedFile         _physicsMmf;
         private MemoryMappedViewAccessor _physicsView;
@@ -59,6 +64,13 @@ namespace TrueforceForAll.Core
         private Thread _thread;
         private volatile bool _stopping;
         private int _running;
+
+        // PacketId-based deduping: AC writes a fresh packetId each physics
+        // tick (~333 Hz), but we poll at 1 kHz. Without deduping, EmitFrame
+        // would fire on every poll, inflating MeasuredHz to the poll rate
+        // instead of AC's actual update rate. -1 sentinel ensures the first
+        // observed packet (whatever its id) always emits.
+        private int _lastPacketId = -1;
 
         public Action<string> Logger { get; set; }
 
@@ -98,6 +110,10 @@ namespace TrueforceForAll.Core
             try { _thread?.Join(2000); } catch { }
             _thread = null;
             CleanupMmf();
+            // Reset so a fresh Start() doesn't accidentally suppress its first
+            // frame if the new AC session's packetId happens to match the
+            // last one we observed.
+            _lastPacketId = -1;
             Interlocked.Exchange(ref _running, 0);
         }
 
@@ -111,33 +127,63 @@ namespace TrueforceForAll.Core
 
         private void PollLoop()
         {
-            var sw = Stopwatch.StartNew();
-            long nextTickMs = 0;
-
-            while (!_stopping)
+            // Bump the system timer to 1 ms granularity for the duration of
+            // the loop. Mirrors what TrueforceDevice.StreamLoop does — without
+            // it, Thread.Sleep(1) below decays to the default ~15 ms tick and
+            // our 1 kHz cadence collapses. timeBeginPeriod is reference-
+            // counted on Windows, so this nests safely with the stream
+            // thread's call.
+            TimeBeginPeriod(1);
+            try
             {
-                try
-                {
-                    EmitFrame(ReadFrame());
-                }
-                catch (Exception ex)
-                {
-                    Log($"AC poll error: {ex.GetType().Name}: {ex.Message}");
-                }
+                var sw = Stopwatch.StartNew();
+                long nextTickMs = 0;
 
-                // Stopwatch-paced cadence. If we fall behind (GC pause, etc.),
-                // reset the phase so we don't spin trying to catch up.
-                nextTickMs += TickPeriodMs;
-                long elapsed = sw.ElapsedMilliseconds;
-                int sleepMs = (int)(nextTickMs - elapsed);
-                if (sleepMs <= 0)
+                while (!_stopping)
                 {
-                    nextTickMs = elapsed + TickPeriodMs;
-                    sleepMs = TickPeriodMs;
+                    try
+                    {
+                        // Only emit when AC has actually written new physics data.
+                        // AC's solver runs at ~333 Hz; polling at 1 kHz keeps
+                        // event detection latency ≤1 ms but produces 2-3 polls
+                        // per real frame — emitting on every poll would re-run
+                        // every effect for the same inputs and inflate MeasuredHz.
+                        int pktId = _physicsView.ReadInt32(OFF_PACKET_ID);
+                        if (pktId != _lastPacketId)
+                        {
+                            _lastPacketId = pktId;
+                            EmitFrame(ReadFrame());
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"AC poll error: {ex.GetType().Name}: {ex.Message}");
+                    }
+
+                    // Stopwatch-paced cadence. If we fall behind (GC pause, etc.),
+                    // reset the phase so we don't spin trying to catch up.
+                    nextTickMs += TickPeriodMs;
+                    long elapsed = sw.ElapsedMilliseconds;
+                    int sleepMs = (int)(nextTickMs - elapsed);
+                    if (sleepMs <= 0)
+                    {
+                        nextTickMs = elapsed + TickPeriodMs;
+                        sleepMs = TickPeriodMs;
+                    }
+                    Thread.Sleep(sleepMs);
                 }
-                Thread.Sleep(sleepMs);
+            }
+            finally
+            {
+                TimeEndPeriod(1);
             }
         }
+
+        [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+        private static extern uint TimeBeginPeriod(uint uPeriod);
+
+        [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+        private static extern uint TimeEndPeriod(uint uPeriod);
 
         private TelemetryFrame ReadFrame()
         {

@@ -28,13 +28,15 @@ namespace TrueforceForAll.Core
         // 250 pps / 1 kHz, but at that rate any audibly-felt amplitude trips
         // the wheel into Trueforce-dominant mode and FFB attenuates.
         public const int PacketHz = 1000;
-        // 16 samples = 4 ms at 4 kHz. The ring naturally stays near-full in
+        // 8 samples = 2 ms at 4 kHz. The ring naturally stays near-full in
         // steady state (producer back-pressures on PushFloats), so its depth
-        // sets the audio latency. With timeBeginPeriod(1) and AboveNormal
-        // priority on both producer and stream threads, StreamTick is reliable
-        // to ~1 ms, so 4 ms gives ~3 ms of jitter headroom — tight but workable.
-        // If underruns appear (audible dropouts), bump back to 32.
-        public const int RingSize = 16;        // power of two
+        // sets the audio latency floor. With timeBeginPeriod(1), Highest
+        // priority on the stream thread, and AboveNormal on the producer,
+        // StreamTick is reliable to <1 ms, so 2 ms gives ~1 ms of jitter
+        // headroom — aggressive but appropriate for high-bandwidth haptics.
+        // If underruns appear (audible clicks during heavy GC / system load),
+        // bump to 16 or 32.
+        public const int RingSize = 8;         // power of two
 
         private const int InitInterPacketUs = 2000; // 2 ms between init packets
 
@@ -94,12 +96,12 @@ namespace TrueforceForAll.Core
 
         // IIR low-pass time constant (ms) applied to the captured FFB target
         // before it goes into ep3 cur. AC's HID++ FFB updates at ~140 Hz (every
-        // 7 ms) but our StreamTick runs at 1 kHz, so without smoothing we'd
-        // emit a 7-step staircase: same value 7 packets in a row, then a step.
-        // The wheel motor "feels" steps as a faint mechanical tick. Smoothing
-        // converts the staircase into a ramp; tradeoff is ~tau ms of lag.
-        // 0 = no smoothing (sample-and-hold). 3 ms is a reasonable default.
-        public float FfbSmoothTimeConstantMs { get; set; } = 3.0f;
+        // 7 ms) but our StreamTick runs at 1 kHz, so smoothing > 0 turns the
+        // 7-step staircase into a ramp at the cost of ~tau ms of group delay.
+        // 0 = no smoothing (sample-and-hold) — chosen as default to prioritize
+        // FFB responsiveness; users who feel the staircase as a mechanical tick
+        // can dial in 1-3 ms via the slider.
+        public float FfbSmoothTimeConstantMs { get; set; } = 0.0f;
         private float _smoothedFfb;
 
         // Slew-rate limit (LSB per ms) applied to the captured FFB target
@@ -201,7 +203,12 @@ namespace TrueforceForAll.Core
                 {
                     IsBackground = true,
                     Name = "TrueforceStream",
-                    Priority = ThreadPriority.AboveNormal,
+                    // Highest (vs AboveNormal on the producer) so that on a
+                    // contended system — Chrome update kicking in, antivirus
+                    // scan, etc. — packet emission keeps its 1 kHz cadence.
+                    // Underruns here are felt as audible clicks; the producer
+                    // can absorb a missed cycle via the ring buffer.
+                    Priority = ThreadPriority.Highest,
                 };
                 _streamThread.Start();
             }
