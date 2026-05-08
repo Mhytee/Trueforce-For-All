@@ -314,3 +314,23 @@ begin
   // USBPcapCMD.exe is on disk by now (either pre-existing or just installed).
   Result := FindUsbPcapCmdPath <> '';
 end;
+
+// Override the wizard's Finished page so the user has a clear, plugin-
+// specific next-steps list instead of a generic "Setup is complete".
+// SimHub doesn't auto-enable plugins after a fresh DLL drop, and new
+// users won't know to add it to the sidebar.
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID = wpFinished then
+  begin
+    WizardForm.FinishedHeadingLabel.Caption :=
+      'Trueforce For All is installed';
+    WizardForm.FinishedLabel.Caption :=
+      'Next steps:' + #13#10 + #13#10 +
+      '1. Make sure Logitech G HUB is closed (it claims the wheel''s HID interface and blocks this plugin).' + #13#10 + #13#10 +
+      '2. Launch SimHub.' + #13#10 + #13#10 +
+      '3. Open the Plugins page (left sidebar). Find "Trueforce For All" in the list and toggle it on if it isn''t already.' + #13#10 + #13#10 +
+      '4. To pin the plugin to the left sidebar for quick access, click the star next to its name on the Plugins page.' + #13#10 + #13#10 +
+      'Then drive a supported game and tune via the plugin''s settings panel.';
+  end;
+end;

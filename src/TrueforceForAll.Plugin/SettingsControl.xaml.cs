@@ -1964,12 +1964,18 @@ namespace TrueforceForAll.Plugin
 
         private void PerfTfRingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
+            // Bail before touching any UI / plugin state when invoked
+            // during XAML load: the parameterless constructor runs
+            // InitializeComponent() before the chained ctor sets _plugin,
+            // and the slider's initial Value-set fires this handler with
+            // _plugin == null and other named UI elements possibly not yet
+            // wired (NRE'd PerfTfRingText.Text in 0.1.0-localtest4).
+            if (_suppressEvents || _plugin == null) return;
             // The slider snaps to TickFrequency=8 so e.NewValue is already
             // {8,16,24,32,40,48,56,64} — round to nearest pow2 to avoid the
             // 24/40/48/56 in-betweens (Apply() also sanitizes defensively).
             int v = NearestPow2((int)Math.Round(e.NewValue), 8, 64);
-            PerfTfRingText.Text = FormatRing(v);
-            if (_suppressEvents || _plugin == null) return;
+            if (PerfTfRingText != null) PerfTfRingText.Text = FormatRing(v);
             // Only push down to the device in Manual mode — in Auto, the
             // ratchet owns ring sizes and slider edits would conflict.
             if (_plugin.Settings?.Performance?.Mode == PerformanceMode.Manual)
@@ -1978,9 +1984,9 @@ namespace TrueforceForAll.Plugin
 
         private void PerfAudioRingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            int v = NearestPow2((int)Math.Round(e.NewValue), 8, 128);
-            PerfAudioRingText.Text = FormatRing(v);
             if (_suppressEvents || _plugin == null) return;
+            int v = NearestPow2((int)Math.Round(e.NewValue), 8, 128);
+            if (PerfAudioRingText != null) PerfAudioRingText.Text = FormatRing(v);
             if (_plugin.Settings?.Performance?.Mode == PerformanceMode.Manual)
                 _plugin.ApplyAudioRingSize(v);
         }
