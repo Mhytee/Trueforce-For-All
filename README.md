@@ -12,12 +12,13 @@ Tested on a GPRO wheel with Assetto Corsa and Wreckfest 2.
 ## Telemetry
 
 By default the plugin runs on SimHub's universal 60 Hz telemetry feed, which carries the standard fields all the core effects need.
+Simhub is free but the 60hz feed requires a licensed copy of Simhub which carries a small one time payment. Some titles read directly from the games telemetry, bypassing Simhubs limitations and the need for a licensed copy. (Assetto Corsa, Forza Horizon 4/5/6) 
 
-**Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than the 60 Hz feed can deliver.
+**Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than Simhubs 60 Hz feed can deliver. 
 
 **Forza Horizon 4/5/6 and Forza Motorsport** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. This additional surface information is updated at 60hz but allows for more depth in surface detail effects than some other titles may offer.  
 
-Additional per-title enhancements will be added over time. 
+Additional per-title enhancements/bypasses will be added over time. 
 
 **Bonus: optional FFB spike reduction.**  Some games deliver curb and
 collision FFB spikes wildly out of proportion to what's safe or
