@@ -7,8 +7,15 @@ plugin makes it work everywhere SimHub does. Built on top of the wire
 protocol reverse-engineered by the [mescon Linux driver project][mescon] --
 no Logitech SDK, no G HUB integration, no whitelist.
 
-Tested on a GPRO wheel with Assetto Corsa and Wreckfest 2. Works in principle with any game
-SimHub can read telemetry from.
+Tested on a GPRO wheel with Assetto Corsa and Wreckfest 2.
+
+The telemetry-driven effects work in any game SimHub can read.
+Assetto Corsa gets an enhanced path that reads physics directly from
+the game's shared memory at 1 kHz, bypassing SimHub for sharper curb
+edges and direct wheel-slip readings; adding more games to that path
+is on the roadmap. Games SimHub can't read still work for audio-based
+haptics and the FFB spike-reduction filter, just without the
+telemetry-derived effect set.
 
 **Bonus: optional FFB spike reduction.**  Some games deliver curb and
 collision FFB spikes wildly out of proportion to what's safe or
@@ -46,8 +53,9 @@ G923 support may come in the future.
 The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
 in real time, mixing several signal sources:
 
-- **Telemetry-derived effects** synthesized from the live game data SimHub
-  exposes:
+- **Telemetry-derived effects** synthesized from live game data. AC
+  reads the physics shared memory directly at 1 kHz; other games come
+  through SimHub at its native data tick.
   
   - **Engine pulse** -- a rumble at the engine's firing frequency, scaled
     by RPM. The signature Trueforce sensation; idle gives a gentle hum,
@@ -60,10 +68,11 @@ in real time, mixing several signal sources:
     derived from the difference between wheel speed and ground speed plus
     a yaw-rate / lateral-G discrepancy check.
     
-- **Audio-derived effects** -- WASAPI loopback captures the
-  game's audio output (engine, tire, impact sounds) and feeds it into the
-  wheel as a low-latency buzz. Lets you feel things the telemetry doesn't
-  expose.
+- **Audio-derived effects** -- WASAPI loopback captures the game's
+  audio output (engine, tire, impact sounds) and feeds it into the
+  wheel as a low-latency buzz. Lets you feel things the telemetry
+  doesn't expose, and works even for games SimHub can't read since
+  capture targets the game process directly.
   
 - **FFB pass-through with spike reduction.** When a game already drives
   the wheel via standard HID++ force feedback (Assetto Corsa does), the
