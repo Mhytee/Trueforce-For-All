@@ -506,16 +506,18 @@ namespace TrueforceForAll.Plugin
         private void MarkEffectDirty(EffectKind which)
         {
             bool dirty;
-            if (_plugin == null || string.IsNullOrEmpty(_plugin.ActivePresetName))
+            var kind = (TrueforcePlugin.SectionKind)(int)which;
+            if (_plugin == null) dirty = true;
+            else if (!_plugin.SectionHasAnchor(kind))
             {
-                // No active preset = no anchor → fall back to sticky-true
-                // behavior. (Auto-save flow will create a preset on first
-                // save, eliminating this state in normal use.)
+                // No game-preset snapshot AND no per-car override anchor —
+                // fall back to sticky-true so a global edit without a saved
+                // baseline still surfaces as unsaved.
                 dirty = true;
             }
             else
             {
-                dirty = _plugin.IsSectionDirty((TrueforcePlugin.SectionKind)(int)which);
+                dirty = _plugin.IsSectionDirty(kind);
             }
 
             if (_effectDirty[(int)which] == dirty) return;
@@ -543,15 +545,17 @@ namespace TrueforceForAll.Plugin
             bool hasPreset = !string.IsNullOrEmpty(_plugin.ActivePresetName);
             for (int i = 0; i < _effectDirty.Length; i++)
             {
+                var kind = (TrueforcePlugin.SectionKind)i;
                 bool dirty;
-                if (!hasPreset)
+                if (!_plugin.SectionHasAnchor(kind))
                 {
-                    // No anchor — preserve sticky bit (don't auto-clear).
+                    // No anchor — preserve sticky bit so a no-preset edit
+                    // doesn't get auto-cleared by a refresh.
                     dirty = _effectDirty[i];
                 }
                 else
                 {
-                    dirty = _plugin.IsSectionDirty((TrueforcePlugin.SectionKind)i);
+                    dirty = _plugin.IsSectionDirty(kind);
                 }
                 if (_effectDirty[i] == dirty) continue;
                 _effectDirty[i] = dirty;
@@ -568,6 +572,18 @@ namespace TrueforceForAll.Plugin
             bool any = false;
             int dirtyCount = 0;
             for (int i = 0; i < _effectDirty.Length; i++) if (_effectDirty[i]) { any = true; dirtyCount++; }
+            // Roll car-preset drift into the global indicator independently
+            // of per-section bits: per-section dirty bits derive from
+            // game-preset comparisons (and become sticky-true when no game
+            // preset is active), so a car-preset-only edit might not light
+            // up any per-section bit. IsActiveCarPresetDirty checks live vs
+            // saved car override directly and stays accurate either way.
+            bool carDirty = _plugin?.IsActiveCarPresetDirty() ?? false;
+            if (carDirty)
+            {
+                any = true;
+                if (dirtyCount == 0) dirtyCount = 1;
+            }
             if (any != _dirty)
             {
                 _dirty = any;
@@ -576,7 +592,7 @@ namespace TrueforceForAll.Plugin
             // Drive the main Save preset button's prominent-amber styling +
             // content based on dirty count. Tag="dirty" lights up the amber
             // template trigger; content escalates to "Save all" when 2+
-            // sections need committing.
+            // sources need committing.
             if (SavePresetButton != null)
             {
                 SavePresetButton.Tag = any ? "dirty" : null;
@@ -1567,24 +1583,80 @@ namespace TrueforceForAll.Plugin
         private void SavePreset_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
+
+            // Save in two passes when both are dirty: car preset first
+            // (because the fork-on-built-in dialog is interactive and the
+            // user might cancel), then game preset. After the car save we
+            // recompute per-section dirty so we know whether anything is
+            // still dirty on the game side before invoking the game save.
+            bool carDirty = _plugin.IsActiveCarPresetDirty();
+            if (carDirty)
+            {
+                if (!SaveActiveCarPresetWithFork()) return; // user cancelled
+                RecomputeAllEffectDirty();
+            }
+
+            // Game-side dirty: any per-section bit still set after the car
+            // save means tuning has drifted from the active preset snapshot
+            // outside the car-override scope.
+            bool gameDirty = false;
+            for (int i = 0; i < _effectDirty.Length; i++) if (_effectDirty[i]) { gameDirty = true; break; }
+            if (!gameDirty)
+            {
+                // Nothing left to save — refresh and exit cleanly so the
+                // header / button styling reflects the cleaned state.
+                RefreshFromPlugin();
+                return;
+            }
+
             string activeP = _plugin.ActivePresetName;
-            bool builtin = !string.IsNullOrEmpty(activeP) && _plugin.IsBuiltinPreset(activeP);
+            bool   builtin = !string.IsNullOrEmpty(activeP) && _plugin.IsBuiltinPreset(activeP);
 
             // Fork case: no active preset, or active is a built-in we can't
-            // overwrite. Auto-create a game-named user preset and bind it as
-            // the game's default.
+            // overwrite. Auto-create a game-named user preset and bind it
+            // as the game's default.
             if (string.IsNullOrEmpty(activeP) || builtin)
             {
                 ForkAndSaveAsGamePreset();
                 return;
             }
-            // Regular overwrite
+            // Regular overwrite.
             if (MessageBox.Show($"Overwrite preset '{activeP}' with current settings?",
                                 "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
                 return;
             _plugin.SavePresetAs(activeP);
             ClearDirty();
             RefreshFromPlugin();
+        }
+
+        /// <summary>Save the live car override to its active preset file.
+        /// On a built-in, prompts for a new user-preset name and forks; on
+        /// a user preset, in-place save. Returns false if the user
+        /// cancelled the fork prompt (caller should abort the save chain).
+        /// Returns true if save succeeded or there was nothing to save.</summary>
+        private bool SaveActiveCarPresetWithFork()
+        {
+            if (_plugin == null || string.IsNullOrEmpty(_plugin.ActiveCarId)) return true;
+            string carId      = _plugin.ActiveCarId;
+            string activeName = _plugin.GetActiveCarPresetName(carId);
+            bool   onBuiltin  = !string.IsNullOrEmpty(activeName)
+                                && _plugin.IsCarPresetBuiltin(carId, activeName);
+
+            if (string.IsNullOrEmpty(activeName) || onBuiltin)
+            {
+                string suggestion = onBuiltin ? StripDefaultSuffix(activeName) : carId;
+                string newName = PromptForCarPresetName(
+                    title: "Save unsaved car-preset changes",
+                    body: onBuiltin
+                        ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{carId}':"
+                        : $"Save the current tuning as a new user preset for '{carId}':",
+                    initial: suggestion,
+                    existing: _plugin.GetCarPresets(carId));
+                if (string.IsNullOrEmpty(newName)) return false; // cancelled
+                _plugin.SaveActiveCarPresetAs(newName);
+                return true;
+            }
+            return _plugin.PersistActiveCarOverride();
         }
 
         /// <summary>Fork-on-save flow: create a new user preset named after

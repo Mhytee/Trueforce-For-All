@@ -1337,6 +1337,38 @@ namespace TrueforceForAll.Plugin
             return !string.IsNullOrEmpty(presetName) && IsCarPresetBuiltin(_activeCarId, presetName);
         }
 
+        /// <summary>True iff the live per-car override for the active car
+        /// has drifted from the snapshot last loaded from disk. Used by the
+        /// UI to roll car-preset edits into the global "★ unsaved"
+        /// indicator and to gate the Save preset button's car-side save
+        /// step.</summary>
+        public bool IsActiveCarPresetDirty()
+        {
+            if (Settings?.CarOverrides == null || string.IsNullOrEmpty(_activeCarId)) return false;
+            Settings.CarOverrides.TryGetValue(_activeCarId, out var live);
+            _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var saved);
+            return !CarOverrideEquals(live, saved);
+        }
+
+        // Deep equality on a CarOverride. Both null = equal; one null +
+        // other empty = equal (an empty override is the same as no override
+        // for save / dirty purposes); otherwise per-section pairwise via
+        // the existing Eq helpers, treating null sub-sections as equal only
+        // when both sides are null.
+        private static bool CarOverrideEquals(CarOverride a, CarOverride b)
+        {
+            bool aEmpty = a == null || a.IsEmpty;
+            bool bEmpty = b == null || b.IsEmpty;
+            if (aEmpty && bEmpty) return true;
+            if (aEmpty || bEmpty) return false;
+            return Eq(a.EnginePulse,  b.EnginePulse)
+                && Eq(a.RoadBumps,    b.RoadBumps)
+                && Eq(a.TractionLoss, b.TractionLoss)
+                && Eq(a.GearShift,    b.GearShift)
+                && Eq(a.AbsClick,     b.AbsClick)
+                && Eq(a.AudioCapture, b.AudioCapture);
+        }
+
         /// <summary>Snapshot a section's current values into the per-car
         /// override (in-memory only; does NOT write to disk). If the
         /// section already has an override, keeps it as-is. After this call
@@ -1470,19 +1502,77 @@ namespace TrueforceForAll.Plugin
         /// so changing a value and changing it back clears the dirty state.</summary>
         public bool IsSectionDirty(SectionKind kind)
         {
-            if (Settings == null || string.IsNullOrEmpty(_activePresetName)) return false;
-            if (Settings.Presets == null || !Settings.Presets.TryGetValue(_activePresetName, out var snap) || snap == null) return false;
+            if (Settings == null) return false;
+            bool hasGamePreset = !string.IsNullOrEmpty(_activePresetName)
+                && Settings.Presets != null
+                && Settings.Presets.TryGetValue(_activePresetName, out var snap)
+                && snap != null;
 
+            if (hasGamePreset)
+            {
+                Settings.Presets.TryGetValue(_activePresetName, out snap);
+                switch (kind)
+                {
+                    case SectionKind.Master:   return !MasterEquals(snap);
+                    case SectionKind.Ducking:  return !DuckingEquals(snap);
+                    case SectionKind.Audio:    return !EffectEquals(snap, EffectField.Audio);
+                    case SectionKind.Engine:   return !EffectEquals(snap, EffectField.Engine);
+                    case SectionKind.Bumps:    return !EffectEquals(snap, EffectField.Bumps);
+                    case SectionKind.Traction: return !EffectEquals(snap, EffectField.Traction);
+                    case SectionKind.Shift:    return !EffectEquals(snap, EffectField.Shift);
+                    case SectionKind.Abs:      return !EffectEquals(snap, EffectField.Abs);
+                }
+                return false;
+            }
+
+            // Fallback when no game preset is active: sections with a
+            // per-car override compare live override vs saved override.
+            // Sections without an override (or non-per-car kinds like
+            // Master / Ducking) have no anchor and return false; the UI
+            // layer falls back to sticky-true via SectionHasAnchor for
+            // those.
+            if (!string.IsNullOrEmpty(_activeCarId) && Settings.CarOverrides != null)
+            {
+                Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo);
+                _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var savedCo);
+                switch (kind)
+                {
+                    case SectionKind.Audio:    if (liveCo?.AudioCapture != null) return !Eq(liveCo.AudioCapture, savedCo?.AudioCapture); break;
+                    case SectionKind.Engine:   if (liveCo?.EnginePulse  != null) return !Eq(liveCo.EnginePulse,  savedCo?.EnginePulse);  break;
+                    case SectionKind.Bumps:    if (liveCo?.RoadBumps    != null) return !Eq(liveCo.RoadBumps,    savedCo?.RoadBumps);    break;
+                    case SectionKind.Traction: if (liveCo?.TractionLoss != null) return !Eq(liveCo.TractionLoss, savedCo?.TractionLoss); break;
+                    case SectionKind.Shift:    if (liveCo?.GearShift    != null) return !Eq(liveCo.GearShift,    savedCo?.GearShift);    break;
+                    case SectionKind.Abs:      if (liveCo?.AbsClick     != null) return !Eq(liveCo.AbsClick,     savedCo?.AbsClick);     break;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>True iff the section has either a game-preset snapshot
+        /// or a per-car override to compare against. Used by the UI to
+        /// pick between IsSectionDirty (precise) and sticky-true (fallback
+        /// when no anchor exists).</summary>
+        public bool SectionHasAnchor(SectionKind kind)
+        {
+            if (Settings == null) return false;
+            bool hasGamePreset = !string.IsNullOrEmpty(_activePresetName)
+                && Settings.Presets != null
+                && Settings.Presets.ContainsKey(_activePresetName);
+            if (hasGamePreset) return true;
+
+            // Master / Ducking are not per-car, so without a game preset
+            // they have no anchor.
+            if (kind == SectionKind.Master || kind == SectionKind.Ducking) return false;
+            if (string.IsNullOrEmpty(_activeCarId) || Settings.CarOverrides == null) return false;
+            if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo) || liveCo == null) return false;
             switch (kind)
             {
-                case SectionKind.Master:   return !MasterEquals(snap);
-                case SectionKind.Ducking:  return !DuckingEquals(snap);
-                case SectionKind.Audio:    return !EffectEquals(snap, EffectField.Audio);
-                case SectionKind.Engine:   return !EffectEquals(snap, EffectField.Engine);
-                case SectionKind.Bumps:    return !EffectEquals(snap, EffectField.Bumps);
-                case SectionKind.Traction: return !EffectEquals(snap, EffectField.Traction);
-                case SectionKind.Shift:    return !EffectEquals(snap, EffectField.Shift);
-                case SectionKind.Abs:      return !EffectEquals(snap, EffectField.Abs);
+                case SectionKind.Audio:    return liveCo.AudioCapture != null;
+                case SectionKind.Engine:   return liveCo.EnginePulse  != null;
+                case SectionKind.Bumps:    return liveCo.RoadBumps    != null;
+                case SectionKind.Traction: return liveCo.TractionLoss != null;
+                case SectionKind.Shift:    return liveCo.GearShift    != null;
+                case SectionKind.Abs:      return liveCo.AbsClick     != null;
             }
             return false;
         }
