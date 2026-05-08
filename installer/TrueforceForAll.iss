@@ -132,14 +132,23 @@ Filename: "powershell.exe"; \
     Flags: runhidden waituntilterminated
 
 ; Postinstall checkbox on the Finished page: launch SimHub when the user
-; clicks Finish (default checked). runasoriginaluser drops elevation so
-; SimHub doesn't end up running as admin just because the installer was;
-; nowait + skipifsilent make this a no-op for /SILENT installs and let
-; the installer exit immediately rather than blocking on SimHub's
-; startup.
+; clicks Finish (default checked).
+;
+;   shellexec      - go through ShellExecute (the same path Explorer uses
+;                    when double-clicking the exe). Without this, direct
+;                    CreateProcess from an elevated installer with
+;                    runasoriginaluser was producing a headless SimHub
+;                    process — alive in Task Manager, no visible window —
+;                    in 0.1.0-localtest8.
+;   WorkingDir     - SimHub looks for resources relative to its install
+;                    dir; without this the CWD is the installer's tmp dir.
+;   runasoriginaluser - drop elevation so SimHub runs in the user's normal
+;                    token, not as admin.
+;   nowait + skipifsilent - exit immediately and skip on /SILENT installs.
 Filename: "{app}\SimHubWPF.exe"; \
+    WorkingDir: "{app}"; \
     Description: "Launch SimHub now"; \
-    Flags: postinstall nowait skipifsilent runasoriginaluser
+    Flags: postinstall nowait skipifsilent runasoriginaluser shellexec
 
 [Code]
 const
