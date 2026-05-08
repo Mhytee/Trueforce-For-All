@@ -18,6 +18,30 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>Number of engine cylinders (1-12). Default 4 (typical sim car).</summary>
         public int Cylinders { get; set; } = 4;
 
+        /// <summary>Cylinder count auto-detected from the active telemetry
+        /// source (e.g. Forza's NumCylinders field). When non-null AND the
+        /// plugin has flagged this car as "no per-car engine override," the
+        /// firing-frequency calc uses this value instead of <see cref="Cylinders"/>.
+        /// Plugin clears it on car change so a new car re-detects from its
+        /// own telemetry. UI can read it to show "(auto: 8)" alongside the
+        /// slider.</summary>
+        public int? AutoCylinders { get; set; }
+
+        /// <summary>Whether <see cref="AutoCylinders"/> should override the
+        /// configured <see cref="Cylinders"/> for this frame. Plugin sets it
+        /// true while no per-car engine override is active, false once the
+        /// user has saved per-car cylinder settings (so their override wins).
+        /// Defaults true so the path Just Works for un-customized cars.</summary>
+        public bool UseAutoCylinders { get; set; } = true;
+
+        /// <summary>Effective cylinder count actually being used right now —
+        /// AutoCylinders if active, else Cylinders. Read-only helper for the
+        /// UI's "(auto: 8)" indicator.</summary>
+        public int EffectiveCylinders =>
+            (UseAutoCylinders && AutoCylinders is int auto && auto >= 1 && auto <= 12)
+                ? auto
+                : Cylinders;
+
         /// <summary>Multiplier on the firing-frequency calc; let per-car overrides shift the pitch.</summary>
         public float PitchMultiplier { get; set; } = 1.0f;
 
@@ -151,7 +175,7 @@ namespace TrueforceForAll.Plugin.Effects
             const double idleRpm = 800.0, redlineRpm = 7500.0;
             double rpm = idleRpm + (redlineRpm - idleRpm) * rpmNorm;
 
-            int cyl = Cylinders;
+            int cyl = EffectiveCylinders;
             if (cyl < 1) cyl = 1; else if (cyl > 12) cyl = 12;
             _osc.Freq = rpm / 60.0 * cyl / 2.0 * PitchMultiplier;
 
@@ -165,10 +189,18 @@ namespace TrueforceForAll.Plugin.Effects
         {
             if (IsTesting) return;
 
+            // Absorb auto-detected cylinder count into AutoCylinders. Sticky
+            // — keep the last seen value during pause / between frames so
+            // EffectiveCylinders doesn't flip-flop while the user is in a
+            // menu. Plugin clears AutoCylinders on car change so the next
+            // car's NumCylinders re-populates fresh.
+            if (f.NumCylinders is int n && n >= 1 && n <= 12)
+                AutoCylinders = n;
+
             double rpm = f.Rpms;
             if (rpm < 100) { _osc.Amp = 0; return; }   // engine off
 
-            int cyl = Cylinders;
+            int cyl = EffectiveCylinders;
             if (cyl < 1) cyl = 1; else if (cyl > 12) cyl = 12;
             _osc.Freq = rpm / 60.0 * cyl / 2.0 * PitchMultiplier;
 

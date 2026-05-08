@@ -28,20 +28,23 @@ namespace TrueforceForAll.Plugin
         // (nothing to revert to otherwise). Master + Ducking are global-only;
         // their popover collapses to the preset choices (no per-car option).
         // Values mirror TrueforcePlugin.SectionKind so we can pass through.
-        private enum EffectKind { Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, Master = 0, Ducking = 1 }
-        private readonly bool[] _effectDirty = new bool[8];
+        // Numeric values mirror TrueforcePlugin.SectionKind so we can pass
+        // through with a cast.
+        private enum EffectKind { Master = 0, Ducking = 1, Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, SpikeReduction = 8 }
+        private readonly bool[] _effectDirty = new bool[9];
         private System.Windows.Controls.Button GetEffectSaveBtn(EffectKind which)
         {
             switch (which)
             {
-                case EffectKind.Master:   return MasterSaveBtn;
-                case EffectKind.Ducking:  return DuckingSaveBtn;
-                case EffectKind.Audio:    return AudioSaveBtn;
-                case EffectKind.Engine:   return EngineSaveBtn;
-                case EffectKind.Bumps:    return BumpsSaveBtn;
-                case EffectKind.Traction: return TractionSaveBtn;
-                case EffectKind.Shift:    return ShiftSaveBtn;
-                case EffectKind.Abs:      return AbsSaveBtn;
+                case EffectKind.Master:         return MasterSaveBtn;
+                case EffectKind.Ducking:        return DuckingSaveBtn;
+                case EffectKind.Audio:          return AudioSaveBtn;
+                case EffectKind.Engine:         return EngineSaveBtn;
+                case EffectKind.Bumps:          return BumpsSaveBtn;
+                case EffectKind.Traction:       return TractionSaveBtn;
+                case EffectKind.Shift:          return ShiftSaveBtn;
+                case EffectKind.Abs:            return AbsSaveBtn;
+                case EffectKind.SpikeReduction: return SpikeReductionSaveBtn;
             }
             return null;
         }
@@ -49,14 +52,15 @@ namespace TrueforceForAll.Plugin
         {
             switch (which)
             {
-                case EffectKind.Master:   return MasterRevertBtn;
-                case EffectKind.Ducking:  return DuckingRevertBtn;
-                case EffectKind.Audio:    return AudioRevertBtn;
-                case EffectKind.Engine:   return EngineRevertBtn;
-                case EffectKind.Bumps:    return BumpsRevertBtn;
-                case EffectKind.Traction: return TractionRevertBtn;
-                case EffectKind.Shift:    return ShiftRevertBtn;
-                case EffectKind.Abs:      return AbsRevertBtn;
+                case EffectKind.Master:         return MasterRevertBtn;
+                case EffectKind.Ducking:        return DuckingRevertBtn;
+                case EffectKind.Audio:          return AudioRevertBtn;
+                case EffectKind.Engine:         return EngineRevertBtn;
+                case EffectKind.Bumps:          return BumpsRevertBtn;
+                case EffectKind.Traction:       return TractionRevertBtn;
+                case EffectKind.Shift:          return ShiftRevertBtn;
+                case EffectKind.Abs:            return AbsRevertBtn;
+                case EffectKind.SpikeReduction: return SpikeReductionRevertBtn;
             }
             return null;
         }
@@ -64,21 +68,22 @@ namespace TrueforceForAll.Plugin
         {
             switch (which)
             {
-                case EffectKind.Master:   return "Master";
-                case EffectKind.Ducking:  return "Sidechain ducking";
-                case EffectKind.Audio:    return "Audio capture";
-                case EffectKind.Engine:   return "Engine pulse";
-                case EffectKind.Bumps:    return "Road bumps";
-                case EffectKind.Traction: return "Traction loss";
-                case EffectKind.Shift:    return "Gear shift";
-                case EffectKind.Abs:      return "ABS pulse";
+                case EffectKind.Master:         return "Master";
+                case EffectKind.Ducking:        return "Sidechain ducking";
+                case EffectKind.Audio:          return "Audio capture";
+                case EffectKind.Engine:         return "Engine pulse";
+                case EffectKind.Bumps:          return "Road bumps";
+                case EffectKind.Traction:       return "Traction loss";
+                case EffectKind.Shift:          return "Gear shift";
+                case EffectKind.Abs:            return "ABS pulse";
+                case EffectKind.SpikeReduction: return "FFB spike reduction";
             }
             return "section";
         }
-        // Master + Ducking are global-only. The save popover hides the
-        // per-car option for these (no override concept).
+        // Master + Ducking + SpikeReduction are global-only. The save popover
+        // hides the per-car option for these (no override concept).
         private static bool SectionHasCarScope(EffectKind w)
-            => w != EffectKind.Master && w != EffectKind.Ducking;
+            => w != EffectKind.Master && w != EffectKind.Ducking && w != EffectKind.SpikeReduction;
 
         public SettingsControl()
         {
@@ -181,6 +186,19 @@ namespace TrueforceForAll.Plugin
 
                 CaptureExeOverrideBox.Text = _plugin.ActiveCaptureExeOverride ?? "";
 
+                // Forza section
+                var fz = _plugin.Settings?.Forza;
+                if (fz != null)
+                {
+                    ForzaEnabledCheck.IsChecked        = fz.Enabled;
+                    ForzaPortBox.Text                  = fz.Port.ToString();
+                    ForzaBindBox.Text                  = fz.BindAddress ?? "0.0.0.0";
+                    ForzaAlwaysListenCheck.IsChecked   = fz.AlwaysListen;
+                    ForzaForwardEnabledCheck.IsChecked = fz.ForwardEnabled;
+                    ForzaForwardHostBox.Text           = fz.ForwardHost ?? "127.0.0.1";
+                    ForzaForwardPortBox.Text           = fz.ForwardPort > 0 ? fz.ForwardPort.ToString() : "";
+                }
+
                 // Header strip context.
                 HeaderGameText.Text = string.IsNullOrEmpty(game) ? "(none)" : game;
                 HeaderCarText.Text  = string.IsNullOrEmpty(_plugin.ActiveCarId) ? "(none)" : _plugin.ActiveCarId;
@@ -226,6 +244,16 @@ namespace TrueforceForAll.Plugin
                     SelectWaveform(BumpsWaveformCombo, bs.Waveform);
                     BumpsFreqSlider.Value          = bs.Freq;
                     BumpsFreqText.Text             = ((int)bs.Freq).ToString();
+                    BumpsSurfaceEnabledCheck.IsChecked      = bs.SurfaceEnabled;
+                    BumpsSurfaceGainSlider.Value            = bs.SurfaceGain;
+                    BumpsSurfaceGainText.Text               = bs.SurfaceGain.ToString("F2");
+                    BumpsSurfaceFreqSlider.Value            = bs.SurfaceFreq;
+                    BumpsSurfaceFreqText.Text               = ((int)bs.SurfaceFreq).ToString();
+                    SelectWaveform(BumpsSurfaceWaveformCombo, bs.SurfaceWaveform);
+                    BumpsSurfaceRumbleScaleSlider.Value     = bs.SurfaceRumbleScale;
+                    BumpsSurfaceRumbleScaleText.Text        = bs.SurfaceRumbleScale.ToString("F2");
+                    BumpsRumbleStripPulseSlider.Value       = bs.RumbleStripPulseAmp;
+                    BumpsRumbleStripPulseText.Text          = bs.RumbleStripPulseAmp.ToString("F2");
                 }
                 // Traction
                 var ts = _plugin.ActiveTraction;
@@ -324,6 +352,81 @@ namespace TrueforceForAll.Plugin
                 FfbTapText.Text = _plugin.FfbTapStatus;
                 StreamText.Text = _plugin.StreamStatus;
                 VoicesText.Text = _plugin.ActiveVoiceCount.ToString();
+
+                // Forza UDP section visibility — only relevant when running a
+                // Forza title or when AlwaysListen is on (lets users toggle
+                // it off without launching Forza first).
+                if (ForzaSection != null)
+                {
+                    var want = _plugin.ShouldShowForzaSection
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                    if (ForzaSection.Visibility != want) ForzaSection.Visibility = want;
+                }
+
+                // Forza listener status: the source object exposes packet
+                // count + last IsRaceOn. When the source isn't active (game
+                // isn't Forza, or AlwaysListen is off + no Forza game), we
+                // show "(idle)". This is the user's primary "is my Data Out
+                // wiring working" feedback so make it specific.
+                // Cylinder auto-detect indicator: shows the live AutoCylinders
+                // when telemetry has supplied one and the user has no per-car
+                // engine override. Empty otherwise so the slider's own number
+                // is the authoritative readout.
+                if (EngineCylindersAutoText != null)
+                {
+                    var ep = _plugin.EnginePulse;
+                    if (ep != null && ep.UseAutoCylinders && ep.AutoCylinders is int auto
+                        && auto >= 1 && auto <= 12 && auto != ep.Cylinders)
+                    {
+                        EngineCylindersAutoText.Text =
+                            $"Auto-detected from telemetry: {auto}. Slider value is overridden until you save a per-car engine override.";
+                    }
+                    else
+                    {
+                        EngineCylindersAutoText.Text = "";
+                    }
+                }
+
+                if (ForzaStatusText != null)
+                {
+                    var fzSrc = _plugin.TelemetrySource as TrueforceForAll.Core.ForzaUdpTelemetrySource;
+                    if (fzSrc == null)
+                    {
+                        ForzaStatusText.Text = (_plugin.Settings?.Forza?.Enabled ?? true)
+                            ? "(idle, not active for current game)"
+                            : "(disabled)";
+                    }
+                    else if (fzSrc.PacketsReceived == 0)
+                    {
+                        ForzaStatusText.Text =
+                            $"Listening on {(_plugin.Settings?.Forza?.BindAddress ?? "0.0.0.0")}:{(_plugin.Settings?.Forza?.Port ?? 0)} — no packets yet (check Forza Data Out config + the troubleshooter below)";
+                    }
+                    else
+                    {
+                        ForzaStatusText.Text = fzSrc.LastIsRaceOn
+                            ? $"Receiving — {fzSrc.PacketsReceived:N0} packets, driving"
+                            : $"Receiving — {fzSrc.PacketsReceived:N0} packets, paused / in menu";
+                    }
+
+                    if (ForzaForwardStatusText != null)
+                    {
+                        var fwd = _plugin.Settings?.Forza;
+                        if (fwd == null || !fwd.ForwardEnabled)
+                        {
+                            ForzaForwardStatusText.Text = "(disabled)";
+                        }
+                        else if (fzSrc == null)
+                        {
+                            ForzaForwardStatusText.Text = "(armed, will relay once a Forza title is detected)";
+                        }
+                        else
+                        {
+                            ForzaForwardStatusText.Text =
+                                $"{fzSrc.PacketsForwarded:N0} packets relayed to {fwd.ForwardHost}:{fwd.ForwardPort}";
+                        }
+                    }
+                }
             }
 
             // Telemetry-source line in Diagnostics: source name + live measured Hz,
@@ -702,7 +805,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetFfbSpikeTamingEnabled(SpikeTamingEnabledCheck.IsChecked == true);
-            MarkEffectDirty(EffectKind.Master);
+            MarkEffectDirty(EffectKind.SpikeReduction);
         }
 
         private void CaptureExeOverride_LostFocus(object sender, RoutedEventArgs e)
@@ -748,7 +851,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             FfbSpikeLimitText.Text = v <= 0 ? "off" : ((int)v).ToString();
             _plugin.SetFfbSpikeMaxLsbPerMs(v);
-            MarkEffectDirty(EffectKind.Master);
+            MarkEffectDirty(EffectKind.SpikeReduction);
         }
         private void FfbPeakLimitSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -756,7 +859,7 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             FfbPeakLimitText.Text = v <= 0 ? "off" : ((int)v).ToString();
             _plugin.SetFfbPeakSoftLimitLsb(v);
-            MarkEffectDirty(EffectKind.Master);
+            MarkEffectDirty(EffectKind.SpikeReduction);
         }
         private void DuckDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -1115,6 +1218,50 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveBumps.Freq = v;
             Apply(EffectKind.Bumps);
         }
+        private void BumpsSurfaceEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.ActiveBumps.SurfaceEnabled = BumpsSurfaceEnabledCheck.IsChecked == true;
+            Apply(EffectKind.Bumps);
+        }
+        private void BumpsSurfaceGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            BumpsSurfaceGainText.Text = v.ToString("F2");
+            _plugin.ActiveBumps.SurfaceGain = v;
+            Apply(EffectKind.Bumps);
+        }
+        private void BumpsSurfaceFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            BumpsSurfaceFreqText.Text = ((int)v).ToString();
+            _plugin.ActiveBumps.SurfaceFreq = v;
+            Apply(EffectKind.Bumps);
+        }
+        private void BumpsSurfaceWaveform_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.ActiveBumps.SurfaceWaveform = WaveformOf(BumpsSurfaceWaveformCombo);
+            Apply(EffectKind.Bumps);
+        }
+        private void BumpsSurfaceRumbleScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            BumpsSurfaceRumbleScaleText.Text = v.ToString("F2");
+            _plugin.ActiveBumps.SurfaceRumbleScale = v;
+            Apply(EffectKind.Bumps);
+        }
+        private void BumpsRumbleStripPulseSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            BumpsRumbleStripPulseText.Text = v.ToString("F2");
+            _plugin.ActiveBumps.RumbleStripPulseAmp = v;
+            Apply(EffectKind.Bumps);
+        }
 
         // ---------- Traction loss ----------
 
@@ -1262,6 +1409,127 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveAbs.Waveform = WaveformOf(AbsWaveformCombo);
             Apply(EffectKind.Abs);
+        }
+
+        // ---------- Forza UDP listener ----------
+
+        private void ForzaEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
+            _plugin.Settings.Forza.Enabled = ForzaEnabledCheck.IsChecked == true;
+            _plugin.ApplyForzaSettings();
+        }
+
+        private void ForzaAlwaysListen_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
+            _plugin.Settings.Forza.AlwaysListen = ForzaAlwaysListenCheck.IsChecked == true;
+            _plugin.ApplyForzaSettings();
+        }
+
+        private void ForzaPort_LostFocus(object sender, RoutedEventArgs e) => CommitForzaPort();
+        private void ForzaPort_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) CommitForzaPort();
+        }
+        private void CommitForzaPort()
+        {
+            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
+            string raw = ForzaPortBox.Text?.Trim();
+            if (int.TryParse(raw, out int port) && port >= 1 && port <= 65535)
+            {
+                if (_plugin.Settings.Forza.Port != port)
+                {
+                    _plugin.Settings.Forza.Port = port;
+                    _plugin.ApplyForzaSettings();
+                }
+            }
+            else
+            {
+                // Reject invalid input by snapping back to the saved value.
+                ForzaPortBox.Text = _plugin.Settings.Forza.Port.ToString();
+            }
+        }
+
+        private void ForzaBind_LostFocus(object sender, RoutedEventArgs e) => CommitForzaBind();
+        private void ForzaBind_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) CommitForzaBind();
+        }
+        private void CommitForzaBind()
+        {
+            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
+            string raw = ForzaBindBox.Text?.Trim() ?? "";
+            // Empty / blank → 0.0.0.0 (any). Garbage stays accepted but the
+            // plugin's parser falls back to Any too, so it's consistent.
+            if (string.IsNullOrWhiteSpace(raw)) raw = "0.0.0.0";
+            if (_plugin.Settings.Forza.BindAddress != raw)
+            {
+                _plugin.Settings.Forza.BindAddress = raw;
+                _plugin.ApplyForzaSettings();
+            }
+        }
+
+        private void ForzaForwardEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
+            _plugin.Settings.Forza.ForwardEnabled = ForzaForwardEnabledCheck.IsChecked == true;
+            _plugin.ApplyForzaSettings();
+        }
+
+        private void ForzaForwardHost_LostFocus(object sender, RoutedEventArgs e) => CommitForzaForwardHost();
+        private void ForzaForwardHost_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) CommitForzaForwardHost();
+        }
+        private void CommitForzaForwardHost()
+        {
+            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
+            string raw = ForzaForwardHostBox.Text?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(raw)) raw = "127.0.0.1";
+            if (_plugin.Settings.Forza.ForwardHost != raw)
+            {
+                _plugin.Settings.Forza.ForwardHost = raw;
+                _plugin.ApplyForzaSettings();
+            }
+        }
+
+        private void ForzaForwardPort_LostFocus(object sender, RoutedEventArgs e) => CommitForzaForwardPort();
+        private void ForzaForwardPort_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) CommitForzaForwardPort();
+        }
+        private void CommitForzaForwardPort()
+        {
+            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
+            string raw = ForzaForwardPortBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                // Blank = clear / disable target. Listener stays open but
+                // forwarder no-ops (BuildForzaForwardEndpoint returns null).
+                if (_plugin.Settings.Forza.ForwardPort != 0)
+                {
+                    _plugin.Settings.Forza.ForwardPort = 0;
+                    _plugin.ApplyForzaSettings();
+                }
+                return;
+            }
+            if (int.TryParse(raw, out int port) && port >= 1 && port <= 65535)
+            {
+                if (_plugin.Settings.Forza.ForwardPort != port)
+                {
+                    _plugin.Settings.Forza.ForwardPort = port;
+                    _plugin.ApplyForzaSettings();
+                }
+            }
+            else
+            {
+                // Snap back to saved value on invalid input so the textbox
+                // doesn't keep showing user's typo.
+                ForzaForwardPortBox.Text = _plugin.Settings.Forza.ForwardPort > 0
+                    ? _plugin.Settings.Forza.ForwardPort.ToString()
+                    : "";
+            }
         }
 
         // ---------- Per-effect Save popover ----------

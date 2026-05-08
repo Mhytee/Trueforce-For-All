@@ -91,6 +91,11 @@ namespace TrueforceForAll.Plugin
         // a friend's tuned ring sizes.
         public PerformanceSettings Performance { get; set; } = new PerformanceSettings();
 
+        // Forza UDP listener config. Same machine-not-game rationale as
+        // Performance: the port the user picks is local to their setup. Lives
+        // here so it survives preset switches.
+        public ForzaSettings Forza { get; set; } = new ForzaSettings();
+
         // Keyed by GameData.NewData.CarId. Override entries supersede the
         // global engine settings whenever that car is the active one.
         public Dictionary<string, CarOverride> CarOverrides { get; set; } = new Dictionary<string, CarOverride>();
@@ -169,6 +174,56 @@ namespace TrueforceForAll.Plugin
     /// (streamers) or to force-test lower values.</summary>
     public enum PerformanceMode { Auto, Manual }
 
+    /// <summary>Forza Data Out UDP listener. The user enables UDP RACE
+    /// TELEMETRY in Forza's Settings → HUD and Gameplay menu and sets the
+    /// destination IP and port; the plugin opens a socket on
+    /// <see cref="BindAddress"/>:<see cref="Port"/> to receive the packets.
+    ///
+    /// Two real-world gotchas users hit:
+    ///   - MS Store / UWP build: Windows network isolation blocks UDP loopback
+    ///     for the Forza AppContainer. They have to run CheckNetIsolation.exe
+    ///     to add a loopback exemption (or send to a LAN IP).
+    ///   - Steam build: FH5 sends to the gateway IP, not 127.0.0.1, so a naive
+    ///     loopback listener gets nothing. They have to send to their LAN IP.
+    ///
+    /// Default port 5300 picked to avoid colliding with SimHub's typical 4123
+    /// or Sim Racing Studio's 4123. AlwaysListen lets users force the listener
+    /// on for FH6 launch / unrecognized Forza variants where SimHub's GameName
+    /// detection won't have caught up yet.</summary>
+    public sealed class ForzaSettings
+    {
+        public bool   Enabled       { get; set; } = true;
+        public int    Port          { get; set; } = 5300;
+        public string BindAddress   { get; set; } = "0.0.0.0";
+
+        /// <summary>When true, the listener stays open regardless of which
+        /// game SimHub thinks is running. Use for FH6 day-1 (before SimHub's
+        /// GameName recognizes it) or any Forza variant where the in-game
+        /// telemetry stream is on but the auto-detect fails.</summary>
+        public bool   AlwaysListen  { get; set; } = false;
+
+        /// <summary>Re-broadcast every received Forza packet to a second
+        /// destination. Solves the "I want SimHub dashboards AND Trueforce
+        /// haptics from the same Forza title" coexistence problem: Forza
+        /// only sends to one IP+port, so the user points Forza at us and we
+        /// relay verbatim (no parsing, no transformation) to SimHub. Default
+        /// off so the user explicitly opts in — when off, packets stop here.</summary>
+        public bool   ForwardEnabled { get; set; } = false;
+
+        /// <summary>Where to forward each received packet. 127.0.0.1 covers
+        /// the common case of SimHub running on the same machine; users with
+        /// a separate SimHub host can point here. Ignored when
+        /// <see cref="ForwardEnabled"/> is false.</summary>
+        public string ForwardHost    { get; set; } = "127.0.0.1";
+
+        /// <summary>UDP port of the secondary listener (typically SimHub's
+        /// configured Forza Data Out port — find it in SimHub's
+        /// Game → Forza Horizon settings, in the "UDP port" field). Same
+        /// value the user originally typed into SimHub when they set it up.
+        /// Ignored when <see cref="ForwardEnabled"/> is false.</summary>
+        public int    ForwardPort    { get; set; } = 0;
+    }
+
     public sealed class PerformanceSettings
     {
         [JsonConverter(typeof(StringEnumConverter))]
@@ -202,12 +257,35 @@ namespace TrueforceForAll.Plugin
 
     public sealed class RoadBumpsSettings
     {
+        // ---- Heave channel (universal) ----
         public bool  Enabled { get; set; } = true;
         public float Gain    { get; set; } = 1.0f;
         public float Freq    { get; set; } = 60.0f;        // unused when Waveform == Noise
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform Waveform { get; set; } = Waveform.Noise;
+
+        // ---- Surface channel (Forza-only signal source today) ----
+        // The surface oscillator is a separate voice with its own freq /
+        // waveform / LP / HP — see RoadBumpsEffect for what each does. These
+        // values still apply on non-Forza games but the channel just sits
+        // silent because the source doesn't supply SurfaceRumble.
+        public bool   SurfaceEnabled       { get; set; } = true;
+        public float  SurfaceGain          { get; set; } = 1.0f;
+        public float  SurfaceFreq          { get; set; } = 120.0f;
+        public float  SurfaceRumbleScale   { get; set; } = 1.0f;
+        public double SurfaceLowpassHz     { get; set; } = 800.0;
+        public double SurfaceHighpassHz    { get; set; } =  60.0;
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public Waveform SurfaceWaveform    { get; set; } = Waveform.Noise;
+
+        // Rumble-strip leading-edge pulse: opt-in (0 = off by default).
+        // SurfaceRumble already spikes on kerbs so the pulse is largely
+        // redundant; expose it for users who want extra leading-edge
+        // "snap" if their feel of the pure-envelope path comes up soft.
+        public float RumbleStripPulseAmp { get; set; } = 0f;
+        public int   RumbleStripPulseMs  { get; set; } = 120;
     }
 
     public sealed class TractionLossSettings

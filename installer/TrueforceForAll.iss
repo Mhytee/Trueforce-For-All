@@ -261,26 +261,113 @@ begin
   DeleteFile(TmpFile);
 end;
 
+// OnClick handler for the "Open download page" button in the
+// SimHub-missing dialog. Top-level so the OnClick assignment can take
+// its address. Doesn't set ModalResult — the dialog stays open so the
+// user can install SimHub and then click Retry without re-starting.
+procedure OpenSimHubPageBtnClick(Sender: TObject);
+var
+  ResponseCode: Integer;
+begin
+  ShellExec('open', 'https://www.simhubdash.com/', '', '', SW_SHOWNORMAL, ewNoWait, ResponseCode);
+end;
+
+// Modal "SimHub required" dialog with three labeled buttons. Returns
+// mrOk when the user clicks Retry (re-check detection), mrCancel to
+// abort the installer. "Open download page" doesn't close the dialog.
+// We use a custom form because standard Windows MsgBox can't rename the
+// Yes/No/Cancel buttons.
+function ShowSimHubMissingDialog: Integer;
+var
+  Form: TSetupForm;
+  Body: TNewStaticText;
+  OpenBtn, RetryBtn, CancelBtn: TNewButton;
+  ButtonW: Integer;
+begin
+  // Match the CodeClasses.iss example shipped with Inno: 4-arg
+  // CreateCustomForm (width, height, flip-for-RTL, allow-resize).
+  // Direct TSetupForm.Create(nil) misses the resource template and
+  // crashes at runtime with "resource TSetupForm not found".
+  Form := CreateCustomForm(ScaleX(520), ScaleY(220), False, True);
+  try
+    Form.Caption := 'Trueforce For All — SimHub required';
+
+    Body := TNewStaticText.Create(Form);
+    Body.Parent := Form;
+    Body.Left := ScaleX(20);
+    Body.Top := ScaleY(20);
+    Body.Width := Form.ClientWidth - ScaleX(2 * 20);
+    Body.Height := ScaleY(120);
+    Body.AutoSize := False;
+    Body.WordWrap := True;
+    Body.Caption :=
+      'SimHub doesn''t appear to be installed on this PC.' + #13#10 + #13#10 +
+      'Trueforce For All is a SimHub plugin — SimHub has to be installed first. ' +
+      'Click "Open download page" to get SimHub from simhubdash.com, install it, ' +
+      'then click "Retry" to continue this installer.';
+
+    OpenBtn := TNewButton.Create(Form);
+    OpenBtn.Parent := Form;
+    OpenBtn.Caption := 'Open download page';
+    OpenBtn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    OpenBtn.Height := ScaleY(23);
+    OpenBtn.OnClick := @OpenSimHubPageBtnClick;
+
+    RetryBtn := TNewButton.Create(Form);
+    RetryBtn.Parent := Form;
+    RetryBtn.Caption := 'Retry';
+    RetryBtn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    RetryBtn.Height := ScaleY(23);
+    RetryBtn.ModalResult := mrOk;
+    RetryBtn.Default := True;
+
+    CancelBtn := TNewButton.Create(Form);
+    CancelBtn.Parent := Form;
+    CancelBtn.Caption := 'Cancel';
+    CancelBtn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    CancelBtn.Height := ScaleY(23);
+    CancelBtn.ModalResult := mrCancel;
+    CancelBtn.Cancel := True;
+
+    // Width all three buttons to fit the longest caption.
+    ButtonW := Form.CalculateButtonWidth([OpenBtn.Caption, RetryBtn.Caption, CancelBtn.Caption]);
+    OpenBtn.Width := ButtonW;
+    RetryBtn.Width := ButtonW;
+    CancelBtn.Width := ButtonW;
+
+    // Open on the left; Retry + Cancel right-aligned with a gap.
+    OpenBtn.Left   := ScaleX(10);
+    CancelBtn.Left := Form.ClientWidth - ScaleX(10) - ButtonW;
+    RetryBtn.Left  := CancelBtn.Left - ScaleX(6) - ButtonW;
+
+    Result := Form.ShowModal();
+  finally
+    Form.Free();
+  end;
+end;
+
 function InitializeSetup: Boolean;
 var
   Dir: string;
-  ResponseCode: Integer;
 begin
-  Dir := FindSimHubInstallDir;
-  if Dir = '' then
+  // Find SimHub. If not present, loop with the custom "SimHub required"
+  // dialog so the user can install SimHub and resume in-place instead of
+  // restarting our installer.
+  while True do
   begin
-    if MsgBox(
-        'SimHub doesn''t appear to be installed on this PC.' + #13#10 + #13#10 +
-        'Trueforce For All is a plugin for SimHub — it needs SimHub installed first.' + #13#10 + #13#10 +
-        'Click OK to open the SimHub download page, then re-run this installer once SimHub is installed.',
-        mbInformation, MB_OKCANCEL) = IDOK then
+    Dir := FindSimHubInstallDir;
+    if Dir <> '' then
     begin
-      ShellExec('open', 'https://www.simhubdash.com/', '', '', SW_SHOWNORMAL, ewNoWait, ResponseCode);
+      CachedSimHubDir := Dir;
+      Break;
     end;
-    Result := False;
-    Exit;
+    if ShowSimHubMissingDialog = mrCancel then
+    begin
+      Result := False;
+      Exit;
+    end;
+    // mrOk (Retry): loop falls through to re-check.
   end;
-  CachedSimHubDir := Dir;
 
   // Block install while SimHub is running: it holds the plugin DLL open,
   // and pushing through anyway leaves either a stale install or a Restart

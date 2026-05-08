@@ -230,94 +230,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Diagnostics expander — verbose status shoved out of the way -->
-            <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,4">
-                <Expander.Header>
-                    <TextBlock Text="Diagnostics" FontSize="13" FontWeight="SemiBold"/>
-                </Expander.Header>
-                <Grid Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Wheel:" Style="{StaticResource LabelText}"/>
-                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="(checking...)"/>
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Stream:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="StreamText" Text="(checking...)" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="FFB pass-through:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="FfbTapText" Text="(checking...)" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Telemetry:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TelemetrySourceText" Text="(checking...)" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Active sources:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="4" Grid.Column="1" x:Name="VoicesText" Text="0" Margin="0,4,0,0"/>
-                </Grid>
-            </Expander>
-
-            <!-- Live activity (collapsible — when collapsed, no per-tick updates) -->
-            <Expander x:Name="LiveActivityExpander" IsExpanded="False" Margin="0,0,0,16">
-                <Expander.Header>
-                    <TextBlock Text="Live activity" FontWeight="SemiBold" FontSize="13"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Engine pulse:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="EngineMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="EngineMeterFill" HorizontalAlignment="Left" Background="#4CAF50" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Audio capture:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="AudioCaptureMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="AudioCaptureMeterFill" HorizontalAlignment="Left" Background="#66BB6A" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Road bumps:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="BumpsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="BumpsMeterFill" HorizontalAlignment="Left" Background="#FFA726" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Traction loss:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="TractionMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="TractionMeterFill" HorizontalAlignment="Left" Background="#EF5350" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Gear shift:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="GearMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="GearMeterFill" HorizontalAlignment="Left" Background="#42A5F5" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="ABS:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="AbsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="AbsMeterFill" HorizontalAlignment="Left" Background="#AB47BC" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Ducking depth:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="DuckMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="DuckMeterFill" HorizontalAlignment="Left" Background="#9E9E9E" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                </StackPanel>
-            </Expander>
-
             <!-- Master -->
             <Border Style="{StaticResource SectionHeaderBorder}">
                 <Grid>
@@ -370,47 +282,6 @@
                               VerticalAlignment="Center" Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"/>
                 </Grid>
 
-                <!-- FFB spike taming: comfort filter for AC's over-the-top
-                     curb / collision FFB. Toggle gates both rate and
-                     amplitude limiters; rate limit lives in the nested
-                     Advanced section since it rarely needs adjustment. -->
-                <Expander x:Name="SpikeTamingExpander" IsExpanded="False" Margin="0,8,0,16">
-                    <Expander.Header>
-                        <CheckBox x:Name="SpikeTamingEnabledCheck" Content="FFB spike reduction (recommended for Assetto Corsa)"
-                                  FontWeight="SemiBold" VerticalAlignment="Center"
-                                  Checked="SpikeTamingEnabled_Changed" Unchecked="SpikeTamingEnabled_Changed"/>
-                    </Expander.Header>
-                    <StackPanel x:Name="SpikeTamingBody" Margin="0,8,0,0"
-                                IsEnabled="{Binding IsChecked, ElementName=SpikeTamingEnabledCheck}">
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                                   Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. This attenuates spikes only; sustained cornering load is untouched. Lower values = stronger reduction."/>
-                        <Grid Margin="0,0,0,2">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Spike attenuation:" Style="{StaticResource LabelText}"/>
-                            <Slider     Grid.Column="1" x:Name="FfbPeakLimitSlider"
-                                        Minimum="0" Maximum="20000" SmallChange="500" LargeChange="2000"
-                                        TickFrequency="2000" ValueChanged="FfbPeakLimitSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="FfbPeakLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1562"/>
-                        </Grid>
-                        <Expander x:Name="SpikeTamingAdvancedExpander" IsExpanded="False" Margin="0,12,0,0">
-                            <Expander.Header>
-                                <TextBlock Text="Advanced" FontSize="11" Opacity="0.7"/>
-                            </Expander.Header>
-                            <StackPanel Margin="0,8,0,0">
-                                <Grid Margin="0,0,0,2">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Rate limit (LSB/ms):" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="FfbSpikeLimitSlider"
-                                                Minimum="0" Maximum="10000" SmallChange="100" LargeChange="500"
-                                                TickFrequency="1000" ValueChanged="FfbSpikeLimitSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" x:Name="FfbSpikeLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="2061"/>
-                                </Grid>
-                                <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,0"
-                                           Text="Caps how fast FFB can change in either direction. Pairs with Spike attenuation (which controls how much spikes are reduced); this controls how fast they're allowed to ramp. The default value rarely needs adjustment."/>
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Expander>
             </StackPanel>
 
             <!-- Active car -->
@@ -436,6 +307,56 @@
             </Grid>
             <TextBlock x:Name="ActiveCarHint" Style="{StaticResource HelpText}" Margin="0,0,0,20" FontSize="12"
                        Text="Per-car tuning lives in named presets under PluginsData/Common/TrueforceCars. Each car can have multiple presets — built-in defaults shipped with the plugin plus any user-saved or imported ones. Sharing a preset is sharing the file."/>
+
+            <!-- FFB spike taming: comfort filter for over-the-top curb /
+                 collision FFB. Pulled out into its own top-level section
+                 (was nested inside Master's FFB controls) since it's a
+                 distinct safety / comfort feature, not just FFB tuning. -->
+            <Border Style="{StaticResource SectionHeaderBorder}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="FFB spike reduction" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" x:Name="SpikeReductionRevertBtn" Content="↶" Tag="SpikeReduction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                    <Button Grid.Column="2" x:Name="SpikeReductionSaveBtn"   Content="Save…" Tag="SpikeReduction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                </Grid>
+            </Border>
+            <CheckBox x:Name="SpikeTamingEnabledCheck" Content="FFB spike reduction (recommended for Assetto Corsa)"
+                      FontWeight="SemiBold" Margin="0,0,0,4"
+                      Checked="SpikeTamingEnabled_Changed" Unchecked="SpikeTamingEnabled_Changed"/>
+            <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,16"
+                        IsEnabled="{Binding IsChecked, ElementName=SpikeTamingEnabledCheck}">
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                           Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. This attenuates spikes only; sustained cornering load is untouched. Lower values = stronger reduction."/>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Spike attenuation:" Style="{StaticResource LabelText}"/>
+                    <Slider     Grid.Column="1" x:Name="FfbPeakLimitSlider"
+                                Minimum="0" Maximum="20000" SmallChange="500" LargeChange="2000"
+                                TickFrequency="2000" ValueChanged="FfbPeakLimitSlider_ValueChanged" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" x:Name="FfbPeakLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1562"/>
+                </Grid>
+                <Expander x:Name="SpikeTamingAdvancedExpander" IsExpanded="False" Margin="0,12,0,0">
+                    <Expander.Header>
+                        <TextBlock Text="Advanced" FontSize="11" Opacity="0.7"/>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <Grid Margin="0,0,0,2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Rate limit (LSB/ms):" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="FfbSpikeLimitSlider"
+                                        Minimum="0" Maximum="10000" SmallChange="100" LargeChange="500"
+                                        TickFrequency="1000" ValueChanged="FfbSpikeLimitSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="FfbSpikeLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="2061"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,0"
+                                   Text="Caps how fast FFB can change in either direction. Pairs with Spike attenuation (which controls how much spikes are reduced); this controls how fast they're allowed to ramp. The default value rarely needs adjustment."/>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
 
             <!-- Effects -->
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Effects" Style="{StaticResource SectionHeaderText}"/></Border>
@@ -549,6 +470,11 @@
                                         ValueChanged="EngineCylindersSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="EngineCylindersText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="4"/>
                         </Grid>
+                        <!-- Auto-detect indicator: when telemetry supplies a per-car
+                             cylinder count (Forza's NumCylinders today), shows what
+                             the firing-frequency calc is actually using. Empty when
+                             no auto value is available — slider value is in effect. -->
+                        <TextBlock x:Name="EngineCylindersAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text=""/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Pitch:" Style="{StaticResource LabelText}"/>
@@ -602,13 +528,64 @@
                                 <ComboBoxItem Content="Sine"/><ComboBoxItem Content="Square"/><ComboBoxItem Content="Saw"/><ComboBoxItem Content="Triangle"/><ComboBoxItem Content="Noise"/>
                             </ComboBox>
                         </Grid>
-                        <Grid x:Name="BumpsFreqRow" Margin="0,0,0,0">
+                        <Grid x:Name="BumpsFreqRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="BumpsFreqSlider" Minimum="20" Maximum="300" SmallChange="1" LargeChange="10"
                                         TickFrequency="20" ValueChanged="BumpsFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="BumpsFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="60"/>
                         </Grid>
+
+                        <!-- Surface texture (Forza-supplied SurfaceRumble + WheelOnRumbleStrip).
+                             Has its own oscillator so the user can pick a higher freq /
+                             brighter waveform than the heave path. Knobs stay visible
+                             on non-Forza games but won't produce sound (source supplies
+                             no SurfaceRumble) — clearly labeled (Forza) so users don't
+                             waste time tuning controls that won't fire on AC etc. -->
+                        <Border BorderThickness="0,1,0,0" BorderBrush="#22FFFFFF" Margin="0,4,0,8" Padding="0,8,0,0">
+                            <StackPanel>
+                                <CheckBox x:Name="BumpsSurfaceEnabledCheck" Content="Surface texture (Forza)" FontWeight="SemiBold" Margin="0,0,0,4"
+                                          Checked="BumpsSurfaceEnabled_Changed" Unchecked="BumpsSurfaceEnabled_Changed"
+                                          ToolTip="Forza-only: drives a second oscillator from the per-tire SurfaceRumble channel. Continuous road feel that's stronger on dirt/grass and lighter on asphalt. Adds a leading-edge pulse on rumble-strip contact."/>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Surface gain:" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="BumpsSurfaceGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                                TickFrequency="0.25" ValueChanged="BumpsSurfaceGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="BumpsSurfaceGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Surface freq (Hz):" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="BumpsSurfaceFreqSlider" Minimum="20" Maximum="600" SmallChange="5" LargeChange="25"
+                                                TickFrequency="50" ValueChanged="BumpsSurfaceFreqSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="BumpsSurfaceFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Surface waveform:" Style="{StaticResource LabelText}"/>
+                                    <ComboBox  Grid.Column="1" x:Name="BumpsSurfaceWaveformCombo" SelectionChanged="BumpsSurfaceWaveform_Changed">
+                                        <ComboBoxItem Content="Sine"/><ComboBoxItem Content="Square"/><ComboBoxItem Content="Saw"/><ComboBoxItem Content="Triangle"/><ComboBoxItem Content="Noise"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Rumble scale:" Style="{StaticResource LabelText}"
+                                               ToolTip="Multiplier on Forza's SurfaceRumble before driving the oscillator. 1.0 = use as-is. Bump up for more aggressive surface feel."/>
+                                    <Slider     Grid.Column="1" x:Name="BumpsSurfaceRumbleScaleSlider" Minimum="0.1" Maximum="3.0" SmallChange="0.1" LargeChange="0.25"
+                                                TickFrequency="0.25" ValueChanged="BumpsSurfaceRumbleScaleSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="BumpsSurfaceRumbleScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Kerb pulse:" Style="{StaticResource LabelText}"
+                                               ToolTip="Extra amplitude added on the rising edge of any wheel touching a rumble strip. 0 = disabled."/>
+                                    <Slider     Grid.Column="1" x:Name="BumpsRumbleStripPulseSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                                                TickFrequency="0.25" ValueChanged="BumpsRumbleStripPulseSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="BumpsRumbleStripPulseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Expander>
 
@@ -892,10 +869,206 @@
                 </StackPanel>
             </Expander>
 
-            <!-- Presets. Moved to the bottom: the preset library, default-
-                 binding, and import/export are infrequent flows. The active
-                 preset dropdown + ★ Save preset button at the very top of
-                 the panel handles the day-to-day cases. -->
+            <!-- Forza Data Out (UDP). Forza titles emit telemetry over UDP
+                 instead of shared memory; the user enables UDP RACE TELEMETRY
+                 in the in-game Settings → HUD and Gameplay menu and points it
+                 at the IP/port set here. Two real-world gotchas:
+                  - MS Store / UWP build: Windows network isolation blocks
+                    UDP loopback. User has to run CheckNetIsolation.exe to
+                    add a loopback exemption (or send to a LAN IP).
+                  - Steam build: FH5 sends to the gateway IP (a long-known
+                    bug Playground hasn't fixed). User has to send to their
+                    LAN IP, not 127.0.0.1.
+                 The Always-listen toggle keeps the source open for FH6 day-1
+                 (before SimHub's GameName recognizes it) or other Forza
+                 variants the auto-detect doesn't cover. -->
+            <StackPanel x:Name="ForzaSection" Visibility="Collapsed">
+            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Forza telemetry (UDP)" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                Text="In Forza Horizon 5/6 (or Forza Motorsport), open Settings → HUD and Gameplay → UDP RACE TELEMETRY. Set DATA OUT IP ADDRESS to your machine's IP and DATA OUT IP PORT to the port below. Game-specific fields (per-tire surface rumble, kerbs, cylinder count) flow through and the 'Forza Horizon (default)' preset auto-loads."/>
+            <CheckBox x:Name="ForzaEnabledCheck" Content="Enable Forza UDP listener" Click="ForzaEnabled_Changed" Margin="0,0,0,8"
+                      ToolTip="When off, Forza titles fall back to SimHub's universal telemetry (engine + RPM only — no per-tire surface, no kerb pulses, no cylinder auto-detect)."/>
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Port:" Style="{StaticResource LabelText}"/>
+                <TextBox   Grid.Column="1" x:Name="ForzaPortBox" LostFocus="ForzaPort_LostFocus" KeyDown="ForzaPort_KeyDown" VerticalAlignment="Center"
+                           ToolTip="Match this in Forza's DATA OUT IP PORT. Default 5300; pick anything if it collides with another listener (SimHub's typical 4123, Sim Racing Studio's 4123, etc.)."/>
+                <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" Margin="8,0,0,0" VerticalAlignment="Center"
+                           Text="Restart Trueforce (toggle plugin off+on) after changing."/>
+            </Grid>
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Bind address:" Style="{StaticResource LabelText}"/>
+                <TextBox   Grid.Column="1" x:Name="ForzaBindBox" LostFocus="ForzaBind_LostFocus" KeyDown="ForzaBind_KeyDown" VerticalAlignment="Center"
+                           ToolTip="Local IP to listen on. 0.0.0.0 = all interfaces (recommended). Use a specific LAN IP only if you want to filter."/>
+                <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" Margin="8,0,0,0" VerticalAlignment="Center"
+                           Text="0.0.0.0 = listen on every network adapter."/>
+            </Grid>
+            <CheckBox x:Name="ForzaAlwaysListenCheck" Content="Always listen (use for FH6 day-1 / unrecognized Forza titles)" Click="ForzaAlwaysListen_Changed" Margin="0,4,0,4"
+                      ToolTip="Keep the Forza source open even when SimHub doesn't recognize the running game. Lets you use the plugin with FH6 before SimHub adds its game-name detection."/>
+            <Grid Margin="0,4,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Status:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="1" x:Name="ForzaStatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
+            </Grid>
+
+            <!-- Coexistence forwarder. Forza only sends to one destination, so
+                 if the user wants both Trueforce haptics AND SimHub dashboards,
+                 they point Forza at us and we relay raw packet bytes verbatim
+                 to SimHub. Default off — explicit opt-in keeps un-forwarded
+                 packets out of the network when the user doesn't run SimHub. -->
+            <Border BorderThickness="0,1,0,0" BorderBrush="#22FFFFFF" Margin="0,4,0,8" Padding="0,8,0,0">
+                <StackPanel>
+                    <CheckBox x:Name="ForzaForwardEnabledCheck" Content="Also forward to SimHub (for dashboards)" Click="ForzaForwardEnabled_Changed" Margin="0,0,0,4"
+                              FontWeight="SemiBold"
+                              ToolTip="Enable when you also use SimHub for Forza dashboards. We receive Forza Data Out on our port and re-broadcast each packet verbatim to SimHub on the port below — both apps end up with the same data."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="11"
+                               Text="Find SimHub's Forza port in SimHub: Game → Forza Horizon 5 (or FH6) → telemetry settings, in the UDP port field. Type the same number below — Forza will route through us, then we'll relay to SimHub."/>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Forward to host:" Style="{StaticResource LabelText}"/>
+                        <TextBox   Grid.Column="1" x:Name="ForzaForwardHostBox" LostFocus="ForzaForwardHost_LostFocus" KeyDown="ForzaForwardHost_KeyDown" VerticalAlignment="Center"
+                                   ToolTip="127.0.0.1 if SimHub runs on the same PC. A LAN IP (or hostname) for a separate SimHub host."/>
+                        <TextBlock Grid.Column="2" Text="port:" Style="{StaticResource LabelText}" Margin="8,0,0,0"/>
+                        <TextBox   Grid.Column="3" x:Name="ForzaForwardPortBox" LostFocus="ForzaForwardPort_LostFocus" KeyDown="ForzaForwardPort_KeyDown" VerticalAlignment="Center" Width="120" HorizontalAlignment="Left"
+                                   ToolTip="The port SimHub is listening on for Forza Data Out. Match this to the value in SimHub's Forza game settings."/>
+                    </Grid>
+                    <Grid Margin="0,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Forwarded:" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Column="1" x:Name="ForzaForwardStatusText" Text="(disabled)" FontSize="11" Opacity="0.85"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <Expander x:Name="ForzaTroubleshootExpander" IsExpanded="False" Margin="0,8,0,16">
+                <Expander.Header>
+                    <TextBlock Text="Not receiving packets?" FontSize="12"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" FontSize="11"
+                               Text="• MS Store / Game Pass build: Windows network isolation blocks UDP loopback by default. Run CheckNetIsolation.exe LoopbackExempt -a -n=&quot;Microsoft.624F8B84B80_8wekyb3d8bbwe&quot; (or use Fiddler's loopback exemption tool), or set Forza's DATA OUT IP ADDRESS to your LAN IP instead of 127.0.0.1."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" FontSize="11"
+                               Text="• Steam build: known Playground bug — Forza sends to the gateway IP, not 127.0.0.1. Fix is to set Forza's DATA OUT IP ADDRESS to your machine's LAN IP (e.g. 192.168.x.x) and bind here to 0.0.0.0."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" FontSize="11"
+                               Text="• Port collision with SimHub or another tool? Pick a different port here, then update Forza's DATA OUT IP PORT to match."/>
+                    <TextBlock Style="{StaticResource HelpText}" FontSize="11"
+                               Text="• Firewall: Windows Defender may prompt the first time the listener opens — allow it on private/domain networks."/>
+                </StackPanel>
+            </Expander>
+            </StackPanel> <!-- /ForzaSection -->
+
+            <!-- Diagnostics + Live activity. Sit between game-config sections
+                 (above) and preset/sharing/support sections (below). Both are
+                 collapsed by default — only opened when troubleshooting or
+                 wanting to watch effect activity meters. -->
+            <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,4">
+                <Expander.Header>
+                    <TextBlock Text="Diagnostics" FontSize="13" FontWeight="SemiBold"/>
+                </Expander.Header>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Wheel:" Style="{StaticResource LabelText}"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="(checking...)"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Stream:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="StreamText" Text="(checking...)" Margin="0,4,0,0"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="FFB pass-through:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="FfbTapText" Text="(checking...)" Margin="0,4,0,0"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Telemetry:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TelemetrySourceText" Text="(checking...)" Margin="0,4,0,0"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Active sources:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" x:Name="VoicesText" Text="0" Margin="0,4,0,0"/>
+                </Grid>
+            </Expander>
+
+            <Expander x:Name="LiveActivityExpander" IsExpanded="False" Margin="0,0,0,16">
+                <Expander.Header>
+                    <TextBlock Text="Live activity" FontWeight="SemiBold" FontSize="13"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Engine pulse:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="EngineMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="EngineMeterFill" HorizontalAlignment="Left" Background="#4CAF50" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Audio capture:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="AudioCaptureMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="AudioCaptureMeterFill" HorizontalAlignment="Left" Background="#66BB6A" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Road bumps:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="BumpsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="BumpsMeterFill" HorizontalAlignment="Left" Background="#FFA726" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Traction loss:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="TractionMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="TractionMeterFill" HorizontalAlignment="Left" Background="#EF5350" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Gear shift:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="GearMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="GearMeterFill" HorizontalAlignment="Left" Background="#42A5F5" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="ABS:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="AbsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="AbsMeterFill" HorizontalAlignment="Left" Background="#AB47BC" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Ducking depth:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="DuckMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="DuckMeterFill" HorizontalAlignment="Left" Background="#9E9E9E" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <!-- Presets. The preset library, default-binding, and per-game
+                 defaults. The active preset dropdown + ★ Save preset button
+                 at the very top of the panel handles the day-to-day cases. -->
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Presets" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
                 Text="A preset is a named snapshot of your master tuning + every per-car override. Live tuning auto-saves to disk, but never changes the named preset on its own — the '★ unsaved' indicator next to the active preset means tuning has drifted from the saved snapshot. Click Save preset to commit, Save as… for a new name."/>
@@ -924,33 +1097,30 @@
                 <Button x:Name="ClearDefaultButton" Content="Clear default" Width="100" Height="24" FontSize="11" Click="ClearDefault_Click"
                         ToolTip="Remove the auto-load binding for this game."/>
             </StackPanel>
-            <Expander x:Name="BackupShareExpander" IsExpanded="False" Margin="0,4,0,20">
-                <Expander.Header>
-                    <TextBlock Text="Backup &amp; share" FontSize="12"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Share single presets, per-car overrides, or your full Trueforce config as JSON files."/>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <Button x:Name="ExportPresetButton" Content="Export preset..." Width="160" Height="26" Margin="0,0,6,0" Click="ExportPreset_Click"
-                                ToolTip="Save the selected preset to a shareable JSON file."/>
-                        <Button x:Name="ImportPresetButton" Content="Import preset..." Width="160" Height="26" Click="ImportPreset_Click"
-                                ToolTip="Load a preset file into your library."/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <Button x:Name="ExportCarPresetButton" Content="Export car preset..." Width="180" Height="26" Margin="0,0,6,0" Click="ExportCarPreset_Click"
-                                ToolTip="Save the active car's settings as a shareable JSON file."/>
-                        <Button x:Name="ImportCarPresetButton" Content="Import car preset..." Width="180" Height="26" Click="ImportCarPreset_Click"
-                                ToolTip="Load a car preset file. Stored under its car id; applied if it matches the current car."/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
-                        <Button x:Name="ExportButton" Content="Export all settings..." Width="180" Height="26" Margin="0,0,6,0" Click="Export_Click"
-                                ToolTip="Export master, audio, every effect, and all per-car overrides as one JSON file."/>
-                        <Button x:Name="ImportButton" Content="Import all settings..." Width="180" Height="26" Click="Import_Click"
-                                ToolTip="Replace all current Trueforce settings from a JSON file."/>
-                    </StackPanel>
-                </StackPanel>
-            </Expander>
+            <!-- Backup & sync. Promoted to its own top-level section since
+                 sharing presets / migrating settings between machines is its
+                 own flow, distinct from preset library management. -->
+            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Backup &amp; sync" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                       Text="Share single presets, per-car overrides, or your full Trueforce config as JSON files."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <Button x:Name="ExportPresetButton" Content="Export preset..." Width="160" Height="26" Margin="0,0,6,0" Click="ExportPreset_Click"
+                        ToolTip="Save the selected preset to a shareable JSON file."/>
+                <Button x:Name="ImportPresetButton" Content="Import preset..." Width="160" Height="26" Click="ImportPreset_Click"
+                        ToolTip="Load a preset file into your library."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <Button x:Name="ExportCarPresetButton" Content="Export car preset..." Width="180" Height="26" Margin="0,0,6,0" Click="ExportCarPreset_Click"
+                        ToolTip="Save the active car's settings as a shareable JSON file."/>
+                <Button x:Name="ImportCarPresetButton" Content="Import car preset..." Width="180" Height="26" Click="ImportCarPreset_Click"
+                        ToolTip="Load a car preset file. Stored under its car id; applied if it matches the current car."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Button x:Name="ExportButton" Content="Export all settings..." Width="180" Height="26" Margin="0,0,6,0" Click="Export_Click"
+                        ToolTip="Export master, audio, every effect, and all per-car overrides as one JSON file."/>
+                <Button x:Name="ImportButton" Content="Import all settings..." Width="180" Height="26" Click="Import_Click"
+                        ToolTip="Replace all current Trueforce settings from a JSON file."/>
+            </StackPanel>
 
             <!-- Support development -->
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Support development" Style="{StaticResource SectionHeaderText}"/></Border>

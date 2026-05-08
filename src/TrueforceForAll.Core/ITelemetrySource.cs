@@ -71,11 +71,36 @@ namespace TrueforceForAll.Core
 
         // ---- Tire grip ----
         /// <summary>Direct slip-ratio reading from a sim that exposes one
-        /// (e.g. AC's wheelSlip[]), max-abs across all four tires. ~0 = grip,
-        /// &gt;0.05 = noticeable slip, &gt;0.5 = sliding hard. Null when the
-        /// source can't measure slip directly — TractionLossEffect falls back
-        /// to its yaw-rate / RPM-derivative heuristic in that case.</summary>
+        /// (e.g. AC's wheelSlip[], Forza's TireCombinedSlip[]), max-abs across
+        /// all four tires. ~0 = grip, &gt;0.05 = noticeable slip, &gt;0.5 =
+        /// sliding hard. Null when the source can't measure slip directly —
+        /// TractionLossEffect falls back to its yaw-rate / RPM-derivative
+        /// heuristic in that case.</summary>
         public double? WheelSlip;
+
+        // ---- Surface / road-feel (Forza-rich) ----
+        /// <summary>Per-frame surface-rumble magnitude in [0..1], max-abs across
+        /// all four tires. Forza's SurfaceRumble[] channel: a low-frequency
+        /// vibration signal scaled by surface coarseness, the same one Turn 10's
+        /// own Trueforce path uses inside Forza Motorsport. RoadBumpsEffect
+        /// folds this in when present so dirt / gravel / asphalt textures
+        /// drive haptic output even without strong vertical-accel transients.
+        /// Null when the source doesn't surface it (AC, SimHub fallback).</summary>
+        public double? SurfaceRumble;
+
+        /// <summary>True if any wheel is currently on a rumble strip. Forza's
+        /// WheelOnRumbleStrip[] booleans OR'd together. Drives an extra kerb
+        /// pulse in RoadBumpsEffect on rising edge so curb hits feel
+        /// percussive even when the surface-rumble channel is also active.</summary>
+        public bool? OnRumbleStrip;
+
+        // ---- Engine config (auto-detected from telemetry) ----
+        /// <summary>Cylinder count reported by the sim for the active car
+        /// (Forza's NumCylinders). When non-null and the user has no per-car
+        /// engine override, EnginePulseEffect uses this for firing-frequency
+        /// instead of the user's globally-configured Cylinders setting.
+        /// Null when the source doesn't expose it (AC, SimHub fallback).</summary>
+        public int? NumCylinders;
 
         // ---- Diagnostics ----
         /// <summary>Stopwatch ticks at which the source captured this frame. Set by EmitFrame.</summary>

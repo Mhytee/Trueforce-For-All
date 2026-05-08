@@ -23,8 +23,19 @@ namespace TrueforceForAll.Plugin
         public static readonly IReadOnlyDictionary<string, string> GameDefaultBindings =
             new Dictionary<string, string>
             {
-                { "AssettoCorsa", "Assetto Corsa (default)" },
-                { "Wreckfest2",   "Wreckfest 2 (default)"   },
+                { "AssettoCorsa",    "Assetto Corsa (default)"     },
+                { "Wreckfest2",      "Wreckfest 2 (default)"       },
+                // Forza titles share the Data Out wire format end-to-end (FM7 →
+                // FH4 → FH5 → FM2023, almost certainly FH6 too), so one preset
+                // covers the whole family. Pre-bind the known SimHub GameNames
+                // here; FH6's name will be added in a follow-up if MS picks
+                // anything other than "ForzaHorizon6".
+                { "ForzaHorizon5",   "Forza Horizon (default)"     },
+                { "ForzaHorizon6",   "Forza Horizon (default)"     },
+                { "ForzaHorizon4",   "Forza Horizon (default)"     },
+                { "ForzaMotorsport", "Forza Motorsport (default)"  },
+                { "ForzaMotorsport8","Forza Motorsport (default)"  },
+                { "ForzaMotorsport7","Forza Motorsport (default)"  },
             };
 
         /// <summary>Built-in preset name → serialized GameSettingsSnapshot
@@ -34,8 +45,10 @@ namespace TrueforceForAll.Plugin
         public static readonly IReadOnlyDictionary<string, string> BuiltinPresetJsons =
             new Dictionary<string, string>
             {
-                ["Assetto Corsa (default)"] = AssettoCorsaJson,
-                ["Wreckfest 2 (default)"]   = Wreckfest2Json,
+                ["Assetto Corsa (default)"]    = AssettoCorsaJson,
+                ["Wreckfest 2 (default)"]      = Wreckfest2Json,
+                ["Forza Horizon (default)"]    = ForzaHorizonJson,
+                ["Forza Motorsport (default)"] = ForzaMotorsportJson,
             };
 
         public static bool IsBuiltin(string presetName)
@@ -70,6 +83,59 @@ namespace TrueforceForAll.Plugin
                 ""ks_toyota_ae86_tuned"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":4,""Pitch"":1.00160933,""LowpassHz"":333.1809,""Waveform"":""Triangle""}},
                 ""gravygarage_street_e36_touring"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":8,""Pitch"":1.00160933,""LowpassHz"":775.6869,""Waveform"":""Triangle""},""TractionLoss"":{""Enabled"":true,""Gain"":0.06434366,""Sensitivity"":0.1,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},""AudioCapture"":{""Enabled"":true,""Gain"":0.0517140329,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595}}
             }
+        }";
+
+        // Forza Horizon baseline. Tuned for arcade-leaning physics where
+        // tire slip saturates harder than ACC; Sensitivity is bumped up to
+        // ~0.4 so light slides actually trigger before the fully-saturated
+        // hard drift state. Cylinders=4 is just the slider-default fallback;
+        // EnginePulse.AutoCylinders takes over from Forza's NumCylinders the
+        // moment the user enters any car. SkipFfbPassthrough=true because
+        // Forza writes its own ep3 cur via the wheel's native path and our
+        // FFB tap mirroring would fight it.
+        private const string ForzaHorizonJson = @"{
+            ""MasterGain"":1.0,
+            ""FfbScale"":1.0,
+            ""FfbInvertSign"":true,
+            ""FfbSmoothTimeConstantMs"":0.0,
+            ""FfbSpikeTamingEnabled"":false,
+            ""FfbSpikeMaxLsbPerMs"":2060.923,
+            ""FfbPeakSoftLimitLsb"":1561.78564,
+            ""SkipFfbPassthrough"":true,
+            ""DuckDepth"":0.6952232,
+            ""DuckAttackMs"":5.0,
+            ""DuckReleaseMs"":80.0,
+            ""AudioCapture"":{""Enabled"":true,""Gain"":0.06,""LowpassCutoffHz"":350.0,""HighpassCutoffHz"":30.0},
+            ""EnginePulse"":{""Enabled"":true,""Gain"":0.07,""Cylinders"":4,""Pitch"":1.0,""LowpassHz"":450.0,""Waveform"":""Triangle""},
+            ""RoadBumps"":{""Enabled"":true,""Gain"":0.5,""Freq"":60.0,""Waveform"":""Noise"",""SurfaceEnabled"":true,""SurfaceGain"":0.6,""SurfaceFreq"":140.0,""SurfaceWaveform"":""Noise"",""SurfaceLowpassHz"":900.0,""SurfaceHighpassHz"":70.0,""SurfaceRumbleScale"":1.2,""RumbleStripPulseAmp"":0.0,""RumbleStripPulseMs"":120},
+            ""TractionLoss"":{""Enabled"":true,""Gain"":0.08,""Sensitivity"":0.4,""Freq"":133.9,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.0,""Waveform"":""Noise""},
+            ""GearShift"":{""Enabled"":true,""Gain"":0.4,""Freq"":40.0,""Waveform"":""Sine""},
+            ""AbsClick"":{""Enabled"":false,""Gain"":0.15,""Freq"":150.0,""PulseFreq"":9.8,""DutyCycle"":0.33,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""}
+        }";
+
+        // Forza Motorsport (2023) ships native Trueforce, so SkipFfbPassthrough
+        // is true here too — we layer audio-haptics on top of the game's own
+        // FFB rather than replacing it. Slight Sensitivity bump on Traction
+        // and a more conservative Master gain to leave headroom for the
+        // game's already-rich force feedback.
+        private const string ForzaMotorsportJson = @"{
+            ""MasterGain"":0.85,
+            ""FfbScale"":1.0,
+            ""FfbInvertSign"":true,
+            ""FfbSmoothTimeConstantMs"":0.0,
+            ""FfbSpikeTamingEnabled"":false,
+            ""FfbSpikeMaxLsbPerMs"":2060.923,
+            ""FfbPeakSoftLimitLsb"":1561.78564,
+            ""SkipFfbPassthrough"":true,
+            ""DuckDepth"":0.6952232,
+            ""DuckAttackMs"":5.0,
+            ""DuckReleaseMs"":80.0,
+            ""AudioCapture"":{""Enabled"":true,""Gain"":0.06,""LowpassCutoffHz"":350.0,""HighpassCutoffHz"":30.0},
+            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06,""Cylinders"":4,""Pitch"":1.0,""LowpassHz"":450.0,""Waveform"":""Triangle""},
+            ""RoadBumps"":{""Enabled"":true,""Gain"":0.4,""Freq"":60.0,""Waveform"":""Noise"",""SurfaceEnabled"":true,""SurfaceGain"":0.5,""SurfaceFreq"":140.0,""SurfaceWaveform"":""Noise"",""SurfaceLowpassHz"":900.0,""SurfaceHighpassHz"":70.0,""SurfaceRumbleScale"":1.0,""RumbleStripPulseAmp"":0.0,""RumbleStripPulseMs"":120},
+            ""TractionLoss"":{""Enabled"":true,""Gain"":0.08,""Sensitivity"":0.5,""Freq"":133.9,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.0,""Waveform"":""Noise""},
+            ""GearShift"":{""Enabled"":true,""Gain"":0.4,""Freq"":40.0,""Waveform"":""Sine""},
+            ""AbsClick"":{""Enabled"":true,""Gain"":0.15,""Freq"":150.0,""PulseFreq"":9.8,""DutyCycle"":0.33,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""}
         }";
 
         private const string Wreckfest2Json = @"{

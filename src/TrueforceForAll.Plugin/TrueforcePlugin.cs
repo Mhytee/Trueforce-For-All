@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Threading;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -362,6 +363,7 @@ namespace TrueforceForAll.Plugin
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
+            if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
             MigrateLegacyGamePresets();
             MigrateSpikeTamingFlag();
             InstallBuiltinPresetsIfMissing();
@@ -622,6 +624,11 @@ namespace TrueforceForAll.Plugin
             if (carId != _activeCarId)
             {
                 _activeCarId = carId;
+                // New car — discard the previous car's auto-detected cylinder
+                // count so the next telemetry frame populates fresh from the
+                // new car's NumCylinders. (No-op for non-Forza sources that
+                // never fill it.)
+                if (EnginePulse != null) EnginePulse.AutoCylinders = null;
                 ApplyActiveCarOverride();
             }
 
@@ -816,15 +823,48 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>True when <paramref name="game"/> has a per-game enhanced
         /// source we should attempt to instantiate. Used both at game-change
-        /// and as the gate for the periodic retry loop.</summary>
-        private static bool IsEnhancedEligible(string game) => game == "AssettoCorsa";
+        /// and as the gate for the periodic retry loop. Forza covers FH4/5/6
+        /// and FM (2023) since they share the same Data Out wire format.</summary>
+        private bool IsEnhancedEligible(string game)
+        {
+            if (game == "AssettoCorsa") return true;
+            if (IsForzaGameName(game)) return true;
+            // Always-listen lets users force the Forza source on for an FH6
+            // build SimHub doesn't know yet, etc.
+            if (Settings?.Forza?.AlwaysListen == true && Settings.Forza.Enabled) return true;
+            return false;
+        }
+
+        /// <summary>True when the Forza UDP section should be visible in the
+        /// settings UI. Shown only when a Forza title is active or when the
+        /// user has AlwaysListen enabled (so they can find the toggle to
+        /// turn it off without launching Forza first). Hidden otherwise to
+        /// keep the panel uncluttered for non-Forza users.</summary>
+        public bool ShouldShowForzaSection =>
+            IsForzaGameName(_activeGame)
+            || (Settings?.Forza?.AlwaysListen == true);
+
+        /// <summary>True if SimHub's GameName looks like a Forza title.
+        /// Conservative match against the known names — extending if FH6
+        /// ships with a slightly different convention is one literal away.</summary>
+        private static bool IsForzaGameName(string game)
+        {
+            if (string.IsNullOrEmpty(game)) return false;
+            return game == "ForzaHorizon5"
+                || game == "ForzaHorizon6"
+                || game == "ForzaHorizon4"
+                || game == "ForzaMotorsport"
+                || game == "ForzaMotorsport8"
+                || game == "ForzaMotorsport7";
+        }
 
         /// <summary>Pick the right ITelemetrySource for <paramref name="game"/>
-        /// (AC's MMF reader for "AssettoCorsa", SimHub fallback otherwise) and
-        /// hand-off OnFrame so exactly one source dispatches at a time. Called
-        /// from DataUpdate on the SimHub data thread; the new source's polling
-        /// thread is fully started before the old source is detached, so the
-        /// briefest possible window of "no dispatch" covers the swap.
+        /// (AC's MMF reader for "AssettoCorsa", Forza UDP listener for any
+        /// Forza title, SimHub fallback otherwise) and hand-off OnFrame so
+        /// exactly one source dispatches at a time. Called from DataUpdate on
+        /// the SimHub data thread; the new source's polling thread is fully
+        /// started before the old source is detached, so the briefest
+        /// possible window of "no dispatch" covers the swap.
         /// Pass <paramref name="silent"/>=true on retry attempts so we don't
         /// log a "fell back" message every second while AC is loading.</summary>
         private void SwapTelemetrySource(string game, bool silent = false)
@@ -851,6 +891,34 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
+            else if (IsForzaGameName(game)
+                     || (Settings?.Forza?.AlwaysListen == true && Settings.Forza.Enabled))
+            {
+                if (Settings?.Forza?.Enabled == true)
+                {
+                    try
+                    {
+                        var bindIp = ParseIpOrAny(Settings.Forza.BindAddress);
+                        var forwardTo = BuildForzaForwardEndpoint(Settings.Forza);
+                        var fz = new ForzaUdpTelemetrySource(Settings.Forza.Port, bindIp, forwardTo)
+                        {
+                            Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                        };
+                        fz.Start();
+                        newSource = fz;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!silent)
+                        {
+                            SimHub.Logging.Current.Info(
+                                $"[Trueforce] Forza UDP source unavailable on port {Settings.Forza.Port} " +
+                                $"({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
+                                "If another listener (SimHub itself, Sim Racing Studio) holds the port, change Trueforce's port to a free one and re-point Forza's Data Out to it.");
+                        }
+                    }
+                }
+            }
             if (newSource == null) newSource = _simHubSource;
             if (newSource == _telemetrySource) return;
 
@@ -871,6 +939,69 @@ namespace TrueforceForAll.Plugin
 
             SimHub.Logging.Current.Info(
                 $"[Trueforce] Telemetry source: {newSource.Name} (enhanced={newSource.IsEnhanced}).");
+        }
+
+        // 0.0.0.0 / blank / unparseable → IPAddress.Any so the listener accepts
+        // packets on every local interface. Specific IPs are honored as-is.
+        private static IPAddress ParseIpOrAny(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return IPAddress.Any;
+            return IPAddress.TryParse(s.Trim(), out var ip) ? ip : IPAddress.Any;
+        }
+
+        // Build the forward endpoint used by ForzaUdpTelemetrySource.
+        // Returns null when forwarding is disabled or the user's host/port is
+        // invalid — the source treats null as "don't forward." Hostname (vs
+        // IP) lookups go through Dns.GetHostAddresses so users can type
+        // "localhost" or a NAS hostname; first resolved address wins.
+        private static IPEndPoint BuildForzaForwardEndpoint(ForzaSettings fs)
+        {
+            if (fs == null || !fs.ForwardEnabled) return null;
+            if (fs.ForwardPort < 1 || fs.ForwardPort > 65535) return null;
+            string host = string.IsNullOrWhiteSpace(fs.ForwardHost) ? "127.0.0.1" : fs.ForwardHost.Trim();
+            try
+            {
+                if (IPAddress.TryParse(host, out var ip))
+                    return new IPEndPoint(ip, fs.ForwardPort);
+                var addrs = System.Net.Dns.GetHostAddresses(host);
+                foreach (var a in addrs)
+                {
+                    if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        return new IPEndPoint(a, fs.ForwardPort);
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>UI hook: persist the Forza section and rebind the listener
+        /// if the active source is Forza. Settings are saved unconditionally;
+        /// the source rebind is a no-op when Forza isn't currently active.</summary>
+        public void ApplyForzaSettings()
+        {
+            if (Settings?.Forza == null) return;
+            this.SaveCommonSettings("GeneralSettings", Settings);
+
+            // Re-evaluate source choice for the active game so a port change
+            // takes effect immediately. SwapTelemetrySource handles the case
+            // where Forza isn't currently active (no-op) and the case where
+            // it's active (tear down + rebind on new port).
+            if (!string.IsNullOrEmpty(_activeGame)
+                && (IsForzaGameName(_activeGame)
+                    || (Settings.Forza.AlwaysListen && Settings.Forza.Enabled)))
+            {
+                // Force a rebuild by routing through the existing fallback
+                // first so the dispose path runs cleanly.
+                if (_telemetrySource is ForzaUdpTelemetrySource)
+                {
+                    var oldFz = _telemetrySource;
+                    if (oldFz != null) oldFz.OnFrame = null;
+                    _simHubSource.OnFrame = DispatchFrame;
+                    _telemetrySource = _simHubSource;
+                    try { oldFz?.Dispose(); } catch { }
+                }
+                SwapTelemetrySource(_activeGame);
+            }
         }
 
         public Control GetWPFSettingsControl(PluginManager pluginManager) => new SettingsControl(this);
@@ -951,14 +1082,28 @@ namespace TrueforceForAll.Plugin
             EnginePulse.PitchMultiplier = s.Pitch;
             EnginePulse.LowpassHz       = s.LowpassHz;
             EnginePulse.Waveform        = s.Waveform;
+            // Auto-cylinders precedence: a per-car engine override is the
+            // user explicitly customizing for this car, so their saved
+            // Cylinders value wins over telemetry. No override → telemetry's
+            // NumCylinders auto-detect drives the firing frequency.
+            EnginePulse.UseAutoCylinders = !IsEngineOverridden;
         }
         private void ApplyBumpsSettings(RoadBumpsSettings s)
         {
             if (RoadBumps == null || s == null) return;
-            RoadBumps.Enabled  = s.Enabled;
-            RoadBumps.Gain     = s.Gain;
-            RoadBumps.Waveform = s.Waveform;
-            RoadBumps.Freq     = s.Freq;
+            RoadBumps.Enabled            = s.Enabled;
+            RoadBumps.Gain               = s.Gain;
+            RoadBumps.Waveform           = s.Waveform;
+            RoadBumps.Freq               = s.Freq;
+            RoadBumps.SurfaceEnabled     = s.SurfaceEnabled;
+            RoadBumps.SurfaceGain        = s.SurfaceGain;
+            RoadBumps.SurfaceFreq        = s.SurfaceFreq;
+            RoadBumps.SurfaceWaveform    = s.SurfaceWaveform;
+            RoadBumps.SurfaceLowpassHz   = s.SurfaceLowpassHz;
+            RoadBumps.SurfaceHighpassHz  = s.SurfaceHighpassHz;
+            RoadBumps.SurfaceRumbleScale = s.SurfaceRumbleScale;
+            RoadBumps.RumbleStripPulseAmp = s.RumbleStripPulseAmp;
+            RoadBumps.RumbleStripPulseMs  = s.RumbleStripPulseMs;
         }
         private void ApplyTractionSettings(TractionLossSettings s)
         {
@@ -1004,7 +1149,13 @@ namespace TrueforceForAll.Plugin
         private static EnginePulseSettings  Clone(EnginePulseSettings s)
             => new EnginePulseSettings  { Enabled = s.Enabled, Gain = s.Gain, Cylinders = s.Cylinders, Pitch = s.Pitch, LowpassHz = s.LowpassHz, Waveform = s.Waveform };
         private static RoadBumpsSettings    Clone(RoadBumpsSettings s)
-            => new RoadBumpsSettings    { Enabled = s.Enabled, Gain = s.Gain, Waveform = s.Waveform, Freq = s.Freq };
+            => new RoadBumpsSettings    {
+                Enabled = s.Enabled, Gain = s.Gain, Waveform = s.Waveform, Freq = s.Freq,
+                SurfaceEnabled = s.SurfaceEnabled, SurfaceGain = s.SurfaceGain, SurfaceFreq = s.SurfaceFreq,
+                SurfaceWaveform = s.SurfaceWaveform, SurfaceLowpassHz = s.SurfaceLowpassHz,
+                SurfaceHighpassHz = s.SurfaceHighpassHz, SurfaceRumbleScale = s.SurfaceRumbleScale,
+                RumbleStripPulseAmp = s.RumbleStripPulseAmp, RumbleStripPulseMs = s.RumbleStripPulseMs,
+            };
         private static TractionLossSettings Clone(TractionLossSettings s)
             => new TractionLossSettings { Enabled = s.Enabled, Gain = s.Gain, Sensitivity = s.Sensitivity, Waveform = s.Waveform, Freq = s.Freq, NoiseLowpassHz = s.NoiseLowpassHz, NoiseHighpassHz = s.NoiseHighpassHz };
         private static GearShiftSettings    Clone(GearShiftSettings s)
@@ -1513,8 +1664,9 @@ namespace TrueforceForAll.Plugin
                 Settings.Presets.TryGetValue(_activePresetName, out snap);
                 switch (kind)
                 {
-                    case SectionKind.Master:   return !MasterEquals(snap);
-                    case SectionKind.Ducking:  return !DuckingEquals(snap);
+                    case SectionKind.Master:         return !MasterEquals(snap);
+                    case SectionKind.Ducking:        return !DuckingEquals(snap);
+                    case SectionKind.SpikeReduction: return !SpikeReductionEquals(snap);
                     case SectionKind.Audio:    return !EffectEquals(snap, EffectField.Audio);
                     case SectionKind.Engine:   return !EffectEquals(snap, EffectField.Engine);
                     case SectionKind.Bumps:    return !EffectEquals(snap, EffectField.Bumps);
@@ -1560,9 +1712,11 @@ namespace TrueforceForAll.Plugin
                 && Settings.Presets.ContainsKey(_activePresetName);
             if (hasGamePreset) return true;
 
-            // Master / Ducking are not per-car, so without a game preset
-            // they have no anchor.
-            if (kind == SectionKind.Master || kind == SectionKind.Ducking) return false;
+            // Master / Ducking / SpikeReduction are not per-car, so without
+            // a game preset they have no anchor.
+            if (kind == SectionKind.Master
+                || kind == SectionKind.Ducking
+                || kind == SectionKind.SpikeReduction) return false;
             if (string.IsNullOrEmpty(_activeCarId) || Settings.CarOverrides == null) return false;
             if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo) || liveCo == null) return false;
             switch (kind)
@@ -1583,10 +1737,14 @@ namespace TrueforceForAll.Plugin
                 && EqF2(Settings.FfbScale,                snap.FfbScale)
                 &&     Settings.FfbInvertSign          == snap.FfbInvertSign
                 && EqF1(Settings.FfbSmoothTimeConstantMs, snap.FfbSmoothTimeConstantMs)
-                &&     Settings.FfbSpikeTamingEnabled  == snap.FfbSpikeTamingEnabled
-                && EqI (Settings.FfbSpikeMaxLsbPerMs,     snap.FfbSpikeMaxLsbPerMs)
-                && EqI (Settings.FfbPeakSoftLimitLsb,     snap.FfbPeakSoftLimitLsb)
                 &&     Settings.SkipFfbPassthrough     == snap.SkipFfbPassthrough;
+        }
+
+        private bool SpikeReductionEquals(GameSettingsSnapshot snap)
+        {
+            return Settings.FfbSpikeTamingEnabled  == snap.FfbSpikeTamingEnabled
+                && EqI(Settings.FfbSpikeMaxLsbPerMs,  snap.FfbSpikeMaxLsbPerMs)
+                && EqI(Settings.FfbPeakSoftLimitLsb,  snap.FfbPeakSoftLimitLsb);
         }
 
         private bool DuckingEquals(GameSettingsSnapshot snap)
@@ -1664,7 +1822,16 @@ namespace TrueforceForAll.Plugin
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain, b.Gain)
                 && EqI (a.Freq, b.Freq)
-                && a.Waveform == b.Waveform;
+                && a.Waveform == b.Waveform
+                && a.SurfaceEnabled == b.SurfaceEnabled
+                && EqF2(a.SurfaceGain, b.SurfaceGain)
+                && EqI (a.SurfaceFreq, b.SurfaceFreq)
+                && a.SurfaceWaveform == b.SurfaceWaveform
+                && EqI (a.SurfaceLowpassHz,  b.SurfaceLowpassHz)
+                && EqI (a.SurfaceHighpassHz, b.SurfaceHighpassHz)
+                && EqF2(a.SurfaceRumbleScale, b.SurfaceRumbleScale)
+                && EqF2(a.RumbleStripPulseAmp, b.RumbleStripPulseAmp)
+                && a.RumbleStripPulseMs == b.RumbleStripPulseMs;
         }
         private static bool Eq(TractionLossSettings a, TractionLossSettings b)
         {
@@ -1711,7 +1878,7 @@ namespace TrueforceForAll.Plugin
         /// Mirrors the per-section "Save…" / "Revert" buttons in the UI:
         /// Master and Ducking are global-only; the rest have a per-car
         /// override component that revert respects.</summary>
-        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs }
+        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs, SpikeReduction }
 
         /// <summary>Revert one section to the active preset's saved snapshot.
         /// Scope-aware: if the snapshot has a per-car override for the
@@ -1730,9 +1897,6 @@ namespace TrueforceForAll.Plugin
                     Settings.FfbScale                = snap.FfbScale;
                     Settings.FfbInvertSign           = snap.FfbInvertSign;
                     Settings.FfbSmoothTimeConstantMs = snap.FfbSmoothTimeConstantMs;
-                    Settings.FfbSpikeTamingEnabled   = snap.FfbSpikeTamingEnabled;
-                    Settings.FfbSpikeMaxLsbPerMs     = snap.FfbSpikeMaxLsbPerMs;
-                    Settings.FfbPeakSoftLimitLsb     = snap.FfbPeakSoftLimitLsb;
                     Settings.SkipFfbPassthrough      = snap.SkipFfbPassthrough;
                     _mixer.MasterGain = Settings.MasterGain;
                     if (_device != null)
@@ -1740,9 +1904,18 @@ namespace TrueforceForAll.Plugin
                         _device.FfbScale                = Settings.FfbScale;
                         _device.FfbInvertSign           = Settings.FfbInvertSign;
                         _device.FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs;
-                        _device.FfbSpikeTamingEnabled   = Settings.FfbSpikeTamingEnabled;
-                        _device.FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs;
-                        _device.FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb;
+                    }
+                    return true;
+
+                case SectionKind.SpikeReduction:
+                    Settings.FfbSpikeTamingEnabled = snap.FfbSpikeTamingEnabled;
+                    Settings.FfbSpikeMaxLsbPerMs   = snap.FfbSpikeMaxLsbPerMs;
+                    Settings.FfbPeakSoftLimitLsb   = snap.FfbPeakSoftLimitLsb;
+                    if (_device != null)
+                    {
+                        _device.FfbSpikeTamingEnabled = Settings.FfbSpikeTamingEnabled;
+                        _device.FfbSpikeMaxLsbPerMs   = Settings.FfbSpikeMaxLsbPerMs;
+                        _device.FfbPeakSoftLimitLsb   = Settings.FfbPeakSoftLimitLsb;
                     }
                     return true;
 
