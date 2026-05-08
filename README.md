@@ -57,9 +57,7 @@ G923 support may come in the future.
 The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
 in real time, mixing several signal sources:
 
-- **Telemetry-derived effects** synthesized from live game data. AC
-  reads the physics shared memory directly at 1 kHz; other games come
-  through SimHub at its native data tick.
+- **Telemetry-derived effects** synthesized from live game data.
   
   - **Engine pulse** -- a rumble at the engine's firing frequency, scaled
     by RPM. The signature Trueforce sensation; idle gives a gentle hum,
@@ -75,8 +73,8 @@ in real time, mixing several signal sources:
 - **Audio-derived effects** -- WASAPI loopback captures the game's
   audio output (engine, tire, impact sounds) and feeds it into the
   wheel as a low-latency buzz. Lets you feel things the telemetry
-  doesn't expose, and works even for games SimHub can't read since
-  capture targets the game process directly.
+  doesn't expose, and works even for games which do not output telemetry data
+  since capture targets the game process directly.
   
 - **FFB pass-through with spike reduction.** When a game already drives
   the wheel via standard HID++ force feedback (Assetto Corsa does), the
