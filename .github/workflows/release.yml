@@ -1,8 +1,17 @@
 # Builds TrueforceForAll-Setup.exe and uploads it to a draft GitHub release.
 #
-# Triggers:
-#   - push of a `v*` tag (e.g. v0.1.0)  → release named after the tag
-#   - manual run via the Actions UI     → builds artifacts only, no release
+# Currently MANUAL-ONLY (workflow_dispatch). Auto-trigger on `v*` tag push
+# is disabled because the runner image doesn't have SimHub installed and
+# the plugin csproj references SimHub's redistributable DLLs by hint path.
+# Tagging fires the workflow, build fails, release is empty.
+#
+# To re-enable auto-build, either:
+#   1. Bundle the SimHub SDK DLLs in the repo under lib/SimHub-SDK/ and
+#      teach the csproj to fall back there when $(SimHubPath) is empty, or
+#   2. Add a workflow step that installs SimHub silently on the runner
+#      before the build step.
+# Until then, releases are built locally with Inno Setup 6 and uploaded
+# by hand via `gh release upload`.
 #
 # Inno Setup 6 is preinstalled on GitHub's windows-latest images at
 #   C:\Program Files (x86)\Inno Setup 6\iscc.exe
@@ -11,9 +20,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
