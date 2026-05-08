@@ -10,11 +10,9 @@ no Logitech SDK, no G HUB integration, no whitelist.
 Tested on a GPRO wheel with Assetto Corsa and Wreckfest 2. Works in principle with any game
 SimHub can read telemetry from.
 
-**Bonus: optional FFB spike reduction.** Useful on its own, even with
-the Trueforce effects all turned off. Some games deliver curb and
+**Bonus: optional FFB spike reduction.**  Some games deliver curb and
 collision FFB spikes wildly out of proportion to what's safe or
-comfortable. On a strong wheelbase they can be sharp enough to wrench
-the wheel against your grip, ruin a racing line, or cause real wrist
+comfortable. On a strong wheelbase they can be sharp enough to ruin a racing line, or cause real wrist
 strain over a session. Assetto Corsa is the worst offender we've seen
 and was the original motivation, but the feature works in any game
 whose FFB goes through standard HID++ force feedback. iRacing has a
@@ -25,7 +23,8 @@ load and weight transfer pass through untouched. This still requires
 one of the supported Logitech Trueforce wheels in the table below,
 since the modified FFB reaches the wheel through the Trueforce
 endpoint; support for non-Trueforce wheels would need a different
-attenuation point and isn't implemented yet.
+attenuation point and isn't implemented yet. Useful on its own, even with
+all Trueforce effects turned off.
 
 > **Status:** v0.x, actively developed. The plugin is functional today; the
 > default presets are still being tuned. Feedback welcome.
