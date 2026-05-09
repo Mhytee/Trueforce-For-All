@@ -121,14 +121,35 @@ namespace TrueforceForAll.Plugin
 
         // Auto-ratchet state. Snapshots the underrun/glitch counters once per
         // second; when delta crosses RatchetThreshold, the corresponding ring
-        // is bumped one notch (one-way). The "survived" capacity is persisted
-        // to Settings so reinstalls don't re-glitch sessions; manual reset is
+        // is bumped one notch (UP). The "survived" capacity is persisted to
+        // Settings so reinstalls don't re-glitch sessions; manual reset is
         // available from the Performance tab.
-        private const int  RatchetWindowMs  = 1000;
-        private const long RatchetThreshold = 3;     // underruns/laps in 1 s to trigger
+        //
+        // Ratchet-DOWN is asymmetric — slow + hysteresis-protected — so a
+        // brief noisy moment (Chrome update kicking in, antivirus scan)
+        // doesn't leave the ring permanently inflated. After UP fires, a
+        // 5-minute cooldown blocks any DOWN; after the cooldown, sustained
+        // 60+ seconds of zero underruns triggers a one-notch DOWN step.
+        // Each step requires another 60 seconds of quiet before the next,
+        // so descent is gradual. UP fires fast (1s window); DOWN waits 60s
+        // → if noise returns within 5 min, the cooldown prevents any DOWN
+        // and oscillation can't form.
+        private const int  RatchetWindowMs       = 1000;
+        private const long RatchetThreshold      = 3;     // underruns/laps in 1 s to trigger UP
+        private const int  RatchetDownQuietMs    = 60_000;   // 60 s of zero deltas → eligible for one DOWN step
+        private const int  RatchetDownCooldownMs = 300_000;  // 5 min after any UP before DOWN allowed
         private long _autoRatchetLastCheckTicks;
         private long _autoRatchetLastTfCount;
         private long _autoRatchetLastAudioCount;
+        // Stopwatch ticks of the most recent non-zero delta. Reset to "now"
+        // any time we see ANY underrun/glitch in the 1s window. The 60s
+        // quiet test compares (now - lastSeen) against RatchetDownQuietMs.
+        private long _tfLastUnderrunSeenTicks;
+        private long _audioLastUnderrunSeenTicks;
+        // Stopwatch ticks of the most recent ratchet action (up OR down).
+        // 5-minute cooldown gates any DOWN step against this.
+        private long _tfLastRatchetActionTicks;
+        private long _audioLastRatchetActionTicks;
 
         // Fired on the producer thread when auto-ratchet bumps a ring size.
         // Args: isTfRing (true = Trueforce stream ring, false = audio ring),
@@ -950,12 +971,19 @@ namespace TrueforceForAll.Plugin
             long tfNow    = _device.UnderrunCount;
             long audioNow = _audio?.GlitchCount ?? 0;
 
-            // Skip the very first tick (no baseline yet).
+            // Skip the very first tick (no baseline yet). Also seed the
+            // last-underrun-seen timestamps to "now" so a session that
+            // starts clean has a real quiet-window anchor — without this,
+            // _tfLastUnderrunSeenTicks would stay 0 and the (now - 0)
+            // arithmetic would falsely make every clean session look like
+            // it had been quiet for the entire wall-clock since boot.
             if (_autoRatchetLastCheckTicks == 0)
             {
                 _autoRatchetLastTfCount    = tfNow;
                 _autoRatchetLastAudioCount = audioNow;
                 _autoRatchetLastCheckTicks = now;
+                _tfLastUnderrunSeenTicks    = now;
+                _audioLastUnderrunSeenTicks = now;
                 return;
             }
 
@@ -965,6 +993,15 @@ namespace TrueforceForAll.Plugin
             _autoRatchetLastAudioCount = audioNow;
             _autoRatchetLastCheckTicks = now;
 
+            // Update last-underrun-seen timestamps. Any non-zero delta
+            // resets the quiet timer; this is what the DOWN check measures
+            // against. Initialize on the first non-zero value so we don't
+            // start with "60s ago" and step down immediately on a quiet
+            // session.
+            if (tfDelta    > 0) _tfLastUnderrunSeenTicks    = now;
+            if (audioDelta > 0) _audioLastUnderrunSeenTicks = now;
+
+            // ----- Ratchet UP -----
             if (tfDelta >= RatchetThreshold && perf.TfRingSize < TrueforceDevice.MaxRingSize)
             {
                 int oldCap = perf.TfRingSize;
@@ -972,7 +1009,8 @@ namespace TrueforceForAll.Plugin
                 if (newCap > TrueforceDevice.MaxRingSize) newCap = TrueforceDevice.MaxRingSize;
                 ApplyTfRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet: Trueforce ring {oldCap} → {newCap} after {tfDelta} underruns/s.");
+                    $"[Trueforce] Auto-ratchet UP: Trueforce ring {oldCap} → {newCap} after {tfDelta} underruns/s.");
+                _tfLastRatchetActionTicks = now;
                 FireRatchetEvent(true, oldCap, newCap);
             }
 
@@ -983,8 +1021,54 @@ namespace TrueforceForAll.Plugin
                 if (newCap > AudioCaptureSource.MaxRingSamples) newCap = AudioCaptureSource.MaxRingSamples;
                 ApplyAudioRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet: audio ring {oldCap} → {newCap} after {audioDelta} glitches/s.");
+                    $"[Trueforce] Auto-ratchet UP: audio ring {oldCap} → {newCap} after {audioDelta} glitches/s.");
+                _audioLastRatchetActionTicks = now;
                 FireRatchetEvent(false, oldCap, newCap);
+            }
+
+            // ----- Ratchet DOWN -----
+            // Conditions, all must hold:
+            //   - capacity is above its minimum
+            //   - quiet window: no underruns/glitches for >= RatchetDownQuietMs
+            //   - cooldown: no ratchet action (up or down) for
+            //     >= RatchetDownCooldownMs
+            // Quiet operation: log entry only, no UI event fire (don't want
+            // a modal interrupting the user every minute as the ring drains).
+            long quietTicks    = Stopwatch.Frequency * RatchetDownQuietMs    / 1000L;
+            long cooldownTicks = Stopwatch.Frequency * RatchetDownCooldownMs / 1000L;
+
+            if (perf.TfRingSize > TrueforceDevice.MinRingSize
+                && _tfLastUnderrunSeenTicks  != 0
+                && (now - _tfLastUnderrunSeenTicks)    >= quietTicks
+                && (_tfLastRatchetActionTicks == 0
+                    || (now - _tfLastRatchetActionTicks) >= cooldownTicks))
+            {
+                int oldCap = perf.TfRingSize;
+                int newCap = oldCap / 2;
+                if (newCap < TrueforceDevice.MinRingSize) newCap = TrueforceDevice.MinRingSize;
+                ApplyTfRingSize(newCap);
+                SimHub.Logging.Current.Info(
+                    $"[Trueforce] Auto-ratchet DOWN: Trueforce ring {oldCap} → {newCap} after {RatchetDownQuietMs / 1000} s of quiet.");
+                _tfLastRatchetActionTicks = now;
+                // Re-arm the cooldown for the next step too — DOWN is
+                // gradual, one notch at a time, with another full cooldown
+                // period between steps. Avoids halving twice in a single
+                // tick if we'd been quiet for hours.
+            }
+
+            if (perf.AudioRingSize > AudioCaptureSource.MinRingSamples
+                && _audioLastUnderrunSeenTicks  != 0
+                && (now - _audioLastUnderrunSeenTicks)    >= quietTicks
+                && (_audioLastRatchetActionTicks == 0
+                    || (now - _audioLastRatchetActionTicks) >= cooldownTicks))
+            {
+                int oldCap = perf.AudioRingSize;
+                int newCap = oldCap / 2;
+                if (newCap < AudioCaptureSource.MinRingSamples) newCap = AudioCaptureSource.MinRingSamples;
+                ApplyAudioRingSize(newCap);
+                SimHub.Logging.Current.Info(
+                    $"[Trueforce] Auto-ratchet DOWN: audio ring {oldCap} → {newCap} after {RatchetDownQuietMs / 1000} s of quiet.");
+                _audioLastRatchetActionTicks = now;
             }
         }
 
