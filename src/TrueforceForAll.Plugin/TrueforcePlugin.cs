@@ -108,9 +108,15 @@ namespace TrueforceForAll.Plugin
         // onto each frame: MaxRpm is static per car (no benefit to physics
         // rate), and AC's `physics.abs` is the *configuration level*, not
         // pump activity — SimHub derives a usable AbsActive signal that we
-        // inherit instead of re-implementing.
+        // inherit instead of re-implementing. PitLimiter and DRS are also
+        // overlaid: AC's MMF source and Forza UDP both leave them null, but
+        // SimHub's per-game readers know how to extract them — so we mirror
+        // SimHub's value into enhanced frames so the effects fire on AC pit
+        // lane and any DRS-equipped sim using an enhanced source.
         private double _lastSimHubMaxRpm;
         private int    _lastSimHubAbsActive;
+        private int?   _lastSimHubPitLimiterActive;
+        private int?   _lastSimHubDrsActive;
 
         // Throttle for retrying enhanced-source acquisition. AC's shared memory
         // page only appears once the game loads into a session, but SimHub
@@ -911,8 +917,10 @@ namespace TrueforceForAll.Plugin
             var nd = data?.NewData;
             if (nd != null)
             {
-                _lastSimHubMaxRpm    = nd.MaxRpm;
-                _lastSimHubAbsActive = nd.ABSActive;
+                _lastSimHubMaxRpm           = nd.MaxRpm;
+                _lastSimHubAbsActive        = nd.ABSActive;
+                _lastSimHubPitLimiterActive = nd.PitLimiterOn;
+                _lastSimHubDrsActive        = nd.DRSEnabled;
             }
 
             // Hand the GameData to the SimHub source. It builds a
@@ -940,6 +948,12 @@ namespace TrueforceForAll.Plugin
             {
                 frame.MaxRpm    = _lastSimHubMaxRpm;
                 frame.AbsActive = _lastSimHubAbsActive;
+                // Only overlay PitLimiter/DRS when the enhanced source itself
+                // didn't populate them — preserves any future enhanced source
+                // that does read them natively (e.g., a richer AC plugin
+                // reading the static page's pit-lane flags).
+                if (frame.PitLimiterActive == null) frame.PitLimiterActive = _lastSimHubPitLimiterActive;
+                if (frame.DrsActive        == null) frame.DrsActive        = _lastSimHubDrsActive;
             }
 
             if (_audio != null)
