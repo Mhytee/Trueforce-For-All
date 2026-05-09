@@ -876,6 +876,56 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Pit limiter — modal flag effect. Pulse train while the
+                     pit limiter is engaged. Most modern racing sims surface
+                     PitLimiterOn directly via SimHub. -->
+                <Expander x:Name="PitLimiterExpander" IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="PitLimiterEnabledCheck" Content="Pit limiter"
+                                      FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Checked="PitLimiterEnabled_Changed" Unchecked="PitLimiterEnabled_Changed"/>
+                            <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="PitLimiterTest_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="Continuous pulse train while the pit limiter is engaged — feels like the engine being cut at low RPM. Defaults: 50 Hz square carrier, 6 Hz pulse rate, 60% duty cycle. Source: SimHub StatusDataBase.PitLimiterOn (works for most racing sims that have a pit lane)."/>
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="PitLimiterGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.25" ValueChanged="PitLimiterGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="PitLimiterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+
+                <!-- DRS — F1-style flag effect. Activation chirp on rising edge
+                     plus low-amp sustained tone while wing is open. Source:
+                     SimHub StatusDataBase.DRSEnabled (F1 / F1-like sims). -->
+                <Expander x:Name="DrsExpander" IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="DrsEnabledCheck" Content="DRS"
+                                      FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Checked="DrsEnabled_Changed" Unchecked="DrsEnabled_Changed"/>
+                            <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="DrsTest_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="Brief activation chirp (~60 ms) on the rising edge of DRS, plus a low-amplitude sustained tone while the wing stays open. Silent on games that don't expose DRS. Source: SimHub StatusDataBase.DRSEnabled (F1 sims primarily)."/>
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="DrsGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.25" ValueChanged="DrsGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="DrsGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+
             </StackPanel> <!-- /TelemetryEffectsPanel -->
 
             <!-- Sidechain ducking. Collapsed Expander, sits below the

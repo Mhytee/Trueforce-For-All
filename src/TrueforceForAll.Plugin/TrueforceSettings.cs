@@ -101,6 +101,8 @@ namespace TrueforceForAll.Plugin
         public TractionLossSettings TractionLoss { get; set; } = new TractionLossSettings();
         public GearShiftSettings    GearShift    { get; set; } = new GearShiftSettings();
         public AbsClickSettings     AbsClick     { get; set; } = new AbsClickSettings();
+        public PitLimiterSettings   PitLimiter   { get; set; } = new PitLimiterSettings();
+        public DrsSettings          Drs          { get; set; } = new DrsSettings();
 
         // Per-machine performance tuning. Lives outside GameSettingsSnapshot
         // because ring sizes are a property of the machine (CPU, scheduler
@@ -167,6 +169,8 @@ namespace TrueforceForAll.Plugin
         public TractionLossSettings TractionLoss { get; set; }
         public GearShiftSettings    GearShift    { get; set; }
         public AbsClickSettings     AbsClick     { get; set; }
+        public PitLimiterSettings   PitLimiter   { get; set; }
+        public DrsSettings          Drs          { get; set; }
 
         public Dictionary<string, CarOverride> CarOverrides { get; set; }
     }
@@ -406,6 +410,33 @@ namespace TrueforceForAll.Plugin
         public Waveform Waveform { get; set; } = Waveform.Square;
     }
 
+    public sealed class PitLimiterSettings
+    {
+        public bool  Enabled    { get; set; } = true;
+        public float Gain       { get; set; } = 1.0f;
+        public float Freq       { get; set; } = 50.0f;
+        public float PulseFreq  { get; set; } = 6.0f;
+        public float DutyCycle  { get; set; } = 0.6f;
+        public float ActiveAmp  { get; set; } = 0.30f;
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public Waveform Waveform { get; set; } = Waveform.Square;
+    }
+
+    public sealed class DrsSettings
+    {
+        public bool  Enabled       { get; set; } = true;
+        public float Gain          { get; set; } = 1.0f;
+        public float ActivationFreq { get; set; } = 120.0f;
+        public int   ActivationMs  { get; set; } = 60;
+        public float ActivationAmp { get; set; } = 0.30f;
+        public float SustainedFreq { get; set; } = 70.0f;
+        public float SustainedAmp  { get; set; } = 0.12f;
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public Waveform Waveform { get; set; } = Waveform.Sine;
+    }
+
     /// <summary>Standalone preset file. Wraps a GameSettingsSnapshot with a
     /// user-chosen name so it can be imported into any user's library and
     /// applied to any game. Format used by "Export preset" and shared between
@@ -458,10 +489,13 @@ namespace TrueforceForAll.Plugin
         public TractionLossSettings TractionLoss { get; set; }
         public GearShiftSettings    GearShift    { get; set; }
         public AbsClickSettings     AbsClick     { get; set; }
+        public PitLimiterSettings   PitLimiter   { get; set; }
+        public DrsSettings          Drs          { get; set; }
         public AudioCaptureSettings AudioCapture { get; set; }
 
         public bool IsEmpty =>
             EnginePulse == null && RoadBumps == null && TractionLoss == null &&
-            GearShift   == null && AbsClick  == null && AudioCapture == null;
+            GearShift   == null && AbsClick  == null && AudioCapture == null &&
+            PitLimiter  == null && Drs       == null;
     }
 }

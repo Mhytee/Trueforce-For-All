@@ -78,6 +78,19 @@ namespace TrueforceForAll.Core
         /// <summary>0 = ABS not active, &gt;0 = active. Edge transitions drive AbsClick PerTick mode.</summary>
         public int AbsActive;
 
+        /// <summary>0 = pit limiter off, &gt;0 = engaged. Drives PitLimiterEffect's
+        /// pulse train. Universal across sims — almost every racing game with
+        /// pit lanes exposes this. Null when the source can't read it.</summary>
+        public int? PitLimiterActive;
+
+        /// <summary>0 = DRS not active, &gt;0 = wing open. F1-style sims only;
+        /// null when the source can't read it (most non-F1 games).</summary>
+        public int? DrsActive;
+
+        /// <summary>0 = KERS / energy-recovery deployment off, &gt;0 = deploying.
+        /// F1 / hybrid-era sims only; null otherwise.</summary>
+        public int? KersActive;
+
         // ---- Tire grip ----
         /// <summary>Direct slip-ratio reading from a sim that exposes one
         /// (e.g. AC's wheelSlip[], Forza's TireCombinedSlip[]), max-abs across

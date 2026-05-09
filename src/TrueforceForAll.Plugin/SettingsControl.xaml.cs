@@ -313,6 +313,22 @@ namespace TrueforceForAll.Plugin
                     AbsModeCombo.SelectedIndex    = (int)abs.Mode;
                     SelectWaveform(AbsWaveformCombo, abs.Waveform);
                 }
+                // Pit limiter (minimal UI: enabled + gain only for now)
+                var pl = _plugin.ActivePitLimiter;
+                if (pl != null && PitLimiterEnabledCheck != null)
+                {
+                    PitLimiterEnabledCheck.IsChecked = pl.Enabled;
+                    PitLimiterGainSlider.Value       = pl.Gain;
+                    PitLimiterGainText.Text          = pl.Gain.ToString("F2");
+                }
+                // DRS (minimal UI: enabled + gain only for now)
+                var drs = _plugin.ActiveDrs;
+                if (drs != null && DrsEnabledCheck != null)
+                {
+                    DrsEnabledCheck.IsChecked        = drs.Enabled;
+                    DrsGainSlider.Value              = drs.Gain;
+                    DrsGainText.Text                 = drs.Gain.ToString("F2");
+                }
 
                 // Override badges in expander headers — visible only when this
                 // section has its own per-car override active.
@@ -1009,6 +1025,8 @@ namespace TrueforceForAll.Plugin
         private void TractionTest_Click (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.TractionLoss);
         private void ShiftTest_Click    (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.GearShift);
         private void AbsTest_Click      (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.AbsClick);
+        private void PitLimiterTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.PitLimiter);
+        private void DrsTest_Click       (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.Drs);
         private void AudioEnabled_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.ActiveAudio == null) return;
@@ -1800,6 +1818,45 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveShift.Waveform = WaveformOf(ShiftWaveformCombo);
             Apply(EffectKind.Shift);
+        }
+
+        // ---------- Pit limiter / DRS ----------
+        // Minimal handlers — Enabled + Gain only for now. Tuning sliders
+        // (carrier freq, pulse rate, duty, activation/sustained amps) are
+        // a follow-up; the defaults baked into PitLimiterSettings /
+        // DrsSettings are tuned to feel right out of the box. Skipping
+        // the full EffectKind / Save / Revert plumbing keeps the diff
+        // small; the per-car override mechanism still works because
+        // ApplyActiveCarOverride is invoked on every change.
+
+        private void PitLimiterEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.ActivePitLimiter.Enabled = PitLimiterEnabledCheck.IsChecked == true;
+            _plugin.ApplyActiveCarOverride();
+        }
+        private void PitLimiterGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            PitLimiterGainText.Text = v.ToString("F2");
+            _plugin.ActivePitLimiter.Gain = v;
+            _plugin.ApplyActiveCarOverride();
+        }
+
+        private void DrsEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.ActiveDrs.Enabled = DrsEnabledCheck.IsChecked == true;
+            _plugin.ApplyActiveCarOverride();
+        }
+        private void DrsGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            DrsGainText.Text = v.ToString("F2");
+            _plugin.ActiveDrs.Gain = v;
+            _plugin.ApplyActiveCarOverride();
         }
 
         // ---------- ABS ----------

@@ -77,6 +77,8 @@ namespace TrueforceForAll.Plugin
         public TractionLossEffect TractionLoss { get; private set; }
         public GearShiftEffect    GearShift    { get; private set; }
         public AbsClickEffect     AbsClick     { get; private set; }
+        public PitLimiterEffect   PitLimiter   { get; private set; }
+        public DrsEffect          Drs          { get; private set; }
         private TelemetryEffect[] _effects;
 
         // Active telemetry source. The plugin currently always uses
@@ -542,7 +544,9 @@ namespace TrueforceForAll.Plugin
             TractionLoss = new TractionLossEffect();
             GearShift    = new GearShiftEffect();
             AbsClick     = new AbsClickEffect();
-            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, GearShift, AbsClick };
+            PitLimiter   = new PitLimiterEffect();
+            Drs          = new DrsEffect();
+            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, GearShift, AbsClick, PitLimiter, Drs };
             foreach (var fx in _effects) _mixer.Add(fx);
             // Pull initial values from globals (no car detected yet).
             ApplyActiveCarOverride();
@@ -1159,24 +1163,30 @@ namespace TrueforceForAll.Plugin
             ApplyTractionSettings(ovr?.TractionLoss ?? Settings.TractionLoss);
             ApplyShiftSettings (ovr?.GearShift    ?? Settings.GearShift);
             ApplyAbsSettings   (ovr?.AbsClick     ?? Settings.AbsClick);
+            ApplyPitLimiterSettings(ovr?.PitLimiter ?? Settings.PitLimiter);
+            ApplyDrsSettings   (ovr?.Drs          ?? Settings.Drs);
             ApplyAudioCaptureSettings(ovr?.AudioCapture ?? Settings.AudioCapture);
         }
 
         // ----- per-section: is this section overridden for the active car? -----
-        public bool IsEngineOverridden  => GetActiveCarOverride()?.EnginePulse  != null;
-        public bool IsBumpsOverridden   => GetActiveCarOverride()?.RoadBumps    != null;
-        public bool IsTractionOverridden=> GetActiveCarOverride()?.TractionLoss != null;
-        public bool IsShiftOverridden   => GetActiveCarOverride()?.GearShift    != null;
-        public bool IsAbsOverridden     => GetActiveCarOverride()?.AbsClick     != null;
-        public bool IsAudioOverridden   => GetActiveCarOverride()?.AudioCapture != null;
+        public bool IsEngineOverridden     => GetActiveCarOverride()?.EnginePulse  != null;
+        public bool IsBumpsOverridden      => GetActiveCarOverride()?.RoadBumps    != null;
+        public bool IsTractionOverridden   => GetActiveCarOverride()?.TractionLoss != null;
+        public bool IsShiftOverridden      => GetActiveCarOverride()?.GearShift    != null;
+        public bool IsAbsOverridden        => GetActiveCarOverride()?.AbsClick     != null;
+        public bool IsPitLimiterOverridden => GetActiveCarOverride()?.PitLimiter   != null;
+        public bool IsDrsOverridden        => GetActiveCarOverride()?.Drs          != null;
+        public bool IsAudioOverridden      => GetActiveCarOverride()?.AudioCapture != null;
 
         // ----- per-section: toggle override on/off (snapshots globals when on) -----
-        public void SetEngineOverride(bool on)   => ToggleSectionOverride(on, get: o => o.EnginePulse,  set: (o, v) => o.EnginePulse  = v, snapshot: () => Clone(Settings.EnginePulse));
-        public void SetBumpsOverride(bool on)    => ToggleSectionOverride(on, get: o => o.RoadBumps,    set: (o, v) => o.RoadBumps    = v, snapshot: () => Clone(Settings.RoadBumps));
-        public void SetTractionOverride(bool on) => ToggleSectionOverride(on, get: o => o.TractionLoss, set: (o, v) => o.TractionLoss = v, snapshot: () => Clone(Settings.TractionLoss));
-        public void SetShiftOverride(bool on)    => ToggleSectionOverride(on, get: o => o.GearShift,    set: (o, v) => o.GearShift    = v, snapshot: () => Clone(Settings.GearShift));
-        public void SetAbsOverride(bool on)      => ToggleSectionOverride(on, get: o => o.AbsClick,     set: (o, v) => o.AbsClick     = v, snapshot: () => Clone(Settings.AbsClick));
-        public void SetAudioOverride(bool on)    => ToggleSectionOverride(on, get: o => o.AudioCapture, set: (o, v) => o.AudioCapture = v, snapshot: () => CloneOrNull(Settings.AudioCapture));
+        public void SetEngineOverride(bool on)     => ToggleSectionOverride(on, get: o => o.EnginePulse,  set: (o, v) => o.EnginePulse  = v, snapshot: () => Clone(Settings.EnginePulse));
+        public void SetBumpsOverride(bool on)      => ToggleSectionOverride(on, get: o => o.RoadBumps,    set: (o, v) => o.RoadBumps    = v, snapshot: () => Clone(Settings.RoadBumps));
+        public void SetTractionOverride(bool on)   => ToggleSectionOverride(on, get: o => o.TractionLoss, set: (o, v) => o.TractionLoss = v, snapshot: () => Clone(Settings.TractionLoss));
+        public void SetShiftOverride(bool on)      => ToggleSectionOverride(on, get: o => o.GearShift,    set: (o, v) => o.GearShift    = v, snapshot: () => Clone(Settings.GearShift));
+        public void SetAbsOverride(bool on)        => ToggleSectionOverride(on, get: o => o.AbsClick,     set: (o, v) => o.AbsClick     = v, snapshot: () => Clone(Settings.AbsClick));
+        public void SetPitLimiterOverride(bool on) => ToggleSectionOverride(on, get: o => o.PitLimiter,   set: (o, v) => o.PitLimiter   = v, snapshot: () => Clone(Settings.PitLimiter));
+        public void SetDrsOverride(bool on)        => ToggleSectionOverride(on, get: o => o.Drs,          set: (o, v) => o.Drs          = v, snapshot: () => Clone(Settings.Drs));
+        public void SetAudioOverride(bool on)      => ToggleSectionOverride(on, get: o => o.AudioCapture, set: (o, v) => o.AudioCapture = v, snapshot: () => CloneOrNull(Settings.AudioCapture));
 
         private void ToggleSectionOverride<T>(bool on,
             Func<CarOverride, T> get,
@@ -1202,7 +1212,9 @@ namespace TrueforceForAll.Plugin
         public RoadBumpsSettings    ActiveBumps    => GetActiveCarOverride()?.RoadBumps    ?? Settings.RoadBumps;
         public TractionLossSettings ActiveTraction => GetActiveCarOverride()?.TractionLoss ?? Settings.TractionLoss;
         public GearShiftSettings    ActiveShift    => GetActiveCarOverride()?.GearShift    ?? Settings.GearShift;
-        public AbsClickSettings     ActiveAbs      => GetActiveCarOverride()?.AbsClick     ?? Settings.AbsClick;
+        public AbsClickSettings     ActiveAbs        => GetActiveCarOverride()?.AbsClick     ?? Settings.AbsClick;
+        public PitLimiterSettings   ActivePitLimiter => GetActiveCarOverride()?.PitLimiter   ?? Settings.PitLimiter;
+        public DrsSettings          ActiveDrs        => GetActiveCarOverride()?.Drs          ?? Settings.Drs;
         public AudioCaptureSettings ActiveAudio    => GetActiveCarOverride()?.AudioCapture ?? Settings.AudioCapture;
 
         // ----- apply settings to live effect -----
@@ -1276,6 +1288,29 @@ namespace TrueforceForAll.Plugin
             AbsClick.Mode           = s.Mode;
             AbsClick.Waveform       = s.Waveform;
         }
+        private void ApplyPitLimiterSettings(PitLimiterSettings s)
+        {
+            if (PitLimiter == null || s == null) return;
+            PitLimiter.Enabled    = s.Enabled;
+            PitLimiter.Gain       = s.Gain;
+            PitLimiter.Freq       = s.Freq;
+            PitLimiter.PulseFreq  = s.PulseFreq;
+            PitLimiter.DutyCycle  = s.DutyCycle;
+            PitLimiter.ActiveAmp  = s.ActiveAmp;
+            PitLimiter.Waveform   = s.Waveform;
+        }
+        private void ApplyDrsSettings(DrsSettings s)
+        {
+            if (Drs == null || s == null) return;
+            Drs.Enabled        = s.Enabled;
+            Drs.Gain           = s.Gain;
+            Drs.ActivationFreq = s.ActivationFreq;
+            Drs.ActivationMs   = s.ActivationMs;
+            Drs.ActivationAmp  = s.ActivationAmp;
+            Drs.SustainedFreq  = s.SustainedFreq;
+            Drs.SustainedAmp   = s.SustainedAmp;
+            Drs.Waveform       = s.Waveform;
+        }
         private void ApplyAudioCaptureSettings(AudioCaptureSettings s)
         {
             if (_audio == null || s == null) return;
@@ -1307,6 +1342,10 @@ namespace TrueforceForAll.Plugin
             => new GearShiftSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, Waveform = s.Waveform };
         private static AbsClickSettings     Clone(AbsClickSettings s)
             => new AbsClickSettings     { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, TickDurationMs = s.TickDurationMs, Mode = s.Mode, Waveform = s.Waveform };
+        private static PitLimiterSettings   Clone(PitLimiterSettings s)
+            => new PitLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, Waveform = s.Waveform };
+        private static DrsSettings          Clone(DrsSettings s)
+            => new DrsSettings          { Enabled = s.Enabled, Gain = s.Gain, ActivationFreq = s.ActivationFreq, ActivationMs = s.ActivationMs, ActivationAmp = s.ActivationAmp, SustainedFreq = s.SustainedFreq, SustainedAmp = s.SustainedAmp, Waveform = s.Waveform };
 
         // ---------- preset library ----------
 
@@ -2011,6 +2050,29 @@ namespace TrueforceForAll.Plugin
                 && EqF2(a.DutyCycle,      b.DutyCycle)
                 && EqI (a.TickDurationMs, b.TickDurationMs)
                 && a.Mode == b.Mode && a.Waveform == b.Waveform;
+        }
+        private static bool Eq(PitLimiterSettings a, PitLimiterSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain,      b.Gain)
+                && EqI (a.Freq,      b.Freq)
+                && EqF1(a.PulseFreq, b.PulseFreq)
+                && EqF2(a.DutyCycle, b.DutyCycle)
+                && EqF2(a.ActiveAmp, b.ActiveAmp)
+                && a.Waveform == b.Waveform;
+        }
+        private static bool Eq(DrsSettings a, DrsSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain,           b.Gain)
+                && EqI (a.ActivationFreq, b.ActivationFreq)
+                && a.ActivationMs == b.ActivationMs
+                && EqF2(a.ActivationAmp,  b.ActivationAmp)
+                && EqI (a.SustainedFreq,  b.SustainedFreq)
+                && EqF2(a.SustainedAmp,   b.SustainedAmp)
+                && a.Waveform == b.Waveform;
         }
         private static bool Eq(AudioCaptureSettings a, AudioCaptureSettings b)
         {
