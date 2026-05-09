@@ -589,9 +589,25 @@
                                        FontFamily="Consolas" IsReadOnly="True"
                                        LostFocus="EngineFiringPattern_LostFocus"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,0"
+                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,4"
                                    TextWrapping="Wrap"
-                                   Text="Format: 0, 0.125, 0.25, ...  Optional weights: 0:1.0, 0.125:0.85, ...  When the engine for your car doesn't sound right, copy this string into a GitHub issue so we can bake the correct pattern."/>
+                                   Text="Format: 0, 0.125, 0.25, ...  Optional weights: 0:1.0, 0.125:0.85, ..."/>
+                        <!-- Report-engine-data button: opens a pre-filled GitHub
+                             issue with the currently-cached engine state +
+                             whatever the user has manually overridden, so
+                             corrections / contributions are one click. The
+                             button label changes by context: existing cached
+                             car -> "Report wrong engine data"; uncached car
+                             with manual values -> "Submit engine data for
+                             this car". Hidden when no car is loaded. -->
+                        <Grid Margin="140,4,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Button x:Name="ReportEngineDataButton"
+                                    HorizontalAlignment="Left" Padding="8,3"
+                                    Click="ReportEngineDataButton_Click"
+                                    Content="Submit engine data for this car…"
+                                    ToolTip="Opens a GitHub issue pre-filled with what's auto-detected and what you've selected in the dropdowns / slider. Just hit Submit on GitHub — no typing needed."/>
+                        </Grid>
                         <!-- Coverage readout: how often the resolver is producing
                              specific layout info this session, broken down by
                              baked vs heuristic. Lets users see whether the
@@ -599,7 +615,7 @@
                              they drive. Refreshed by the same UI tick that
                              updates other live counters. -->
                         <TextBlock x:Name="EngineCoverageText" Style="{StaticResource HelpText}"
-                                   Margin="140,4,0,0" TextWrapping="Wrap"
+                                   Margin="140,0,0,0" TextWrapping="Wrap"
                                    FontStyle="Italic"
                                    Text="No cars resolved yet."/>
                     </StackPanel>

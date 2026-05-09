@@ -492,6 +492,18 @@ namespace TrueforceForAll.Plugin
                     // the firing-order coverage is for cars they drive.
                     if (EngineCoverageText != null)
                         EngineCoverageText.Text = _plugin.EngineConfigCoverageText;
+
+                    // Report-engine-data button: shown whenever a car is loaded.
+                    // Label is fixed — the issue body captures both the auto-
+                    // detected values and the user's selections, so the same
+                    // button works whether they're correcting our bake or
+                    // contributing fresh data for an uncached car.
+                    if (ReportEngineDataButton != null)
+                    {
+                        ReportEngineDataButton.Visibility = string.IsNullOrEmpty(activeCar)
+                            ? System.Windows.Visibility.Collapsed
+                            : System.Windows.Visibility.Visible;
+                    }
                 }
 
                 if (ForzaStatusText != null)
@@ -1365,6 +1377,122 @@ namespace TrueforceForAll.Plugin
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
                 {
                     UseShellExecute = true,  // .NET Framework 4.8 launches the URL via default browser
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Couldn't open browser:\n{ex.Message}\n\nYou can manually file an issue at:\n{ReportIssuesBase}",
+                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        // Submit engine data for the active car. Captures both what the bake/
+        // resolver auto-detected AND what the user has selected via the
+        // dropdowns / slider. No "FILL IN" placeholders — the user's UI
+        // values ARE the proposed values; submission is one click on GitHub.
+        // Maintainers can read the diff at a glance.
+        private void ReportEngineDataButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string carId  = _plugin.ActiveCarId ?? "(no car loaded)";
+            string game   = _plugin.ActiveGame  ?? "(unknown)";
+            var ep        = _plugin.EnginePulse;
+            var es        = _plugin.ActiveEngine;
+            string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
+
+            // What the bake / resolver said
+            int? autoCyl   = ep?.AutoCylinders;
+            string cylSrc  = ep?.AutoCylinderSource ?? "(none)";
+            string autoElec = ep != null && ep.IsElectric ? "yes" : "no";
+            // The auto layout for this carId is whatever FiringPatternDb would
+            // pick if the bake had Auto — i.e. the cyl-count default. We
+            // surface what the resolver actually returned (which the plugin
+            // wrote into EnginePulse.EngineConfig) only if it differs from
+            // the user's saved value below; otherwise the user's value is
+            // already that.
+            string detectedLayout = !string.IsNullOrEmpty(cylSrc)
+                ? (ep?.EngineConfig.ToString() ?? "Auto")
+                : "(not detected)";
+
+            // What the user has selected on the page (their preset values)
+            int sliderCyl = es?.Cylinders ?? 0;
+            string sliderText = sliderCyl == 0 ? "auto" : sliderCyl.ToString();
+            var userCfg   = es?.EngineConfig ?? Effects.EngineConfig.Auto;
+            var userElec  = es?.ElectricMode ?? ElectricCarMode.MutedHum;
+            string customRaw = es?.CustomFiringPattern ?? "";
+
+            // Diff lines — the meat of the submission. Show only the axes
+            // where the user's value differs from auto so the maintainer sees
+            // exactly what's being proposed as a change.
+            var diff = new System.Collections.Generic.List<string>();
+            if (sliderCyl != 0 && autoCyl.HasValue && sliderCyl != autoCyl.Value)
+                diff.Add($"- Cylinders: detected `{autoCyl}`, user says `{sliderCyl}`");
+            else if (sliderCyl != 0 && !autoCyl.HasValue)
+                diff.Add($"- Cylinders: not detected, user says `{sliderCyl}`");
+            if (userCfg != Effects.EngineConfig.Auto && userCfg.ToString() != detectedLayout)
+                diff.Add($"- Engine layout: detected `{detectedLayout}`, user says `{userCfg}`");
+            else if (userCfg != Effects.EngineConfig.Auto && string.IsNullOrEmpty(cylSrc))
+                diff.Add($"- Engine layout: not detected, user says `{userCfg}`");
+            if (userCfg == Effects.EngineConfig.Custom && !string.IsNullOrEmpty(customRaw))
+                diff.Add($"- Custom firing pattern: `{customRaw}`");
+
+            // Title carries the diff summary so the issues list is scannable
+            // without opening each one. Falls back to a generic title when
+            // the user hasn't changed anything.
+            string title;
+            string label;
+            if (diff.Count == 0)
+            {
+                title = $"Engine data confirm: {carId}";
+                label = "engine-data-confirm";
+            }
+            else if (string.IsNullOrEmpty(cylSrc))
+            {
+                title = $"Engine data submission: {carId}";
+                label = "engine-data-contrib";
+            }
+            else
+            {
+                title = $"Engine data correction: {carId}";
+                label = "engine-data-wrong";
+            }
+
+            string body =
+                  $"**Game:** `{game}`  \n"
+                + $"**Car ID:** `{carId}`  \n"
+                + $"**Plugin version:** {version}\n\n";
+
+            if (diff.Count > 0)
+            {
+                body += "**Proposed change(s)**\n"
+                      + string.Join("\n", diff) + "\n\n";
+            }
+
+            body += "**Auto-detected (what the plugin found)**\n"
+                  + $"- Cylinders: {(autoCyl?.ToString() ?? "(not detected)")}  \n"
+                  + $"- Cyl source: `{cylSrc}`  \n"
+                  + $"- Engine layout: `{detectedLayout}`  \n"
+                  + $"- Electric flag: {autoElec}\n\n"
+                  + "**My settings on the panel (proposed)**\n"
+                  + $"- Cylinders slider: `{sliderText}`  \n"
+                  + $"- Engine layout dropdown: `{userCfg}`  \n"
+                  + $"- Electric mode: `{userElec}`  \n"
+                  + (string.IsNullOrEmpty(customRaw)
+                        ? ""
+                        : $"- Custom firing pattern: `{customRaw}`  \n")
+                  + "\n**Notes** (optional — engine codename, mod page link, anything else):\n"
+                  + "\n";
+
+            string url = ReportIssuesBase
+                       + "?title=" + Uri.EscapeDataString(title)
+                       + "&body="  + Uri.EscapeDataString(body)
+                       + "&labels=" + Uri.EscapeDataString(label);
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
+                {
+                    UseShellExecute = true,
                 });
             }
             catch (Exception ex)
