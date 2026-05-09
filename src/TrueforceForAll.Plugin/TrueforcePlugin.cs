@@ -1236,17 +1236,17 @@ namespace TrueforceForAll.Plugin
         /// <summary>True if the game ships native Trueforce on PC. Plugin
         /// auto-disables on first encounter so our ep3 stream doesn't fight
         /// the game's own. Users can manually re-enable via the master
-        /// toggle if they prefer our effects layered on top.
-        /// AC Rally also ships native Trueforce but isn't listed here yet —
-        /// pending confirmation of SimHub's GameName for it. Add when
-        /// known.</summary>
+        /// toggle if they prefer our effects layered on top. SimHub
+        /// GameName values verified against the SimHub install
+        /// (LookupTables and PluginsData folder names).</summary>
         private static bool IsNativeTrueforceGame(string game)
         {
             if (string.IsNullOrEmpty(game)) return false;
             return game == "ForzaMotorsport"
                 || game == "ForzaMotorsport8"
                 || game == "ForzaMotorsport7"
-                || game == "iRacing";
+                || game == "iRacing"
+                || game == "AssettoCorsaRally";
         }
 
         /// <summary>Pick the right ITelemetrySource for <paramref name="game"/>
