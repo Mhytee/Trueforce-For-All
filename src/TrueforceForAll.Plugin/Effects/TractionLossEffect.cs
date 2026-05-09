@@ -24,6 +24,7 @@
 // tire-screech pitch tracks tread strike rate) for tonal waveforms only.
 
 using System;
+using System.Diagnostics;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -230,12 +231,12 @@ namespace TrueforceForAll.Plugin.Effects
             // diag log), so we can't use their diff. Fall back to the classic
             // heuristic: RPM rising sharply while speed isn't. Gated on
             // throttle and on RPM being well below redline (rules out limiter).
-            long now = DateTime.UtcNow.Ticks;
+            long now = Stopwatch.GetTimestamp();
             double throttlePct = f.Throttle01 * 100.0;
             double wheelspinNorm = 0;
             if (_prevTicks != 0)
             {
-                double dtSec = (now - _prevTicks) / 10_000_000.0;
+                double dtSec = (double)(now - _prevTicks) / Stopwatch.Frequency;
                 if (dtSec >= 0.005 && dtSec <= 0.5
                     && throttlePct >= 25.0
                     && f.MaxRpm > 0 && f.Rpms < f.MaxRpm * 0.95)   // not at limiter
@@ -308,7 +309,7 @@ namespace TrueforceForAll.Plugin.Effects
 
             // Diagnostic — once per second, only when something interesting.
             if (rawTraction > _peakSlipSinceLastLog) _peakSlipSinceLastLog = rawTraction;
-            if (now - _lastDiagLogTicks > TimeSpan.TicksPerSecond)
+            if (now - _lastDiagLogTicks > Stopwatch.Frequency)
             {
                 if (_peakSlipSinceLastLog > 0.05)
                 {
@@ -319,6 +320,21 @@ namespace TrueforceForAll.Plugin.Effects
                 _peakSlipSinceLastLog = 0;
             }
             return rawTraction;
+        }
+
+        public override void Reset()
+        {
+            // Clear EMA + the dRpm/dSpeed history so the new car's first frame
+            // doesn't compute a delta against the previous car's last sample
+            // (which would spike the wheelspin heuristic on a 800 → 6000 RPM
+            // jump from idling-car to running-car spawn).
+            _slipEma              = 0;
+            _prevTicks            = 0;
+            _prevRpm              = 0;
+            _prevSpeed            = 0;
+            _lastDiagLogTicks     = 0;
+            _peakSlipSinceLastLog = 0;
+            _noise.Amp            = 0;
         }
     }
 }

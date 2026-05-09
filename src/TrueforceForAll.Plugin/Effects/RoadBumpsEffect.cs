@@ -23,6 +23,7 @@
 // channel is what every game gets out of the box.
 
 using System;
+using System.Diagnostics;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -189,8 +190,8 @@ namespace TrueforceForAll.Plugin.Effects
         // Rumble-strip leading-edge pulse state. Edge resets the start time;
         // OnTelemetry derives the current envelope from age.
         private bool _prevOnRumbleStrip;
-        private long _rsPulseStartTicks;
-        private const long TicksPerMs = TimeSpan.TicksPerMillisecond;
+        private long _rsPulseStartTicks;     // Stopwatch.GetTimestamp() units
+        private static readonly long StopwatchTicksPerMs = Stopwatch.Frequency / 1000;
 
         public override void OnTelemetry(TelemetryFrame f)
         {
@@ -221,13 +222,14 @@ namespace TrueforceForAll.Plugin.Effects
                     surfaceNorm = Math.Min(1.0, Math.Abs(sr) * SurfaceRumbleScale);
 
                 bool onStrip = f.OnRumbleStrip ?? false;
-                if (onStrip && !_prevOnRumbleStrip) _rsPulseStartTicks = DateTime.UtcNow.Ticks;
+                long nowSw = Stopwatch.GetTimestamp();
+                if (onStrip && !_prevOnRumbleStrip) _rsPulseStartTicks = nowSw;
                 _prevOnRumbleStrip = onStrip;
 
                 double pulseNorm = 0;
                 if (RumbleStripPulseAmp > 0 && _rsPulseStartTicks != 0 && RumbleStripPulseMs > 0)
                 {
-                    long ageMs = (DateTime.UtcNow.Ticks - _rsPulseStartTicks) / TicksPerMs;
+                    long ageMs = (nowSw - _rsPulseStartTicks) / StopwatchTicksPerMs;
                     if (ageMs >= 0 && ageMs < RumbleStripPulseMs)
                     {
                         double envelope = 1.0 - (double)ageMs / RumbleStripPulseMs;
@@ -242,6 +244,14 @@ namespace TrueforceForAll.Plugin.Effects
                 double surfaceTotal = Math.Min(1.0, Math.Max(surfaceNorm, pulseNorm));
                 _surface.Amp = surfaceTotal * 0.30 * Gain * SurfaceGain;
             }
+        }
+
+        public override void Reset()
+        {
+            _prevOnRumbleStrip = false;
+            _rsPulseStartTicks = 0;
+            _heave.Amp = 0;
+            _surface.Amp = 0;
         }
     }
 }
