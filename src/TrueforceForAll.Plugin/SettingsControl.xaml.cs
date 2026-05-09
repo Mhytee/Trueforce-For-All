@@ -632,6 +632,8 @@ namespace TrueforceForAll.Plugin
                 UpdateMeter(TractionMeterTrack,     TractionMeterFill,     _plugin?.TractionLoss?.ActivityLevel ?? 0);
                 UpdateMeter(GearMeterTrack,         GearMeterFill,         _plugin?.GearShift?.ActivityLevel    ?? 0);
                 UpdateMeter(AbsMeterTrack,          AbsMeterFill,          _plugin?.AbsClick?.ActivityLevel     ?? 0);
+                UpdateMeter(PitLimiterMeterTrack,   PitLimiterMeterFill,   _plugin?.PitLimiter?.ActivityLevel   ?? 0);
+                UpdateMeter(DrsMeterTrack,          DrsMeterFill,          _plugin?.Drs?.ActivityLevel          ?? 0);
                 UpdateMeter(AudioCaptureMeterTrack, AudioCaptureMeterFill, src != null ? AudioLevelMeter.Value  : 0);
                 double duck = 1.0 - (_plugin?.EnginePulse?.DuckMultiplier ?? 1.0);
                 UpdateMeter(DuckMeterTrack, DuckMeterFill, Math.Max(0, duck));

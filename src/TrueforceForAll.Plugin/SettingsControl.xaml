@@ -1316,6 +1316,20 @@
                             <Border x:Name="AbsMeterFill" HorizontalAlignment="Left" Background="#AB47BC" CornerRadius="2" Width="0"/>
                         </Border>
                     </Grid>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Pit limiter:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="PitLimiterMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="PitLimiterMeterFill" HorizontalAlignment="Left" Background="#FF7043" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="DRS:" Style="{StaticResource LabelText}"/>
+                        <Border Grid.Column="1" x:Name="DrsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
+                            <Border x:Name="DrsMeterFill" HorizontalAlignment="Left" Background="#26C6DA" CornerRadius="2" Width="0"/>
+                        </Border>
+                    </Grid>
                     <Grid Margin="0,0,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Ducking depth:" Style="{StaticResource LabelText}"/>
