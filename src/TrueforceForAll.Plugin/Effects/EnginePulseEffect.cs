@@ -143,29 +143,32 @@ namespace TrueforceForAll.Plugin.Effects
 
         // -------------------- firing-order pattern synthesis --------------------
         //
-        // When FiringOrderEnabled is false (default), the existing path runs
-        // unchanged: a single OscillatorSource at firing frequency
-        // (RPM/60 × cyl/2). One cycle of the oscillator = one firing event,
-        // and every firing event is identical — fine for I4 / V12 / any
-        // even-fire engine, but flat-feeling for cross-plane V8s, Ducati
-        // L-twins, V6 odd-fire, etc.
+        // When FiringOrderEnabled is false, the legacy path runs: a single
+        // OscillatorSource at firing frequency (RPM/60 × cyl/2). One cycle
+        // of the oscillator = one firing event, and every firing event is
+        // identical. Fine for I4 / V12 / any even-fire engine, but
+        // flat-feeling for cross-plane V8s, Ducati L-twins, V6 odd-fire, etc.
         //
-        // When true, we synthesize at the *engine cycle* rate (RPM/120 × pitch)
-        // instead of the firing rate. One cycle of the synth = one full 720°
-        // crank rotation, and within that cycle we lay down N pulses at the
-        // configured pattern's positions, weighted by per-pulse amplitudes.
-        // The cycle waveform is precomputed into a 2048-sample buffer at
-        // pattern-change time (a "wavetable" purely as an implementation
-        // detail — not because the existing path lacks one) and walked at
+        // When true (the default for new installs), we synthesize at the
+        // *engine cycle* rate (RPM/120 × pitch) instead of the firing rate.
+        // One cycle of the synth = one full 720° crank rotation, and within
+        // that cycle we lay down N pulses at the configured pattern's
+        // positions, weighted by per-pulse amplitudes. The cycle waveform
+        // is precomputed into a 2048-sample buffer at pattern-change time
+        // (a "wavetable" purely as an implementation detail) and walked at
         // the cycle frequency. For even-fire patterns the output is
         // mathematically identical to the legacy path; for non-uniform
         // patterns it produces the characterful timbre.
+        //
+        // The toggle is still wired so existing users can A/B against the
+        // legacy synthesis; long-term plan is to remove it entirely once
+        // the firing-order path has been validated in the wild.
 
         /// <summary>When true, render through the firing-order wavetable
         /// (positional pulses per <see cref="EngineConfig"/>). When false,
-        /// use the existing uniform-sinusoid path. Defaults to false so an
-        /// in-place upgrade preserves users' current feel; they opt in via
-        /// the settings UI to A/B against the original.</summary>
+        /// use the existing uniform-sinusoid path. Default true; persisted
+        /// per-preset so existing setups with FiringOrderEnabled=false
+        /// continue to behave as before.</summary>
         public bool FiringOrderEnabled
         {
             get => _firingOrderEnabled;
@@ -176,7 +179,7 @@ namespace TrueforceForAll.Plugin.Effects
                 _patternDirty = true;
             }
         }
-        private bool _firingOrderEnabled;
+        private bool _firingOrderEnabled = true;
 
         /// <summary>Engine layout selector. Auto picks from cylinder count
         /// using the most common modern config (V6 60° / V8 cross-plane /

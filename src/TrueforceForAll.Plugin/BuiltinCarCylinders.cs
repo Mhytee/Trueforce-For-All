@@ -471,14 +471,14 @@ namespace TrueforceForAll.Plugin
             ["ford_anglia_1966"]                                = new BuiltinCarSpec(4, EngineConfig.Inline),    // Kent OHV I4 (probe Boxer was wrong)
             ["ford_anglia_1966_s1"]                             = new BuiltinCarSpec(4, EngineConfig.Inline),    // Kent OHV I4 (S1 trim)
             ["fumi_cp_bmw_e36_missil"]                          = new BuiltinCarSpec(6, EngineConfig.Inline),
-            ["gd_toyota_supra_gr"]                              = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["gd_toyota_supra_gr"]                              = new BuiltinCarSpec(6, EngineConfig.Inline),    // GR Supra A90, B58 I6
             ["gmp_e60_m5_normal_manual"]                        = new BuiltinCarSpec(10, EngineConfig.V8CrossPlane),
-            ["gravygarage_street_omega"]                        = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
+            ["gravygarage_street_omega"]                        = new BuiltinCarSpec(6, EngineConfig.V60),    // Holden Omega V6 (V8 swaps overridden per-car)
             ["honda_prelude_88"]                                = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["hsrc_subaru_gc8"]                                 = new BuiltinCarSpec(4, EngineConfig.Boxer),
-            ["ld_austin_na"]                                    = new BuiltinCarSpec(6, EngineConfig.Inline),
-            ["ld_josh_370z_v2"]                                 = new BuiltinCarSpec(6, EngineConfig.V8CrossPlane),
-            ["ld_mike_fc3s"]                                    = new BuiltinCarSpec(6, EngineConfig.Rotary),
+            ["ld_austin_na"]                                    = new BuiltinCarSpec(4, EngineConfig.Inline),    // LD Austin NA Miata B6ZE I4
+            ["ld_josh_370z_v2"]                                 = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),    // Nissan 370Z with V8 swap
+            ["ld_mike_fc3s"]                                    = new BuiltinCarSpec(4, EngineConfig.Rotary),    // FC RX-7 13B 2-rotor (cyl=4 equiv)
             ["ld_trey_gt86"]                                    = new BuiltinCarSpec(6, EngineConfig.Boxer),
             ["lotus_esprit_V8"]                                 = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
             ["lotus_exige_v6_cup"]                              = new BuiltinCarSpec(6, EngineConfig.V60),
@@ -553,10 +553,10 @@ namespace TrueforceForAll.Plugin
             ["tgn_chevrolet_camaro_z28_nohesi"]                 = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["tgn_mercedes_benz_amg_gtr"]                       = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["tgn_mercedes_benz_cls63_amg_brabus"]              = new BuiltinCarSpec(6, EngineConfig.V60),
-            ["vdc_bmw_e46_public"]                              = new BuiltinCarSpec(8, EngineConfig.Inline),
+            ["vdc_bmw_e46_public"]                              = new BuiltinCarSpec(6, EngineConfig.Inline),    // BMW E46, M54/S54 I6
             ["vdc_bmw_f22_hgk_public"]                          = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["vdc_mitsubishi_evo_x_public"]                     = new BuiltinCarSpec(8, EngineConfig.Inline),
-            ["vdc_nissan_silvia_180sx_public"]                  = new BuiltinCarSpec(8, EngineConfig.Inline),
+            ["vdc_nissan_silvia_180sx_public"]                  = new BuiltinCarSpec(4, EngineConfig.Inline),    // Silvia/180SX stock SR/CA I4
 
             // ----- chassis (203 entries) -----
             ["06_ygt_53_bmw_e46"]                               = new BuiltinCarSpec(6, EngineConfig.Inline),
@@ -604,17 +604,17 @@ namespace TrueforceForAll.Plugin
             ["GrA_bmw_e36_compact_Trackday"]                    = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["gravygarage_beater_jzx90"]                        = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["gravygarage_oaktree_street_s14_vic"]              = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["gravygarage_street_180sx_corbett"]                = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["gravygarage_street_180sx_meade"]                  = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["gravygarage_street_180sx_corbett"]                = new BuiltinCarSpec(6, EngineConfig.Inline),    // 180SX with JZ swap (I6)
+            ["gravygarage_street_180sx_meade"]                  = new BuiltinCarSpec(6, EngineConfig.Inline),    // 180SX with JZ swap (I6)
             ["gravygarage_street_ae86_readie"]                  = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["gravygarage_street_e36_compact"]                  = new BuiltinCarSpec(6, EngineConfig.Inline),
-            ["gravygarage_street_e36_touring"]                  = new BuiltinCarSpec(6, EngineConfig.V8CrossPlane),
+            ["gravygarage_street_e36_compact"]                  = new BuiltinCarSpec(4, EngineConfig.Inline),    // BMW E36 compact, M42/M44 I4
+            ["gravygarage_street_e36_touring"]                  = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),    // BMW E36 touring, V8 swap (M62/LS)
             ["gravygarage_street_e46"]                          = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["gravygarage_street_jzx90"]                        = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["gravygarage_street_miata"]                        = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["gravygarage_street_s13_brent"]                    = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["gravygarage_street_s13_tim"]                      = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["gravygarage_street_s14_joel"]                     = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["gravygarage_street_s13_brent"]                    = new BuiltinCarSpec(6, EngineConfig.Inline),    // S13 with JZ swap (I6)
+            ["gravygarage_street_s13_tim"]                      = new BuiltinCarSpec(6, EngineConfig.Inline),    // S13 with JZ swap (I6)
+            ["gravygarage_street_s14_joel"]                     = new BuiltinCarSpec(6, EngineConfig.Inline),    // S14 with JZ swap (I6)
             ["gravygarage_team_kamikaze_s15_hayden"]            = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["hk51_p1_spec_dc5"]                                = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["hk51_p1_spec_ek9"]                                = new BuiltinCarSpec(4, EngineConfig.Inline),
@@ -683,7 +683,7 @@ namespace TrueforceForAll.Plugin
             ["porsche_993_gt"]                                  = new BuiltinCarSpec(6, EngineConfig.Boxer),
             ["porsche_993_gt_s1"]                               = new BuiltinCarSpec(6, EngineConfig.Boxer),
             ["prvvy_bmw_m3_f80_comp_single_turbo"]              = new BuiltinCarSpec(6, EngineConfig.Inline),
-            ["prvvy_e30_widebody_4rotor_tt"]                    = new BuiltinCarSpec(6, EngineConfig.Inline),
+            ["prvvy_e30_widebody_4rotor_tt"]                    = new BuiltinCarSpec(8, EngineConfig.Rotary),    // E30 with 26B 4-rotor swap
             ["prvvy_honda_civic_sedan_99"]                      = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["prvvy_porsche_911_ta_spec"]                       = new BuiltinCarSpec(6, EngineConfig.Boxer),
             ["prvvy_porsche_gt3rs_2023_stock"]                  = new BuiltinCarSpec(6, EngineConfig.Boxer),
@@ -735,7 +735,7 @@ namespace TrueforceForAll.Plugin
             ["tando_buddies_e36"]                               = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["tando_buddies_jzx100"]                            = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["tando_buddies_rx7"]                               = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["tando_buddies_s15"]                               = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["tando_buddies_s15"]                               = new BuiltinCarSpec(6, EngineConfig.Inline),    // S15 Silvia, JZ swap (codename)
             ["tando_buddies_z32"]                               = new BuiltinCarSpec(6, EngineConfig.V60),
             ["tando_buddies_zenki_stock_hood"]                  = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["tgn_bmw_m3_e90_2012_tuned"]                       = new BuiltinCarSpec(6, EngineConfig.Inline),
@@ -789,7 +789,7 @@ namespace TrueforceForAll.Plugin
             ["ford_transit"]                                    = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["fullmetal_mercedes_c32"]                          = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["glo_ss"]                                          = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
-            ["gmp_e60_m5_ericsson"]                             = new BuiltinCarSpec(3, EngineConfig.Inline),
+            ["gmp_e60_m5_ericsson"]                             = new BuiltinCarSpec(10, EngineConfig.V90Even),    // E60 M5 S85 V10 90 deg
             ["gmp_e60_m5_ysfactory"]                            = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["gravygarage_oaktree_street_200sx_alex"]           = new BuiltinCarSpec(4, EngineConfig.Inline),    // Nissan 200SX SR/CA I4 (probe matched "V2" version-tag)
             ["gravygarage_street_gs300"]                        = new BuiltinCarSpec(6, EngineConfig.Inline),    // Lexus GS300, 2JZ-GE I6
@@ -825,7 +825,7 @@ namespace TrueforceForAll.Plugin
             ["naz_jza80_ridox_modern"]                          = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["NForce_RX8"]                                      = new BuiltinCarSpec(6, EngineConfig.Rotary),
             ["nohesi_audi_rs3_saloon_vlct"]                     = new BuiltinCarSpec(5, EngineConfig.Inline),
-            ["nohesi_audi_rs5_f5"]                              = new BuiltinCarSpec(5, EngineConfig.Inline),
+            ["nohesi_audi_rs5_f5"]                              = new BuiltinCarSpec(6, EngineConfig.V60),    // Audi RS5 F5, EA839 2.9L V6 BiTurbo
             ["nohesi_audi_rsq8"]                                = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["nohesi_bentley_continental_gt"]                   = new BuiltinCarSpec(12, EngineConfig.V60),
             ["nohesi_bmw_340i_f30"]                             = new BuiltinCarSpec(6, EngineConfig.Inline),
@@ -845,7 +845,7 @@ namespace TrueforceForAll.Plugin
             ["nohesi_lamborghini_huracan_lp610"]                = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["nohesi_lamborghini_temerario_vlct"]               = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["nohesi_lamborghini_urus_chris"]                   = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
-            ["nohesi_lamborghini_urus_performante_vlct"]        = new BuiltinCarSpec(8, EngineConfig.V90Even),
+            ["nohesi_lamborghini_urus_performante_vlct"]        = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),    // Urus 4.0 TFSI shared with Audi RS6/RSQ8 (cross-plane)
             ["nohesi_lexus_is500"]                              = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["nohesi_lexus_lfa_nurburgring"]                    = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["nohesi_lotus_evora_gt430"]                        = new BuiltinCarSpec(6, EngineConfig.V60),
@@ -890,7 +890,7 @@ namespace TrueforceForAll.Plugin
             ["rda_mazda_rx7"]                                   = new BuiltinCarSpec(4, EngineConfig.Rotary),
             ["rize_efini_rx7_fd3s_keisuke_1"]                   = new BuiltinCarSpec(4, EngineConfig.Rotary),
             ["rize_traffic_mazda_rx8_se3p"]                     = new BuiltinCarSpec(4, EngineConfig.Rotary),
-            ["rtm_hennessey_venom_f5"]                          = new BuiltinCarSpec(5, EngineConfig.Inline),
+            ["rtm_hennessey_venom_f5"]                          = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),    // Hennessey Fury 6.6L V8 (web-verified cross-plane pushrod, not flat-plane)
             ["sa_e63s_pushin_p_tune"]                           = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["sa_rs3fbo_pushin_p_tuned"]                        = new BuiltinCarSpec(5, EngineConfig.Inline),
             ["simhq_bt"]                                        = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),

@@ -308,9 +308,12 @@ namespace TrueforceForAll.Plugin
         /// <summary>When true, EnginePulse renders the engine's true firing
         /// pattern instead of a uniform pulse train at firing frequency.
         /// Distinguishes V8 cross-plane lope, Ducati L-twin gap, V6 odd-fire
-        /// lump, etc. Default false so an in-place upgrade preserves users'
-        /// current feel; they opt in to A/B against the legacy synthesis.</summary>
-        public bool FiringOrderEnabled { get; set; } = false;
+        /// lump, etc. Defaults to true so new installs and fresh per-car
+        /// presets get the feel improvement automatically. The toggle is
+        /// still wired so existing users can A/B; long-term plan is to
+        /// remove the toggle entirely once it has been validated in the
+        /// wild.</summary>
+        public bool FiringOrderEnabled { get; set; } = true;
 
         /// <summary>Engine layout. Auto picks from cylinder count using the
         /// modern-default config (V6 60° / V8 cross-plane / V12 60°).
