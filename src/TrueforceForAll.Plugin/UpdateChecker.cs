@@ -21,6 +21,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
@@ -71,26 +72,36 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>One-shot check. Safe to fire-and-forget. Network and parse
-        /// errors are caught and stored in LastError.</summary>
-        public async Task CheckAsync()
+        /// errors are caught and stored in LastError. The optional cancellation
+        /// token lets the plugin abort an in-flight request on End() so a
+        /// stalled GitHub call can't outlive the plugin instance.</summary>
+        public async Task CheckAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 EnableTls12();
-                using (var http = new HttpClient())
+                using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) })
                 {
                     ConfigureHeaders(http);
-                    string json = await http.GetStringAsync(ReleasesUrl).ConfigureAwait(false);
-                    var root = JObject.Parse(json);
+                    using (var resp = await http.GetAsync(ReleasesUrl, cancellationToken).ConfigureAwait(false))
+                    {
+                        resp.EnsureSuccessStatusCode();
+                        string json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        var root = JObject.Parse(json);
 
-                    LatestVersionTag = (string)root["tag_name"];
-                    ReleaseNotes     = (string)root["body"];
-                    ReleasePageUrl   = (string)root["html_url"];
-                    DownloadUrl      = FindExeAsset(root["assets"] as JArray);
-                    LastError        = null;
+                        LatestVersionTag = (string)root["tag_name"];
+                        ReleaseNotes     = (string)root["body"];
+                        ReleasePageUrl   = (string)root["html_url"];
+                        DownloadUrl      = FindExeAsset(root["assets"] as JArray);
+                        LastError        = null;
 
-                    Log($"Update check OK: latest={LatestVersionTag} current={CurrentVersion} hasUpdate={IsUpdateAvailable}");
+                        Log($"Update check OK: latest={LatestVersionTag} current={CurrentVersion} hasUpdate={IsUpdateAvailable}");
+                    }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Plugin teardown or explicit cancel: don't treat as error.
             }
             catch (Exception ex)
             {
@@ -103,7 +114,9 @@ namespace TrueforceForAll.Plugin
         /// Reports progress as (bytesReceived, totalBytes) where totalBytes is
         /// -1 if the server didn't send a Content-Length. Throws on network
         /// or filesystem error; caller is expected to surface the message.</summary>
-        public async Task<string> DownloadInstallerAsync(Action<long, long> onProgress = null)
+        public async Task<string> DownloadInstallerAsync(
+            Action<long, long> onProgress = null,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(DownloadUrl))
                 throw new InvalidOperationException("No installer URL on the latest release.");
@@ -112,10 +125,13 @@ namespace TrueforceForAll.Plugin
             string fileName = $"TrueforceForAll-Setup-{LatestVersionDisplay}.exe";
             string destPath = Path.Combine(Path.GetTempPath(), fileName);
 
-            using (var http = new HttpClient())
+            // Per-request timeout is intentionally generous (slow connections
+            // pulling a multi-MB installer); cancellationToken is the fast path
+            // for End() / user-cancel.
+            using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
             {
                 ConfigureHeaders(http);
-                using (var resp = await http.GetAsync(DownloadUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
+                using (var resp = await http.GetAsync(DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
                 {
                     resp.EnsureSuccessStatusCode();
                     long total = resp.Content.Headers.ContentLength ?? -1L;
@@ -125,9 +141,9 @@ namespace TrueforceForAll.Plugin
                         var buf = new byte[81920];
                         long received = 0;
                         int read;
-                        while ((read = await src.ReadAsync(buf, 0, buf.Length).ConfigureAwait(false)) > 0)
+                        while ((read = await src.ReadAsync(buf, 0, buf.Length, cancellationToken).ConfigureAwait(false)) > 0)
                         {
-                            await dst.WriteAsync(buf, 0, read).ConfigureAwait(false);
+                            await dst.WriteAsync(buf, 0, read, cancellationToken).ConfigureAwait(false);
                             received += read;
                             try { onProgress?.Invoke(received, total); } catch { }
                         }

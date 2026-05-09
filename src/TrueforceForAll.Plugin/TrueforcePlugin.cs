@@ -547,24 +547,36 @@ namespace TrueforceForAll.Plugin
             // Background GitHub-releases check. One-shot, fire-and-forget.
             // Result is stored on the UpdateChecker; the settings panel timer
             // tick reads IsUpdateAvailable and surfaces a banner. Failures
-            // are silent — no banner if we can't reach GitHub.
+            // are silent — no banner if we can't reach GitHub. The CTS is
+            // cancelled in End() so a stalled HTTP call can't outlive the
+            // plugin instance and write to a dead UpdateChecker.
+            _updateCheckerCts = new System.Threading.CancellationTokenSource();
             _updateChecker = new UpdateChecker
             {
                 Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
             };
             System.Threading.Tasks.Task.Run(async () =>
             {
-                try { await _updateChecker.CheckAsync(); }
+                try { await _updateChecker.CheckAsync(_updateCheckerCts.Token); }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info($"[Trueforce] Update check task crashed: {ex.Message}");
                 }
             });
         }
+        private System.Threading.CancellationTokenSource _updateCheckerCts;
+        public System.Threading.CancellationToken UpdateCheckerToken
+            => _updateCheckerCts?.Token ?? System.Threading.CancellationToken.None;
 
         public void End(PluginManager pluginManager)
         {
             _shuttingDown = true;
+
+            // Cancel any in-flight update check / installer download so they
+            // don't outlive the plugin and write to a dead instance.
+            try { _updateCheckerCts?.Cancel(); } catch { }
+            try { _updateCheckerCts?.Dispose(); } catch { }
+            _updateCheckerCts = null;
 
             // Drain in-flight TestEffect tasks. They poll _shuttingDown every
             // ~16 ms, so a short bounded wait is plenty in practice; the
@@ -2829,12 +2841,24 @@ namespace TrueforceForAll.Plugin
                 // marshals to its own thread for the modal.
                 try { CheckAutoRatchet(); } catch { }
 
-                UpdateDucking();
-                _mixer.Render(buf, BatchSamples);
-                for (int i = 0; i < BatchSamples; i++)
+                // Defense-in-depth: catch any exception from ducking, render,
+                // or an effect's RenderAdd so a single bad frame (NaN, future
+                // regression) can't kill the producer and silently mute the
+                // wheel. Logged with a hot-path-safe rate limit.
+                try
                 {
-                    float v = buf[i];
-                    if (v < SilenceFloor && v > -SilenceFloor) buf[i] = 0f;
+                    UpdateDucking();
+                    _mixer.Render(buf, BatchSamples);
+                    for (int i = 0; i < BatchSamples; i++)
+                    {
+                        float v = buf[i];
+                        if (v < SilenceFloor && v > -SilenceFloor) buf[i] = 0f;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogProducerError("render", ex);
+                    Array.Clear(buf, 0, BatchSamples);
                 }
                 try
                 {
@@ -2845,6 +2869,25 @@ namespace TrueforceForAll.Plugin
                     break;
                 }
             }
+        }
+
+        // Producer-loop error rate limiter: log at most one render exception
+        // per 5 seconds so a sustained bad-frame source doesn't spam the log
+        // and stall the producer on I/O.
+        private long _lastProducerErrTicks;
+        private void LogProducerError(string phase, Exception ex)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            long sinceTicks = now - _lastProducerErrTicks;
+            if (_lastProducerErrTicks != 0 && sinceTicks < System.Diagnostics.Stopwatch.Frequency * 5)
+                return;
+            _lastProducerErrTicks = now;
+            try
+            {
+                SimHub.Logging.Current.Error(
+                    $"[Trueforce] producer {phase} error (rate-limited 1/5s): {ex.GetType().Name}: {ex.Message}");
+            }
+            catch { }
         }
 
         private void CleanupDevice()

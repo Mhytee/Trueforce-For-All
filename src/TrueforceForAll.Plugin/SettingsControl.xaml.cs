@@ -2758,7 +2758,7 @@ namespace TrueforceForAll.Plugin
                                 status.Text = $"Downloading installer... {(received / 1024.0 / 1024.0):F1} MB";
                             }
                         });
-                    });
+                    }, _plugin.UpdateCheckerToken);
                     status.Text = "Launching installer...";
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path)
                     {
