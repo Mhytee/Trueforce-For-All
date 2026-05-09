@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
 {
@@ -32,12 +33,21 @@ namespace TrueforceForAll.Plugin
     /// electric ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â their cylinder count is the engine's cylinder count.</summary>
     public readonly struct BuiltinCarSpec
     {
-        public int  Cylinders  { get; }
-        public bool IsElectric { get; }
-        public BuiltinCarSpec(int cyl, bool electric = false)
+        public int          Cylinders    { get; }
+        public bool         IsElectric   { get; }
+        /// <summary>Engine layout for firing-order pattern synthesis. Auto
+        /// (default) means "let FiringPatternDb pick the modern default
+        /// from cyl count" — V6 60° / V8 cross-plane / V12 60°. Explicit
+        /// values capture the characterful exceptions: V8 flat-plane
+        /// (Ferrari / Lotus / GT350), Boxer (Subaru / Porsche flat),
+        /// Rotary (Mazda RX), V-twin variants (Ducati / Harley), etc.</summary>
+        public EngineConfig EngineConfig { get; }
+        public BuiltinCarSpec(int cyl, bool electric = false, EngineConfig config = EngineConfig.Auto)
         {
-            Cylinders = cyl; IsElectric = electric;
+            Cylinders = cyl; IsElectric = electric; EngineConfig = config;
         }
+        public BuiltinCarSpec(int cyl, EngineConfig config)
+            : this(cyl, electric: false, config: config) { }
     }
 
     internal static class BuiltinCarCylinders
@@ -64,189 +74,189 @@ namespace TrueforceForAll.Plugin
             = new Dictionary<string, BuiltinCarSpec>(StringComparer.OrdinalIgnoreCase)
         {
             // ----- Pre-DLC (vanilla AC, no `ks_` prefix) -----
-            ["abarth500"]                      = new BuiltinCarSpec(4),  // 1.4L Multiair I4 turbo
-            ["abarth500_s1"]                   = new BuiltinCarSpec(4),
-            ["alfa_romeo_giulietta_qv"]        = new BuiltinCarSpec(4),  // 1750 TBi I4
-            ["alfa_romeo_mito_qv"]             = new BuiltinCarSpec(4),  // 1.4L turbo I4
-            ["bmw_1m"]                         = new BuiltinCarSpec(6),  // N54B30 I6
-            ["bmw_1m_s3"]                      = new BuiltinCarSpec(6),
-            ["bmw_m3_e30"]                     = new BuiltinCarSpec(4),  // S14B23 I4
-            ["bmw_m3_e30_drift"]               = new BuiltinCarSpec(4),
-            ["bmw_m3_e30_dtm"]                 = new BuiltinCarSpec(4),
-            ["bmw_m3_e30_gra"]                 = new BuiltinCarSpec(4),
-            ["bmw_m3_e30_s1"]                  = new BuiltinCarSpec(4),
-            ["bmw_m3_e92"]                     = new BuiltinCarSpec(8),  // S65B40 V8
-            ["bmw_m3_e92_drift"]               = new BuiltinCarSpec(8),
-            ["bmw_m3_e92_s1"]                  = new BuiltinCarSpec(8),
-            ["bmw_z4"]                         = new BuiltinCarSpec(6),  // N54 I6 (Z4 35is)
-            ["bmw_z4_drift"]                   = new BuiltinCarSpec(6),
-            ["bmw_z4_s1"]                      = new BuiltinCarSpec(6),
-            ["bmw_z4_gt3"]                     = new BuiltinCarSpec(8),  // P65 V8 race engine
-            ["ferrari_312t"]                   = new BuiltinCarSpec(12), // 1975 F1 flat-12
-            ["ferrari_458"]                    = new BuiltinCarSpec(8),  // F136FB V8
-            ["ferrari_458_gt2"]                = new BuiltinCarSpec(8),
-            ["ferrari_458_s3"]                 = new BuiltinCarSpec(8),
-            ["ferrari_599xxevo"]               = new BuiltinCarSpec(12), // F140-derived V12
-            ["ferrari_f40"]                    = new BuiltinCarSpec(8),  // F120A 2.9L V8 twin-turbo
-            ["ferrari_f40_s3"]                 = new BuiltinCarSpec(8),
-            ["ferrari_laferrari"]              = new BuiltinCarSpec(12), // F140 V12 hybrid (engine drives firing freq)
-            ["ktm_xbow_r"]                     = new BuiltinCarSpec(4),  // Audi 2.0 TFSI EA113
-            ["lotus_2_eleven"]                 = new BuiltinCarSpec(4),  // Toyota 2ZZ-GE supercharged I4
-            ["lotus_2_eleven_gt4"]             = new BuiltinCarSpec(4),
-            ["lotus_49"]                       = new BuiltinCarSpec(8),  // Cosworth DFV V8
-            ["lotus_98t"]                      = new BuiltinCarSpec(6),  // Renault EF15B V6 turbo
-            ["lotus_elise_sc"]                 = new BuiltinCarSpec(4),  // Toyota 2ZZ-GE
-            ["lotus_elise_sc_s1"]              = new BuiltinCarSpec(4),
-            ["lotus_elise_sc_s2"]              = new BuiltinCarSpec(4),
-            ["lotus_evora_gtc"]                = new BuiltinCarSpec(6),  // Toyota 2GR-FE V6
-            ["lotus_evora_gte"]                = new BuiltinCarSpec(6),
-            ["lotus_evora_gte_carbon"]         = new BuiltinCarSpec(6),
-            ["lotus_evora_gx"]                 = new BuiltinCarSpec(6),
-            ["lotus_evora_s"]                  = new BuiltinCarSpec(6),
-            ["lotus_evora_s_s2"]               = new BuiltinCarSpec(6),
-            ["lotus_exige_240"]                = new BuiltinCarSpec(4),  // Toyota 2ZZ-GE
-            ["lotus_exige_240_s3"]             = new BuiltinCarSpec(4),
-            ["lotus_exige_s"]                  = new BuiltinCarSpec(4),
-            ["lotus_exige_s_roadster"]         = new BuiltinCarSpec(4),
-            ["lotus_exige_scura"]              = new BuiltinCarSpec(4),
-            ["mclaren_mp412c"]                 = new BuiltinCarSpec(8),  // M838T V8 twin-turbo
-            ["mclaren_mp412c_gt3"]             = new BuiltinCarSpec(8),
-            ["mercedes_sls"]                   = new BuiltinCarSpec(8),  // M159 V8
-            ["mercedes_sls_gt3"]               = new BuiltinCarSpec(8),
-            ["p4-5_2011"]                      = new BuiltinCarSpec(8),  // Glickenhaus P4/5 Comp - F430-derived V8
-            ["pagani_huayra"]                  = new BuiltinCarSpec(12), // AMG M158 V12 BiTurbo
-            ["pagani_zonda_r"]                 = new BuiltinCarSpec(12), // AMG M120 V12
-            ["ruf_yellowbird"]                 = new BuiltinCarSpec(6),  // 930-derived flat-6 twin-turbo
-            ["shelby_cobra_427sc"]             = new BuiltinCarSpec(8),  // Ford 427 V8
-            ["tatuusfa1"]                      = new BuiltinCarSpec(4),  // Abarth 1.4L turbo I4
+            ["abarth500"]                      = new BuiltinCarSpec(4, EngineConfig.Inline),         // 1.4L Multiair I4 turbo
+            ["abarth500_s1"]                   = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["alfa_romeo_giulietta_qv"]        = new BuiltinCarSpec(4, EngineConfig.Inline),         // 1750 TBi I4
+            ["alfa_romeo_mito_qv"]             = new BuiltinCarSpec(4, EngineConfig.Inline),         // 1.4L turbo I4
+            ["bmw_1m"]                         = new BuiltinCarSpec(6, EngineConfig.Inline),         // N54B30 I6
+            ["bmw_1m_s3"]                      = new BuiltinCarSpec(6, EngineConfig.Inline),
+            ["bmw_m3_e30"]                     = new BuiltinCarSpec(4, EngineConfig.Inline),         // S14B23 I4
+            ["bmw_m3_e30_drift"]               = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["bmw_m3_e30_dtm"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["bmw_m3_e30_gra"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["bmw_m3_e30_s1"]                  = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["bmw_m3_e92"]                     = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // S65B40 V8 cross-plane
+            ["bmw_m3_e92_drift"]               = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
+            ["bmw_m3_e92_s1"]                  = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
+            ["bmw_z4"]                         = new BuiltinCarSpec(6, EngineConfig.Inline),         // N54 I6 (Z4 35is)
+            ["bmw_z4_drift"]                   = new BuiltinCarSpec(6, EngineConfig.Inline),
+            ["bmw_z4_s1"]                      = new BuiltinCarSpec(6, EngineConfig.Inline),
+            ["bmw_z4_gt3"]                     = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // P65 V8 race engine (BMW V8s are cross-plane)
+            ["ferrari_312t"]                   = new BuiltinCarSpec(12, EngineConfig.Boxer),         // 1975 F1 flat-12 (180° V12 = boxer-12)
+            ["ferrari_458"]                    = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F136FB V8 flat-plane
+            ["ferrari_458_gt2"]                = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["ferrari_458_s3"]                 = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["ferrari_599xxevo"]               = new BuiltinCarSpec(12, EngineConfig.V60),           // F140-derived V12 60°
+            ["ferrari_f40"]                    = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F120A 2.9L V8 twin-turbo flat-plane
+            ["ferrari_f40_s3"]                 = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["ferrari_laferrari"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 60°
+            ["ktm_xbow_r"]                     = new BuiltinCarSpec(4, EngineConfig.Inline),         // Audi 2.0 TFSI EA113
+            ["lotus_2_eleven"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),         // Toyota 2ZZ-GE supercharged I4
+            ["lotus_2_eleven_gt4"]             = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["lotus_49"]                       = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // Cosworth DFV (flat-plane)
+            ["lotus_98t"]                      = new BuiltinCarSpec(6, EngineConfig.V60),            // Renault EF15B V6 turbo (90° but even-fire — V60 close enough for haptics)
+            ["lotus_elise_sc"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),         // Toyota 2ZZ-GE
+            ["lotus_elise_sc_s1"]              = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["lotus_elise_sc_s2"]              = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["lotus_evora_gtc"]                = new BuiltinCarSpec(6, EngineConfig.V60),            // Toyota 2GR-FE V6 60°
+            ["lotus_evora_gte"]                = new BuiltinCarSpec(6, EngineConfig.V60),
+            ["lotus_evora_gte_carbon"]         = new BuiltinCarSpec(6, EngineConfig.V60),
+            ["lotus_evora_gx"]                 = new BuiltinCarSpec(6, EngineConfig.V60),
+            ["lotus_evora_s"]                  = new BuiltinCarSpec(6, EngineConfig.V60),
+            ["lotus_evora_s_s2"]               = new BuiltinCarSpec(6, EngineConfig.V60),
+            ["lotus_exige_240"]                = new BuiltinCarSpec(4, EngineConfig.Inline),         // Toyota 2ZZ-GE
+            ["lotus_exige_240_s3"]             = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["lotus_exige_s"]                  = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["lotus_exige_s_roadster"]         = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["lotus_exige_scura"]              = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["mclaren_mp412c"]                 = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M838T V8 flat-plane
+            ["mclaren_mp412c_gt3"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["mercedes_sls"]                   = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // M159 V8 cross-plane
+            ["mercedes_sls_gt3"]               = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
+            ["p4-5_2011"]                      = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // Glickenhaus P4/5 Comp - F430-derived V8 flat-plane
+            ["pagani_huayra"]                  = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M158 V12 BiTurbo 60°
+            ["pagani_zonda_r"]                 = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M120 V12 60°
+            ["ruf_yellowbird"]                 = new BuiltinCarSpec(6, EngineConfig.Boxer),          // 930-derived flat-6 twin-turbo
+            ["shelby_cobra_427sc"]             = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // Ford 427 V8 cross-plane
+            ["tatuusfa1"]                      = new BuiltinCarSpec(4, EngineConfig.Inline),         // Abarth 1.4L turbo I4
 
             // ----- DLC (`ks_` prefix) -----
-            ["ks_abarth_595ss"]                = new BuiltinCarSpec(4),  // 1.4L turbo I4
-            ["ks_abarth_595ss_s1"]             = new BuiltinCarSpec(4),
-            ["ks_abarth_595ss_s2"]             = new BuiltinCarSpec(4),
-            ["ks_abarth500_assetto_corse"]     = new BuiltinCarSpec(4),
-            ["ks_alfa_33_stradale"]            = new BuiltinCarSpec(8),  // Tipo 33 V8 2.0L
-            ["ks_alfa_giulia_qv"]              = new BuiltinCarSpec(6),  // F154 V6 2.9L twin-turbo
-            ["ks_alfa_giulia_qv_rftuned"]      = new BuiltinCarSpec(6),
-            ["ks_alfa_mito_qv"]                = new BuiltinCarSpec(4),  // 1.4L turbo I4
-            ["ks_alfa_romeo_155_v6"]           = new BuiltinCarSpec(6),  // 155 V6 TI DTM
-            ["ks_alfa_romeo_4c"]               = new BuiltinCarSpec(4),  // 1.75L turbo I4
-            ["ks_alfa_romeo_gta"]              = new BuiltinCarSpec(4),  // Giulia Sprint GTA Twin Cam I4
-            ["ks_audi_a1s1"]                   = new BuiltinCarSpec(4),  // S1 quattro 2.0 TFSI
-            ["ks_audi_r18_etron_quattro"]      = new BuiltinCarSpec(6),  // V6 TDI hybrid (engine cyl)
-            ["ks_audi_r8_lms"]                 = new BuiltinCarSpec(10), // 5.2L V10
-            ["ks_audi_r8_lms_2016"]            = new BuiltinCarSpec(10),
-            ["ks_audi_r8_plus"]                = new BuiltinCarSpec(10),
-            ["ks_audi_s4_97_tuned"]            = new BuiltinCarSpec(6),  // B5 S4 2.7L biturbo V6
-            ["ks_audi_sport_quattro"]          = new BuiltinCarSpec(5),  // Group B 2.1L turbo I5
-            ["ks_audi_sport_quattro_rally"]    = new BuiltinCarSpec(5),
-            ["ks_audi_sport_quattro_s1"]       = new BuiltinCarSpec(5),  // S1 E2 evolution I5
-            ["ks_audi_tt_cup"]                 = new BuiltinCarSpec(4),  // 2.0 TFSI
-            ["ks_audi_tt_vln"]                 = new BuiltinCarSpec(5),  // TT-RS-based 2.5 TFSI I5
-            ["ks_bmw_m235i_racing"]            = new BuiltinCarSpec(6),  // N55 I6 turbo
-            ["ks_bmw_m4"]                      = new BuiltinCarSpec(6),  // S55 I6 BiTurbo
-            ["ks_bmw_m4_akrapovic"]            = new BuiltinCarSpec(6),
+            ["ks_abarth_595ss"]                = new BuiltinCarSpec(4, EngineConfig.Inline),         // 1.4L turbo I4
+            ["ks_abarth_595ss_s1"]             = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["ks_abarth_595ss_s2"]             = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["ks_abarth500_assetto_corse"]     = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["ks_alfa_33_stradale"]            = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // Tipo 33 V8 2.0L (Italian race V8 = flat-plane)
+            ["ks_alfa_giulia_qv"]              = new BuiltinCarSpec(6, EngineConfig.V60),            // F154-derived V6 2.9L twin-turbo
+            ["ks_alfa_giulia_qv_rftuned"]      = new BuiltinCarSpec(6, EngineConfig.V60),
+            ["ks_alfa_mito_qv"]                = new BuiltinCarSpec(4, EngineConfig.Inline),         // 1.4L turbo I4
+            ["ks_alfa_romeo_155_v6"]           = new BuiltinCarSpec(6, EngineConfig.V60),            // 155 V6 TI DTM
+            ["ks_alfa_romeo_4c"]               = new BuiltinCarSpec(4, EngineConfig.Inline),         // 1.75L turbo I4
+            ["ks_alfa_romeo_gta"]              = new BuiltinCarSpec(4, EngineConfig.Inline),         // Giulia Sprint GTA Twin Cam I4
+            ["ks_audi_a1s1"]                   = new BuiltinCarSpec(4, EngineConfig.Inline),         // S1 quattro 2.0 TFSI
+            ["ks_audi_r18_etron_quattro"]      = new BuiltinCarSpec(6, EngineConfig.V60),            // V6 TDI hybrid (engine cyl)
+            ["ks_audi_r8_lms"]                 = new BuiltinCarSpec(10, EngineConfig.V90Even),       // 5.2L V10 90° (Lambo/Audi shared)
+            ["ks_audi_r8_lms_2016"]            = new BuiltinCarSpec(10, EngineConfig.V90Even),
+            ["ks_audi_r8_plus"]                = new BuiltinCarSpec(10, EngineConfig.V90Even),
+            ["ks_audi_s4_97_tuned"]            = new BuiltinCarSpec(6, EngineConfig.V60),            // B5 S4 2.7L biturbo V6
+            ["ks_audi_sport_quattro"]          = new BuiltinCarSpec(5, EngineConfig.Inline),         // Group B 2.1L turbo I5
+            ["ks_audi_sport_quattro_rally"]    = new BuiltinCarSpec(5, EngineConfig.Inline),
+            ["ks_audi_sport_quattro_s1"]       = new BuiltinCarSpec(5, EngineConfig.Inline),         // S1 E2 evolution I5
+            ["ks_audi_tt_cup"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),         // 2.0 TFSI
+            ["ks_audi_tt_vln"]                 = new BuiltinCarSpec(5, EngineConfig.Inline),         // TT-RS-based 2.5 TFSI I5
+            ["ks_bmw_m235i_racing"]            = new BuiltinCarSpec(6, EngineConfig.Inline),         // N55 I6 turbo
+            ["ks_bmw_m4"]                      = new BuiltinCarSpec(6, EngineConfig.Inline),         // S55 I6 BiTurbo
+            ["ks_bmw_m4_akrapovic"]            = new BuiltinCarSpec(6, EngineConfig.Inline),
             // NOTE: ks_bmw_m4_g_power_V1_Modified_By_VincToreto_Drift carries the
             // ks_ prefix but is a third-party mod, not a Kunos car. Heuristic
             // fallback handles it.
-            ["ks_corvette_c7_stingray"]        = new BuiltinCarSpec(8),  // LT1 V8
-            ["ks_corvette_c7r"]                = new BuiltinCarSpec(8),  // LS5.5R V8
-            ["ks_ferrari_250_gto"]             = new BuiltinCarSpec(12), // Colombo V12
-            ["ks_ferrari_288_gto"]             = new BuiltinCarSpec(8),  // F114B V8 twin-turbo
-            ["ks_ferrari_312_67"]              = new BuiltinCarSpec(12), // 1967 F1 V12
-            ["ks_ferrari_330_p4"]              = new BuiltinCarSpec(12), // 4.0L V12 sports prototype
-            ["ks_ferrari_488_challenge_evo"]   = new BuiltinCarSpec(8),  // F154 V8 twin-turbo
-            ["ks_ferrari_488_gt3"]             = new BuiltinCarSpec(8),
-            ["ks_ferrari_488_gt3_2020"]        = new BuiltinCarSpec(8),
-            ["ks_ferrari_488_gtb"]             = new BuiltinCarSpec(8),
-            ["ks_ferrari_812_superfast"]       = new BuiltinCarSpec(12), // F140 V12
-            ["ks_ferrari_f138"]                = new BuiltinCarSpec(8),  // 2013 F1 V8 (last V8 era)
-            ["ks_ferrari_f2004"]               = new BuiltinCarSpec(10), // 2004 F1 V10 053
-            ["ks_ferrari_fxx_k"]               = new BuiltinCarSpec(12), // F140 V12 hybrid
-            ["ks_ferrari_sf15t"]               = new BuiltinCarSpec(6),  // 2015 F1 V6 turbo hybrid
-            ["ks_ferrari_sf70h"]               = new BuiltinCarSpec(6),  // 2017 F1 V6 turbo hybrid
-            ["ks_ford_escort_mk1"]             = new BuiltinCarSpec(4),  // Lotus Twin Cam I4
-            ["ks_ford_gt40"]                   = new BuiltinCarSpec(8),  // Ford V8
-            ["ks_ford_mustang_2015"]           = new BuiltinCarSpec(8),  // Coyote 5.0 V8
-            ["ks_glickenhaus_scg003"]          = new BuiltinCarSpec(6),  // HPD 3.5L V6 twin-turbo (race version)
-            ["ks_lamborghini_aventador_sv"]    = new BuiltinCarSpec(12), // L539 V12
-            ["ks_lamborghini_countach"]        = new BuiltinCarSpec(12), // L502 V12
-            ["ks_lamborghini_countach_s1"]     = new BuiltinCarSpec(12),
-            ["ks_lamborghini_gallardo_sl"]     = new BuiltinCarSpec(10), // V10
-            ["ks_lamborghini_gallardo_sl_s3"]  = new BuiltinCarSpec(10),
-            ["ks_lamborghini_huracan_gt3"]     = new BuiltinCarSpec(10),
-            ["ks_lamborghini_huracan_performante"] = new BuiltinCarSpec(10),
-            ["ks_lamborghini_huracan_st"]      = new BuiltinCarSpec(10),
-            ["ks_lamborghini_miura_sv"]        = new BuiltinCarSpec(12), // V12
-            ["ks_lamborghini_sesto_elemento"]  = new BuiltinCarSpec(10), // Gallardo-derived V10
-            ["ks_lotus_25"]                    = new BuiltinCarSpec(8),  // 1962 F1 Coventry Climax V8
-            ["ks_lotus_3_eleven"]              = new BuiltinCarSpec(6),  // Toyota 2GR-FE V6 supercharged
-            ["ks_lotus_72d"]                   = new BuiltinCarSpec(8),  // Cosworth DFV V8
-            ["ks_maserati_250f_12cyl"]         = new BuiltinCarSpec(12), // explicit in carId
-            ["ks_maserati_250f_6cyl"]          = new BuiltinCarSpec(6),  // explicit in carId
-            ["ks_maserati_alfieri"]            = new BuiltinCarSpec(6),  // F154-derived V6 (concept)
-            ["ks_maserati_gt_mc_gt4"]          = new BuiltinCarSpec(8),  // M139 V8
-            ["ks_maserati_levante"]            = new BuiltinCarSpec(6),  // F160 V6 twin-turbo
-            ["ks_maserati_mc12_gt1"]           = new BuiltinCarSpec(12), // Enzo F140-derived V12
-            ["ks_maserati_quattroporte"]       = new BuiltinCarSpec(8),  // M139 V8 4.7L
-            ["ks_mazda_787b"]                  = new BuiltinCarSpec(8),  // R26B 4-rotor ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ cyl=8 equivalent
-            ["ks_mazda_miata"]                 = new BuiltinCarSpec(4),  // 1.6L I4
-            ["ks_mazda_mx5_cup"]               = new BuiltinCarSpec(4),  // 2.0L SkyActiv I4
-            ["ks_mazda_mx5_nd"]                = new BuiltinCarSpec(4),
-            ["ks_mazda_rx7_spirit_r"]          = new BuiltinCarSpec(4),  // 13B 2-rotor ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ cyl=4
-            ["ks_mazda_rx7_tuned"]             = new BuiltinCarSpec(4),
-            ["ks_mclaren_570s"]                = new BuiltinCarSpec(8),  // M838TE V8
-            ["ks_mclaren_650_gt3"]             = new BuiltinCarSpec(8),  // M838T V8
-            ["ks_mclaren_f1_gtr"]              = new BuiltinCarSpec(12), // BMW S70 V12
-            ["ks_mclaren_p1"]                  = new BuiltinCarSpec(8),  // M838TQ V8 hybrid
-            ["ks_mclaren_p1_gtr"]              = new BuiltinCarSpec(8),
-            ["ks_mercedes_190_evo2"]           = new BuiltinCarSpec(4),  // M102 Cosworth 2.5 I4
-            ["ks_mercedes_amg_gt3"]            = new BuiltinCarSpec(8),  // M159 V8
-            ["ks_mercedes_c9"]                 = new BuiltinCarSpec(8),  // M119 V8 turbo (Group C)
-            ["ks_nissan_370z"]                 = new BuiltinCarSpec(6),  // VQ37VHR V6
-            ["ks_nissan_gtr"]                  = new BuiltinCarSpec(6),  // VR38DETT V6 twin-turbo
-            ["ks_nissan_gtr_gt3"]              = new BuiltinCarSpec(6),
-            ["ks_nissan_skyline_r34"]          = new BuiltinCarSpec(6),  // RB26DETT I6
-            ["ks_pagani_huayra_bc"]            = new BuiltinCarSpec(12), // AMG M158 V12
-            ["ks_porsche_718_boxster_s"]       = new BuiltinCarSpec(4),  // MA1.41 flat-4 turbo
-            ["ks_porsche_718_boxster_s_pdk"]   = new BuiltinCarSpec(4),
-            ["ks_porsche_718_cayman_s"]        = new BuiltinCarSpec(4),  // flat-4 turbo
-            ["ks_porsche_718_spyder_rs"]       = new BuiltinCarSpec(6),  // GT3-derived 4.0L flat-6 NA
-            ["ks_porsche_908_lh"]              = new BuiltinCarSpec(8),  // 3.0L flat-8
-            ["ks_porsche_911_carrera_rsr"]     = new BuiltinCarSpec(6),  // flat-6
-            ["ks_porsche_911_gt1"]             = new BuiltinCarSpec(6),  // Mezger 3.2L flat-6 turbo
-            ["ks_porsche_911_gt3_cup_2017"]    = new BuiltinCarSpec(6),
-            ["ks_porsche_911_gt3_r_2016"]      = new BuiltinCarSpec(6),
-            ["ks_porsche_911_gt3_rs"]          = new BuiltinCarSpec(6),
-            ["ks_porsche_911_r"]               = new BuiltinCarSpec(6),
-            ["ks_porsche_911_rsr_2017"]        = new BuiltinCarSpec(6),  // mid-engined flat-6
-            ["ks_porsche_917_30"]              = new BuiltinCarSpec(12), // flat-12 turbo
-            ["ks_porsche_917_k"]               = new BuiltinCarSpec(12), // flat-12
-            ["ks_porsche_918_spyder"]          = new BuiltinCarSpec(8),  // 4.6L V8 hybrid
-            ["ks_porsche_919_hybrid_2015"]     = new BuiltinCarSpec(4),  // 2.0L V4 turbo hybrid (LMP1)
-            ["ks_porsche_919_hybrid_2016"]     = new BuiltinCarSpec(4),
-            ["ks_porsche_935_78_moby_dick"]    = new BuiltinCarSpec(6),  // flat-6 twin-turbo
-            ["ks_porsche_962c_longtail"]       = new BuiltinCarSpec(6),  // flat-6 twin-turbo
-            ["ks_porsche_962c_shorttail"]      = new BuiltinCarSpec(6),
-            ["ks_porsche_991_carrera_s"]       = new BuiltinCarSpec(6),  // 3.0L flat-6 twin-turbo
-            ["ks_porsche_991_turbo_s"]         = new BuiltinCarSpec(6),  // 3.8L flat-6 twin-turbo
-            ["ks_porsche_cayenne"]             = new BuiltinCarSpec(8),  // Cayenne Turbo S 4.0L V8 twin-turbo
-            ["ks_porsche_cayman_gt4_clubsport"] = new BuiltinCarSpec(6), // 3.8L flat-6
-            ["ks_porsche_cayman_gt4_std"]      = new BuiltinCarSpec(6),  // 981 GT4 flat-6
-            ["ks_porsche_macan"]               = new BuiltinCarSpec(6),  // V6 turbo
-            ["ks_porsche_panamera"]            = new BuiltinCarSpec(8),  // 4.0L V8 twin-turbo (Turbo trim)
-            ["ks_praga_r1"]                    = new BuiltinCarSpec(4),  // Renault 2.0 turbo I4
-            ["ks_ruf_rt12r"]                   = new BuiltinCarSpec(6),  // 911-derived flat-6 twin-turbo
-            ["ks_ruf_rt12r_awd"]               = new BuiltinCarSpec(6),
-            ["ks_toyota_ae86"]                 = new BuiltinCarSpec(4),  // 4A-GE I4
-            ["ks_toyota_ae86_drift"]           = new BuiltinCarSpec(4),
-            ["ks_toyota_ae86_tuned"]           = new BuiltinCarSpec(4),
-            ["ks_toyota_celica_st185"]         = new BuiltinCarSpec(4),  // 3S-GTE I4 turbo
-            ["ks_toyota_gt86"]                 = new BuiltinCarSpec(4),  // FA20 flat-4
-            ["ks_toyota_supra_mkiv"]           = new BuiltinCarSpec(6),  // 2JZ-GTE I6
-            ["ks_toyota_supra_mkiv_drift"]     = new BuiltinCarSpec(6),
-            ["ks_toyota_supra_mkiv_tuned"]     = new BuiltinCarSpec(6),
-            ["ks_toyota_ts040"]                = new BuiltinCarSpec(8),  // 3.7L V8 hybrid (LMP1)
+            ["ks_corvette_c7_stingray"]        = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // LT1 V8 cross-plane
+            ["ks_corvette_c7r"]                = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // LS5.5R V8 cross-plane
+            ["ks_ferrari_250_gto"]             = new BuiltinCarSpec(12, EngineConfig.V60),           // Colombo V12 60°
+            ["ks_ferrari_288_gto"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F114B V8 twin-turbo flat-plane
+            ["ks_ferrari_312_67"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // 1967 F1 V12 60°
+            ["ks_ferrari_330_p4"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // 4.0L V12 60° sports prototype
+            ["ks_ferrari_488_challenge_evo"]   = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F154 V8 twin-turbo flat-plane
+            ["ks_ferrari_488_gt3"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["ks_ferrari_488_gt3_2020"]        = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["ks_ferrari_488_gtb"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["ks_ferrari_812_superfast"]       = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 60°
+            ["ks_ferrari_f138"]                = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // 2013 F1 V8 flat-plane
+            ["ks_ferrari_f2004"]               = new BuiltinCarSpec(10, EngineConfig.V90Even),       // 2004 F1 V10 053 (Ferrari V10 was 90°)
+            ["ks_ferrari_fxx_k"]               = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 hybrid 60°
+            ["ks_ferrari_sf15t"]               = new BuiltinCarSpec(6, EngineConfig.V60),            // 2015 F1 V6 turbo hybrid
+            ["ks_ferrari_sf70h"]               = new BuiltinCarSpec(6, EngineConfig.V60),            // 2017 F1 V6 turbo hybrid
+            ["ks_ford_escort_mk1"]             = new BuiltinCarSpec(4, EngineConfig.Inline),         // Lotus Twin Cam I4
+            ["ks_ford_gt40"]                   = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // Ford V8 cross-plane
+            ["ks_ford_mustang_2015"]           = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // Coyote 5.0 V8 cross-plane
+            ["ks_glickenhaus_scg003"]          = new BuiltinCarSpec(6, EngineConfig.V60),            // HPD 3.5L V6 twin-turbo (race)
+            ["ks_lamborghini_aventador_sv"]    = new BuiltinCarSpec(12, EngineConfig.V60),           // L539 V12 60°
+            ["ks_lamborghini_countach"]        = new BuiltinCarSpec(12, EngineConfig.V60),           // L502 V12 60°
+            ["ks_lamborghini_countach_s1"]     = new BuiltinCarSpec(12, EngineConfig.V60),
+            ["ks_lamborghini_gallardo_sl"]     = new BuiltinCarSpec(10, EngineConfig.V90Even),       // V10 90°
+            ["ks_lamborghini_gallardo_sl_s3"]  = new BuiltinCarSpec(10, EngineConfig.V90Even),
+            ["ks_lamborghini_huracan_gt3"]     = new BuiltinCarSpec(10, EngineConfig.V90Even),
+            ["ks_lamborghini_huracan_performante"] = new BuiltinCarSpec(10, EngineConfig.V90Even),
+            ["ks_lamborghini_huracan_st"]      = new BuiltinCarSpec(10, EngineConfig.V90Even),
+            ["ks_lamborghini_miura_sv"]        = new BuiltinCarSpec(12, EngineConfig.V60),           // V12 60°
+            ["ks_lamborghini_sesto_elemento"]  = new BuiltinCarSpec(10, EngineConfig.V90Even),       // Gallardo-derived V10
+            ["ks_lotus_25"]                    = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // 1962 F1 Coventry Climax V8 (race = flat-plane)
+            ["ks_lotus_3_eleven"]              = new BuiltinCarSpec(6, EngineConfig.V60),            // Toyota 2GR-FE V6 supercharged
+            ["ks_lotus_72d"]                   = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // Cosworth DFV (flat-plane)
+            ["ks_maserati_250f_12cyl"]         = new BuiltinCarSpec(12, EngineConfig.V60),           // explicit in carId, 1950s F1 V12
+            ["ks_maserati_250f_6cyl"]          = new BuiltinCarSpec(6, EngineConfig.Inline),         // explicit in carId, 1950s F1 I6
+            ["ks_maserati_alfieri"]            = new BuiltinCarSpec(6, EngineConfig.V60),            // F154-derived V6 (concept)
+            ["ks_maserati_gt_mc_gt4"]          = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M139 (Ferrari F136 derivative) flat-plane
+            ["ks_maserati_levante"]            = new BuiltinCarSpec(6, EngineConfig.V60),            // F160 V6 twin-turbo
+            ["ks_maserati_mc12_gt1"]           = new BuiltinCarSpec(12, EngineConfig.V60),           // Enzo F140-derived V12
+            ["ks_maserati_quattroporte"]       = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M139 V8 4.7L (F136 derivative)
+            ["ks_mazda_787b"]                  = new BuiltinCarSpec(8, EngineConfig.Rotary),         // R26B 4-rotor (cyl=8 equivalent)
+            ["ks_mazda_miata"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),         // 1.6L I4
+            ["ks_mazda_mx5_cup"]               = new BuiltinCarSpec(4, EngineConfig.Inline),         // 2.0L SkyActiv I4
+            ["ks_mazda_mx5_nd"]                = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["ks_mazda_rx7_spirit_r"]          = new BuiltinCarSpec(4, EngineConfig.Rotary),         // 13B 2-rotor (cyl=4 equivalent)
+            ["ks_mazda_rx7_tuned"]             = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["ks_mclaren_570s"]                = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M838TE V8 flat-plane
+            ["ks_mclaren_650_gt3"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M838T V8 flat-plane
+            ["ks_mclaren_f1_gtr"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // BMW S70 V12 60°
+            ["ks_mclaren_p1"]                  = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M838TQ V8 hybrid flat-plane
+            ["ks_mclaren_p1_gtr"]              = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
+            ["ks_mercedes_190_evo2"]           = new BuiltinCarSpec(4, EngineConfig.Inline),         // M102 Cosworth 2.5 I4
+            ["ks_mercedes_amg_gt3"]            = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // M159 V8 cross-plane
+            ["ks_mercedes_c9"]                 = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // M119 V8 turbo (Group C) cross-plane
+            ["ks_nissan_370z"]                 = new BuiltinCarSpec(6, EngineConfig.V60),            // VQ37VHR V6 60°
+            ["ks_nissan_gtr"]                  = new BuiltinCarSpec(6, EngineConfig.V60),            // VR38DETT V6 60°
+            ["ks_nissan_gtr_gt3"]              = new BuiltinCarSpec(6, EngineConfig.V60),
+            ["ks_nissan_skyline_r34"]          = new BuiltinCarSpec(6, EngineConfig.Inline),         // RB26DETT I6
+            ["ks_pagani_huayra_bc"]            = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M158 V12 60°
+            ["ks_porsche_718_boxster_s"]       = new BuiltinCarSpec(4, EngineConfig.Boxer),          // MA1.41 flat-4 turbo
+            ["ks_porsche_718_boxster_s_pdk"]   = new BuiltinCarSpec(4, EngineConfig.Boxer),
+            ["ks_porsche_718_cayman_s"]        = new BuiltinCarSpec(4, EngineConfig.Boxer),          // flat-4 turbo
+            ["ks_porsche_718_spyder_rs"]       = new BuiltinCarSpec(6, EngineConfig.Boxer),          // GT3-derived 4.0L flat-6
+            ["ks_porsche_908_lh"]              = new BuiltinCarSpec(8, EngineConfig.Boxer),          // 3.0L flat-8 (Porsche racing flat-8)
+            ["ks_porsche_911_carrera_rsr"]     = new BuiltinCarSpec(6, EngineConfig.Boxer),          // flat-6
+            ["ks_porsche_911_gt1"]             = new BuiltinCarSpec(6, EngineConfig.Boxer),          // Mezger 3.2L flat-6 turbo
+            ["ks_porsche_911_gt3_cup_2017"]    = new BuiltinCarSpec(6, EngineConfig.Boxer),
+            ["ks_porsche_911_gt3_r_2016"]      = new BuiltinCarSpec(6, EngineConfig.Boxer),
+            ["ks_porsche_911_gt3_rs"]          = new BuiltinCarSpec(6, EngineConfig.Boxer),
+            ["ks_porsche_911_r"]               = new BuiltinCarSpec(6, EngineConfig.Boxer),
+            ["ks_porsche_911_rsr_2017"]        = new BuiltinCarSpec(6, EngineConfig.Boxer),          // mid-engined flat-6
+            ["ks_porsche_917_30"]              = new BuiltinCarSpec(12, EngineConfig.Boxer),         // flat-12 turbo (180° = boxer-12)
+            ["ks_porsche_917_k"]               = new BuiltinCarSpec(12, EngineConfig.Boxer),         // flat-12
+            ["ks_porsche_918_spyder"]          = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // 4.6L V8 hybrid (Porsche flat-plane V8)
+            ["ks_porsche_919_hybrid_2015"]     = new BuiltinCarSpec(4, EngineConfig.V90Even),        // 2.0L V4 turbo hybrid (LMP1, 90° V4)
+            ["ks_porsche_919_hybrid_2016"]     = new BuiltinCarSpec(4, EngineConfig.V90Even),
+            ["ks_porsche_935_78_moby_dick"]    = new BuiltinCarSpec(6, EngineConfig.Boxer),          // flat-6 twin-turbo
+            ["ks_porsche_962c_longtail"]       = new BuiltinCarSpec(6, EngineConfig.Boxer),          // flat-6 twin-turbo
+            ["ks_porsche_962c_shorttail"]      = new BuiltinCarSpec(6, EngineConfig.Boxer),
+            ["ks_porsche_991_carrera_s"]       = new BuiltinCarSpec(6, EngineConfig.Boxer),          // 3.0L flat-6 twin-turbo
+            ["ks_porsche_991_turbo_s"]         = new BuiltinCarSpec(6, EngineConfig.Boxer),          // 3.8L flat-6 twin-turbo
+            ["ks_porsche_cayenne"]             = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // Cayenne Turbo S V8 (Audi-shared cross-plane)
+            ["ks_porsche_cayman_gt4_clubsport"] = new BuiltinCarSpec(6, EngineConfig.Boxer),         // 3.8L flat-6
+            ["ks_porsche_cayman_gt4_std"]      = new BuiltinCarSpec(6, EngineConfig.Boxer),          // 981 GT4 flat-6
+            ["ks_porsche_macan"]               = new BuiltinCarSpec(6, EngineConfig.V60),            // V6 turbo (Audi-shared)
+            ["ks_porsche_panamera"]            = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // 4.0L V8 twin-turbo (Audi-shared cross-plane)
+            ["ks_praga_r1"]                    = new BuiltinCarSpec(4, EngineConfig.Inline),         // Renault 2.0 turbo I4
+            ["ks_ruf_rt12r"]                   = new BuiltinCarSpec(6, EngineConfig.Boxer),          // 911-derived flat-6 twin-turbo
+            ["ks_ruf_rt12r_awd"]               = new BuiltinCarSpec(6, EngineConfig.Boxer),
+            ["ks_toyota_ae86"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),         // 4A-GE I4
+            ["ks_toyota_ae86_drift"]           = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["ks_toyota_ae86_tuned"]           = new BuiltinCarSpec(4, EngineConfig.Inline),
+            ["ks_toyota_celica_st185"]         = new BuiltinCarSpec(4, EngineConfig.Inline),         // 3S-GTE I4 turbo
+            ["ks_toyota_gt86"]                 = new BuiltinCarSpec(4, EngineConfig.Boxer),          // FA20 flat-4
+            ["ks_toyota_supra_mkiv"]           = new BuiltinCarSpec(6, EngineConfig.Inline),         // 2JZ-GTE I6
+            ["ks_toyota_supra_mkiv_drift"]     = new BuiltinCarSpec(6, EngineConfig.Inline),
+            ["ks_toyota_supra_mkiv_tuned"]     = new BuiltinCarSpec(6, EngineConfig.Inline),
+            ["ks_toyota_ts040"]                = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // 3.7L V8 hybrid (LMP1 race V8 = flat-plane)
 
             // ===== Heuristic-derived (auto-baked from C# resolver run) =====
             // Cascade: cylword > tag > codename > rotor-phrase > desc-rotary >
@@ -464,16 +474,16 @@ namespace TrueforceForAll.Plugin
             ["wm_porsche_911_930"]                              = new BuiltinCarSpec(6),
 
             // ----- Heuristic-derived: chassis-rotary (10 entries) -----
-            ["bdc_streetspec_rx7_v4"]                           = new BuiltinCarSpec(4),
-            ["ddm_mazda_rx7_infini_fc3s"]                       = new BuiltinCarSpec(4),
-            ["idp4th_rx7_fd_keisuke"]                           = new BuiltinCarSpec(4),
-            ["nohesi_mazda_rx7_fc_vlct"]                        = new BuiltinCarSpec(4),
-            ["rize_efini_rx7_fd3s_keisuke_1"]                   = new BuiltinCarSpec(4),
-            ["rize_traffic_mazda_rx8_se3p"]                     = new BuiltinCarSpec(4),
-            ["streetcarpack_mazda_rx7_fd3s"]                    = new BuiltinCarSpec(4),
-            ["streetcarpack_mazda_rx8"]                         = new BuiltinCarSpec(4),
-            ["swarm_delta_fdrx7"]                               = new BuiltinCarSpec(4),
-            ["traffic_pp_rx8"]                                  = new BuiltinCarSpec(4),
+            ["bdc_streetspec_rx7_v4"]                           = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["ddm_mazda_rx7_infini_fc3s"]                       = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["idp4th_rx7_fd_keisuke"]                           = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["nohesi_mazda_rx7_fc_vlct"]                        = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["rize_efini_rx7_fd3s_keisuke_1"]                   = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["rize_traffic_mazda_rx8_se3p"]                     = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["streetcarpack_mazda_rx7_fd3s"]                    = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["streetcarpack_mazda_rx8"]                         = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["swarm_delta_fdrx7"]                               = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["traffic_pp_rx8"]                                  = new BuiltinCarSpec(4, EngineConfig.Rotary),
 
             // ----- Heuristic-derived: codename (132 entries) -----
             ["1stclasspilot_e36"]                               = new BuiltinCarSpec(8),
@@ -685,8 +695,8 @@ namespace TrueforceForAll.Plugin
             ["tgn_mercedes_benz_cls63_amg_brabus"]              = new BuiltinCarSpec(6),
 
             // ----- Heuristic-derived: rotor-phrase (2 entries) -----
-            ["NForce_RX8"]                                      = new BuiltinCarSpec(6),
-            ["prvvy_e30_widebody_4rotor_tt"]                    = new BuiltinCarSpec(8),
+            ["NForce_RX8"]                                      = new BuiltinCarSpec(6, EngineConfig.Rotary),
+            ["prvvy_e30_widebody_4rotor_tt"]                    = new BuiltinCarSpec(8, EngineConfig.Rotary),
 
             // ----- Heuristic-derived: tag (73 entries) -----
             ["a3dr_ferrari_512tr"]                              = new BuiltinCarSpec(12),
@@ -764,11 +774,11 @@ namespace TrueforceForAll.Plugin
             ["ybfavbarber_g8"]                                  = new BuiltinCarSpec(8),
 
             // ----- Heuristic-derived: tag-rotary (5 entries) -----
-            ["nohesi_mazda_rx7_fd"]                             = new BuiltinCarSpec(4),
-            ["pschd_mazda_rx7_amemiya"]                         = new BuiltinCarSpec(4),
-            ["rda_mazda_rx7"]                                   = new BuiltinCarSpec(4),
-            ["streetcarpack_mazda_rx7_fc3s"]                    = new BuiltinCarSpec(4),
-            ["wm_mazda_rx7_fd_rgo"]                             = new BuiltinCarSpec(4),
+            ["nohesi_mazda_rx7_fd"]                             = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["pschd_mazda_rx7_amemiya"]                         = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["rda_mazda_rx7"]                                   = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["streetcarpack_mazda_rx7_fc3s"]                    = new BuiltinCarSpec(4, EngineConfig.Rotary),
+            ["wm_mazda_rx7_fd_rgo"]                             = new BuiltinCarSpec(4, EngineConfig.Rotary),
 
 
             // ---- Manually researched (heuristic miss, looked up by hand) ----

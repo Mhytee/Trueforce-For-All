@@ -485,6 +485,13 @@ namespace TrueforceForAll.Plugin
                                 : "Help us add this car: report its cylinder count…";
                         }
                     }
+
+                    // Engine-config resolver coverage. Updates each tick with
+                    // a single text line summarizing baked + heuristic hits
+                    // for both cyl and config so users can see how complete
+                    // the firing-order coverage is for cars they drive.
+                    if (EngineCoverageText != null)
+                        EngineCoverageText.Text = _plugin.EngineConfigCoverageText;
                 }
 
                 if (ForzaStatusText != null)

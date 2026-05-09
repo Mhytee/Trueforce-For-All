@@ -592,6 +592,16 @@
                         <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,0"
                                    TextWrapping="Wrap"
                                    Text="Format: 0, 0.125, 0.25, ...  Optional weights: 0:1.0, 0.125:0.85, ...  When the engine for your car doesn't sound right, copy this string into a GitHub issue so we can bake the correct pattern."/>
+                        <!-- Coverage readout: how often the resolver is producing
+                             specific layout info this session, broken down by
+                             baked vs heuristic. Lets users see whether the
+                             firing-order feature is actually firing for cars
+                             they drive. Refreshed by the same UI tick that
+                             updates other live counters. -->
+                        <TextBlock x:Name="EngineCoverageText" Style="{StaticResource HelpText}"
+                                   Margin="140,4,0,0" TextWrapping="Wrap"
+                                   FontStyle="Italic"
+                                   Text="No cars resolved yet."/>
                     </StackPanel>
                 </Expander>
 

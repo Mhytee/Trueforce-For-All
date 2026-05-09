@@ -176,6 +176,26 @@ namespace TrueforceForAll.Plugin
         public string CaptureStatus  => _captureStatus;
         public string FfbTapStatus   => _ffbTap?.Status ?? "Not started";
         public int    ActiveVoiceCount => _mixer.SourceCount;
+
+        /// <summary>Cylinder + EngineConfig resolver coverage since plugin
+        /// init. Counts increment exactly once per car-change resolution
+        /// (cache rehits don't double-count). Surfaced in the settings UI's
+        /// firing-order section so users can see how often we're producing
+        /// specific layout info vs falling back to Auto.</summary>
+        public string EngineConfigCoverageText
+        {
+            get
+            {
+                var (cylBaked, cylHeu, cfgBaked, cfgHeu) = CarCylinderResolver.GetCoverageCounters();
+                int cylTotal = cylBaked + cylHeu;
+                int cfgTotal = cfgBaked + cfgHeu;
+                if (cylTotal == 0) return "No cars resolved yet.";
+                return $"Resolved {cylTotal} car(s) this session: " +
+                       $"cylinders {cylBaked} baked + {cylHeu} heuristic, " +
+                       $"engine config {cfgBaked} baked + {cfgHeu} heuristic " +
+                       $"({(cylTotal == 0 ? 0 : cfgTotal * 100 / cylTotal)}% layout coverage).";
+            }
+        }
         public AudioCaptureSource AudioCapture => _audio;
 
         // Live counters surfaced to the Performance tab for the underrun
@@ -712,9 +732,20 @@ namespace TrueforceForAll.Plugin
                             EnginePulse.AutoCylinders = carSpec.Cylinders;
                         }
                         EnginePulse.AutoCylinderSource = carSpec.Source;
+                        // Seed firing-order layout from the resolver. Only writes
+                        // when the active preset has EngineConfig=Auto so an
+                        // explicit user override (e.g. "I want this Mustang to
+                        // sound flat-plane") wins. Saved EngineConfig != Auto
+                        // is treated as the user's intentional choice.
+                        if (carSpec.EngineConfig != Effects.EngineConfig.Auto
+                            && EnginePulse.EngineConfig == Effects.EngineConfig.Auto)
+                        {
+                            EnginePulse.EngineConfig = carSpec.EngineConfig;
+                        }
                         SimHub.Logging.Current.Info(
                             $"[Trueforce] Car '{carId}' resolved: cyl={carSpec.Cylinders}, "
-                            + $"electric={carSpec.IsElectric}, source={carSpec.Source}");
+                            + $"electric={carSpec.IsElectric}, source={carSpec.Source}, "
+                            + $"engineConfig={carSpec.EngineConfig} ({carSpec.EngineConfigSource ?? "auto"})");
                     }
                     else if (_telemetrySource?.ProvidesNumCylinders == true)
                     {
