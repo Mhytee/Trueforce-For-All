@@ -1387,11 +1387,22 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Engine-data submission target: a Google Form with a single
+        // long-answer field. We URL-encode the structured markdown body
+        // and prefill the field via &entry.<id>=<body>. No GitHub account
+        // required; submissions land in a Google Sheet for batch triage.
+        // Form: TF4ALL Engine Data (https://forms.gle/yeQ8CNNyp7QRBxnj9).
+        // To swap forms, regenerate via scripts/create_engine_data_form.gs
+        // and replace these two constants.
+        private const string EngineDataFormUrl =
+            "https://docs.google.com/forms/d/e/1FAIpQLSfgNM3AfFV9uIGYhajQtAxpE_e1Lo34-mFtsGrbP1u-nH60ng/viewform";
+        private const string EngineDataFormEntry = "entry.551133954";
+
         // Submit engine data for the active car. Captures both what the bake/
         // resolver auto-detected AND what the user has selected via the
         // dropdowns / slider. No "FILL IN" placeholders — the user's UI
-        // values ARE the proposed values; submission is one click on GitHub.
-        // Maintainers can read the diff at a glance.
+        // values ARE the proposed values; submission is one click on the
+        // form. Maintainers read the response sheet to find diffs.
         private void ReportEngineDataButton_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
@@ -1437,29 +1448,20 @@ namespace TrueforceForAll.Plugin
             if (userCfg == Effects.EngineConfig.Custom && !string.IsNullOrEmpty(customRaw))
                 diff.Add($"- Custom firing pattern: `{customRaw}`");
 
-            // Title carries the diff summary so the issues list is scannable
-            // without opening each one. Falls back to a generic title when
-            // the user hasn't changed anything.
-            string title;
-            string label;
+            // Submission category — same three buckets as before, just used
+            // here as a leading marker line so the response sheet is sortable
+            // without opening each row.
+            string category;
             if (diff.Count == 0)
-            {
-                title = $"Engine data confirm: {carId}";
-                label = "engine-data-confirm";
-            }
+                category = "CONFIRM";
             else if (string.IsNullOrEmpty(cylSrc))
-            {
-                title = $"Engine data submission: {carId}";
-                label = "engine-data-contrib";
-            }
+                category = "CONTRIB";
             else
-            {
-                title = $"Engine data correction: {carId}";
-                label = "engine-data-wrong";
-            }
+                category = "CORRECTION";
 
             string body =
-                  $"**Game:** `{game}`  \n"
+                  $"[{category}] {carId} ({game})\n\n"
+                + $"**Game:** `{game}`  \n"
                 + $"**Car ID:** `{carId}`  \n"
                 + $"**Plugin version:** {version}\n\n";
 
@@ -1484,10 +1486,9 @@ namespace TrueforceForAll.Plugin
                   + "\n**Notes** (optional — engine codename, mod page link, anything else):\n"
                   + "\n";
 
-            string url = ReportIssuesBase
-                       + "?title=" + Uri.EscapeDataString(title)
-                       + "&body="  + Uri.EscapeDataString(body)
-                       + "&labels=" + Uri.EscapeDataString(label);
+            string url = EngineDataFormUrl
+                       + "?usp=pp_url&" + EngineDataFormEntry + "="
+                       + Uri.EscapeDataString(body);
             try
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
@@ -1498,7 +1499,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    $"Couldn't open browser:\n{ex.Message}\n\nYou can manually file an issue at:\n{ReportIssuesBase}",
+                    $"Couldn't open browser:\n{ex.Message}\n\nYou can manually open the form at:\n{EngineDataFormUrl}",
                     "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
