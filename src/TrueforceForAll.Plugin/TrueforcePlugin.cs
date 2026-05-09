@@ -1181,6 +1181,15 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
+        /// <summary>Save current Settings to SimHub's common-settings store.
+        /// UI code calls this after touching settings outside the on-the-fly
+        /// path (e.g., persisting SharingAuthor from the export-info dialog).</summary>
+        public void PersistSettings()
+        {
+            if (Settings == null) return;
+            this.SaveCommonSettings("GeneralSettings", Settings);
+        }
+
         /// <summary>True when the Forza UDP section should be visible in the
         /// settings UI. Shown only when a Forza title is active or when the
         /// user has AlwaysListen enabled (so they can find the toggle to
@@ -2695,26 +2704,47 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Write a named preset (or the current settings if the name
         /// doesn't exist in the library yet) to a shareable JSON file. The
-        /// file carries the preset name but no game binding.</summary>
-        public void ExportPreset(string presetName, string path)
+        /// file carries the preset name but no game binding. Metadata fields
+        /// (Author/Description/AuthorVersion) are optional — pass null to
+        /// omit; the importer just won't surface them.</summary>
+        public void ExportPreset(string presetName, string path,
+            string author = null, string description = null, string authorVersion = null)
         {
             if (Settings == null || string.IsNullOrEmpty(presetName)) return;
             GameSettingsSnapshot snap;
             if (Settings.Presets == null || !Settings.Presets.TryGetValue(presetName, out snap) || snap == null)
                 snap = SnapshotCurrentAsPreset();
-            var file = new PresetFile { PresetName = presetName, Snapshot = snap };
+            var file = new PresetFile
+            {
+                PresetName    = presetName,
+                Snapshot      = snap,
+                Author        = NullIfBlank(author),
+                Description   = NullIfBlank(description),
+                AuthorVersion = NullIfBlank(authorVersion),
+            };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
             SimHub.Logging.Current.Info($"[Trueforce] Exported preset '{presetName}' to {path}.");
         }
 
+        // Trim and return null on blank so JSON serialization omits empty
+        // strings instead of writing them out (cleaner files, and the
+        // importer's null-check logic is straightforward).
+        private static string NullIfBlank(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            string t = s.Trim();
+            return t.Length == 0 ? null : t;
+        }
+
         /// <summary>Read a preset file and store it in the library under the
         /// name embedded in the file. Does NOT auto-apply or auto-bind to a
-        /// game — the user explicitly chooses what to do with it next.</summary>
-        /// <returns>The preset name imported (for UI feedback).</returns>
-        public string ImportPreset(string path)
+        /// game — the user explicitly chooses what to do with it next.
+        /// Returns a result struct with the imported name plus any author /
+        /// description / version metadata in the file (all nullable).</summary>
+        public ImportPresetResult ImportPreset(string path)
         {
-            if (Settings == null) return null;
+            if (Settings == null) return default(ImportPresetResult);
             string json = System.IO.File.ReadAllText(path);
             var file = Newtonsoft.Json.JsonConvert.DeserializeObject<PresetFile>(json);
             if (file == null || file.Snapshot == null || string.IsNullOrEmpty(file.PresetName))
@@ -2727,14 +2757,47 @@ namespace TrueforceForAll.Plugin
             this.SaveCommonSettings("GeneralSettings", Settings);
 
             SimHub.Logging.Current.Info($"[Trueforce] Imported preset '{file.PresetName}' from {path}.");
-            return file.PresetName;
+            return new ImportPresetResult
+            {
+                PresetName    = file.PresetName,
+                Author        = file.Author,
+                Description   = file.Description,
+                AuthorVersion = file.AuthorVersion,
+            };
+        }
+
+        public struct ImportPresetResult
+        {
+            public string PresetName;
+            public string Author;
+            public string Description;
+            public string AuthorVersion;
+        }
+
+        public struct ImportCarPresetResult
+        {
+            public string CarId;
+            public string PresetName;
+            public string Author;
+            public string Description;
+            public string AuthorVersion;
+        }
+
+        public struct ImportPackResult
+        {
+            public int PresetsImported;
+            public int CarsImported;
+            public string Author;
+            public string Description;
+            public string AuthorVersion;
         }
 
         /// <summary>Export the active car's override as a standalone file.
         /// If no override exists yet, captures the current ActiveX section
         /// values so the user can share their tuning without committing it
         /// to a per-car override first.</summary>
-        public void ExportActiveCarPreset(string path)
+        public void ExportActiveCarPreset(string path,
+            string author = null, string description = null, string authorVersion = null)
         {
             if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
             CarOverride ovr = GetActiveCarOverride();
@@ -2760,11 +2823,14 @@ namespace TrueforceForAll.Plugin
             string presetName = GetActiveCarPresetName(_activeCarId) ?? _activeCarId;
             var file = new CarPresetFile
             {
-                GameName   = _activeGame,
-                CarId      = _activeCarId,
-                PresetName = StripDefaultSuffixForExport(presetName),
-                IsBuiltin  = false,
-                Override   = ovr,
+                GameName      = _activeGame,
+                CarId         = _activeCarId,
+                PresetName    = StripDefaultSuffixForExport(presetName),
+                IsBuiltin     = false,
+                Author        = NullIfBlank(author),
+                Description   = NullIfBlank(description),
+                AuthorVersion = NullIfBlank(authorVersion),
+                Override      = ovr,
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
@@ -2789,10 +2855,10 @@ namespace TrueforceForAll.Plugin
         /// preset name so the import becomes the active preset for that
         /// car. Applied immediately if the imported CarId matches the
         /// active car.</summary>
-        /// <returns>The car id from the imported file (for UI feedback).</returns>
-        public string ImportCarPreset(string path)
+        /// <returns>Imported carId, final preset name, and any sharing metadata.</returns>
+        public ImportCarPresetResult ImportCarPreset(string path)
         {
-            if (Settings == null || _carStore == null) return null;
+            if (Settings == null || _carStore == null) return default(ImportCarPresetResult);
             string json = System.IO.File.ReadAllText(path);
             var file = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(json);
             if (file == null || file.Override == null || string.IsNullOrEmpty(file.CarId))
@@ -2813,7 +2879,14 @@ namespace TrueforceForAll.Plugin
             if (file.CarId == _activeCarId) ReloadActiveCarOverrideFromStore();
             SimHub.Logging.Current.Info(
                 $"[Trueforce] Imported car preset '{presetName}' for '{file.CarId}' from {path}.");
-            return file.CarId;
+            return new ImportCarPresetResult
+            {
+                CarId         = file.CarId,
+                PresetName    = presetName,
+                Author        = file.Author,
+                Description   = file.Description,
+                AuthorVersion = file.AuthorVersion,
+            };
         }
 
         // Append "(2)", "(3)", … to the desired name until it's unique
@@ -2875,7 +2948,8 @@ namespace TrueforceForAll.Plugin
         public (int presetsExported, int carsExported) ExportPack(
             string path,
             IEnumerable<string> presetNames,
-            IEnumerable<(string CarId, string PresetName)> carPresets)
+            IEnumerable<(string CarId, string PresetName)> carPresets,
+            string author = null, string description = null, string authorVersion = null)
         {
             if (Settings == null) return (0, 0);
 
@@ -2887,9 +2961,15 @@ namespace TrueforceForAll.Plugin
                 ? new HashSet<(string, string)>(carPresets)
                 : null;
 
+            string normAuthor = NullIfBlank(author);
+            string normDesc   = NullIfBlank(description);
+            string normVer    = NullIfBlank(authorVersion);
             var manifest = new PresetPackManifest
             {
-                ExportedAt = DateTime.UtcNow.ToString("o"),
+                ExportedAt    = DateTime.UtcNow.ToString("o"),
+                Author        = normAuthor,
+                Description   = normDesc,
+                AuthorVersion = normVer,
             };
 
             int presetsCount = 0, carsCount = 0;
@@ -2905,7 +2985,14 @@ namespace TrueforceForAll.Plugin
                         if (kv.Value == null) continue;
 
                         string entryName = "presets/" + SanitizeForZip(kv.Key) + ".tfpreset";
-                        var file = new PresetFile { PresetName = kv.Key, Snapshot = kv.Value };
+                        var file = new PresetFile
+                        {
+                            PresetName    = kv.Key,
+                            Snapshot      = kv.Value,
+                            Author        = normAuthor,
+                            Description   = normDesc,
+                            AuthorVersion = normVer,
+                        };
                         WriteJsonZipEntry(zip, entryName, file);
                         manifest.Presets.Add(entryName);
                         presetsCount++;
@@ -2928,11 +3015,14 @@ namespace TrueforceForAll.Plugin
                                 + SanitizeForZip(entry.PresetName) + ".tfcar.json";
                             var file = new CarPresetFile
                             {
-                                GameName   = entry.GameName ?? "",
-                                CarId      = entry.CarId,
-                                PresetName = entry.PresetName,
-                                IsBuiltin  = false, // shareable copies are user-tier
-                                Override   = entry.Override,
+                                GameName      = entry.GameName ?? "",
+                                CarId         = entry.CarId,
+                                PresetName    = entry.PresetName,
+                                IsBuiltin     = false, // shareable copies are user-tier
+                                Author        = normAuthor,
+                                Description   = normDesc,
+                                AuthorVersion = normVer,
+                                Override      = entry.Override,
                             };
                             WriteJsonZipEntry(zip, entryName, file);
                             manifest.Cars.Add(new PackedCarPreset
@@ -2959,10 +3049,11 @@ namespace TrueforceForAll.Plugin
         /// Game presets land in Settings.Presets (overwriting any with the
         /// same name); car presets go through MakeUniqueCarPresetName so a
         /// name collision keeps both. Returns a (presets, cars) count.</summary>
-        public (int presetsImported, int carsImported) ImportPack(string path)
+        public ImportPackResult ImportPack(string path)
         {
-            if (Settings == null) return (0, 0);
+            if (Settings == null) return default(ImportPackResult);
 
+            string packAuthor = null, packDesc = null, packVer = null;
             int presetsImported = 0, carsImported = 0;
             using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
@@ -2974,11 +3065,17 @@ namespace TrueforceForAll.Plugin
                 if (manifestEntry != null)
                 {
                     var manifest = ReadJsonZipEntry<PresetPackManifest>(manifestEntry);
-                    if (manifest != null && !string.IsNullOrEmpty(manifest.Type)
-                        && manifest.Type != PresetPackManifest.FileType)
+                    if (manifest != null)
                     {
-                        throw new System.IO.InvalidDataException(
-                            $"Wrong pack type '{manifest.Type}'. Expected '{PresetPackManifest.FileType}'.");
+                        if (!string.IsNullOrEmpty(manifest.Type)
+                            && manifest.Type != PresetPackManifest.FileType)
+                        {
+                            throw new System.IO.InvalidDataException(
+                                $"Wrong pack type '{manifest.Type}'. Expected '{PresetPackManifest.FileType}'.");
+                        }
+                        packAuthor = manifest.Author;
+                        packDesc   = manifest.Description;
+                        packVer    = manifest.AuthorVersion;
                     }
                 }
 
@@ -3016,7 +3113,14 @@ namespace TrueforceForAll.Plugin
 
             SimHub.Logging.Current.Info(
                 $"[Trueforce] Imported pack from {path}: {presetsImported} game preset(s), {carsImported} car preset(s).");
-            return (presetsImported, carsImported);
+            return new ImportPackResult
+            {
+                PresetsImported = presetsImported,
+                CarsImported    = carsImported,
+                Author          = packAuthor,
+                Description     = packDesc,
+                AuthorVersion   = packVer,
+            };
         }
 
         // Replace anything not-safe-in-a-zip-entry-name with '_'. Zip handles

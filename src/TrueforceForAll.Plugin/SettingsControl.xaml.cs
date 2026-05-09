@@ -2660,6 +2660,9 @@ namespace TrueforceForAll.Plugin
         {
             string name = SelectedPresetName;
             if (_plugin == null || string.IsNullOrEmpty(name)) return;
+            if (!PromptForExportMetadata($"Export preset '{name}'", "preset",
+                out string author, out string desc, out string ver)) return;
+
             string safeName = MakeFileSafe(name);
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
@@ -2670,7 +2673,7 @@ namespace TrueforceForAll.Plugin
             if (dlg.ShowDialog() != true) return;
             try
             {
-                _plugin.ExportPreset(name, dlg.FileName);
+                _plugin.ExportPreset(name, dlg.FileName, author, desc, ver);
                 MessageBox.Show($"Exported '{name}' to:\n{dlg.FileName}",
                                 "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -2678,6 +2681,39 @@ namespace TrueforceForAll.Plugin
             {
                 MessageBox.Show($"Export failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        // Pop the Author/Description/Version dialog. Author pre-fills from
+        // SharingAuthor; on OK, persists the (possibly-edited) author back so
+        // the next export pre-fills with what the user just typed. Returns
+        // false on Cancel; true with the (possibly-blank) values on OK.
+        private bool PromptForExportMetadata(string title, string subjectKind,
+            out string author, out string description, out string authorVersion)
+        {
+            author = description = authorVersion = null;
+            if (_plugin?.Settings == null) return false;
+
+            var dlg = new PresetMetadataDialog(title, subjectKind,
+                _plugin.Settings.SharingAuthor, "", "")
+            {
+                Owner = Window.GetWindow(this),
+            };
+            if (dlg.Owner == null) dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            if (dlg.ShowDialog() != true) return false;
+
+            author        = dlg.Author;
+            description   = dlg.Description;
+            authorVersion = dlg.AuthorVersion;
+
+            // Persist the (possibly edited) author so the next export pre-fills
+            // with the user's most recent value. Only writes when changed.
+            string newAuthor = author?.Trim() ?? "";
+            if (newAuthor != (_plugin.Settings.SharingAuthor ?? ""))
+            {
+                _plugin.Settings.SharingAuthor = newAuthor;
+                try { _plugin.PersistSettings(); } catch { }
+            }
+            return true;
         }
 
         private void ImportPreset_Click(object sender, RoutedEventArgs e)
@@ -2691,15 +2727,39 @@ namespace TrueforceForAll.Plugin
             if (dlg.ShowDialog() != true) return;
             try
             {
-                string presetName = _plugin.ImportPreset(dlg.FileName);
-                MessageBox.Show($"Imported preset '{presetName}' into your library. Select it from the dropdown and click Apply, or set it as a game default.",
-                                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+                var r = _plugin.ImportPreset(dlg.FileName);
+                string body = $"Imported preset '{r.PresetName}' into your library. Select it from the dropdown and click Apply, or set it as a game default.";
+                string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
+                if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
+                MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
                 RefreshFromPlugin();
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Import failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        // Compose the optional "by AUTHOR / version VERSION / description …"
+        // header for import dialogs. Returns "" when none of the metadata
+        // fields are populated so the caller can skip prepending it.
+        private static string FormatMetadataLines(string author, string version, string description)
+        {
+            var parts = new System.Text.StringBuilder();
+            string a = string.IsNullOrWhiteSpace(author) ? null : author.Trim();
+            string v = string.IsNullOrWhiteSpace(version) ? null : version.Trim();
+            string d = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+            if (a != null || v != null)
+            {
+                if (a != null) parts.Append($"By {a}");
+                if (v != null) parts.Append((a != null ? "  " : "") + $"(v{v})");
+            }
+            if (d != null)
+            {
+                if (parts.Length > 0) parts.Append('\n');
+                parts.Append(d);
+            }
+            return parts.ToString();
         }
 
         /// <summary>Tiny inline name-prompt dialog. WPF has no built-in
@@ -2741,6 +2801,9 @@ namespace TrueforceForAll.Plugin
         private void ExportCarPreset_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null || string.IsNullOrEmpty(_plugin.ActiveCarId)) return;
+            if (!PromptForExportMetadata($"Export car preset '{_plugin.ActiveCarId}'", "car preset",
+                out string author, out string desc, out string ver)) return;
+
             string safeGame = MakeFileSafe(_plugin.ActiveGame ?? "any");
             string safeCar  = MakeFileSafe(_plugin.ActiveCarId);
             var dlg = new Microsoft.Win32.SaveFileDialog
@@ -2752,7 +2815,7 @@ namespace TrueforceForAll.Plugin
             if (dlg.ShowDialog() != true) return;
             try
             {
-                _plugin.ExportActiveCarPreset(dlg.FileName);
+                _plugin.ExportActiveCarPreset(dlg.FileName, author, desc, ver);
                 MessageBox.Show($"Exported '{_plugin.ActiveCarId}' to:\n{dlg.FileName}",
                                 "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -2773,12 +2836,14 @@ namespace TrueforceForAll.Plugin
             if (dlg.ShowDialog() != true) return;
             try
             {
-                string carId = _plugin.ImportCarPreset(dlg.FileName);
-                bool applied = carId == _plugin.ActiveCarId;
-                MessageBox.Show(applied
-                    ? $"Imported car preset for '{carId}'. Applied (this is the active car)."
-                    : $"Imported car preset for '{carId}'. Stored — will apply when you drive that car.",
-                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+                var r = _plugin.ImportCarPreset(dlg.FileName);
+                bool applied = r.CarId == _plugin.ActiveCarId;
+                string body = applied
+                    ? $"Imported car preset '{r.PresetName}' for '{r.CarId}'. Applied (this is the active car)."
+                    : $"Imported car preset '{r.PresetName}' for '{r.CarId}'. Stored (will apply when you drive that car).";
+                string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
+                if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
+                MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
                 // RefreshFromPlugin → RecomputeAllEffectDirty syncs the dirty
                 // dots with whatever sections the import touched.
                 RefreshFromPlugin();
@@ -2824,6 +2889,9 @@ namespace TrueforceForAll.Plugin
             var pickedCars    = picker.SelectedCarPresets;
             if (pickedPresets.Count == 0 && pickedCars.Count == 0) return;
 
+            if (!PromptForExportMetadata("Export pack", "pack",
+                out string author, out string desc, out string ver)) return;
+
             string defaultName = $"Trueforce-pack-{DateTime.Now:yyyy-MM-dd}.tfpack";
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
@@ -2837,7 +2905,8 @@ namespace TrueforceForAll.Plugin
                 var (p, c) = _plugin.ExportPack(
                     dlg.FileName,
                     pickedPresets,
-                    pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)));
+                    pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)),
+                    author, desc, ver);
                 MessageBox.Show($"Exported {p} game preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
                                 "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -2858,9 +2927,11 @@ namespace TrueforceForAll.Plugin
             if (dlg.ShowDialog() != true) return;
             try
             {
-                var (p, c) = _plugin.ImportPack(dlg.FileName);
-                MessageBox.Show($"Imported {p} game preset(s) and {c} car preset(s) from:\n{dlg.FileName}",
-                                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+                var r = _plugin.ImportPack(dlg.FileName);
+                string body = $"Imported {r.PresetsImported} game preset(s) and {r.CarsImported} car preset(s) from:\n{dlg.FileName}";
+                string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
+                if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
+                MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
                 RefreshFromPlugin();
             }
             catch (Exception ex)

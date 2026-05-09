@@ -115,6 +115,12 @@ namespace TrueforceForAll.Plugin
         // here so it survives preset switches.
         public ForzaSettings Forza { get; set; } = new ForzaSettings();
 
+        // Author name auto-stamped onto exported presets / car presets / packs.
+        // Set once via the Backup & sync section; the export-info dialog
+        // pre-fills it and writes back any edits the user makes there. Blank
+        // by default; users who never set it just produce anonymous exports.
+        public string SharingAuthor { get; set; } = "";
+
         // Keyed by GameData.NewData.CarId. Override entries supersede the
         // global engine settings whenever that car is the active one.
         public Dictionary<string, CarOverride> CarOverrides { get; set; } = new Dictionary<string, CarOverride>();
@@ -449,6 +455,12 @@ namespace TrueforceForAll.Plugin
         public string Type    { get; set; } = FileType;
         public int    Version { get; set; } = 1;
         public string PresetName { get; set; }
+        // Optional sharing metadata. All three fields are user-supplied and
+        // free-form; null/empty means "not provided" and the importer
+        // gracefully omits them from the success dialog.
+        public string Author        { get; set; }
+        public string Description   { get; set; }
+        public string AuthorVersion { get; set; }
         public GameSettingsSnapshot Snapshot { get; set; }
     }
 
@@ -474,6 +486,11 @@ namespace TrueforceForAll.Plugin
         // overwrite these when the user saves changes (forks to a new user
         // preset instead) and refuses to delete them via the UI.
         public bool   IsBuiltin { get; set; }
+        // Optional sharing metadata. Set on export when the user chose to
+        // include it; built-in / locally-saved files leave these blank.
+        public string Author        { get; set; }
+        public string Description   { get; set; }
+        public string AuthorVersion { get; set; }
         public CarOverride Override { get; set; }
     }
 
@@ -491,6 +508,12 @@ namespace TrueforceForAll.Plugin
         public string Type    { get; set; } = FileType;
         public int    Version { get; set; } = 1;
         public string ExportedAt { get; set; }
+        // Pack-level sharing metadata. Each contained preset / car preset
+        // also carries its own Author/Description/AuthorVersion when set;
+        // the pack-level fields cover the bundle as a whole.
+        public string Author        { get; set; }
+        public string Description   { get; set; }
+        public string AuthorVersion { get; set; }
         public List<string> Presets { get; set; } = new List<string>();
         public List<PackedCarPreset> Cars { get; set; } = new List<PackedCarPreset>();
     }
