@@ -247,6 +247,22 @@
                             <TextBlock x:Name="EnhancedBadgeText" Text="✨ Enhanced" Foreground="#1A1A1A" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"/>
                         </Border>
                     </StackPanel>
+
+                    <!-- Why-is-my-wheel-quiet diagnostic. Shown only when the
+                         plugin detects a likely reason output is silent —
+                         master switch off, wheel disconnected, no telemetry,
+                         all effects disabled, ducker swallowing everything,
+                         etc. Hidden when healthy. Yellow background so it's
+                         visually distinct from regular status text. -->
+                    <Border x:Name="WheelQuietDiagnosticBox" Visibility="Collapsed"
+                            Background="#FFC107" CornerRadius="4" Padding="10,6" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚠" FontSize="14" Foreground="#222" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="WheelQuietDiagnosticText" Foreground="#222"
+                                       FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Text=""/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 

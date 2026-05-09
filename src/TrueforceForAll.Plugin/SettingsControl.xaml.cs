@@ -639,6 +639,26 @@ namespace TrueforceForAll.Plugin
                 UpdateMeter(DuckMeterTrack, DuckMeterFill, Math.Max(0, duck));
             }
 
+            // Why-is-my-wheel-quiet diagnostic. Always evaluated (cheap) so
+            // the warning bar can fire even when the Live activity expander
+            // is collapsed. Sits below the status pill, so users see the
+            // actual root cause without having to mentally cross-reference
+            // five separate status fields.
+            string diag = _plugin?.WheelQuietDiagnostic;
+            if (WheelQuietDiagnosticBox != null)
+            {
+                if (string.IsNullOrEmpty(diag))
+                {
+                    WheelQuietDiagnosticBox.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    WheelQuietDiagnosticBox.Visibility = Visibility.Visible;
+                    if (WheelQuietDiagnosticText.Text != diag)
+                        WheelQuietDiagnosticText.Text = diag;
+                }
+            }
+
             // Performance counters update every meter tick (cheap — array sum
             // of 60 longs). Doesn't depend on any expander being open.
             UpdatePerfCounters();

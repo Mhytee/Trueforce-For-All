@@ -179,6 +179,95 @@ namespace TrueforceForAll.Plugin
         public string FfbTapStatus   => _ffbTap?.Status ?? "Not started";
         public int    ActiveVoiceCount => _mixer.SourceCount;
 
+        /// <summary>Why-is-my-wheel-quiet diagnostic. Walks a decision tree
+        /// of plausible "no haptic output" causes and returns the most-
+        /// blocking one as a single actionable line, or null when the
+        /// plugin looks healthy. Surfaced in the settings UI as a warning
+        /// hint below the status pill so users see the actual root cause
+        /// instead of mentally combining five separate status fields.</summary>
+        public string WheelQuietDiagnostic
+        {
+            get
+            {
+                if (Settings == null) return "Settings not loaded yet.";
+
+                // 1. Hard master switch
+                if (!Settings.PluginEnabled)
+                {
+                    if (!string.IsNullOrEmpty(_activeGame)
+                        && Settings.GameEnabled != null
+                        && Settings.GameEnabled.TryGetValue(_activeGame, out var ge)
+                        && !ge)
+                        return $"Plugin is disabled for '{_activeGame}'. Re-enable via the master switch (auto-remembers per game).";
+                    return "Plugin is disabled. Click the 'Plugin enabled' checkbox at the top to turn it on.";
+                }
+
+                // 2. Master gain at zero
+                if (Settings.MasterGain <= 0.005f)
+                    return "Master gain is at 0. Slide it up in the Master section.";
+
+                // 3. Wheel device state. WheelStatus is set by the discovery
+                //    + open path; "Not detected" is the default.
+                string wheel = WheelStatus ?? "";
+                if (wheel.StartsWith("Not detected", StringComparison.OrdinalIgnoreCase))
+                    return "Wheel not detected. Plug in your G PRO / RS50, or close any app that's holding the device exclusively.";
+                if (wheel.StartsWith("Open failed", StringComparison.OrdinalIgnoreCase)
+                 || wheel.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return $"Wheel reports: {wheel}. Try unplugging and reconnecting the wheel.";
+
+                // 4. HID stream state.
+                string stream = StreamStatus ?? "";
+                if (!stream.StartsWith("Streaming", StringComparison.OrdinalIgnoreCase))
+                    return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel — check the Diagnostics panel.";
+
+                // 5. No game / not in session
+                if (string.IsNullOrEmpty(_activeGame))
+                    return "No game running. Start a supported game and load into a session.";
+
+                var src = _telemetrySource;
+                double hz = src?.MeasuredHz ?? 0;
+                if (hz <= 0)
+                    return $"'{_activeGame}' is detected but no telemetry is arriving. You may be in a menu or paused.";
+
+                // 6. All telemetry-driven effects disabled. Engine pulse,
+                //    bumps, traction, gear, ABS, pit limiter, DRS — if all
+                //    seven are off and audio capture is also off, nothing
+                //    can produce output.
+                bool anyEffectOn =
+                       (EnginePulse  != null && EnginePulse.Enabled)
+                    || (RoadBumps    != null && RoadBumps.Enabled)
+                    || (TractionLoss != null && TractionLoss.Enabled)
+                    || (GearShift    != null && GearShift.Enabled)
+                    || (AbsClick     != null && AbsClick.Enabled)
+                    || (PitLimiter   != null && PitLimiter.Enabled)
+                    || (Drs          != null && Drs.Enabled)
+                    || (_audio       != null && _audio.Enabled);
+                if (!anyEffectOn)
+                    return "Every effect channel is disabled. Enable at least one effect or turn on audio capture.";
+
+                // 7. Audio capture configured-on but not actually attached
+                //    to a game process. Common when the user enabled audio
+                //    capture but didn't pick the game's process.
+                if (_audio != null && _audio.Enabled && _audio.IsActive == false
+                    && _audio.CapturedProcessId == 0
+                    && !string.IsNullOrEmpty(_activeGame))
+                {
+                    return $"Audio capture is enabled but not attached to '{_activeGame}'. Pick the game process in the Audio section.";
+                }
+
+                // 8. Sidechain ducker over-aggressive (engine pulse muted
+                //    near to silence). Detects misconfigured ducker depth
+                //    that swallows everything.
+                if (EnginePulse != null && EnginePulse.DuckMultiplier < 0.05f
+                    && Settings.DuckDepth > 0.95f)
+                {
+                    return "Sidechain ducker is muting nearly all output. Try lowering Depth in the Sidechain ducking section.";
+                }
+
+                return null;   // healthy
+            }
+        }
+
         /// <summary>Cylinder + EngineConfig resolver coverage since plugin
         /// init. Counts increment exactly once per car-change resolution
         /// (cache rehits don't double-count). Surfaced in the settings UI's
