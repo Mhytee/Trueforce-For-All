@@ -2,7 +2,13 @@
 // EnginePulseEffect. Three-stage cascade:
 //
 //   1. Baked lookup (BuiltinCarCylinders) — Kunos lineup + heuristic-derived
-//      pre-bake covering ~91% of the typical AC library at ship time.
+//      pre-bake covering ~91% of the typical AC library at ship time. On
+//      AC, a bake hit also gets a post-bake refinement pass that reads
+//      ui_car.json for two corrections the carId alone can't make:
+//        - swap override (explicit "swap" + engine codename → use the
+//          codename's cyl + config, fixing chassis-derived bakes that
+//          can't see when a mod has been engine-swapped),
+//        - config-only refinement (when the bake knows cyl but not layout).
 //   2. Persistent cache (Settings.CarCylinderCache) — heuristic results
 //      from prior sessions for cars not in the bake. Cached forever per
 //      install; cleared en masse when CarCylinderCacheVersion bumps.
@@ -188,19 +194,41 @@ namespace TrueforceForAll.Plugin
                     EngineConfig       = spec.EngineConfig,
                     EngineConfigSource = hasBakedConfig ? "baked" : null,
                 };
-                // Second-pass: if the bake only knows cyl count (config = Auto)
-                // and we can read the AC ui_car.json, run the config detector
-                // against the description so cars baked from the older single-
-                // axis heuristic still get a specific layout when one's
-                // detectable. Counts toward the heuristic config coverage.
-                if (!hasBakedConfig && !r.IsElectric
-                    && string.Equals(gameName, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                // Post-bake refinement. The bake is built mostly from the carId
+                // (chassis heuristics), which can't see when a mod has been
+                // engine-swapped. ui_car.json carries the description and
+                // usually does. Two passes, single file read:
+                //   1. Swap override: explicit "swap" + codename → replace
+                //      cyl + config with the codename's values. Catches
+                //      "S14 with LS swap" style mods that the bake says are
+                //      4-cyl Inline based on chassis alone.
+                //   2. Config-only refinement: when no swap fired and the
+                //      bake didn't already know layout, derive config from
+                //      the description (covers cars baked from the older
+                //      single-axis heuristic).
+                if (!r.IsElectric
+                    && string.Equals(gameName, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+                    && TryReadAcHaystack(carId, out var hs, out var hsTags))
                 {
-                    if (TryAcDetectConfigOnly(carId, r.Cylinders, out var cfg, out var cfgSrc))
+                    if (TryAcSwapOverride(hs, out int swapCyl, out var swapCfg)
+                        && (swapCyl != r.Cylinders || swapCfg != r.EngineConfig))
                     {
-                        r.EngineConfig       = cfg;
-                        r.EngineConfigSource = cfgSrc;
-                        Interlocked.Increment(ref _cfgHeuristicHits);
+                        r.Cylinders          = swapCyl;
+                        r.EngineConfig       = swapCfg;
+                        r.Source             = "swap-override";
+                        r.EngineConfigSource = "swap-override";
+                        if (swapCfg != EngineConfig.Auto)
+                            Interlocked.Increment(ref _cfgHeuristicHits);
+                    }
+                    else if (!hasBakedConfig)
+                    {
+                        var (cfg, src) = DetectEngineConfig(r.Cylinders, hs, hsTags);
+                        if (cfg != EngineConfig.Auto)
+                        {
+                            r.EngineConfig       = cfg;
+                            r.EngineConfigSource = src;
+                            Interlocked.Increment(ref _cfgHeuristicHits);
+                        }
                     }
                 }
                 return r;
@@ -542,15 +570,15 @@ namespace TrueforceForAll.Plugin
             return null;
         }
 
-        // Used by the bake → heuristic-config bridge: a car with a baked cyl
-        // count but Auto config gets its config from the same description-
-        // scanning logic the full heuristic uses, without re-deriving cyl.
-        // Returns false if AC isn't installed or the ui_car.json is missing
-        // (no harm — caller leaves Auto and the cyl-count default applies).
-        private static bool TryAcDetectConfigOnly(string carId, int cyl, out EngineConfig cfg, out string source)
+        // Read ui_car.json for an AC car and build the haystack the heuristic
+        // detectors expect (name + tags + description + carId, with HTML
+        // entities stripped). Returns false if AC isn't installed or the
+        // file is missing/unreadable — callers leave whatever state they had
+        // and the cyl-count default applies downstream.
+        private static bool TryReadAcHaystack(string carId, out string haystack, out string[] tags)
         {
-            cfg = EngineConfig.Auto;
-            source = null;
+            haystack = null;
+            tags = null;
             string root = GetAcInstallRoot();
             if (string.IsNullOrEmpty(root)) return false;
             string uiPath = Path.Combine(root, "content", "cars", carId, "ui", "ui_car.json");
@@ -564,15 +592,40 @@ namespace TrueforceForAll.Plugin
             catch { return false; }
             string name = ExtractStringField(raw, "name");
             string desc = ExtractStringField(raw, "description");
-            string[] tags = ExtractTagsArray(raw);
-            string haystack = (name ?? "") + " " + string.Join(" ", tags ?? Array.Empty<string>())
+            tags = ExtractTagsArray(raw);
+            haystack = (name ?? "") + " " + string.Join(" ", tags ?? Array.Empty<string>())
                               + " " + (desc ?? "") + " " + carId;
             haystack = Regex.Replace(haystack, "&[a-zA-Z]+;", " ");
-            var (detected, src) = DetectEngineConfig(cyl, haystack, tags);
-            if (detected == EngineConfig.Auto) return false;
-            cfg = detected;
-            source = src;
             return true;
+        }
+
+        // Detect an engine-swap override for a bake hit. Requires an explicit
+        // swap word in the haystack AND a recognized engine codename — both
+        // gates are necessary because either alone is too noisy. A codename
+        // without "swap" matches ambient mentions ("feels like a 2JZ"); a
+        // "swap" word without a codename has nothing to override with.
+        //
+        // Returns the codename's paired cyl + config so a caller can replace
+        // bake values where they disagree. First codename match wins, same
+        // strategy as audit_swaps.ps1 (the offline tool this replaces for the
+        // baked-car case).
+        private static bool TryAcSwapOverride(string haystack, out int cyl, out EngineConfig cfg)
+        {
+            cyl = 0;
+            cfg = EngineConfig.Auto;
+            if (string.IsNullOrEmpty(haystack)) return false;
+            if (!Regex.IsMatch(haystack, @"\b(?:swap|swapped|swapping)\b", RegexOptions.IgnoreCase))
+                return false;
+            foreach (var (pat, codenameCyl, codenameCfg) in EngineCodenames)
+            {
+                if (Regex.IsMatch(haystack, pat, RegexOptions.IgnoreCase))
+                {
+                    cyl = codenameCyl;
+                    cfg = codenameCfg;
+                    return true;
+                }
+            }
+            return false;
         }
 
         // -------------------- second-pass engine-config detection --------------------
