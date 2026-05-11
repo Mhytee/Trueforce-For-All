@@ -192,14 +192,21 @@ namespace TrueforceForAll.Plugin
         // descent and accelerate. UP fires fast (1s window); if noise
         // returns mid-descent it re-arms the long 5min cooldown.
         private const int  RatchetWindowMs           = 1000;
-        // UP trigger: a single noisy window isn't enough — too easy to trip
-        // on a one-off CPU stall, USB hiccup, or game stutter that doesn't
-        // reflect sustained pressure on the ring. Require BOTH the current
-        // and previous 1-second windows to cross the threshold. Threshold
-        // raised from 3→5 to filter brief blips even further; with the
-        // 2-window requirement, sustained UP fire only happens after ≥10
-        // underruns over 2 seconds.
-        private const long RatchetThreshold          = 5;     // underruns/laps in 1 s, REQUIRED IN 2 CONSECUTIVE WINDOWS
+        // UP trigger: a single noisy window isn't enough. One-off CPU
+        // stalls, USB hiccups, and brief game stutters don't reflect
+        // sustained pressure on the ring, so we require BOTH the current
+        // and previous 1-second windows to cross the threshold before UP
+        // fires.
+        //
+        // Units note: underrun/glitch counters are duration-quantized at
+        // ~20 ms per count (see UnderrunQuantumTicks in TrueforceDevice
+        // and GlitchQuantumTicks in AudioCaptureSource). Sub-quantum
+        // scheduling blips contribute 0, so a threshold of 5/s means
+        // ~100 ms of cumulative real dropout per second. Combined with
+        // the 2-window gate, UP fires only after ~200 ms of cumulative
+        // dropout sustained across 2 consecutive seconds, which is a
+        // genuine "ring is undersized" signal rather than tick noise.
+        private const long RatchetThreshold          = 5;     // quantized events/s, REQUIRED IN 2 CONSECUTIVE WINDOWS
         private const int  RatchetDownQuietMs        = 60_000;   // 60 s of zero deltas → eligible for any DOWN step
         private const int  RatchetDownCooldownMs     = 300_000;  // 5 min after an UP before the FIRST DOWN allowed
         private const int  RatchetDownFastCooldownMs = 30_000;   // 30 s between subsequent DOWN steps once descent has started
@@ -1303,7 +1310,7 @@ namespace TrueforceForAll.Plugin
                 if (newCap > TrueforceDevice.MaxRingSize) newCap = TrueforceDevice.MaxRingSize;
                 ApplyTfRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet UP: Trueforce ring {oldCap} → {newCap} after {tfDelta} underruns/s (sustained 2 windows).");
+                    $"[Trueforce] Auto-ratchet UP: Trueforce ring {oldCap} → {newCap} after {tfDelta} dropout-events/s (~{tfDelta * 20} ms cumulative, sustained 2 windows).");
                 _tfLastRatchetActionTicks = now;
                 _tfLastActionWasDown = false;
                 _prevTfOverThreshold = false;   // re-arm the 2-window requirement
@@ -1317,7 +1324,7 @@ namespace TrueforceForAll.Plugin
                 if (newCap > AudioCaptureSource.MaxRingSamples) newCap = AudioCaptureSource.MaxRingSamples;
                 ApplyAudioRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet UP: audio ring {oldCap} → {newCap} after {audioDelta} glitches/s (sustained 2 windows).");
+                    $"[Trueforce] Auto-ratchet UP: audio ring {oldCap} → {newCap} after {audioDelta} dropout-events/s (~{audioDelta * 20} ms cumulative or laps, sustained 2 windows).");
                 _audioLastRatchetActionTicks = now;
                 _audioLastActionWasDown = false;
                 _prevAudioOverThreshold = false;   // re-arm the 2-window requirement

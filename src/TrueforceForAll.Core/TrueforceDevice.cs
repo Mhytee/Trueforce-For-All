@@ -78,12 +78,23 @@ namespace TrueforceForAll.Core
         private int _ringTail;  // consumer index
         private readonly object _ringLock = new object();
 
-        // Underrun = StreamTick wanted NewPerPacket samples but got 0. Counted
-        // only after the producer has ever delivered a sample (so initial
-        // startup ticks before any audio is queued don't count). Used by the
-        // plugin's auto-ratchet to bump _ringCapacity up on persistent loss.
+        // Underrun = StreamTick wanted NewPerPacket samples but got 0.
+        // Counts are duration-quantized: the producer-visible counter only
+        // ticks once per UnderrunQuantumTicks of continuous starvation, so a
+        // sub-quantum scheduling blip contributes 0 and a longer stall
+        // contributes one count per quantum (severity preserved through
+        // proportional count). Only active after the producer has ever
+        // delivered a sample (so cold-start ticks before the first push
+        // don't inflate the counter). Used by the plugin's auto-ratchet to
+        // bump _ringCapacity up on persistent loss; the quantum filters
+        // trivial scheduling noise so the ratchet threshold maps to "real"
+        // dropout time, not raw tick count.
+        //
+        // At StreamTick's 1 kHz cadence, 20 ticks = 20 ms.
+        private const int UnderrunQuantumTicks = 20;
         private long _underrunCount;
         private bool _everReceivedSample;
+        private int _currentUnderrunStreak;
         public long UnderrunCount => System.Threading.Interlocked.Read(ref _underrunCount);
 
         // Reusable packet buffer (re-zeroed on each tick).
@@ -496,13 +507,25 @@ namespace TrueforceForAll.Core
                 if (n > 0) Monitor.PulseAll(_ringLock);
             }
 
-            // Underrun bookkeeping. Only counted once the producer has ever
-            // delivered a sample (so cold-start ticks before the first push
-            // don't inflate the counter), and only when the stream is
-            // actually expecting to play (not paused / shutting down).
-            if (n > 0) _everReceivedSample = true;
+            // Underrun bookkeeping. Track the current continuous-starvation
+            // streak; emit one count to the public counter every full
+            // UnderrunQuantumTicks the streak extends. Sub-quantum blips
+            // never tick the counter (streak resets to 0 on the next good
+            // tick). Only active once the producer has ever delivered a
+            // sample (so cold-start ticks before the first push don't
+            // inflate the counter), and only when the stream is actually
+            // expecting to play (not paused / shutting down).
+            if (n > 0)
+            {
+                _everReceivedSample = true;
+                _currentUnderrunStreak = 0;
+            }
             else if (_everReceivedSample && _streamRunning && !_paused && !_shuttingDown)
-                System.Threading.Interlocked.Increment(ref _underrunCount);
+            {
+                _currentUnderrunStreak++;
+                if (_currentUnderrunStreak % UnderrunQuantumTicks == 0)
+                    System.Threading.Interlocked.Increment(ref _underrunCount);
+            }
 
             // Two packet shapes we send (observed by diffing AC EVO's stream vs
             // silent baselines — these three things change together; we have not

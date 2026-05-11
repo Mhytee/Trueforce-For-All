@@ -53,7 +53,17 @@ namespace TrueforceForAll.Plugin
         // the producer asks for samples the ring doesn't have (underrun =
         // partial silence). Either signal means the ring is too small for
         // the current scheduling load.
+        //
+        // Underruns are duration-quantized: only continuous-starvation
+        // streaks crossing GlitchQuantumTicks increment the counter, so a
+        // single-tick scheduling blip contributes 0 and a sustained stall
+        // contributes one count per quantum (severity preserved through
+        // proportional count). WASAPI laps already arrive as discrete
+        // callback events (not per-tick), so they're counted as-is.
+        // At the producer's ~1 kHz pull rate, 20 ticks = ~20 ms.
+        private const int GlitchQuantumTicks = 20;
         private long _glitchCount;
+        private int _currentGlitchStreak;
         public long GlitchCount => System.Threading.Interlocked.Read(ref _glitchCount);
 
         // Default lowpass cutoff. 350 Hz keeps the haptic-relevant rumble
@@ -261,10 +271,21 @@ namespace TrueforceForAll.Plugin
                 // samples to satisfy the producer's request. Only counted
                 // after the capture has ever delivered any samples (so the
                 // gap before the first WASAPI callback doesn't inflate the
-                // count). avail < count is the trigger.
-                if (n > 0) _everPulledSample = true;
+                // count). avail < count is the trigger. Duration-quantized:
+                // emit one count per GlitchQuantumTicks of continuous
+                // starvation. Sub-quantum blips never tick the counter
+                // (streak resets to 0 on the next good pull).
+                if (n > 0)
+                {
+                    _everPulledSample = true;
+                    _currentGlitchStreak = 0;
+                }
                 else if (_everPulledSample && _captureActive && count > 0)
-                    System.Threading.Interlocked.Increment(ref _glitchCount);
+                {
+                    _currentGlitchStreak++;
+                    if (_currentGlitchStreak % GlitchQuantumTicks == 0)
+                        System.Threading.Interlocked.Increment(ref _glitchCount);
+                }
             }
         }
 
