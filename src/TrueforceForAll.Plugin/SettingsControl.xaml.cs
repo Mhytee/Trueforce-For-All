@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -240,8 +241,6 @@ namespace TrueforceForAll.Plugin
                 HeaderCarText.Text  = string.IsNullOrEmpty(_plugin.ActiveCarId) ? "(none)" : _plugin.ActiveCarId;
 
                 bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
-                ExportCarPresetButton.IsEnabled   = carDetected;
-                ImportCarPresetButton.IsEnabled   = true;
                 RefreshCarPresetCombo();
 
                 // Skip-passthrough makes the FFB tuning controls (scale/smooth/invert/
@@ -262,10 +261,6 @@ namespace TrueforceForAll.Plugin
                     EngineEnabledCheck.IsChecked      = es.Enabled;
                     EngineGainSlider.Value            = es.Gain;
                     EngineGainText.Text               = es.Gain.ToString("F2");
-                    // Cylinders=0 sentinel = "auto" (use AutoCylinders or fallback).
-                    // Slider position 0 displays as "auto"; 1-12 as the numeric value.
-                    EngineCylindersSlider.Value       = es.Cylinders;
-                    EngineCylindersText.Text          = es.Cylinders == 0 ? "auto" : es.Cylinders.ToString();
                     EnginePitchSlider.Value           = es.Pitch;
                     EnginePitchText.Text              = es.Pitch.ToString("F2");
                     EngineLowpassSlider.Value         = es.LowpassHz;
@@ -275,11 +270,22 @@ namespace TrueforceForAll.Plugin
                         EngineElectricModeCombo.SelectedIndex =
                             es.ElectricMode == ElectricCarMode.Silent ? 1 : 0;
 
-                    // Firing-order pattern controls.
-                    if (EngineFiringOrderCheck != null)
-                        EngineFiringOrderCheck.IsChecked = es.FiringOrderEnabled;
-                    if (EngineConfigCombo != null)
-                        EngineConfigCombo.SelectedIndex = EngineConfigToIndex(es.EngineConfig);
+                    // Experimental high-RPM helpers
+                    if (EngineLoadLayerCheck != null)
+                    {
+                        EngineLoadLayerCheck.IsChecked       = es.LoadLayerEnabled;
+                        EngineLoadLayerGainSlider.Value      = es.LoadLayerGain;
+                        EngineLoadLayerGainText.Text         = es.LoadLayerGain.ToString("F2");
+                        EngineHighRpmBoostCheck.IsChecked    = es.HighRpmBoostEnabled;
+                        EngineHighRpmBoostSlider.Value       = es.HighRpmBoostAmount;
+                        EngineHighRpmBoostText.Text          = es.HighRpmBoostAmount.ToString("F2");
+                    }
+
+                    // Engine layout dropdown is populated dynamically (built-ins
+                    // + user-saved customs + action entries). ApplyEngineSettings
+                    // migrates any pre-flat-enum (Cylinders, EngineConfig) state
+                    // into Layout before we read it here.
+                    RebuildEngineLayoutDropdown();
                     UpdateFiringPatternReadout(es);
                 }
                 // Bumps
@@ -431,6 +437,103 @@ namespace TrueforceForAll.Plugin
             // changes (override on/off), preset apply, game/car switches,
             // and toggles back to original values.
             RecomputeAllEffectDirty();
+            UpdateOfflineEditBanner();
+        }
+
+        // Toggle the offline-edit banner's visibility and title text based
+        // on whether the plugin is currently in offline-edit mode. Called
+        // from RefreshFromPlugin and whenever the mode transitions.
+        private void UpdateOfflineEditBanner()
+        {
+            if (OfflineEditBanner == null) return;
+            string editing = _plugin?.OfflineEditingPresetName;
+            if (string.IsNullOrEmpty(editing))
+            {
+                OfflineEditBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+            OfflineEditBanner.Visibility = Visibility.Visible;
+            bool builtin = _plugin.IsBuiltinPreset(editing);
+            OfflineEditTitle.Text = builtin
+                ? $"Editing built-in preset '{editing}' (forks on save)"
+                : $"Editing preset '{editing}'";
+            OfflineEditSubtitle.Text = builtin
+                ? "Built-ins can't be overwritten in place — Save forks a copy under a new name. Save as new picks the name explicitly. Discard rolls back to your pre-edit state. Auto-switch on game change is paused while editing."
+                : "Auto-switch on game change is paused. Save commits to this preset; Save as new forks a copy; Discard rolls back to your pre-edit state.";
+            // Save button on a built-in becomes "Save as new…" since the
+            // in-place save isn't allowed; collapse the explicit Save-as
+            // button to avoid two paths that do the same thing.
+            OfflineEditSaveBtn.Content      = builtin ? "Save as new…" : "Save";
+            OfflineEditSaveAsBtn.Visibility = builtin ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        // Public entry point used by ManagePresetsDialog when the user picks
+        // Edit on a row — load the preset and flip the banner on.
+        public void EnterOfflineEditMode(string presetName)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(presetName)) return;
+            if (!_plugin.EnterOfflineEdit(presetName)) return;
+            ClearDirty();
+            RefreshFromPlugin();
+        }
+
+        private void OfflineEditSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || !_plugin.IsOfflineEditing) return;
+            string name = _plugin.OfflineEditingPresetName;
+            if (_plugin.IsBuiltinPreset(name))
+            {
+                // Built-in fast path — same as Save as new with a suggested
+                // name derived from the built-in's name.
+                PromptAndSaveAsNew(name);
+                return;
+            }
+            if (!_plugin.ExitOfflineEditSave())
+            {
+                MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            ClearDirty();
+            RefreshFromPlugin();
+        }
+
+        private void OfflineEditSaveAs_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || !_plugin.IsOfflineEditing) return;
+            PromptAndSaveAsNew(_plugin.OfflineEditingPresetName);
+        }
+
+        private void PromptAndSaveAsNew(string suggestedBaseName)
+        {
+            string suggested = string.IsNullOrEmpty(suggestedBaseName)
+                ? "My preset"
+                : suggestedBaseName + " (edited)";
+            string newName = PromptForName("Save edited preset as", "Preset name:", suggested);
+            if (string.IsNullOrWhiteSpace(newName)) return;
+            newName = newName.Trim();
+            if (_plugin.Settings?.Presets?.ContainsKey(newName) == true)
+            {
+                if (MessageBox.Show($"A preset called '{newName}' already exists. Overwrite?",
+                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                _plugin.DeletePreset(newName);
+            }
+            if (!_plugin.ExitOfflineEditSaveAs(newName))
+            {
+                MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            ClearDirty();
+            RefreshFromPlugin();
+        }
+
+        private void OfflineEditDiscard_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || !_plugin.IsOfflineEditing) return;
+            if (MessageBox.Show("Discard edits and restore the state you had before entering edit mode?",
+                "Discard edits", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            _plugin.ExitOfflineEditDiscard();
+            ClearDirty();
+            RefreshFromPlugin();
         }
 
         private static void SelectWaveform(ComboBox combo, Waveform w) => combo.SelectedIndex = (int)w;
@@ -502,71 +605,58 @@ namespace TrueforceForAll.Plugin
                 // isn't Forza, or AlwaysListen is off + no Forza game), we
                 // show "(idle)". This is the user's primary "is my Data Out
                 // wiring working" feedback so make it specific.
-                // Cylinder auto-detect indicator: shows the live AutoCylinders
-                // when telemetry has supplied one and the user has no per-car
-                // engine override. Empty otherwise so the slider's own number
-                // is the authoritative readout.
-                if (EngineCylindersAutoText != null)
+                // Engine auto-detect indicator: shows the layout the resolver
+                // chose for the active car when Layout=Auto, or surfaces the
+                // resolver's pick when the user has manually overridden it.
+                if (EngineLayoutAutoText != null)
                 {
                     var ep = _plugin.EnginePulse;
+                    var esLive = _plugin.ActiveEngine;
                     string activeCar = _plugin.ActiveCarId;
-                    if (ep != null && ep.UseAutoCylinders && ep.AutoCylinders is int auto
-                        && auto >= 1 && auto <= 12)
-                    {
-                        // Build a friendly reason string from the source token.
-                        string detectSrc = ep.AutoCylinderSource;
-                        string clarification;
-                        if (ep.AutoCylinderIsRotary)
-                        {
-                            int rotors = auto / 2;
-                            clarification = $"Auto-detected: {auto} effective cyl ({rotors}-rotor rotary)";
-                        }
-                        else if (string.Equals(detectSrc, "telemetry", StringComparison.OrdinalIgnoreCase))
-                            clarification = $"Auto-detected from telemetry: {auto}";
-                        else if (string.Equals(detectSrc, "baked", StringComparison.OrdinalIgnoreCase))
-                            clarification = $"Auto-detected: {auto} (from built-in car list)";
-                        else if (string.Equals(detectSrc, "cache", StringComparison.OrdinalIgnoreCase))
-                            clarification = $"Auto-detected: {auto} (cached from earlier session)";
-                        else if (!string.IsNullOrEmpty(detectSrc))
-                            clarification = $"Auto-detected: {auto} (heuristic: {detectSrc})";
-                        else
-                            clarification = $"Auto-detected: {auto}";
+                    bool userIsAuto = esLive != null && esLive.Layout == Effects.EngineLayout.Auto;
 
-                        // Note when slider value is being overridden by auto so users
-                        // know their slider isn't in effect.
-                        if (auto != ep.Cylinders)
-                            clarification += ". Slider value is overridden until you save a per-car engine override.";
-                        EngineCylindersAutoText.Text = clarification;
+                    if (ep != null && userIsAuto && ep.AutoLayout is Effects.EngineLayout autoL)
+                    {
+                        string detectSrc = ep.AutoLayoutSource;
+                        string srcSuffix;
+                        if (string.Equals(detectSrc, "telemetry", StringComparison.OrdinalIgnoreCase))
+                            srcSuffix = " (from telemetry)";
+                        else if (string.Equals(detectSrc, "baked", StringComparison.OrdinalIgnoreCase))
+                            srcSuffix = " (from built-in car list)";
+                        else if (string.Equals(detectSrc, "cache", StringComparison.OrdinalIgnoreCase))
+                            srcSuffix = " (cached from earlier session)";
+                        else if (!string.IsNullOrEmpty(detectSrc))
+                            srcSuffix = $" (heuristic: {detectSrc})";
+                        else
+                            srcSuffix = "";
+                        EngineLayoutAutoText.Text =
+                            $"Auto-detected: {Effects.FiringPatternDb.LayoutDisplayName(autoL)}{srcSuffix}";
                     }
-                    else if (ep != null && ep.UseAutoCylinders
-                             && string.IsNullOrEmpty(ep.AutoCylinderSource)
+                    else if (ep != null && userIsAuto
+                             && string.IsNullOrEmpty(ep.AutoLayoutSource)
                              && !string.IsNullOrEmpty(activeCar))
                     {
-                        // Active car loaded but no auto-detection available —
-                        // prompt the user to dial it in via test playback.
-                        EngineCylindersAutoText.Text =
-                            $"Could not auto-detect cylinder count for '{activeCar}'. "
-                            + "Move the slider and use Test to find the value that feels closest, "
-                            + "or save a per-car engine override.";
+                        EngineLayoutAutoText.Text =
+                            $"Could not auto-detect engine type for '{activeCar}'. "
+                            + "Pick the closest match from the list, or use Test to A/B.";
                     }
-                    else if (ep != null && !ep.UseAutoCylinders
-                             && ep.AutoCylinders is int autoVal
-                             && autoVal >= 1 && autoVal <= 12
-                             && autoVal != ep.Cylinders)
+                    else if (ep != null && esLive != null
+                             && esLive.Layout != Effects.EngineLayout.Auto
+                             && ep.AutoLayout is Effects.EngineLayout autoOverridden
+                             && autoOverridden != esLive.Layout)
                     {
-                        // Manual override active and the resolver disagrees —
-                        // surface the auto value so the user knows what they're
-                        // overriding (and can revert by dragging slider to 0).
-                        string srcSuffix = string.IsNullOrEmpty(ep.AutoCylinderSource)
+                        // Manual override that disagrees with the resolver.
+                        string srcSuffix = string.IsNullOrEmpty(ep.AutoLayoutSource)
                             ? ""
-                            : $" ({ep.AutoCylinderSource})";
-                        EngineCylindersAutoText.Text =
-                            $"Manual override: {ep.Cylinders}. Auto would be {autoVal}{srcSuffix}. "
-                            + "Drag slider to 0 to use auto.";
+                            : $" ({ep.AutoLayoutSource})";
+                        EngineLayoutAutoText.Text =
+                            $"Manual override: {Effects.FiringPatternDb.LayoutDisplayName(esLive.Layout)}. "
+                            + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}{srcSuffix}. "
+                            + "Pick Auto to use detection.";
                     }
                     else
                     {
-                        EngineCylindersAutoText.Text = "";
+                        EngineLayoutAutoText.Text = "";
                     }
 
                     // Report/submit engine-data button. The save-time popup
@@ -1579,17 +1669,6 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveEngine.Gain = v;
             Apply(EffectKind.Engine);
         }
-        private void EngineCylindersSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            // 0 = auto sentinel (saves Cylinders=0 → resolver / telemetry value
-            // wins via EffectiveCylinders). 1-12 = explicit manual override.
-            int v = (int)Math.Round(e.NewValue);
-            EngineCylindersText.Text = v == 0 ? "auto" : v.ToString();
-            _plugin.ActiveEngine.Cylinders = v;
-            Apply(EffectKind.Engine);
-        }
-
         // GitHub issue template URL. Pre-fills title + body with the active
         // car's state so users can submit corrections in one click — no need
         // to remember the carId, the source attribution, or the format.
@@ -1661,29 +1740,18 @@ namespace TrueforceForAll.Plugin
             var es = _plugin.ActiveEngine;
             if (ep == null || es == null) return EngineSubmitState.None;
 
-            int? autoCyl = ep.AutoCylinders;
-            string cylSrc = ep.AutoCylinderSource;
-            int sliderCyl = es.Cylinders;
-            var userCfg = es.EngineConfig;
+            string src = ep.AutoLayoutSource;
+            bool detected = !string.IsNullOrEmpty(src) && ep.AutoLayout.HasValue;
+            var userLayout = es.Layout;
             string customRaw = es.CustomFiringPattern;
-            bool autoEv = ep.IsElectric;
-            bool detected = !string.IsNullOrEmpty(cylSrc);
-            string detectedLayout = detected ? ep.EngineConfig.ToString() : null;
 
-            bool cylDiff = (sliderCyl != 0 && autoCyl.HasValue && sliderCyl != autoCyl.Value)
-                        || (sliderCyl != 0 && !autoCyl.HasValue);
-            bool layoutDiff = userCfg != Effects.EngineConfig.Auto
-                           && (!detected || userCfg.ToString() != detectedLayout);
-            bool customDiff = userCfg == Effects.EngineConfig.Custom
+            bool layoutDiff = userLayout != Effects.EngineLayout.Auto
+                           && (!detected || userLayout != ep.AutoLayout.Value);
+            bool customDiff = userLayout == Effects.EngineLayout.Custom
                            && !string.IsNullOrEmpty(customRaw);
-            // EV mismatch: resolver flagged this car as electric but the
-            // user has set a non-zero cylinder count or picked a layout.
-            // That's a vote that the EV flag is wrong, worth surfacing.
-            bool evDiff = autoEv && (sliderCyl >= 1 || userCfg != Effects.EngineConfig.Auto);
 
-            bool anyDiff = cylDiff || layoutDiff || customDiff || evDiff;
-            bool userHasData = sliderCyl > 0
-                            || userCfg != Effects.EngineConfig.Auto
+            bool anyDiff   = layoutDiff || customDiff;
+            bool userHasData = userLayout != Effects.EngineLayout.Auto
                             || !string.IsNullOrEmpty(customRaw);
 
             if (!detected)
@@ -1764,49 +1832,43 @@ namespace TrueforceForAll.Plugin
             string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
 
             // What the bake / resolver said.
-            int? autoCyl       = ep?.AutoCylinders;
-            string cylSrc      = ep?.AutoCylinderSource ?? "";
-            bool autoEv        = ep != null && ep.IsElectric;
-            var autoLayout     = ep?.EngineConfig ?? Effects.EngineConfig.Auto;
-            bool layoutDetected = !string.IsNullOrEmpty(cylSrc) && !autoEv && autoLayout != Effects.EngineConfig.Auto;
+            string layoutSrc   = ep?.AutoLayoutSource ?? "";
+            var autoLayout     = ep?.AutoLayout;
+            bool layoutDetected = autoLayout.HasValue && !string.IsNullOrEmpty(layoutSrc);
 
             // What the user has on the panel (their committed preset values).
             // ElectricMode (silent / muted hum) is intentionally not collected:
             // it's a per-user response-curve preference, not a fact about the
             // car, so it doesn't help the bake even on EV submissions.
-            int sliderCyl = es?.Cylinders ?? 0;
-            var userCfg   = es?.EngineConfig ?? Effects.EngineConfig.Auto;
+            var userLayout    = es?.Layout ?? Effects.EngineLayout.Auto;
             string customRaw  = es?.CustomFiringPattern ?? "";
             string customName = (es?.CustomFiringPatternName ?? "").Trim();
-            bool userImpliesCombustion = sliderCyl >= 1 || userCfg != Effects.EngineConfig.Auto;
 
             // Build the proposed-changes block as "before -> after" lines.
             // Plain text only -- Google Forms long-answer fields don't render
             // markdown, so any **bold** or `code` ticks would just show as
             // literal characters in the response sheet.
-            string CylDisplay(int? n)        => n.HasValue ? n.Value.ToString() : "not detected";
             string LayoutDetectedDisplay()   =>
-                  autoEv             ? "not detected (flagged electric)"
-                : !layoutDetected    ? "not detected"
-                                     : EngineConfigFriendlyName(autoLayout);
+                !layoutDetected ? "not detected"
+                                : Effects.FiringPatternDb.LayoutDisplayName(autoLayout.Value);
 
             var diff = new System.Collections.Generic.List<string>();
-            if (sliderCyl != 0 && (!autoCyl.HasValue || sliderCyl != autoCyl.Value))
-                diff.Add($"Cylinders: {CylDisplay(autoCyl)} -> {sliderCyl}");
-            if (userCfg != Effects.EngineConfig.Auto && (!layoutDetected || userCfg != autoLayout))
-                diff.Add($"Engine layout: {LayoutDetectedDisplay()} -> {EngineConfigFriendlyName(userCfg)}");
-            if (userCfg == Effects.EngineConfig.Custom && !string.IsNullOrEmpty(customName))
+            if (userLayout != Effects.EngineLayout.Auto
+                && (!layoutDetected || userLayout != autoLayout.Value))
+            {
+                diff.Add($"Engine type: {LayoutDetectedDisplay()} -> "
+                       + $"{Effects.FiringPatternDb.LayoutDisplayName(userLayout)}");
+            }
+            if (userLayout == Effects.EngineLayout.Custom && !string.IsNullOrEmpty(customName))
                 diff.Add($"Custom pattern name: {customName}");
-            if (userCfg == Effects.EngineConfig.Custom && !string.IsNullOrEmpty(customRaw))
+            if (userLayout == Effects.EngineLayout.Custom && !string.IsNullOrEmpty(customRaw))
                 diff.Add($"Custom firing pattern: {customRaw}");
-            if (autoEv && userImpliesCombustion)
-                diff.Add("Electric flag: yes -> no (user set cylinders/layout)");
 
             // CONFIRM is unreachable under the new UX (button hidden + popup
             // skipped when state is None), so the two real categories are:
             //   CORRECTION = resolver had detection, user is changing it
             //   CONTRIB    = no detection, user filled in from scratch
-            string category = !string.IsNullOrEmpty(cylSrc) ? "CORRECTION" : "CONTRIB";
+            string category = !string.IsNullOrEmpty(layoutSrc) ? "CORRECTION" : "CONTRIB";
 
             // Header line with the sortable bits, then the diff lines as a
             // plain list, then a one-line source attribution (only for
@@ -1834,9 +1896,9 @@ namespace TrueforceForAll.Plugin
             // pattern-matched, telemetry = sim-supplied, ev = electric tag).
             // Only meaningful when something WAS detected, so it's skipped
             // for CONTRIB.
-            if (!string.IsNullOrEmpty(cylSrc))
+            if (!string.IsNullOrEmpty(layoutSrc))
             {
-                body += $"Detection source: {cylSrc}\n\n";
+                body += $"Detection source: {layoutSrc}\n\n";
             }
 
             body += "Notes (engine codename, mod page link, anything else):\n\n";
@@ -1902,158 +1964,287 @@ namespace TrueforceForAll.Plugin
                 : ElectricCarMode.MutedHum;
             Apply(EffectKind.Engine);
         }
-
-        // ---------- Firing-order pattern (Batch 1) ----------
-
-        private void EngineFiringOrder_Changed(object sender, RoutedEventArgs e)
+        private void EngineLoadLayer_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
-            _plugin.ActiveEngine.FiringOrderEnabled = EngineFiringOrderCheck.IsChecked == true;
+            _plugin.ActiveEngine.LoadLayerEnabled = EngineLoadLayerCheck.IsChecked == true;
+            Apply(EffectKind.Engine);
+        }
+        private void EngineLoadLayerGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            EngineLoadLayerGainText.Text = v.ToString("F2");
+            _plugin.ActiveEngine.LoadLayerGain = v;
+            Apply(EffectKind.Engine);
+        }
+        private void EngineHighRpmBoost_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.ActiveEngine.HighRpmBoostEnabled = EngineHighRpmBoostCheck.IsChecked == true;
+            Apply(EffectKind.Engine);
+        }
+        private void EngineHighRpmBoostSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            EngineHighRpmBoostText.Text = v.ToString("F2");
+            _plugin.ActiveEngine.HighRpmBoostAmount = v;
+            Apply(EffectKind.Engine);
+        }
+
+        // ---------- Engine layout dropdown (dynamic: built-ins + customs + actions) ----------
+
+        // Each combobox entry is a DropdownItem so the SelectionChanged handler
+        // can branch on kind. Built-ins map to an EngineLayout enum value;
+        // Custom entries carry the CustomEngineDef they reference; Action
+        // entries open dialogs without committing a layout change.
+        private enum EngineDropdownKind { BuiltIn, Custom, ActionNew, ActionManage }
+        private sealed class EngineDropdownItem
+        {
+            public EngineDropdownKind   Kind;
+            public Effects.EngineLayout BuiltIn;   // when Kind == BuiltIn
+            public CustomEngineDef      Custom;    // when Kind == Custom
+            public string               Display;
+            public override string ToString() => Display;
+        }
+        private readonly List<EngineDropdownItem> _engineItems = new List<EngineDropdownItem>();
+
+        /// <summary>(Re)populate the engine-layout dropdown from the built-in
+        /// EngineLayout enum + the user's saved customs in
+        /// TrueforceSettings.CustomEngines, plus the "Custom..." and
+        /// "Manage customs..." action sentinels. Preserves the current
+        /// selection across rebuilds (so adding a new custom doesn't bounce
+        /// the user back to Auto).</summary>
+        private void RebuildEngineLayoutDropdown()
+        {
+            if (EngineLayoutCombo == null) return;
+            var es = _plugin?.ActiveEngine;
+            var targetLayout   = es?.Layout ?? Effects.EngineLayout.Auto;
+            var targetCustomId = es?.CustomEngineId ?? "";
+
+            _engineItems.Clear();
+            foreach (Effects.EngineLayout l in Enum.GetValues(typeof(Effects.EngineLayout)))
+            {
+                if (l == Effects.EngineLayout.Custom) continue;   // Custom is reached via the library / action
+                _engineItems.Add(new EngineDropdownItem
+                {
+                    Kind    = EngineDropdownKind.BuiltIn,
+                    BuiltIn = l,
+                    Display = Effects.FiringPatternDb.LayoutDisplayName(l),
+                });
+            }
+            var customs = _plugin?.Settings?.CustomEngines;
+            if (customs != null)
+            {
+                foreach (var c in customs)
+                {
+                    if (c == null) continue;
+                    string name = string.IsNullOrWhiteSpace(c.Name) ? "(unnamed)" : c.Name;
+                    _engineItems.Add(new EngineDropdownItem
+                    {
+                        Kind    = EngineDropdownKind.Custom,
+                        Custom  = c,
+                        Display = c.IsElectric ? $"{name}  (electric custom)" : $"{name}  (custom)",
+                    });
+                }
+            }
+            _engineItems.Add(new EngineDropdownItem { Kind = EngineDropdownKind.ActionNew,    Display = "Custom… (create new)" });
+            if (customs != null && customs.Count > 0)
+                _engineItems.Add(new EngineDropdownItem { Kind = EngineDropdownKind.ActionManage, Display = "Manage customs…" });
+
+            int idx = FindEngineDropdownIndex(targetLayout, targetCustomId);
+            bool old = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                EngineLayoutCombo.ItemsSource = null;
+                EngineLayoutCombo.ItemsSource = _engineItems;
+                EngineLayoutCombo.SelectedIndex = idx;
+            }
+            finally { _suppressEvents = old; }
+        }
+
+        private int FindEngineDropdownIndex(Effects.EngineLayout layout, string customId)
+        {
+            if (layout == Effects.EngineLayout.Custom)
+            {
+                for (int i = 0; i < _engineItems.Count; i++)
+                {
+                    var it = _engineItems[i];
+                    if (it.Kind == EngineDropdownKind.Custom
+                        && string.Equals(it.Custom?.Id, customId, StringComparison.Ordinal))
+                        return i;
+                }
+                return 0;   // referenced custom missing — fall back to Auto
+            }
+            for (int i = 0; i < _engineItems.Count; i++)
+            {
+                var it = _engineItems[i];
+                if (it.Kind == EngineDropdownKind.BuiltIn && it.BuiltIn == layout) return i;
+            }
+            return 0;
+        }
+
+        private void EngineLayout_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            var item = EngineLayoutCombo.SelectedItem as EngineDropdownItem;
+            if (item == null) return;
+            var es = _plugin.ActiveEngine;
+
+            switch (item.Kind)
+            {
+                case EngineDropdownKind.BuiltIn:
+                    es.Layout         = item.BuiltIn;
+                    es.CustomEngineId = "";
+                    Apply(EffectKind.Engine);
+                    UpdateFiringPatternReadout(es);
+                    break;
+
+                case EngineDropdownKind.Custom:
+                    es.Layout         = Effects.EngineLayout.Custom;
+                    es.CustomEngineId = item.Custom?.Id ?? "";
+                    Apply(EffectKind.Engine);
+                    UpdateFiringPatternReadout(es);
+                    break;
+
+                case EngineDropdownKind.ActionNew:
+                    OpenCustomEngineEditorForNew();
+                    break;
+
+                case EngineDropdownKind.ActionManage:
+                    OpenManageCustomEnginesDialog();
+                    break;
+            }
+        }
+
+        // Open the editor with a fresh entry. On Save, append to the library,
+        // activate it on the current preset, and rebuild the dropdown. On
+        // Cancel, just rebuild so the dropdown snaps back to the previous
+        // selection (the user clicked an action item, not a real layout).
+        private void OpenCustomEngineEditorForNew()
+        {
+            if (_plugin?.Settings == null) return;
+            var def = new CustomEngineDef { Id = Guid.NewGuid().ToString("N") };
+            var dlg = new CustomEngineEditor { Owner = Window.GetWindow(this) };
+            dlg.Init(def, "Create custom engine");
+            bool saved = dlg.ShowDialog() == true && dlg.Saved;
+            if (saved)
+            {
+                if (_plugin.Settings.CustomEngines == null)
+                    _plugin.Settings.CustomEngines = new List<CustomEngineDef>();
+                _plugin.Settings.CustomEngines.Add(def);
+
+                var es = _plugin.ActiveEngine;
+                es.Layout         = Effects.EngineLayout.Custom;
+                es.CustomEngineId = def.Id;
+                Apply(EffectKind.Engine);
+            }
+            RebuildEngineLayoutDropdown();
+            UpdateFiringPatternReadout(_plugin.ActiveEngine);
+        }
+
+        private void OpenManageCustomEnginesDialog()
+        {
+            OpenManagePresetsDialog(ManagePresetsDialog.InitialTab.CustomEngines);
+        }
+
+        /// <summary>Open the unified Manage Presets dialog. Refreshes the
+        /// preset combos, engine dropdown, and live engine application when
+        /// the dialog closes so any rename / delete / set-active changes
+        /// land immediately. If the user picked Edit on a game-preset row,
+        /// transitions the main panel into offline-edit mode for that
+        /// preset before refreshing.</summary>
+        private void OpenManagePresetsDialog(ManagePresetsDialog.InitialTab initialTab = ManagePresetsDialog.InitialTab.GamePresets)
+        {
+            if (_plugin?.Settings == null) return;
+            if (_plugin.Settings.CustomEngines == null)
+                _plugin.Settings.CustomEngines = new List<CustomEngineDef>();
+            var dlg = new ManagePresetsDialog { Owner = Window.GetWindow(this) };
+            dlg.Init(_plugin, initialTab);
+            dlg.ShowDialog();
+            // If Edit was clicked, hand off to the offline-edit entry point.
+            // EnterOfflineEditMode itself triggers a RefreshFromPlugin so we
+            // don't double-call the refresh; engine dropdown + live engine
+            // apply still need to happen so renames in the Custom Engines
+            // tab propagate.
+            string editTarget = dlg.RequestedEditPresetName;
+            if (!string.IsNullOrEmpty(editTarget))
+                EnterOfflineEditMode(editTarget);
+            else
+                RefreshFromPlugin();
+            RebuildEngineLayoutDropdown();
             Apply(EffectKind.Engine);
             UpdateFiringPatternReadout(_plugin.ActiveEngine);
         }
 
-        private void EngineConfig_Changed(object sender, SelectionChangedEventArgs e)
+        private void ManagePresetsButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_suppressEvents || _plugin == null) return;
-            var es = _plugin.ActiveEngine;
-            es.EngineConfig = IndexToEngineConfig(EngineConfigCombo.SelectedIndex);
-            Apply(EffectKind.Engine);
-            UpdateFiringPatternReadout(es);
+            OpenManagePresetsDialog(ManagePresetsDialog.InitialTab.GamePresets);
         }
 
-        // User-edited the textbox under Custom layout; parse and apply on focus loss.
-        private void EngineFiringPattern_LostFocus(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            var es = _plugin.ActiveEngine;
-            if (es.EngineConfig != Effects.EngineConfig.Custom) return;   // editable only in Custom
-            es.CustomFiringPattern = EngineFiringPatternText.Text ?? "";
-            Apply(EffectKind.Engine);
-            UpdateFiringPatternReadout(es);
-        }
-
-        // Optional name for the custom firing pattern. Only meaningful when
-        // Custom is the active layout; the input row is hidden otherwise.
-        private void EngineFiringPatternName_LostFocus(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            var es = _plugin.ActiveEngine;
-            if (es.EngineConfig != Effects.EngineConfig.Custom) return;
-            es.CustomFiringPatternName = (EngineFiringPatternNameText.Text ?? "").Trim();
-            Apply(EffectKind.Engine);
-        }
-
-        // Sync the read-only-ness, content, and tooltip of the pattern textbox
-        // to the current engine config + active resolved pattern. Also
-        // toggles the optional pattern-name row, which is only meaningful
-        // (and only visible) when Custom is the active layout.
+        // Sync the pattern readout textbox to the currently selected layout.
+        // Read-only — authoring custom engines happens in the modal dialog,
+        // not inline. Shows a friendly message for Electric / dangling custom
+        // references; shows the FiringPattern's Name + serialized positions
+        // for built-ins and combustion customs.
         private void UpdateFiringPatternReadout(EnginePulseSettings es)
         {
             if (EngineFiringPatternText == null || es == null) return;
-            bool isCustom = es.EngineConfig == Effects.EngineConfig.Custom;
-            EngineFiringPatternText.IsReadOnly = !isCustom;
-            // When Custom, show the user's saved string (lets them edit / paste).
-            // Otherwise, show what the resolver picked for the active cyl + config
-            // so they can copy / submit it back to us if it sounds wrong.
+
             string display;
-            if (isCustom)
+            if (es.Layout == Effects.EngineLayout.Electric)
             {
-                display = es.CustomFiringPattern ?? "";
+                display = "Electric — no firing pattern (behavior above)";
+            }
+            else if (es.Layout == Effects.EngineLayout.Custom)
+            {
+                var custom = FindCustomById(es.CustomEngineId);
+                if (custom == null)
+                {
+                    display = "Custom — referenced engine not found in library";
+                }
+                else if (custom.IsElectric)
+                {
+                    display = $"Electric custom: {custom.Name} ({(custom.ElectricMode == ElectricCarMode.Silent ? "silent" : "muted hum")})";
+                }
+                else
+                {
+                    var parsed = Effects.FiringPatternDb.ParseCustom(custom.Pattern);
+                    display = parsed == null
+                        ? $"Custom: {custom.Name} (invalid pattern)"
+                        : $"Custom: {custom.Name} — {Effects.FiringPatternDb.Format(parsed)}";
+                }
             }
             else
             {
-                int cyl = _plugin.EnginePulse?.EffectiveCylinders ?? 0;
-                if (cyl < 1) cyl = 4;
-                var pat = Effects.FiringPatternDb.Resolve(cyl, es.EngineConfig);
+                // Show the layout's built-in pattern. Effective layout cascades
+                // Auto through the resolver's pick when one is available.
+                var ep = _plugin.EnginePulse;
+                var layout = ep?.EffectiveLayout ?? es.Layout;
+                var pat = Effects.FiringPatternDb.ResolveLayout(layout);
                 display = pat == null
                     ? ""
                     : $"{pat.Name}: {Effects.FiringPatternDb.Format(pat)}";
             }
-            // Suppress LostFocus echo when we programmatically update the text.
-            bool oldSuppress = _suppressEvents;
+            bool old = _suppressEvents;
             _suppressEvents = true;
-            try
-            {
-                EngineFiringPatternText.Text = display;
-                if (EngineFiringPatternNameRow != null)
-                {
-                    EngineFiringPatternNameRow.Visibility = isCustom
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-                }
-                if (EngineFiringPatternNameText != null)
-                {
-                    EngineFiringPatternNameText.Text = isCustom
-                        ? (es.CustomFiringPatternName ?? "")
-                        : "";
-                }
-            }
-            finally { _suppressEvents = oldSuppress; }
+            try { EngineFiringPatternText.Text = display; }
+            finally { _suppressEvents = old; }
         }
 
-        // EngineConfig <-> dropdown index. Order MUST match the XAML
-        // ComboBoxItem list under EngineConfigCombo.
-        private static Effects.EngineConfig IndexToEngineConfig(int i)
+        private CustomEngineDef FindCustomById(string id)
         {
-            switch (i)
+            if (string.IsNullOrEmpty(id)) return null;
+            var customs = _plugin?.Settings?.CustomEngines;
+            if (customs == null) return null;
+            foreach (var c in customs)
             {
-                case 0:  return Effects.EngineConfig.Auto;
-                case 1:  return Effects.EngineConfig.Inline;
-                case 2:  return Effects.EngineConfig.Boxer;
-                case 3:  return Effects.EngineConfig.V60;
-                case 4:  return Effects.EngineConfig.V90Even;
-                case 5:  return Effects.EngineConfig.V8CrossPlane;
-                case 6:  return Effects.EngineConfig.V8FlatPlane;
-                case 7:  return Effects.EngineConfig.V6OddFire;
-                case 8:  return Effects.EngineConfig.VTwin90;
-                case 9:  return Effects.EngineConfig.VTwin45;
-                case 10: return Effects.EngineConfig.Rotary;
-                case 11: return Effects.EngineConfig.Custom;
-                default: return Effects.EngineConfig.Auto;
+                if (c != null && string.Equals(c.Id, id, StringComparison.Ordinal))
+                    return c;
             }
-        }
-        private static int EngineConfigToIndex(Effects.EngineConfig c)
-        {
-            switch (c)
-            {
-                case Effects.EngineConfig.Auto:         return 0;
-                case Effects.EngineConfig.Inline:       return 1;
-                case Effects.EngineConfig.Boxer:        return 2;
-                case Effects.EngineConfig.V60:          return 3;
-                case Effects.EngineConfig.V90Even:      return 4;
-                case Effects.EngineConfig.V8CrossPlane: return 5;
-                case Effects.EngineConfig.V8FlatPlane:  return 6;
-                case Effects.EngineConfig.V6OddFire:    return 7;
-                case Effects.EngineConfig.VTwin90:      return 8;
-                case Effects.EngineConfig.VTwin45:      return 9;
-                case Effects.EngineConfig.Rotary:       return 10;
-                case Effects.EngineConfig.Custom:       return 11;
-                default:                                return 0;
-            }
-        }
-
-        // Human-readable layout label used in the engine-data submission
-        // body. Mirrors the dropdown text users see, minus the parenthetical
-        // descriptions (kept compact for the form's plain-text rendering).
-        private static string EngineConfigFriendlyName(Effects.EngineConfig c)
-        {
-            switch (c)
-            {
-                case Effects.EngineConfig.Auto:         return "Auto";
-                case Effects.EngineConfig.Inline:       return "Inline / even-fire";
-                case Effects.EngineConfig.Boxer:        return "Boxer";
-                case Effects.EngineConfig.V60:          return "V60 even-fire";
-                case Effects.EngineConfig.V90Even:      return "V90 even-fire";
-                case Effects.EngineConfig.V8CrossPlane: return "V8 cross-plane";
-                case Effects.EngineConfig.V8FlatPlane:  return "V8 flat-plane";
-                case Effects.EngineConfig.V6OddFire:    return "V6 odd-fire";
-                case Effects.EngineConfig.VTwin90:      return "V-twin 90";
-                case Effects.EngineConfig.VTwin45:      return "V-twin 45";
-                case Effects.EngineConfig.Rotary:       return "Rotary";
-                case Effects.EngineConfig.Custom:       return "Custom";
-                default:                                return c.ToString();
-            }
+            return null;
         }
 
         // ---------- Road bumps ----------
@@ -3128,8 +3319,6 @@ namespace TrueforceForAll.Plugin
             DeletePresetButton.IsEnabled  = hasSelection && !selBuiltin;
             SetDefaultButton.IsEnabled    = hasSelection && gameDetected;
             ClearDefaultButton.IsEnabled  = gameDetected && gameHasDefault;
-            ExportPresetButton.IsEnabled  = hasSelection;
-            ImportPresetButton.IsEnabled  = true;
         }
 
         private string SelectedPresetName => PresetCombo?.SelectedItem as string;
@@ -3145,7 +3334,6 @@ namespace TrueforceForAll.Plugin
             ApplyPresetButton.IsEnabled  = hasSelection;
             DeletePresetButton.IsEnabled = hasSelection && !selBuiltin;
             SetDefaultButton.IsEnabled   = hasSelection && !string.IsNullOrEmpty(_plugin?.ActiveGame);
-            ExportPresetButton.IsEnabled = hasSelection;
         }
 
         private void ApplyPreset_Click(object sender, RoutedEventArgs e)
@@ -3343,32 +3531,21 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
         }
 
-        private void ExportPreset_Click(object sender, RoutedEventArgs e)
-        {
-            string name = SelectedPresetName;
-            if (_plugin == null || string.IsNullOrEmpty(name)) return;
-            if (!PromptForExportMetadata($"Export preset '{name}'", "preset",
-                out string author, out string desc, out string ver)) return;
-
-            string safeName = MakeFileSafe(name);
-            var dlg = new Microsoft.Win32.SaveFileDialog
-            {
-                Filter   = "Trueforce preset (*.tfpreset.json)|*.tfpreset.json|JSON (*.json)|*.json",
-                FileName = $"Trueforce-{safeName}.tfpreset.json",
-                Title    = "Export Trueforce preset",
-            };
-            if (dlg.ShowDialog() != true) return;
-            try
-            {
-                _plugin.ExportPreset(name, dlg.FileName, author, desc, ver);
-                MessageBox.Show($"Exported '{name}' to:\n{dlg.FileName}",
-                                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Export failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+        // ---------- Export / Import (Backup & sync) ----------
+        //
+        // Two top-level entry points wired to the Backup & sync section:
+        //   Export_Click → open PackPickerWindow filtered to user presets
+        //     (built-ins hidden, active car preset pre-checked), save the
+        //     selection as a .tfpack.
+        //   Import_Click → open a file dialog, auto-detect the file kind
+        //     by extension + the JSON "Type" marker, route to the matching
+        //     ImportPack / ImportPreset / ImportCarPreset / ImportSettings.
+        //
+        // The individual export/import handlers that used to be wired to
+        // dedicated buttons (preset, car preset, pack, all-settings) were
+        // collapsed away when Backup & sync shrank to two buttons. The
+        // underlying plugin APIs are still used by the smart import router
+        // here and by ManagePresetsDialog's per-row Export buttons.
 
         // Pop the Author/Description/Version dialog. Author pre-fills from
         // SharingAuthor; on OK, persists the (possibly-edited) author back so
@@ -3401,30 +3578,6 @@ namespace TrueforceForAll.Plugin
                 try { _plugin.PersistSettings(); } catch { }
             }
             return true;
-        }
-
-        private void ImportPreset_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            var dlg = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "Trueforce preset (*.tfpreset.json;*.json)|*.tfpreset.json;*.json|All files (*.*)|*.*",
-                Title  = "Import Trueforce preset",
-            };
-            if (dlg.ShowDialog() != true) return;
-            try
-            {
-                var r = _plugin.ImportPreset(dlg.FileName);
-                string body = $"Imported preset '{r.PresetName}' into your library. Select it from the dropdown and click Apply, or set it as a game default.";
-                string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
-                if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
-                MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
-                RefreshFromPlugin();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Import failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
         }
 
         // Compose the optional "by AUTHOR / version VERSION / description …"
@@ -3485,62 +3638,6 @@ namespace TrueforceForAll.Plugin
             return win.ShowDialog() == true ? result : null;
         }
 
-        private void ExportCarPreset_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null || string.IsNullOrEmpty(_plugin.ActiveCarId)) return;
-            if (!PromptForExportMetadata($"Export car preset '{_plugin.ActiveCarId}'", "car preset",
-                out string author, out string desc, out string ver)) return;
-
-            string safeGame = MakeFileSafe(_plugin.ActiveGame ?? "any");
-            string safeCar  = MakeFileSafe(_plugin.ActiveCarId);
-            var dlg = new Microsoft.Win32.SaveFileDialog
-            {
-                Filter   = "Trueforce car preset (*.tfcar.json)|*.tfcar.json|JSON (*.json)|*.json",
-                FileName = $"Trueforce-{safeGame}-{safeCar}.tfcar.json",
-                Title    = "Export Trueforce car preset",
-            };
-            if (dlg.ShowDialog() != true) return;
-            try
-            {
-                _plugin.ExportActiveCarPreset(dlg.FileName, author, desc, ver);
-                MessageBox.Show($"Exported '{_plugin.ActiveCarId}' to:\n{dlg.FileName}",
-                                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Export failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void ImportCarPreset_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            var dlg = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "Trueforce car preset (*.tfcar.json;*.json)|*.tfcar.json;*.json|All files (*.*)|*.*",
-                Title  = "Import Trueforce car preset",
-            };
-            if (dlg.ShowDialog() != true) return;
-            try
-            {
-                var r = _plugin.ImportCarPreset(dlg.FileName);
-                bool applied = r.CarId == _plugin.ActiveCarId;
-                string body = applied
-                    ? $"Imported car preset '{r.PresetName}' for '{r.CarId}'. Applied (this is the active car)."
-                    : $"Imported car preset '{r.PresetName}' for '{r.CarId}'. Stored (will apply when you drive that car).";
-                string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
-                if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
-                MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
-                // RefreshFromPlugin → RecomputeAllEffectDirty syncs the dirty
-                // dots with whatever sections the import touched.
-                RefreshFromPlugin();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Import failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
         private static string MakeFileSafe(string s)
         {
             if (string.IsNullOrEmpty(s)) return "preset";
@@ -3551,21 +3648,33 @@ namespace TrueforceForAll.Plugin
             return new string(arr);
         }
 
-        // ---------- Export / Import pack (multi-preset zip) ----------
-
-        private void ExportPack_Click(object sender, RoutedEventArgs e)
+        // Export: opens the pack picker (built-ins hidden, active car
+        // preset pre-checked) and saves the selection as a .tfpack.
+        private void Export_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            var presets = _plugin.GetExportablePresetNames();
-            var cars    = _plugin.GetExportableCarPresets();
+
+            // Filter built-ins. Every recipient already has them, so they'd
+            // just clutter the picker.
+            var presets = _plugin.GetExportablePresetNames()
+                .Where(n => !_plugin.IsBuiltinPreset(n))
+                .ToList();
+            var cars = _plugin.GetExportableCarPresets()
+                .Where(c => !c.IsBuiltin)
+                .ToList();
             if (presets.Count == 0 && cars.Count == 0)
             {
-                MessageBox.Show("No game presets or car presets to export yet. Save some first.",
+                MessageBox.Show("Nothing to share yet. Save a preset (or a per-car tuning) first.",
                                 "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            var picker = new PackPickerWindow(presets, cars, exportMode: true)
+            // Pre-check the active car's preset(s) only. Game presets default
+            // unchecked; Select all / Select none in the picker covers the
+            // "I actually want everything" case.
+            string preferCarId = _plugin.ActiveCarId;
+
+            var picker = new PackPickerWindow(presets, cars, exportMode: true, preferCarId)
             {
                 Owner = Window.GetWindow(this),
             };
@@ -3576,7 +3685,7 @@ namespace TrueforceForAll.Plugin
             var pickedCars    = picker.SelectedCarPresets;
             if (pickedPresets.Count == 0 && pickedCars.Count == 0) return;
 
-            if (!PromptForExportMetadata("Export pack", "pack",
+            if (!PromptForExportMetadata("Export", "pack",
                 out string author, out string desc, out string ver)) return;
 
             string defaultName = $"Trueforce-pack-{DateTime.Now:yyyy-MM-dd}.tfpack";
@@ -3584,7 +3693,7 @@ namespace TrueforceForAll.Plugin
             {
                 Filter   = "Trueforce pack (*.tfpack)|*.tfpack|Zip (*.zip)|*.zip",
                 FileName = defaultName,
-                Title    = "Export Trueforce pack",
+                Title    = "Export",
             };
             if (dlg.ShowDialog() != true) return;
             try
@@ -3594,7 +3703,7 @@ namespace TrueforceForAll.Plugin
                     pickedPresets,
                     pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)),
                     author, desc, ver);
-                MessageBox.Show($"Exported {p} game preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
+                MessageBox.Show($"Exported {p} preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
                                 "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
@@ -3603,68 +3712,46 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private void ImportPack_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            var dlg = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "Trueforce pack (*.tfpack;*.zip)|*.tfpack;*.zip|All files (*.*)|*.*",
-                Title  = "Import Trueforce pack",
-            };
-            if (dlg.ShowDialog() != true) return;
-            try
-            {
-                var r = _plugin.ImportPack(dlg.FileName);
-                string body = $"Imported {r.PresetsImported} game preset(s) and {r.CarsImported} car preset(s) from:\n{dlg.FileName}";
-                string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
-                if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
-                MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
-                RefreshFromPlugin();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Import failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        // ---------- Export / Import ----------
-
-        private void Export_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            var dlg = new Microsoft.Win32.SaveFileDialog
-            {
-                Filter   = "Trueforce settings (*.json)|*.json",
-                FileName = "Trueforce-settings.json",
-                Title    = "Export Trueforce settings",
-            };
-            if (dlg.ShowDialog() != true) return;
-            try
-            {
-                _plugin.ExportSettings(dlg.FileName);
-                MessageBox.Show($"Exported to:\n{dlg.FileName}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Export failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
+        // Import: routes based on file extension + JSON "Type" marker.
+        //   .tfpack / .zip → ImportPack
+        //   JSON with Type=trueforce-preset       → ImportPreset
+        //   JSON with Type=trueforce-car-preset   → ImportCarPreset
+        //   JSON with no recognized Type          → ImportSettings (destructive,
+        //                                            confirmed first)
         private void Import_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Trueforce settings (*.json)|*.json",
-                Title  = "Import Trueforce settings",
+                Filter = "Trueforce files (*.tfpack;*.tfpreset.json;*.tfcar.json;*.zip;*.json)"
+                         + "|*.tfpack;*.tfpreset.json;*.tfcar.json;*.zip;*.json"
+                         + "|All files (*.*)|*.*",
+                Title  = "Import",
             };
             if (dlg.ShowDialog() != true) return;
-            if (MessageBox.Show("Importing replaces all current Trueforce settings (master, audio, every effect, all per-car overrides). Continue?",
-                                "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
-                return;
+            string path = dlg.FileName;
+            string ext  = (System.IO.Path.GetExtension(path) ?? "").ToLowerInvariant();
+
             try
             {
-                _plugin.ImportSettings(dlg.FileName);
+                if (ext == ".tfpack" || ext == ".zip")
+                {
+                    ImportPackAndReport(path);
+                    return;
+                }
+
+                string json = System.IO.File.ReadAllText(path);
+                string type = PeekJsonType(json);
+                if (type == PresetFile.FileType)    { ImportPresetAndReport(path);    return; }
+                if (type == CarPresetFile.FileType) { ImportCarPresetAndReport(path); return; }
+
+                // No recognized Type marker. Treat as a full settings backup,
+                // which is destructive, so confirm first.
+                if (MessageBox.Show(
+                        "This looks like a full Trueforce settings backup. Importing replaces all current settings (master, audio, every effect, all per-car overrides). Continue?",
+                        "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    return;
+                _plugin.ImportSettings(path);
                 ClearDirty();
                 RefreshFromPlugin();
                 MessageBox.Show("Settings imported.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -3673,6 +3760,51 @@ namespace TrueforceForAll.Plugin
             {
                 MessageBox.Show($"Import failed:\n{ex.Message}", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        // Parse just the top-level "Type" string from a JSON file. Returns
+        // null on parse failure or when the field is missing.
+        private static string PeekJsonType(string json)
+        {
+            try
+            {
+                var jo = Newtonsoft.Json.Linq.JObject.Parse(json);
+                return jo["Type"]?.ToString();
+            }
+            catch { return null; }
+        }
+
+        private void ImportPresetAndReport(string path)
+        {
+            var r = _plugin.ImportPreset(path);
+            string body = $"Imported preset '{r.PresetName}' into your library. Select it from the dropdown and click Apply, or set it as a game default.";
+            string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
+            if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
+            MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+            RefreshFromPlugin();
+        }
+
+        private void ImportCarPresetAndReport(string path)
+        {
+            var r = _plugin.ImportCarPreset(path);
+            bool applied = r.CarId == _plugin.ActiveCarId;
+            string body = applied
+                ? $"Imported car preset '{r.PresetName}' for '{r.CarId}'. Applied (this is the active car)."
+                : $"Imported car preset '{r.PresetName}' for '{r.CarId}'. Stored (will apply when you drive that car).";
+            string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
+            if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
+            MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+            RefreshFromPlugin();
+        }
+
+        private void ImportPackAndReport(string path)
+        {
+            var r = _plugin.ImportPack(path);
+            string body = $"Imported {r.PresetsImported} preset(s) and {r.CarsImported} car preset(s) from:\n{path}";
+            string meta = FormatMetadataLines(r.Author, r.AuthorVersion, r.Description);
+            if (!string.IsNullOrEmpty(meta)) body = meta + "\n\n" + body;
+            MessageBox.Show(body, "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+            RefreshFromPlugin();
         }
 
         // ---------- Performance tab ----------

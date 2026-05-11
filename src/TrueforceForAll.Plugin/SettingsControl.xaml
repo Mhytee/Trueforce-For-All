@@ -163,6 +163,44 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Flat link-style button for tertiary preset/admin actions
+             (Save as new, Delete, Manage, Set/Clear default). No border or
+             fill so the row reads as "extra actions" instead of competing
+             with the primary Apply / Save preset buttons above. -->
+        <Style x:Key="LinkButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#AAAAAA"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <TextBlock x:Name="Txt"
+                                       Text="{TemplateBinding Content}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter TargetName="Txt" Property="TextDecorations" Value="Underline"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#666"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="EffectSaveButton" TargetType="Button">
             <Setter Property="Width" Value="60"/>
             <Setter Property="Height" Value="22"/>
@@ -239,6 +277,40 @@
                                Text="What's new"/>
                     <TextBlock Grid.Column="1" Foreground="White" Opacity="0.85"
                                FontSize="12" VerticalAlignment="Center" Text="View →"/>
+                </Grid>
+            </Border>
+
+            <!-- Offline-edit mode banner. Visible when the user clicked Edit
+                 on a preset row in the Manage Presets dialog. While shown,
+                 the plugin holds back the auto-apply-game-default path so
+                 a background game launch doesn't clobber in-progress edits;
+                 the three buttons commit (Save / Save as new) or roll back
+                 (Discard) to exit the mode. -->
+            <Border x:Name="OfflineEditBanner" Visibility="Collapsed"
+                    Background="#3A6BBE" CornerRadius="4" Padding="12,10,12,10" Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock x:Name="OfflineEditTitle" Foreground="White" FontWeight="SemiBold"
+                                   FontSize="13" Text="Editing preset"/>
+                        <TextBlock x:Name="OfflineEditSubtitle" Foreground="White" Opacity="0.85"
+                                   FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"
+                                   Text="Auto-switch on game change is paused. Save commits to this preset; Save as new forks a copy; Discard rolls back to your pre-edit state."/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <Button x:Name="OfflineEditSaveBtn" Content="Save" Width="78" Height="26"
+                                Margin="0,0,6,0" Click="OfflineEditSave_Click"
+                                ToolTip="Write your edits back into the preset being edited."/>
+                        <Button x:Name="OfflineEditSaveAsBtn" Content="Save as new…" Width="110" Height="26"
+                                Margin="0,0,6,0" Click="OfflineEditSaveAs_Click"
+                                ToolTip="Save your edits under a new preset name and exit edit mode."/>
+                        <Button x:Name="OfflineEditDiscardBtn" Content="Discard" Width="80" Height="26"
+                                Click="OfflineEditDiscard_Click"
+                                ToolTip="Throw away your edits and restore the state you had before entering edit mode."/>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -559,25 +631,6 @@
                                         TickFrequency="0.25" ValueChanged="EngineGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="EngineGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
-                        <!-- Cylinders slider: 0 = auto (use resolver / telemetry value);
-                             1-12 = manual override. The text readout to the right shows
-                             "auto" at position 0, the number elsewhere. Drag all the way
-                             left to engage auto-detection; drag right to dial in a specific
-                             count. The status text below explains what's currently in effect. -->
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Cylinders:" Style="{StaticResource LabelText}"
-                                       ToolTip="Drag to 'auto' (leftmost) to use the cylinder count detected for the active car, or pick a specific count to override detection."/>
-                            <Slider     Grid.Column="1" x:Name="EngineCylindersSlider" Minimum="0" Maximum="12" SmallChange="1" LargeChange="2"
-                                        TickFrequency="1" IsSnapToTickEnabled="True"
-                                        ValueChanged="EngineCylindersSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EngineCylindersText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="auto"/>
-                        </Grid>
-                        <!-- Auto-detect indicator: when telemetry supplies a per-car
-                             cylinder count (Forza's NumCylinders today), shows what
-                             the firing-frequency calc is actually using. Empty when
-                             no auto value is available — slider value is in effect. -->
-                        <TextBlock x:Name="EngineCylindersAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,4" Text=""/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Pitch:" Style="{StaticResource LabelText}"/>
@@ -612,65 +665,36 @@
                                 <ComboBoxItem Content="Silent (off)"/>
                             </ComboBox>
                         </Grid>
-                        <!-- Firing-order pattern. When enabled, EnginePulse renders
-                             the engine's true firing pattern (V8 cross-plane lope,
-                             Ducati L-twin gap, V6 odd-fire lump, etc.) instead of
-                             a uniform pulse train at firing frequency. Default off
-                             so an in-place upgrade preserves users' current feel. -->
                         <Separator Margin="0,4,0,8"/>
-                        <CheckBox x:Name="EngineFiringOrderCheck" Content="Firing-order accurate pulses"
-                                  Margin="140,0,0,4"
-                                  Checked="EngineFiringOrder_Changed" Unchecked="EngineFiringOrder_Changed"
-                                  ToolTip="When enabled, the pulse train follows the engine's actual firing pattern instead of a uniform tone. Most pronounced on V8 cross-plane (American lope), V-twin (Ducati / Harley), and V6 odd-fire engines. Toggle to A/B against the original feel."/>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                                   TextWrapping="Wrap"
-                                   Text="Off = uniform pulse train at firing frequency (legacy). On = pattern-aware synthesis driven by Engine layout below."/>
-                        <Grid Margin="0,0,0,8">
+                        <!-- Engine type. Each entry implies its cylinder/rotor
+                             count and firing pattern, so there's no separate
+                             cylinder control. Auto defers to the car-resolver
+                             (AC bake / Forza telemetry); Electric routes
+                             through the EV behavior selector above; Custom
+                             uses the firing-pattern textbox below. -->
+                        <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Engine layout:" Style="{StaticResource LabelText}"
-                                       ToolTip="Auto picks from cylinder count using the most common modern config (V6 60° / V8 cross-plane / V12 60°). Pick an explicit value to get characterful patterns: V8 flat-plane, V-twin variants, V6 odd-fire, rotary."/>
-                            <ComboBox  Grid.Column="1" x:Name="EngineConfigCombo" SelectionChanged="EngineConfig_Changed">
-                                <ComboBoxItem Content="Auto (from cylinder count)"/>
-                                <ComboBoxItem Content="Inline / even-fire"/>
-                                <ComboBoxItem Content="Boxer (Subaru / Porsche)"/>
-                                <ComboBoxItem Content="V60° even-fire (V6 / V12)"/>
-                                <ComboBoxItem Content="V90° even-fire"/>
-                                <ComboBoxItem Content="V8 cross-plane (American lope)"/>
-                                <ComboBoxItem Content="V8 flat-plane (Ferrari / Lotus)"/>
-                                <ComboBoxItem Content="V6 odd-fire 90° (older muscle)"/>
-                                <ComboBoxItem Content="V-twin 90° (Ducati)"/>
-                                <ComboBoxItem Content="V-twin 45° (Harley)"/>
-                                <ComboBoxItem Content="Rotary"/>
-                                <ComboBoxItem Content="Custom (advanced)"/>
-                            </ComboBox>
+                            <TextBlock Grid.Column="0" Text="Engine type:" Style="{StaticResource LabelText}"
+                                       ToolTip="Pick the engine that best matches the active car. Auto defers to detection; Electric uses the EV behavior above; Custom uses the firing pattern below."/>
+                            <!-- Items are populated dynamically in SettingsControl.RebuildEngineLayoutDropdown
+                                 so the user's saved customs can appear alongside built-ins, and
+                                 "Custom..." / "Manage customs..." action entries reach their dialogs. -->
+                            <ComboBox  Grid.Column="1" x:Name="EngineLayoutCombo" SelectionChanged="EngineLayout_Changed"/>
                         </Grid>
-                        <!-- Active pattern readout: shows what the resolver picked
-                             (or the user's custom). Read-only — the textbox is
-                             editable only when "Custom" is the selected layout. -->
+                        <!-- Auto-detect indicator: shows the layout the resolver
+                             chose for the active car when the user has Auto
+                             selected. Empty otherwise (explicit Layout in effect). -->
+                        <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text=""/>
+                        <!-- Active pattern readout: shows what's being synthesized
+                             for the currently selected engine type. Read-only —
+                             authoring custom engines happens in the Custom...
+                             dialog, not inline. -->
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Pattern:" Style="{StaticResource LabelText}"
-                                       ToolTip="Comma-separated phase positions in [0, 1) representing where each cylinder fires within one 720° engine cycle. Optional ':amplitude' suffix per pulse. Read-only unless Engine layout is set to Custom."/>
+                                       ToolTip="Diagnostic readout: comma-separated phase positions in [0, 1) where each pulse fires within one 720° engine cycle. Useful for submitting corrections if a built-in pattern sounds wrong."/>
                             <TextBox   Grid.Column="1" x:Name="EngineFiringPatternText"
-                                       FontFamily="Consolas" IsReadOnly="True"
-                                       LostFocus="EngineFiringPattern_LostFocus"/>
-                        </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,4"
-                                   TextWrapping="Wrap"
-                                   Text="Format: 0, 0.125, 0.25, ...  Optional weights: 0:1.0, 0.125:0.85, ..."/>
-                        <!-- Optional name for a custom firing pattern. Only
-                             shown when Engine layout is Custom. Built-in
-                             layouts already carry descriptive names; this
-                             lets users tag their own patterns the same way
-                             so a submitted contribution can be filed under
-                             a meaningful label. Visibility toggled by
-                             UpdateFiringPatternReadout. -->
-                        <Grid x:Name="EngineFiringPatternNameRow" Margin="0,0,0,4" Visibility="Collapsed">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Pattern name:" Style="{StaticResource LabelText}"
-                                       ToolTip="Optional. A short label for your custom firing pattern (e.g. 'LS3 swap, dyno-tuned'). Built-in layouts already have names like 'V8 cross-plane'; naming yours makes contributed patterns easier to find."/>
-                            <TextBox   Grid.Column="1" x:Name="EngineFiringPatternNameText"
-                                       LostFocus="EngineFiringPatternName_LostFocus"/>
+                                       FontFamily="Consolas" IsReadOnly="True"/>
                         </Grid>
                         <!-- Submit/report engine-data button. Opens a Google
                              Form pre-filled with what the plugin auto-detected
@@ -693,6 +717,41 @@
                                     Click="ReportEngineDataButton_Click"
                                     Content="Submit engine data for this car..."
                                     ToolTip="Opens a Google Form pre-filled with what's auto-detected and what you've selected in the dropdowns / slider. Just hit Submit on the form, no typing needed and no account required."/>
+                        </Grid>
+
+                        <!-- Experimental high-RPM perceptibility helpers.
+                             Both off by default; toggle to A/B against the
+                             current behavior. -->
+                        <Separator Margin="0,8,0,8"/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6"
+                                   Text="Experimental: helps the engine still feel present at high RPM, where the wheel's motor can't keep up with the firing rate. Both off by default."/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="EngineLoadLayerCheck"
+                                      Content="Load layer" VerticalAlignment="Center"
+                                      Checked="EngineLoadLayer_Changed" Unchecked="EngineLoadLayer_Changed"
+                                      ToolTip="Adds a low-frequency oscillation at the engine's cycle rate (RPM/120 Hz) alongside the firing pulse. Sits in the band the wheel actually moves at, so the engine keeps feeling present as the firing pulse rolls off at high RPM."/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="  Strength:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="EngineLoadLayerGainSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.1" ValueChanged="EngineLoadLayerGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="EngineLoadLayerGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="EngineHighRpmBoostCheck"
+                                      Content="High-RPM boost" VerticalAlignment="Center"
+                                      Checked="EngineHighRpmBoost_Changed" Unchecked="EngineHighRpmBoost_Changed"
+                                      ToolTip="Pre-emphasis: extra firing-pulse gain ramping in above 50% RPM. Partially compensates for the wheel's natural high-frequency rolloff. Subtle by default; turn up if top-end still feels weak."/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="  Amount:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="EngineHighRpmBoostSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.1" ValueChanged="EngineHighRpmBoostSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="EngineHighRpmBoostText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.40"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
@@ -1566,46 +1625,31 @@
                           ToolTip="Overwrite the active preset with your current tuning. Glows amber when changes are unsaved."/>
             </Grid>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <Button x:Name="SaveAsPresetButton" Content="Save as new..." Width="110" Height="24" FontSize="11" Margin="0,0,6,0" Click="SaveAsPreset_Click"
+                <Button x:Name="SaveAsPresetButton" Content="Save as new…" Style="{StaticResource LinkButton}" Margin="0,0,18,0" Click="SaveAsPreset_Click"
                         ToolTip="Save current tuning under a new preset name (doesn't overwrite the active one)."/>
-                <Button x:Name="DeletePresetButton" Content="Delete" Width="70" Height="24" FontSize="11" Click="DeletePreset_Click"
+                <Button x:Name="DeletePresetButton" Content="Delete" Style="{StaticResource LinkButton}" Margin="0,0,18,0" Click="DeletePreset_Click"
                         ToolTip="Delete the selected preset from the library."/>
+                <Button x:Name="ManagePresetsButton" Content="Manage…" Style="{StaticResource LinkButton}" Click="ManagePresetsButton_Click"
+                        ToolTip="Open the full library: rename, duplicate, export, or re-bind defaults for any game preset, car preset, or custom engine. Works even when no game or car is loaded."/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <Button x:Name="SetDefaultButton"   Content="Set as default for this game" Width="220" Height="24" FontSize="11" Margin="0,0,6,0" Click="SetDefault_Click"
+                <Button x:Name="SetDefaultButton"   Content="Set as default for this game" Style="{StaticResource LinkButton}" Margin="0,0,18,0" Click="SetDefault_Click"
                         ToolTip="When this game launches, auto-load the selected preset."/>
-                <Button x:Name="ClearDefaultButton" Content="Clear default" Width="100" Height="24" FontSize="11" Click="ClearDefault_Click"
+                <Button x:Name="ClearDefaultButton" Content="Clear default" Style="{StaticResource LinkButton}" Click="ClearDefault_Click"
                         ToolTip="Remove the auto-load binding for this game."/>
             </StackPanel>
-            <!-- Backup & sync. Promoted to its own top-level section since
-                 sharing presets / migrating settings between machines is its
-                 own flow, distinct from preset library management. -->
+            <!-- Backup & sync. Two smart buttons: Export opens the pack
+                 picker (preselects the current car, hides built-ins);
+                 Import auto-detects the file kind (preset, car preset,
+                 pack, or full settings backup). -->
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Backup &amp; sync" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                       Text="Share single presets, per-car overrides, or your full Trueforce config as JSON files."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <Button x:Name="ExportPresetButton" Content="Export preset..." Width="160" Height="26" Margin="0,0,6,0" Click="ExportPreset_Click"
-                        ToolTip="Save the selected preset to a shareable JSON file."/>
-                <Button x:Name="ImportPresetButton" Content="Import preset..." Width="160" Height="26" Click="ImportPreset_Click"
-                        ToolTip="Load a preset file into your library."/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <Button x:Name="ExportCarPresetButton" Content="Export car preset..." Width="180" Height="26" Margin="0,0,6,0" Click="ExportCarPreset_Click"
-                        ToolTip="Save the active car's settings as a shareable JSON file."/>
-                <Button x:Name="ImportCarPresetButton" Content="Import car preset..." Width="180" Height="26" Click="ImportCarPreset_Click"
-                        ToolTip="Load a car preset file. Stored under its car id; applied if it matches the current car."/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <Button x:Name="ExportPackButton" Content="Export pack..." Width="180" Height="26" Margin="0,0,6,0" Click="ExportPack_Click"
-                        ToolTip="Bundle multiple game presets and car presets into a single .tfpack zip for sharing."/>
-                <Button x:Name="ImportPackButton" Content="Import pack..." Width="180" Height="26" Click="ImportPack_Click"
-                        ToolTip="Import every game preset and car preset from a .tfpack zip."/>
-            </StackPanel>
+                       Text="Share presets and car tunings with other Trueforce users. Export bundles your picks into a single file; Import auto-detects whatever file you point it at."/>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button x:Name="ExportButton" Content="Export all settings..." Width="180" Height="26" Margin="0,0,6,0" Click="Export_Click"
-                        ToolTip="Export master, audio, every effect, and all per-car overrides as one JSON file."/>
-                <Button x:Name="ImportButton" Content="Import all settings..." Width="180" Height="26" Click="Import_Click"
-                        ToolTip="Replace all current Trueforce settings from a JSON file."/>
+                <Button x:Name="ExportButton" Content="Export…" Width="140" Height="28" Margin="0,0,8,0" Click="Export_Click"
+                        ToolTip="Pick which presets and car tunings to bundle into a shareable file."/>
+                <Button x:Name="ImportButton" Content="Import…" Width="140" Height="28" Click="Import_Click"
+                        ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
             </StackPanel>
 
             <!-- Support development -->

@@ -1,7 +1,12 @@
-// Modal dialog used by the "Export pack..." flow: lets the user pick which
-// game presets and car presets to bundle into a .tfpack zip. Two side-by-side
-// CheckBox lists with Select all / Select none controls; OK gates on at least
-// one item being selected.
+// Modal dialog used by the "Export" flow in Backup & sync: lets the user
+// pick which presets and car presets to bundle into a .tfpack zip. Two
+// side-by-side CheckBox lists with Select all / Select none controls; OK
+// gates on at least one item being selected.
+//
+// The caller is responsible for filtering built-ins out of the lists before
+// constructing this window (built-ins ship with the plugin, so every
+// recipient already has them). Pass preferCarId to pre-check just the
+// presets belonging to the active car; everything else defaults unchecked.
 //
 // Built in code (not XAML) because the dialog is single-use and the plugin's
 // XAML build pipeline doesn't auto-pick up new .xaml files in this folder
@@ -18,15 +23,25 @@ namespace TrueforceForAll.Plugin
 {
     internal sealed class PackPickerWindow : Window
     {
+        // Palette. Hard-coded because this window is its own top-level WPF
+        // Window and so doesn't inherit SimHub's panel-level dark theme; if
+        // we leave foregrounds at their system defaults the text comes
+        // out black-on-dark and is unreadable.
+        private static readonly Brush WindowBg   = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
+        private static readonly Brush PanelBg    = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
+        private static readonly Brush TextFg     = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
+        private static readonly Brush MutedFg    = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A));
+        private static readonly Brush BorderFg   = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
+
         public List<string> SelectedPresetNames { get; private set; } = new List<string>();
         public List<CarPresetEntry> SelectedCarPresets { get; private set; } = new List<CarPresetEntry>();
 
         private readonly List<CheckBox> _presetChecks = new List<CheckBox>();
         private readonly List<(CheckBox Cb, CarPresetEntry Entry)> _carChecks = new List<(CheckBox, CarPresetEntry)>();
 
-        public PackPickerWindow(List<string> presets, List<CarPresetEntry> cars, bool exportMode)
+        public PackPickerWindow(List<string> presets, List<CarPresetEntry> cars, bool exportMode, string preferCarId = null)
         {
-            Title = exportMode ? "Export pack" : "Import pack";
+            Title = exportMode ? "Export" : "Import";
             Width = 760;
             Height = 520;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -34,6 +49,8 @@ namespace TrueforceForAll.Plugin
             ResizeMode = ResizeMode.CanResize;
             MinWidth = 560;
             MinHeight = 360;
+            Background = WindowBg;
+            Foreground = TextFg;
 
             var root = new Grid { Margin = new Thickness(12) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -45,6 +62,7 @@ namespace TrueforceForAll.Plugin
                 Text = "Pick the presets to bundle into the pack. Recipients can import the whole pack at once.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10),
+                Foreground = TextFg,
             };
             Grid.SetRow(header, 0);
             root.Children.Add(header);
@@ -56,7 +74,7 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(twoCol);
 
             twoCol.Children.Add(BuildPresetPanel(presets));
-            var carPanel = BuildCarPanel(cars);
+            var carPanel = BuildCarPanel(cars, preferCarId);
             Grid.SetColumn(carPanel, 1);
             twoCol.Children.Add(carPanel);
 
@@ -67,7 +85,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0),
             };
-            var ok = new Button { Content = exportMode ? "Export..." : "Import", Width = 110, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var ok = new Button { Content = exportMode ? "Export…" : "Import", Width = 110, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
             var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
@@ -100,7 +118,7 @@ namespace TrueforceForAll.Plugin
         {
             var panel = new DockPanel { Margin = new Thickness(0, 0, 6, 0) };
 
-            var header = BuildPanelHeader($"Game presets ({presets.Count})");
+            var header = BuildPanelHeader($"Presets ({presets.Count})");
             DockPanel.SetDock(header, Dock.Top);
             panel.Children.Add(header);
 
@@ -115,8 +133,8 @@ namespace TrueforceForAll.Plugin
             {
                 listSp.Children.Add(new TextBlock
                 {
-                    Text = "No game presets in your library yet.",
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A)),
+                    Text = "No user presets in your library yet.",
+                    Foreground = MutedFg,
                     Margin = new Thickness(4, 6, 0, 0),
                 });
             }
@@ -124,28 +142,23 @@ namespace TrueforceForAll.Plugin
             {
                 foreach (var name in presets)
                 {
-                    var cb = new CheckBox { Content = name, Tag = name, Margin = new Thickness(2, 3, 2, 3), IsChecked = true };
+                    var cb = new CheckBox
+                    {
+                        Content = name,
+                        Tag = name,
+                        Margin = new Thickness(2, 3, 2, 3),
+                        IsChecked = false,
+                        Foreground = TextFg,
+                    };
                     _presetChecks.Add(cb);
                     listSp.Children.Add(cb);
                 }
             }
-            var sv = new ScrollViewer
-            {
-                Content = listSp,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Padding = new Thickness(8, 4, 8, 4),
-            };
-            var border = new Border
-            {
-                Child = sv,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40)),
-                BorderThickness = new Thickness(1),
-            };
-            panel.Children.Add(border);
+            panel.Children.Add(WrapInScrolledBorder(listSp));
             return panel;
         }
 
-        private UIElement BuildCarPanel(List<CarPresetEntry> cars)
+        private UIElement BuildCarPanel(List<CarPresetEntry> cars, string preferCarId)
         {
             var panel = new DockPanel { Margin = new Thickness(6, 0, 0, 0) };
 
@@ -165,36 +178,49 @@ namespace TrueforceForAll.Plugin
                 listSp.Children.Add(new TextBlock
                 {
                     Text = "No car presets saved yet.",
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A)),
+                    Foreground = MutedFg,
                     Margin = new Thickness(4, 6, 0, 0),
                 });
             }
             else
             {
+                bool hasPrefer = !string.IsNullOrEmpty(preferCarId);
                 foreach (var entry in cars)
                 {
                     string label = $"{entry.CarId} — {entry.PresetName}";
                     if (!string.IsNullOrEmpty(entry.GameName)) label += $"  ({entry.GameName})";
-                    if (entry.IsBuiltin) label += "  [built-in]";
-                    var cb = new CheckBox { Content = label, Margin = new Thickness(2, 3, 2, 3), IsChecked = true };
+                    bool preselect = hasPrefer && string.Equals(entry.CarId, preferCarId, StringComparison.OrdinalIgnoreCase);
+                    var cb = new CheckBox
+                    {
+                        Content = label,
+                        Margin = new Thickness(2, 3, 2, 3),
+                        IsChecked = preselect,
+                        Foreground = TextFg,
+                    };
                     _carChecks.Add((cb, entry));
                     listSp.Children.Add(cb);
                 }
             }
+            panel.Children.Add(WrapInScrolledBorder(listSp));
+            return panel;
+        }
+
+        private static UIElement WrapInScrolledBorder(UIElement child)
+        {
             var sv = new ScrollViewer
             {
-                Content = listSp,
+                Content = child,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Padding = new Thickness(8, 4, 8, 4),
+                Background = PanelBg,
             };
-            var border = new Border
+            return new Border
             {
                 Child = sv,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40)),
+                Background = PanelBg,
+                BorderBrush = BorderFg,
                 BorderThickness = new Thickness(1),
             };
-            panel.Children.Add(border);
-            return panel;
         }
 
         private static UIElement BuildPanelHeader(string text)
@@ -203,6 +229,7 @@ namespace TrueforceForAll.Plugin
             {
                 Text = text,
                 FontWeight = FontWeights.SemiBold,
+                Foreground = TextFg,
                 Margin = new Thickness(2, 0, 2, 6),
             };
         }
