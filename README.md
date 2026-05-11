@@ -27,7 +27,7 @@ only, so curbs land as confident pushes instead of yanks while sustained
 cornering load and weight transfer pass through untouched. Works in any
 game whose FFB goes through standard HID++. Requires one of the supported
 Trueforce wheels below (the attenuated signal reaches the wheel through
-the Trueforce endpoint). Useful on its own, even with all Trueforce
+the Trueforce endpoint). Useful on its own, even with all our other
 effects turned off.
 
 
@@ -52,20 +52,32 @@ in real time, mixing several signal sources:
 
 - **Telemetry-derived effects** synthesized from live game data.
 
-  - **Engine pulse**: a rumble at the engine's firing frequency, scaled
-    by RPM. The signature Trueforce sensation; idle gives a gentle hum,
-    pulling toward redline gives meaningful kick.
+  - **Engine pulse**: rumble at the engine's firing pattern, derived
+    from RPM and cylinder count (auto-detected per car when possible).
+    Idle gives a gentle hum; higher RPM lifts both pitch and intensity.
   - **Gear shift**: a short low-frequency thud whenever the gear changes.
   - **ABS click**: configurable haptic when ABS engages.
-  - **Road bumps**: noise gated by vertical acceleration, so curbs and
-    rough terrain rumble through the wheel.
-  - **Traction loss**: buzz when grip breaks (wheelspin, lockup, drift)
-    derived from the difference between wheel speed and ground speed plus
-    a yaw-rate / lateral-G discrepancy check.
+  - **Pit limiter**: configurable pulsing buzz while the limiter is
+    engaged.
+  - **DRS**: short chirp on the rising edge when the wing opens, plus an
+    optional sustained flutter while DRS stays active. Silent on games
+    that don't expose the flag.
+  - **Road bumps**: triggered by vertical acceleration so curbs and
+    rough terrain rumble through the wheel. On Forza, the per-tire
+    surface-rumble and rumble-strip fields are read directly for a
+    richer, more accurate continuous road feel on top of the heave
+    channel.
+  - **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
+    lockup, drift). Read directly from per-wheel slip in games that
+    expose it (AC); inferred on the SimHub universal path from
+    wheel-vs-ground speed plus a yaw-rate / lateral-G discrepancy check.
+  - **Collision**: amplitude-scaled thud on impact, with a soft-knee
+    curve so harder hits feel stronger without becoming unsafe, plus a
+    refractory window so multi-frame crashes don't stutter.
 
 - **Audio-derived effects**: WASAPI loopback captures the game's
   audio output (engine, tire, impact sounds) and feeds it into the
-  wheel as a low-latency buzz. Lets you feel things the telemetry
+  wheel as low-latency haptics. Lets you feel things the telemetry
   doesn't expose, and works even for games which do not output telemetry data
   since capture targets the game process directly.
   
@@ -103,7 +115,7 @@ The easiest path is the bundled installer:
    SimHub install folder, and (if USBPcap isn't already installed) runs
    the bundled USBPcap setup automatically.
 4. Close Logitech G HUB (it claims the wheel's HID interface).
-5. Launch SimHub. Enable "Trueforce For All" in the Plugins list.
+5. Launch SimHub. The plugin auto-enables on first run.
 
 The installer is conservative on uninstall: it removes our files but leaves
 SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
