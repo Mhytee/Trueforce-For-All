@@ -4,19 +4,19 @@
 
 Logitech ships Trueforce for only a handful of officially-supported titles. This
 plugin makes it work everywhere SimHub does. Built on top of the wire
-protocol reverse-engineered by the [mescon Linux driver project][mescon] --
-no Logitech SDK, no G HUB integration, no whitelist.
+protocol reverse-engineered by the [mescon Linux driver project][mescon].
+No Logitech SDK, no G HUB integration, no whitelist.
 
-Tested on a GPRO wheel with Assetto Corsa and Wreckfest 2.
+Tested on a G PRO wheel with Assetto Corsa and Wreckfest 2.
 
 ## Telemetry
 
 By default the plugin runs on SimHub's universal 60 Hz telemetry feed, which carries the standard fields all the core effects need.
-Simhub is free but the 60hz feed requires a licensed copy of Simhub which carries a small one time payment. Some titles read directly from the games telemetry, bypassing Simhubs limitations and the need for a licensed copy. (Assetto Corsa, Forza Horizon 4/5/6) 
+SimHub is free but the 60 Hz feed requires a licensed copy of SimHub, which carries a small one-time payment. Some titles read directly from the game's telemetry, bypassing SimHub's limitations and the need for a licensed copy (Assetto Corsa, Forza Horizon 4 and 5).
 
-**Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than Simhubs 60 Hz feed can deliver. 
+**Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than SimHub's 60 Hz feed can deliver.
 
-**Forza Horizon 4/5/6 and Forza Motorsport** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. This additional surface information is updated at 60hz but allows for more depth in surface detail effects than some other titles may offer.  
+**Forza Horizon 4 and 5** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. This additional surface information is updated at 60 Hz but allows for more depth in surface detail effects than some other titles may offer. A forward-compatible always-listen mode is available for use with FH6 on day one before SimHub adds game-name detection for it.
 
 Additional per-title enhancements/bypasses will be added over time. 
 
@@ -58,19 +58,19 @@ The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
 in real time, mixing several signal sources:
 
 - **Telemetry-derived effects** synthesized from live game data.
-  
-  - **Engine pulse** -- a rumble at the engine's firing frequency, scaled
+
+  - **Engine pulse**: a rumble at the engine's firing frequency, scaled
     by RPM. The signature Trueforce sensation; idle gives a gentle hum,
     pulling toward redline gives meaningful kick.
-  - **Gear shift** -- a short low-frequency thud whenever the gear changes.
-  - **ABS click** -- configurable haptic when ABS engages.
-  - **Road bumps** -- noise gated by vertical acceleration, so curbs and
+  - **Gear shift**: a short low-frequency thud whenever the gear changes.
+  - **ABS click**: configurable haptic when ABS engages.
+  - **Road bumps**: noise gated by vertical acceleration, so curbs and
     rough terrain rumble through the wheel.
-  - **Traction loss** -- buzz when grip breaks (wheelspin, lockup, drift)
+  - **Traction loss**: buzz when grip breaks (wheelspin, lockup, drift)
     derived from the difference between wheel speed and ground speed plus
     a yaw-rate / lateral-G discrepancy check.
-    
-- **Audio-derived effects** -- WASAPI loopback captures the game's
+
+- **Audio-derived effects**: WASAPI loopback captures the game's
   audio output (engine, tire, impact sounds) and feeds it into the
   wheel as a low-latency buzz. Lets you feel things the telemetry
   doesn't expose, and works even for games which do not output telemetry data
@@ -110,7 +110,7 @@ The easiest path is the bundled installer:
 1. Download `TrueforceForAll-Setup.exe` from the [latest release][releases].
 2. Close SimHub if it's running.
 3. Run the installer. It detects SimHub, copies the plugin files into the
-   SimHub install folder, and -- if USBPcap isn't already installed -- runs
+   SimHub install folder, and (if USBPcap isn't already installed) runs
    the bundled USBPcap setup automatically.
 4. Close Logitech G HUB (it claims the wheel's HID interface).
 5. Launch SimHub. Enable "Trueforce For All" in the Plugins list.
@@ -124,7 +124,7 @@ plugins that share those keep working.
 - Windows 10 / 11
 - [SimHub](https://www.simhubdash.com/)
 - A supported Logitech wheel (table above)
-- [USBPcap](https://github.com/desowin/usbpcap) -- bundled with our installer
+- [USBPcap](https://github.com/desowin/usbpcap), bundled with our installer
   if you don't already have it. Used to mirror the game's existing FFB
   signal into the Trueforce stream so the two coexist.
 - Logitech G HUB **closed** while playing (it claims the HID interface and
@@ -166,7 +166,7 @@ automatically.
 
 ## How it works
 
-The wire protocol -- init sequence and ep3 streaming format -- was
+The wire protocol (init sequence and ep3 streaming format) was
 reverse-engineered by the [mescon Linux driver project][mescon]. This
 repo is the Windows-side glue on top of that: a SimHub plugin that opens
 the wheel, the telemetry- and audio-derived effect synthesis, the per-game
@@ -183,16 +183,16 @@ The wire protocol and init sequence are derived from the
 
 ## Acknowledgments
 
-- **[mescon/logitech-rs50-linux-driver][mescon]** -- reverse-engineered
+- **[mescon/logitech-rs50-linux-driver][mescon]**: reverse-engineered
   the wheel's driver and wire protocol. This project would not exist
   without their work.
-- **[USBPcap][usbpcap]** by Tomasz Mon -- the kernel-mode USB filter that
+- **[USBPcap][usbpcap]** by Tomasz Mon: the kernel-mode USB filter that
   lets us tap the wheel's bus traffic for FFB pass-through.
-- **[HidSharp][hidsharp]** -- cross-platform HID library used for the
+- **[HidSharp][hidsharp]**: cross-platform HID library used for the
   control-side of wheel communication.
-- **[NAudio][naudio]** -- audio I/O library used for the per-process
+- **[NAudio][naudio]**: audio I/O library used for the per-process
   loopback capture pipeline.
-- **[SimHub][simhub]** -- the host application. This plugin is unofficial
+- **[SimHub][simhub]**: the host application. This plugin is unofficial
   and not affiliated with the SimHub project.
 
 Logitech, Trueforce, G PRO, and RS50 are trademarks of Logitech. This
