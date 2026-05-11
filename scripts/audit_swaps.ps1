@@ -9,10 +9,16 @@
 # Output: scripts/swap_candidates.csv with columns
 #   carId, baked_cyl, suggested_cyl, suggested_source, evidence
 
-$root = "D:\SteamLibrary\steamapps\common\assettocorsa\content\cars"
+param(
+    [string]$AcRoot   = "D:\SteamLibrary\steamapps\common\assettocorsa\content\cars",
+    [string]$BakePath = "$PSScriptRoot/../src/TrueforceForAll.Plugin/BuiltinCarCylinders.cs",
+    [string]$OutPath  = "$PSScriptRoot/swap_candidates.csv"
+)
+
+$root = $AcRoot
 
 # Re-import the baked map by parsing BuiltinCarCylinders.cs
-$src = Get-Content -Raw "C:\Users\mhyte\Documents\SimHubTrueforce\src\TrueforceForAll.Plugin\BuiltinCarCylinders.cs"
+$src = Get-Content -Raw -LiteralPath $BakePath
 $baked = @{}
 foreach ($m in [regex]::Matches($src, '\["([^"]+)"\]\s*=\s*new BuiltinCarSpec\((\d+)\)')) {
     $baked[$m.Groups[1].Value] = [int]$m.Groups[2].Value
@@ -122,6 +128,6 @@ $candidates = $candidates | Sort-Object @{Expression='HasSwapWord';Descending=$t
 
 $candidates | Format-Table CarId, BakedCyl, SuggestedCyl, HasSwapWord, Evidence -AutoSize
 
-$candidates | Export-Csv -LiteralPath "C:\Users\mhyte\Documents\SimHubTrueforce\scripts\swap_candidates.csv" -NoTypeInformation -Encoding utf8
+$candidates | Export-Csv -LiteralPath $OutPath -NoTypeInformation -Encoding utf8
 Write-Host ""
 Write-Host "Wrote: scripts/swap_candidates.csv"
