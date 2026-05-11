@@ -6,30 +6,8 @@ Logitech ships Trueforce for only a handful of officially-supported titles. This
 plugin makes it work everywhere SimHub does. Built on top of the wire
 protocol reverse-engineered by the [mescon Linux driver project][mescon].
 
-## Telemetry
-
-By default the plugin runs on SimHub's universal 60 Hz telemetry feed, which carries the standard fields all the core effects need.
-SimHub is free but the 60 Hz feed requires a licensed copy of SimHub, which carries a small one-time payment. Some titles read directly from the game's telemetry, bypassing SimHub's limitations and the need for a licensed copy (Assetto Corsa, Forza Horizon 4 and 5).
-
-**Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than SimHub's 60 Hz feed can deliver.
-
-**Forza Horizon 4 and 5** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. This additional surface information is updated at 60 Hz but allows for more depth in surface detail effects than some other titles may offer. A forward-compatible always-listen mode is available for use with FH6 on day one before SimHub adds game-name detection for it.
-
-Additional per-title enhancements/bypasses will be added over time. 
-
-**Bonus: optional FFB spike reduction.** Some games (Assetto Corsa being
-the worst offender we've seen) deliver curb and collision FFB spikes
-wildly out of proportion to what's safe or comfortable. On a strong
-wheelbase they can ruin a racing line or cause real wrist strain over
-a session. iRacing has a built-in softener; most other games don't. The
-plugin taps the game's outgoing FFB on the USB bus and attenuates spikes
-only, so curbs land as confident pushes instead of yanks while sustained
-cornering load and weight transfer pass through untouched. Works in any
-game whose FFB goes through standard HID++. Requires one of the supported
-Trueforce wheels below (the attenuated signal reaches the wheel through
-the Trueforce endpoint). Useful on its own, even with all our other
-effects turned off.
-
+> **Status:** v0.x, actively developed. The plugin is functional today; the
+> default presets are still being tuned. Feedback welcome.
 
 ## Supported wheels
 
@@ -41,9 +19,6 @@ effects turned off.
 
 The G PRO and RS50 use byte-identical Trueforce packets. G923 support may
 come in the future.
-
-> **Status:** v0.x, actively developed. The plugin is functional today; the
-> default presets are still being tuned. Feedback welcome.
 
 ## What it does
 
@@ -80,7 +55,7 @@ in real time, mixing several signal sources:
   wheel as low-latency haptics. Lets you feel things the telemetry
   doesn't expose, and works even for games which do not output telemetry data
   since capture targets the game process directly.
-  
+
 - **FFB pass-through.** When a game already drives the wheel via standard
   HID++ force feedback (Assetto Corsa does), the plugin transparently taps
   that signal off the USB bus and mirrors it into the Trueforce stream so
@@ -90,20 +65,20 @@ All of it is configurable per-game, per-car, via SimHub's settings UI:
 master gain, individual effect tuning, sidechain ducking between
 continuous and transient effects, and savable preset library.
 
-## Auto-discovery
+## FFB spike reduction
 
- On startup the plugin:
-
-1. Enumerates connected HID devices, finds the wheel's Trueforce interface
-   (`MI_02`, vendor usage page `0xFFFD`).
-2. Enumerates USBPcap interfaces and parses injected device descriptors to
-   find which root hub the wheel is on and what USB address the OS assigned
-   it this boot.
-3. Starts the FFB tap and Trueforce stream automatically.
-
-If the wheel isn't detected (G HUB still running, USBPcap not installed,
-wheel unplugged) the plugin logs a clear status message and disables itself
-gracefully
+Some games (Assetto Corsa being the worst offender we've seen) deliver
+curb and collision FFB spikes wildly out of proportion to what's safe or
+comfortable. On a strong wheelbase they can ruin a racing line or cause
+real wrist strain over a session. iRacing has a built-in softener; most
+other games don't. The plugin taps the game's outgoing FFB on the USB
+bus and attenuates spikes only, so curbs land as confident pushes
+instead of yanks while sustained cornering load and weight transfer
+pass through untouched. Works in any game whose FFB goes through
+standard HID++. Requires one of the supported Trueforce wheels above
+(the attenuated signal reaches the wheel through the Trueforce
+endpoint). Useful on its own, even with all our other effects turned
+off.
 
 ## Install
 
@@ -131,6 +106,32 @@ plugins that share those keep working.
   signal into the Trueforce stream so the two coexist.
 - Logitech G HUB **closed** while playing (it claims the HID interface and
   blocks us from talking to the wheel)
+
+## Per-game enhancements
+
+By default the plugin runs on SimHub's universal 60 Hz telemetry feed, which carries the standard fields all the core effects need.
+SimHub is free but the 60 Hz feed requires a licensed copy of SimHub, which carries a small one-time payment. Some titles read directly from the game's telemetry, bypassing SimHub's limitations and the need for a licensed copy (Assetto Corsa, Forza Horizon 4 and 5).
+
+**Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than SimHub's 60 Hz feed can deliver.
+
+**Forza Horizon 4 and 5** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. This additional surface information is updated at 60 Hz but allows for more depth in surface detail effects than some other titles may offer. A forward-compatible always-listen mode is available for use with FH6 on day one before SimHub adds game-name detection for it.
+
+Additional per-title enhancements/bypasses will be added over time.
+
+## Auto-discovery
+
+ On startup the plugin:
+
+1. Enumerates connected HID devices, finds the wheel's Trueforce interface
+   (`MI_02`, vendor usage page `0xFFFD`).
+2. Enumerates USBPcap interfaces and parses injected device descriptors to
+   find which root hub the wheel is on and what USB address the OS assigned
+   it this boot.
+3. Starts the FFB tap and Trueforce stream automatically.
+
+If the wheel isn't detected (G HUB still running, USBPcap not installed,
+wheel unplugged) the plugin logs a clear status message and disables itself
+gracefully
 
 ## Known limitations
 
