@@ -1524,10 +1524,9 @@
             </Border>
             </StackPanel> <!-- /F1Section -->
 
-            <!-- Diagnostics + Live activity. Sit between game-config sections
-                 (above) and preset/sharing/support sections (below). Both are
-                 collapsed by default — only opened when troubleshooting or
-                 wanting to watch effect activity meters. -->
+            <!-- Diagnostics. Sits between game-config sections (above) and
+                 preset/sharing/support sections (below). Collapsed by default,
+                 only opened when troubleshooting. -->
             <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,4">
                 <Expander.Header>
                     <TextBlock Text="Diagnostics" FontSize="13" FontWeight="SemiBold"/>
@@ -1555,77 +1554,6 @@
                     <TextBlock Grid.Row="4" Grid.Column="0" Text="Active sources:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
                     <TextBlock Grid.Row="4" Grid.Column="1" x:Name="VoicesText" Text="0" Margin="0,4,0,0"/>
                 </Grid>
-            </Expander>
-
-            <Expander x:Name="LiveActivityExpander" IsExpanded="False" Margin="0,0,0,16">
-                <Expander.Header>
-                    <TextBlock Text="Live activity" FontWeight="SemiBold" FontSize="13"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Engine pulse:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="EngineMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="EngineMeterFill" HorizontalAlignment="Left" Background="#4CAF50" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Audio capture:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="AudioCaptureMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="AudioCaptureMeterFill" HorizontalAlignment="Left" Background="#66BB6A" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Road bumps:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="BumpsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="BumpsMeterFill" HorizontalAlignment="Left" Background="#FFA726" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Traction loss:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="TractionMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="TractionMeterFill" HorizontalAlignment="Left" Background="#EF5350" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Gear shift:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="GearMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="GearMeterFill" HorizontalAlignment="Left" Background="#42A5F5" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="ABS:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="AbsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="AbsMeterFill" HorizontalAlignment="Left" Background="#AB47BC" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Pit limiter:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="PitLimiterMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="PitLimiterMeterFill" HorizontalAlignment="Left" Background="#FF7043" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="DRS:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="DrsMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="DrsMeterFill" HorizontalAlignment="Left" Background="#26C6DA" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,0,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Ducking depth:" Style="{StaticResource LabelText}"/>
-                        <Border Grid.Column="1" x:Name="DuckMeterTrack" Height="14" Background="#22FFFFFF" CornerRadius="2" HorizontalAlignment="Stretch">
-                            <Border x:Name="DuckMeterFill" HorizontalAlignment="Left" Background="#9E9E9E" CornerRadius="2" Width="0"/>
-                        </Border>
-                    </Grid>
-                </StackPanel>
             </Expander>
 
             <!-- Presets. The preset library, default-binding, and per-game

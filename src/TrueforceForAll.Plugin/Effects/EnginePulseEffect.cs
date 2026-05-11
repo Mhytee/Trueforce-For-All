@@ -235,19 +235,6 @@ namespace TrueforceForAll.Plugin.Effects
                               ? _wavetableAmp > 0
                               : _osc.IsActive));
 
-        public override double ActivityLevel
-        {
-            // Engine pulse is a continuous effect — it doesn't trigger ducking,
-            // but we still report its current amplitude relative to peak so the
-            // UI's live activity meter can show what it's doing.
-            get
-            {
-                double max = PeakAmp * Math.Max(0.01, Gain) * 1.5; // ThrottleBoost can push to 1.5×
-                double amp = _firingOrderEnabled ? _wavetableAmp : _osc.Amp;
-                return Math.Min(1.0, Math.Max(0.0, amp / max));
-            }
-        }
-
         public override void RenderAdd(float[] buffer, int count)
         {
             if (!Enabled && !IsTesting) return;

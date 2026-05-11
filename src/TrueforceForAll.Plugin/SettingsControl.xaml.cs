@@ -785,28 +785,10 @@ namespace TrueforceForAll.Plugin
 
             UpdateStatusPill();
 
-            // Live activity meters — only updated when the Expander is open.
-            // Peak-hold smoothing with 25% decay per tick (~80 ms half-life)
-            // so bars feel responsive but don't flicker on every sample.
-            if (LiveActivityExpander?.IsExpanded == true)
-            {
-                UpdateMeter(EngineMeterTrack,       EngineMeterFill,       _plugin?.EnginePulse?.ActivityLevel  ?? 0);
-                UpdateMeter(BumpsMeterTrack,        BumpsMeterFill,        _plugin?.RoadBumps?.ActivityLevel    ?? 0);
-                UpdateMeter(TractionMeterTrack,     TractionMeterFill,     _plugin?.TractionLoss?.ActivityLevel ?? 0);
-                UpdateMeter(GearMeterTrack,         GearMeterFill,         _plugin?.GearShift?.ActivityLevel    ?? 0);
-                UpdateMeter(AbsMeterTrack,          AbsMeterFill,          _plugin?.AbsClick?.ActivityLevel     ?? 0);
-                UpdateMeter(PitLimiterMeterTrack,   PitLimiterMeterFill,   _plugin?.PitLimiter?.ActivityLevel   ?? 0);
-                UpdateMeter(DrsMeterTrack,          DrsMeterFill,          _plugin?.Drs?.ActivityLevel          ?? 0);
-                UpdateMeter(AudioCaptureMeterTrack, AudioCaptureMeterFill, src != null ? AudioLevelMeter.Value  : 0);
-                double duck = 1.0 - (_plugin?.EnginePulse?.DuckMultiplier ?? 1.0);
-                UpdateMeter(DuckMeterTrack, DuckMeterFill, Math.Max(0, duck));
-            }
-
-            // Why-is-my-wheel-quiet diagnostic. Always evaluated (cheap) so
-            // the warning bar can fire even when the Live activity expander
-            // is collapsed. Sits below the status pill, so users see the
-            // actual root cause without having to mentally cross-reference
-            // five separate status fields.
+            // Why-is-my-wheel-quiet diagnostic. Always evaluated (cheap).
+            // Sits below the status pill, so users see the actual root cause
+            // without having to mentally cross-reference five separate
+            // status fields.
             string diag = _plugin?.WheelQuietDiagnostic;
             if (WheelQuietDiagnosticBox != null)
             {
@@ -914,19 +896,6 @@ namespace TrueforceForAll.Plugin
             {
                 EnhancedBadge.Visibility = Visibility.Collapsed;
             }
-        }
-
-        private static void UpdateMeter(System.Windows.Controls.Border track, System.Windows.Controls.Border fill, double level)
-        {
-            if (track == null || fill == null) return;
-            double w = track.ActualWidth;
-            if (w <= 0) return;
-            double cur = double.IsNaN(fill.Width) ? 0 : fill.Width;
-            double target = level * w;
-            // Exponential interpolation in both directions, asymmetric: faster
-            // attack (snap-up to peaks), slower release (smooth fall).
-            double alpha = (target > cur) ? 0.55 : 0.18;
-            fill.Width = cur + (target - cur) * alpha;
         }
 
         // Apply() is called by per-effect handlers AFTER the _suppressEvents
