@@ -92,8 +92,11 @@ Source: "{#PluginBin}\NAudio.Asio.dll";       DestDir: "{app}"; Flags: ignorever
 Source: "{#PluginBin}\NAudio.Midi.dll";       DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 Source: "{#PluginBin}\NAudio.WinForms.dll";   DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 
-; Bundled USBPcap installer (runs only if USBPcap not already installed).
-Source: "{#UsbPcapSetup}"; DestDir: "{tmp}"; DestName: "USBPcapSetup.exe"; Flags: deleteafterinstall
+; Bundled USBPcap installer. Kept on disk under {app}\vendor so the plugin
+; can re-run it from its settings panel if USBPcap goes missing later (user
+; uninstall, driver corruption). Also used by the chained [Run] install
+; step below when USBPcap isn't already present at install time.
+Source: "{#UsbPcapSetup}"; DestDir: "{app}\vendor"; DestName: "USBPcapSetup.exe"; Flags: ignoreversion
 
 ; PowerShell helper that registers our plugin in SimHub's
 ; PluginsActivation.json so it's enabled and pinned to the sidebar on
@@ -107,7 +110,7 @@ Source: "USBPcap-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion uninsnever
 [Run]
 ; Chained USBPcap install — silent, only if not already present. /S is the
 ; NSIS silent-install flag USBPcap's own installer accepts.
-Filename: "{tmp}\USBPcapSetup.exe"; \
+Filename: "{app}\vendor\USBPcapSetup.exe"; \
     Parameters: "/S"; \
     StatusMsg: "Installing USBPcap (USB capture driver, required for FFB pass-through)..."; \
     Check: NeedsUSBPcap
@@ -272,6 +275,43 @@ begin
   ShellExec('open', 'https://www.simhubdash.com/', '', '', SW_SHOWNORMAL, ewNoWait, ResponseCode);
 end;
 
+// OnClick handler for the "Browse..." button. Opens a folder picker so a
+// user with SimHub installed at a non-standard location (portable zip,
+// custom drive, missing registry entries) can point us at it directly.
+// Validates that SimHubWPF.exe is in the chosen folder before accepting.
+// On success, sets CachedSimHubDir and closes the dialog with mrOk so
+// InitializeSetup's detection loop skips the registry probes.
+procedure BrowseSimHubBtnClick(Sender: TObject);
+var
+  Selected: string;
+begin
+  Selected := '';
+  if BrowseForFolder('Select your SimHub install folder (the one containing SimHubWPF.exe)', Selected, False) then
+  begin
+    if FileExists(Selected + '\SimHubWPF.exe') then
+    begin
+      CachedSimHubDir := StripTrailingSlash(Selected);
+      // Don't try to set ModalResult here. PascalScript in Inno 6.7+
+      // doesn't expose TForm.ModalResult on a generic parent-walked
+      // form reference, and the cast paths we tried fail to compile.
+      // Instead, populating CachedSimHubDir is enough: InitializeSetup
+      // breaks out of its detection loop on the first non-empty
+      // CachedSimHubDir after the dialog returns, so the user clicks
+      // Retry once and the install proceeds with the picked folder.
+      MsgBox(
+        'SimHub install folder accepted:' + #13#10 + Selected + #13#10 + #13#10 +
+        'Click "Retry" to continue with this folder.',
+        mbInformation, MB_OK);
+    end else
+    begin
+      MsgBox(
+        'SimHubWPF.exe was not found in that folder.' + #13#10 + #13#10 +
+        'Please pick the folder that contains SimHubWPF.exe (the SimHub install root, not a subfolder).',
+        mbError, MB_OK);
+    end;
+  end;
+end;
+
 // Modal "SimHub required" dialog with three labeled buttons. Returns
 // mrOk when the user clicks Retry (re-check detection), mrCancel to
 // abort the installer. "Open download page" doesn't close the dialog.
@@ -281,14 +321,14 @@ function ShowSimHubMissingDialog: Integer;
 var
   Form: TSetupForm;
   Body: TNewStaticText;
-  OpenBtn, RetryBtn, CancelBtn: TNewButton;
+  OpenBtn, BrowseBtn, RetryBtn, CancelBtn: TNewButton;
   ButtonW: Integer;
 begin
   // Match the CodeClasses.iss example shipped with Inno: 4-arg
   // CreateCustomForm (width, height, flip-for-RTL, allow-resize).
   // Direct TSetupForm.Create(nil) misses the resource template and
   // crashes at runtime with "resource TSetupForm not found".
-  Form := CreateCustomForm(ScaleX(520), ScaleY(220), False, True);
+  Form := CreateCustomForm(ScaleX(580), ScaleY(240), False, True);
   try
     Form.Caption := 'Trueforce For All — SimHub required';
 
@@ -297,14 +337,16 @@ begin
     Body.Left := ScaleX(20);
     Body.Top := ScaleY(20);
     Body.Width := Form.ClientWidth - ScaleX(2 * 20);
-    Body.Height := ScaleY(120);
+    Body.Height := ScaleY(140);
     Body.AutoSize := False;
     Body.WordWrap := True;
     Body.Caption :=
       'SimHub doesn''t appear to be installed on this PC.' + #13#10 + #13#10 +
-      'Trueforce For All is a SimHub plugin — SimHub has to be installed first. ' +
+      'Trueforce For All is a SimHub plugin, so SimHub has to be installed first. ' +
       'Click "Open download page" to get SimHub from simhubdash.com, install it, ' +
-      'then click "Retry" to continue this installer.';
+      'then click "Retry" to continue.' + #13#10 + #13#10 +
+      'If SimHub is already installed but in a non-standard location (portable ' +
+      'install, custom folder), click "Browse..." to point us at it directly.';
 
     OpenBtn := TNewButton.Create(Form);
     OpenBtn.Parent := Form;
@@ -312,6 +354,13 @@ begin
     OpenBtn.Top := Form.ClientHeight - ScaleY(23 + 10);
     OpenBtn.Height := ScaleY(23);
     OpenBtn.OnClick := @OpenSimHubPageBtnClick;
+
+    BrowseBtn := TNewButton.Create(Form);
+    BrowseBtn.Parent := Form;
+    BrowseBtn.Caption := 'Browse...';
+    BrowseBtn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    BrowseBtn.Height := ScaleY(23);
+    BrowseBtn.OnClick := @BrowseSimHubBtnClick;
 
     RetryBtn := TNewButton.Create(Form);
     RetryBtn.Parent := Form;
@@ -329,14 +378,19 @@ begin
     CancelBtn.ModalResult := mrCancel;
     CancelBtn.Cancel := True;
 
-    // Width all three buttons to fit the longest caption.
-    ButtonW := Form.CalculateButtonWidth([OpenBtn.Caption, RetryBtn.Caption, CancelBtn.Caption]);
-    OpenBtn.Width := ButtonW;
-    RetryBtn.Width := ButtonW;
+    // Width all four buttons to fit the longest caption. Keep this on one
+    // line: Inno's tokenizer treats a leading "[" on a fresh line as a
+    // section tag even inside [Code], so splitting the array literal at
+    // the bracket triggers "Invalid section tag."
+    ButtonW := Form.CalculateButtonWidth([OpenBtn.Caption, BrowseBtn.Caption, RetryBtn.Caption, CancelBtn.Caption]);
+    OpenBtn.Width   := ButtonW;
+    BrowseBtn.Width := ButtonW;
+    RetryBtn.Width  := ButtonW;
     CancelBtn.Width := ButtonW;
 
-    // Open on the left; Retry + Cancel right-aligned with a gap.
+    // Open + Browse on the left; Retry + Cancel right-aligned with a gap.
     OpenBtn.Left   := ScaleX(10);
+    BrowseBtn.Left := OpenBtn.Left + ButtonW + ScaleX(6);
     CancelBtn.Left := Form.ClientWidth - ScaleX(10) - ButtonW;
     RetryBtn.Left  := CancelBtn.Left - ScaleX(6) - ButtonW;
 
@@ -366,7 +420,11 @@ begin
       Result := False;
       Exit;
     end;
-    // mrOk (Retry): loop falls through to re-check.
+    // mrOk (Retry): the user might have used Browse... to populate
+    // CachedSimHubDir manually. Accept that without re-probing so a
+    // valid hand-picked folder isn't overridden by a failing registry
+    // scan on the next loop iteration.
+    if CachedSimHubDir <> '' then Break;
   end;
 
   // Block install while SimHub is running: it holds the plugin DLL open,
