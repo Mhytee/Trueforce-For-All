@@ -26,10 +26,12 @@ using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
 {
-    // PluginDescription is a compile-time constant attribute, so the version
-    // must be hard-coded here. Keep it in sync with <Version> in the csproj
-    // and the latest GitHub release tag on every bump.
-    [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO and RS50 wheels. (v0.1.3)")]
+    // Description deliberately omits the version: PluginDescription requires a
+    // compile-time-constant string, and the assembly version (driven by
+    // <Version> in TrueforceForAll.Plugin.csproj) is already surfaced at
+    // runtime by UpdateChecker, the settings panel header, and the changelog
+    // dialog. Adding it here too just creates a stale-copy hazard on bumps.
+    [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO and RS50 wheels.")]
     [PluginAuthor("Mhytee")]
     [PluginName("Trueforce For All")]
     public sealed class TrueforcePlugin : IDataPlugin, IWPFSettingsV2

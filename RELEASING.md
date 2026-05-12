@@ -8,9 +8,11 @@ without SimHub installed can't compile it. There is no GitHub Actions
 workflow for releases — the build + tag + draft-release flow below is
 the whole process.
 
-Three places hold the version string and they must stay in sync. Two read
-the runtime version from assembly metadata (which the csproj `<Version>`
-populates automatically) and one is a hard-coded attribute that doesn't.
+The csproj `<Version>` is the single source of truth for the release. It
+populates the assembly version, which is what the in-panel header readout,
+the diagnostics block, the changelog dialog, and the auto-updater all read
+at runtime. The installer build picks it up via the `TRUEFORCEFORALL_VERSION`
+environment variable (step 6 below) — set that to the same value.
 
 For each release:
 
@@ -18,12 +20,9 @@ For each release:
    `src/TrueforceForAll.Plugin/TrueforceForAll.Plugin.csproj`. This drives
    the assembly version, the in-panel header readout, the auto-updater's
    "current version," and the User-Agent it sends to GitHub.
-2. Update the version in the `[PluginDescription]` attribute at the top of
-   `src/TrueforceForAll.Plugin/TrueforcePlugin.cs` (the `(vX.Y.Z)` suffix).
-   This is the version SimHub shows in its add/remove plugins UI.
-3. Update `README.md` if any user-visible feature changed (especially the
+2. Update `README.md` if any user-visible feature changed (especially the
    supported-games or wheels tables, install steps, known limitations).
-4. If this release adds or changes a user-visible effect:
+3. If this release adds or changes a user-visible effect:
    - Add any new effect IDs to `EffectChangelog.KnownEffectIds` in
      `src/TrueforceForAll.Plugin/EffectChangelog.cs`. IDs are append-only
      and match `TrueforcePlugin.SectionKind` names.
@@ -37,11 +36,11 @@ For each release:
      presets and per-car overrides inherit the disabled-by-default
      behavior with no migration. The badge surfaces the new effect; the
      default-off keeps wheel feel stable across the upgrade.
-5. Hardware-validate any new telemetry source or game-detection change on
+4. Hardware-validate any new telemetry source or game-detection change on
    the rig before tagging.
-6. Commit. Tag `vX.Y.Z` matching the csproj version exactly. Push the
+5. Commit. Tag `vX.Y.Z` matching the csproj version exactly. Push the
    branch and the tag.
-7. Build the installer locally. `TRUEFORCEFORALL_VERSION` must be set to
+6. Build the installer locally. `TRUEFORCEFORALL_VERSION` must be set to
    the release version before invoking `iscc` — the Inno Setup script
    reads it at compile time and falls back to `0.1.0-dev` (which ends up
    in Add/Remove Programs and the installer filename) when it's empty:
@@ -55,16 +54,16 @@ For each release:
    ```
 
    The artifact lands at `installer\output\TrueforceForAll-Setup.exe`.
-8. Upload to a draft GitHub release:
+7. Upload to a draft GitHub release:
 
    ```powershell
    gh release create vX.Y.Z installer\output\TrueforceForAll-Setup.exe `
        --draft --title "Trueforce For All vX.Y.Z" --generate-notes
    ```
-9. On GitHub, open the draft release. Edit the auto-generated notes if
+8. On GitHub, open the draft release. Edit the auto-generated notes if
    needed. Tick "Set as the latest release." Click Publish. Until you do
    this, the auto-updater will not see it because `/releases/latest`
    skips drafts and pre-releases.
-10. After publishing, reload the plugin in SimHub on a test machine to
-    confirm the update banner appears and the installer downloads, and
-    that any new-effect badges + "What's new" banner surface as expected.
+9. After publishing, reload the plugin in SimHub on a test machine to
+   confirm the update banner appears and the installer downloads, and
+   that any new-effect badges + "What's new" banner surface as expected.
