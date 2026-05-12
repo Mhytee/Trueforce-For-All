@@ -1123,14 +1123,15 @@
                                         TickFrequency="0.25" ValueChanged="DrsGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="DrsGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,4" Text="Activation chirp (rising edge of DRS)" FontWeight="SemiBold"/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Waveform:" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Waveform:" Style="{StaticResource LabelText}"
+                                       ToolTip="Shape of the brief blip on the rising edge."/>
                             <ComboBox  Grid.Column="1" x:Name="DrsWaveformCombo" SelectionChanged="DrsWaveform_Changed">
                                 <ComboBoxItem Content="Sine"/><ComboBoxItem Content="Square"/><ComboBoxItem Content="Saw"/><ComboBoxItem Content="Triangle"/><ComboBoxItem Content="Noise"/>
                             </ComboBox>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,4" Text="Activation chirp (rising edge of DRS)" FontWeight="SemiBold"/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
@@ -1153,6 +1154,14 @@
                             <TextBlock Grid.Column="2" x:Name="DrsActivationAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
                         </Grid>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,4" Text="Sustained tone (while DRS held open). Set amp to 0 for chirp-only mode." FontWeight="SemiBold"/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Waveform:" Style="{StaticResource LabelText}"
+                                       ToolTip="Shape of the held trail. Independent from the activation chirp so a sharp Square blip can have a softer Sine trail."/>
+                            <ComboBox  Grid.Column="1" x:Name="DrsSustainedWaveformCombo" SelectionChanged="DrsSustainedWaveform_Changed">
+                                <ComboBoxItem Content="Sine"/><ComboBoxItem Content="Square"/><ComboBoxItem Content="Saw"/><ComboBoxItem Content="Triangle"/><ComboBoxItem Content="Noise"/>
+                            </ComboBox>
+                        </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
@@ -1224,12 +1233,20 @@
                                         TickFrequency="10" ValueChanged="CollisionFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="CollisionFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="50"/>
                         </Grid>
-                        <Grid Margin="0,0,0,0">
+                        <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Duration (ms):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="CollisionEnvelopeMsSlider" Minimum="40" Maximum="300" SmallChange="5" LargeChange="20"
                                         TickFrequency="20" ValueChanged="CollisionEnvelopeMsSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="CollisionEnvelopeMsText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Waveform:" Style="{StaticResource LabelText}"
+                                       ToolTip="Shape of the impact thud. Square is the punchiest; Sine is softer."/>
+                            <ComboBox  Grid.Column="1" x:Name="CollisionWaveformCombo" SelectionChanged="CollisionWaveform_Changed">
+                                <ComboBoxItem Content="Sine"/><ComboBoxItem Content="Square"/><ComboBoxItem Content="Saw"/><ComboBoxItem Content="Triangle"/><ComboBoxItem Content="Noise"/>
+                            </ComboBox>
                         </Grid>
                     </StackPanel>
                 </Expander>

@@ -391,6 +391,7 @@ namespace TrueforceForAll.Plugin
                     DrsSustainedFreqText.Text       = ((int)drs.SustainedFreq).ToString();
                     DrsSustainedAmpSlider.Value     = drs.SustainedAmp;
                     DrsSustainedAmpText.Text        = drs.SustainedAmp.ToString("F2");
+                    SelectWaveform(DrsSustainedWaveformCombo, drs.SustainedWaveform);
                 }
                 // Collision (per-car overridable like the other effects)
                 var coll = _plugin.ActiveCollision;
@@ -407,6 +408,7 @@ namespace TrueforceForAll.Plugin
                     CollisionFreqText.Text             = ((int)coll.Freq).ToString();
                     CollisionEnvelopeMsSlider.Value    = coll.EnvelopeMs;
                     CollisionEnvelopeMsText.Text       = coll.EnvelopeMs.ToString();
+                    SelectWaveform(CollisionWaveformCombo, coll.Waveform);
                 }
 
                 // Override badges in expander headers — visible only when this
@@ -2523,6 +2525,18 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin == null) return;
             _plugin.ActiveDrs.Waveform = WaveformOf(DrsWaveformCombo);
             Apply(EffectKind.Drs);
+        }
+        private void DrsSustainedWaveform_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.ActiveDrs.SustainedWaveform = WaveformOf(DrsSustainedWaveformCombo);
+            Apply(EffectKind.Drs);
+        }
+        private void CollisionWaveform_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.ActiveCollision.Waveform = WaveformOf(CollisionWaveformCombo);
+            Apply(EffectKind.Collision);
         }
         private void DrsActivationFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {

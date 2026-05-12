@@ -59,7 +59,7 @@ namespace TrueforceForAll.Plugin
         // convention disagrees with ep3 cur (default true matches AC). Smooth
         // converts AC's 7ms-staircase FFB target into a ramp by IIR low-pass
         // (0 ms = no smoothing).
-        public float FfbScale                 { get; set; } = 1.0f;
+        public float FfbScale                 { get; set; } = 0.80f;
         public bool  FfbInvertSign            { get; set; } = true;
         public float FfbSmoothTimeConstantMs  { get; set; } = 0.0f;
 
@@ -73,8 +73,8 @@ namespace TrueforceForAll.Plugin
         // Enabled flag gates both: when false, runtime treats them as 0
         // regardless of stored values, so users can flip the feature off
         // without losing their tuning.
-        public bool  FfbSpikeTamingEnabled    { get; set; } = false;
-        public float FfbSpikeMaxLsbPerMs      { get; set; } = 2060.923f;
+        public bool  FfbSpikeTamingEnabled    { get; set; } = true;
+        public float FfbSpikeMaxLsbPerMs      { get; set; } = 2508.36f;
 
         // Skip the captured-FFB → ep3 cur mirror. With this on, our active
         // packets carry cur = 0x8000 (silence center). The wheel uses cur
@@ -93,14 +93,14 @@ namespace TrueforceForAll.Plugin
         // auto-probe if the path no longer exists on disk.
         public string UsbPcapCmdPathOverride   { get; set; } = "";
 
-        public float FfbPeakSoftLimitLsb      { get; set; } = 1561.78564f;
+        public float FfbPeakSoftLimitLsb      { get; set; } = 2061.90f;
 
         // Sidechain ducking applied to continuous effects (engine pulse, audio
         // capture) when transient effects (gear shift, ABS, road bumps,
         // traction loss) fire. Depth = max attenuation (0 = no duck, 1 = full
         // silence). Attack/Release in ms are the time constants for the
         // envelope's down/up directions.
-        public float DuckDepth     { get; set; } = 0.5f;
+        public float DuckDepth     { get; set; } = 0.60f;
         public float DuckAttackMs  { get; set; } = 5.0f;
         public float DuckReleaseMs { get; set; } = 80.0f;
 
@@ -230,15 +230,18 @@ namespace TrueforceForAll.Plugin
     /// fields on the active settings.</summary>
     public sealed class GameSettingsSnapshot
     {
+        // Defaults mirror TrueforceSettings' top-level class defaults so a
+        // GameSettingsSnapshot deserialized from JSON missing these fields
+        // gets the same starting state as a fresh-install Settings object.
         public float MasterGain                { get; set; } = 1.0f;
-        public float FfbScale                  { get; set; } = 1.0f;
+        public float FfbScale                  { get; set; } = 0.80f;
         public bool  FfbInvertSign             { get; set; } = true;
         public float FfbSmoothTimeConstantMs   { get; set; } = 0.0f;
-        public bool  FfbSpikeTamingEnabled     { get; set; } = false;
-        public float FfbSpikeMaxLsbPerMs       { get; set; } = 2060.923f;
-        public float FfbPeakSoftLimitLsb       { get; set; } = 1561.78564f;
+        public bool  FfbSpikeTamingEnabled     { get; set; } = true;
+        public float FfbSpikeMaxLsbPerMs       { get; set; } = 2508.36f;
+        public float FfbPeakSoftLimitLsb       { get; set; } = 2061.90f;
         public bool  SkipFfbPassthrough        { get; set; } = false;
-        public float DuckDepth                 { get; set; } = 0.5f;
+        public float DuckDepth                 { get; set; } = 0.60f;
         public float DuckAttackMs              { get; set; } = 5.0f;
         public float DuckReleaseMs             { get; set; } = 80.0f;
 
@@ -263,8 +266,8 @@ namespace TrueforceForAll.Plugin
         // intense even at 5-10% gain; 1.0 is well past clipping for most
         // games on most wheelbases.
         public float  Gain             { get; set; } = 0.06f;
-        public double LowpassCutoffHz  { get; set; } = 350.0;
-        public double HighpassCutoffHz { get; set; } =  30.0;
+        public double LowpassCutoffHz  { get; set; } = 567.0;
+        public double HighpassCutoffHz { get; set; } =  35.0;
     }
 
     /// <summary>Mode for the Performance tab. In Auto, the plugin starts at
@@ -383,10 +386,13 @@ namespace TrueforceForAll.Plugin
     public sealed class EnginePulseSettings
     {
         public bool   Enabled   { get; set; } = true;
-        public float  Gain      { get; set; } = 1.0f;
+        // 0.07 reflects what's actually usable: the firing-pattern pulses
+        // already deliver substantial energy at the wheel; 1.0 was over the
+        // top for typical wheelbases.
+        public float  Gain      { get; set; } = 0.07f;
 
         public float  Pitch     { get; set; } = 1.0f;     // multiplier on firing-freq calc
-        public double LowpassHz { get; set; } = 0.0;       // 0 = disabled
+        public double LowpassHz { get; set; } = 510.0;    // matches the AC-tuned baseline
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform Waveform { get; set; } = Waveform.Sine;
@@ -483,11 +489,11 @@ namespace TrueforceForAll.Plugin
     {
         // ---- Heave channel (universal) ----
         public bool  Enabled { get; set; } = true;
-        public float Gain    { get; set; } = 1.0f;
-        public float Freq    { get; set; } = 60.0f;        // unused when Waveform == Noise
+        public float Gain    { get; set; } = 0.45f;
+        public float Freq    { get; set; } = 61.0f;        // unused when Waveform == Noise
 
         [JsonConverter(typeof(StringEnumConverter))]
-        public Waveform Waveform { get; set; } = Waveform.Noise;
+        public Waveform Waveform { get; set; } = Waveform.Triangle;
 
         // ---- Surface channel (Forza-only signal source today) ----
         // The surface oscillator is a separate voice with its own freq /
@@ -495,7 +501,7 @@ namespace TrueforceForAll.Plugin
         // values still apply on non-Forza games but the channel just sits
         // silent because the source doesn't supply SurfaceRumble.
         public bool   SurfaceEnabled       { get; set; } = true;
-        public float  SurfaceGain          { get; set; } = 1.0f;
+        public float  SurfaceGain          { get; set; } = 0.70f;
         public float  SurfaceFreq          { get; set; } = 120.0f;
         public float  SurfaceRumbleScale   { get; set; } = 1.0f;
         public double SurfaceLowpassHz     { get; set; } = 800.0;
@@ -515,15 +521,15 @@ namespace TrueforceForAll.Plugin
     public sealed class TractionLossSettings
     {
         public bool  Enabled     { get; set; } = true;
-        public float Gain        { get; set; } = 1.0f;
-        public float Sensitivity { get; set; } = 1.0f;
-        public float Freq        { get; set; } = 100.0f;   // unused when Waveform == Noise
+        public float Gain        { get; set; } = 0.04f;
+        public float Sensitivity { get; set; } = 0.18f;
+        public float Freq        { get; set; } = 134.0f;   // unused when Waveform == Noise
 
         // Default 250 Hz LP is on the smoother side; raise toward 600+ for a
-        // harsher tire-grit feel. 30 Hz HP cleans sub-audible drift without
+        // harsher tire-grit feel. 41 Hz HP cleans sub-audible drift without
         // taking meaningful energy out of the rumble band.
         public double NoiseLowpassHz  { get; set; } = 250.0;
-        public double NoiseHighpassHz { get; set; } = 30.0;
+        public double NoiseHighpassHz { get; set; } = 41.0;
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform Waveform { get; set; } = Waveform.Noise;
@@ -532,20 +538,20 @@ namespace TrueforceForAll.Plugin
     public sealed class GearShiftSettings
     {
         public bool  Enabled { get; set; } = true;
-        public float Gain    { get; set; } = 1.0f;
-        public float Freq    { get; set; } = 40.0f;
+        public float Gain    { get; set; } = 0.40f;
+        public float Freq    { get; set; } = 35.0f;
 
         [JsonConverter(typeof(StringEnumConverter))]
-        public Waveform Waveform { get; set; } = Waveform.Sine;
+        public Waveform Waveform { get; set; } = Waveform.Square;
     }
 
     public sealed class AbsClickSettings
     {
         public bool  Enabled        { get; set; } = true;
-        public float Gain           { get; set; } = 1.0f;
-        public float Freq           { get; set; } = 80.0f;
-        public float PulseFreq      { get; set; } = 12.0f;
-        public float DutyCycle      { get; set; } = 0.4f;
+        public float Gain           { get; set; } = 0.14f;
+        public float Freq           { get; set; } = 150.0f;
+        public float PulseFreq      { get; set; } = 9.82f;
+        public float DutyCycle      { get; set; } = 0.33f;
         public float TickDurationMs { get; set; } = 35.0f;
 
         [JsonConverter(typeof(StringEnumConverter))]
@@ -558,10 +564,10 @@ namespace TrueforceForAll.Plugin
     public sealed class PitLimiterSettings
     {
         public bool  Enabled    { get; set; } = true;
-        public float Gain       { get; set; } = 1.0f;
+        public float Gain       { get; set; } = 0.08f;
         public float Freq       { get; set; } = 50.0f;
-        public float PulseFreq  { get; set; } = 6.0f;
-        public float DutyCycle  { get; set; } = 0.6f;
+        public float PulseFreq  { get; set; } = 4.34f;
+        public float DutyCycle  { get; set; } = 0.48f;
         public float ActiveAmp  { get; set; } = 0.30f;
 
         [JsonConverter(typeof(StringEnumConverter))]
@@ -571,24 +577,36 @@ namespace TrueforceForAll.Plugin
     public sealed class DrsSettings
     {
         public bool  Enabled       { get; set; } = true;
-        public float Gain          { get; set; } = 1.0f;
-        public float ActivationFreq { get; set; } = 120.0f;
-        public int   ActivationMs  { get; set; } = 60;
-        public float ActivationAmp { get; set; } = 0.30f;
-        public float SustainedFreq { get; set; } = 70.0f;
-        public float SustainedAmp  { get; set; } = 0.12f;
+        public float Gain          { get; set; } = 0.28f;
+        public float ActivationFreq { get; set; } = 60.0f;
+        public int   ActivationMs  { get; set; } = 80;
+        public float ActivationAmp { get; set; } = 0.50f;
+        public float SustainedFreq { get; set; } = 120.0f;
+        public float SustainedAmp  { get; set; } = 0.05f;
 
+        // Activation chirp ("blip" on rising edge). Pre-split this field
+        // drove both parts; kept under the original name so old presets
+        // deserialize without a migration step.
         [JsonConverter(typeof(StringEnumConverter))]
-        public Waveform Waveform { get; set; } = Waveform.Sine;
+        public Waveform Waveform { get; set; } = Waveform.Square;
+
+        // Sustained tone ("trail" while DRS stays open). Added in 0.1.3 so
+        // each layer can pick a shape that suits it (e.g. a sharp Square
+        // blip with a softer Sine trail). Old presets that predate this
+        // field deserialize to the default Square; users who want the
+        // pre-0.1.3 monolithic-waveform behavior can set both fields the
+        // same in the UI.
+        [JsonConverter(typeof(StringEnumConverter))]
+        public Waveform SustainedWaveform { get; set; } = Waveform.Square;
     }
 
     public sealed class CollisionSettings
     {
         public bool  Enabled            { get; set; } = true;
-        public float Gain               { get; set; } = 1.0f;
+        public float Gain               { get; set; } = 0.21f;
         public float Freq               { get; set; } = 50.0f;
         public int   EnvelopeMs         { get; set; } = 120;
-        public float MinThreshold       { get; set; } = 0.20f;
+        public float MinThreshold       { get; set; } = 0.14f;
         public float MinAmp             { get; set; } = 0.20f;
         public float MaxAmp             { get; set; } = 0.85f;
         public float NormalizationScale { get; set; } = 2.0f;

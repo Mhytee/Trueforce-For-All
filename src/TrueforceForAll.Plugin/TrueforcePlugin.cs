@@ -2155,14 +2155,15 @@ namespace TrueforceForAll.Plugin
         private void ApplyDrsSettings(DrsSettings s)
         {
             if (Drs == null || s == null) return;
-            Drs.Enabled        = s.Enabled;
-            Drs.Gain           = s.Gain;
-            Drs.ActivationFreq = s.ActivationFreq;
-            Drs.ActivationMs   = s.ActivationMs;
-            Drs.ActivationAmp  = s.ActivationAmp;
-            Drs.SustainedFreq  = s.SustainedFreq;
-            Drs.SustainedAmp   = s.SustainedAmp;
-            Drs.Waveform       = s.Waveform;
+            Drs.Enabled           = s.Enabled;
+            Drs.Gain              = s.Gain;
+            Drs.ActivationFreq    = s.ActivationFreq;
+            Drs.ActivationMs      = s.ActivationMs;
+            Drs.ActivationAmp     = s.ActivationAmp;
+            Drs.SustainedFreq     = s.SustainedFreq;
+            Drs.SustainedAmp      = s.SustainedAmp;
+            Drs.Waveform          = s.Waveform;
+            Drs.SustainedWaveform = s.SustainedWaveform;
         }
         private void ApplyCollisionSettings(CollisionSettings s)
         {
@@ -2213,7 +2214,7 @@ namespace TrueforceForAll.Plugin
         private static PitLimiterSettings   Clone(PitLimiterSettings s)
             => new PitLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, Waveform = s.Waveform };
         private static DrsSettings          Clone(DrsSettings s)
-            => new DrsSettings          { Enabled = s.Enabled, Gain = s.Gain, ActivationFreq = s.ActivationFreq, ActivationMs = s.ActivationMs, ActivationAmp = s.ActivationAmp, SustainedFreq = s.SustainedFreq, SustainedAmp = s.SustainedAmp, Waveform = s.Waveform };
+            => new DrsSettings          { Enabled = s.Enabled, Gain = s.Gain, ActivationFreq = s.ActivationFreq, ActivationMs = s.ActivationMs, ActivationAmp = s.ActivationAmp, SustainedFreq = s.SustainedFreq, SustainedAmp = s.SustainedAmp, Waveform = s.Waveform, SustainedWaveform = s.SustainedWaveform };
         private static CollisionSettings    Clone(CollisionSettings s)
             => new CollisionSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, EnvelopeMs = s.EnvelopeMs, MinThreshold = s.MinThreshold, MinAmp = s.MinAmp, MaxAmp = s.MaxAmp, NormalizationScale = s.NormalizationScale, RefractoryMs = s.RefractoryMs, Waveform = s.Waveform };
 
@@ -2896,9 +2897,15 @@ namespace TrueforceForAll.Plugin
         // displayed as the same string (e.g. "0.07", "60", "0.0") count as
         // equal — which is what users expect when they drag a slider away
         // and back. Without these, slider-snap noise stays "dirty" forever.
-        private static bool EqF2(double a, double b) => Math.Abs(a - b) < 0.005;
-        private static bool EqF1(double a, double b) => Math.Abs(a - b) < 0.05;
-        private static bool EqI (double a, double b) => Math.Abs(a - b) < 0.5;
+        // Round both sides to the precision the UI shows, then exact-compare.
+        // Distance-based epsilon was off by a factor of two at the F2 boundary
+        // (two values both displayed as "0.39" can differ by up to ~0.01,
+        // but the old < 0.005 tolerance treated them as unequal -- so the
+        // dirty marker stayed lit after a slider returned to the same
+        // visible value).
+        private static bool EqF2(double a, double b) => Math.Round(a, 2) == Math.Round(b, 2);
+        private static bool EqF1(double a, double b) => Math.Round(a, 1) == Math.Round(b, 1);
+        private static bool EqI (double a, double b) => Math.Round(a, 0) == Math.Round(b, 0);
 
         private enum EffectField { Audio, Engine, Bumps, Traction, Shift, Abs, PitLimiter, Drs, Collision }
 
@@ -3035,7 +3042,8 @@ namespace TrueforceForAll.Plugin
                 && EqF2(a.ActivationAmp,  b.ActivationAmp)
                 && EqI (a.SustainedFreq,  b.SustainedFreq)
                 && EqF2(a.SustainedAmp,   b.SustainedAmp)
-                && a.Waveform == b.Waveform;
+                && a.Waveform          == b.Waveform
+                && a.SustainedWaveform == b.SustainedWaveform;
         }
         private static bool Eq(CollisionSettings a, CollisionSettings b)
         {

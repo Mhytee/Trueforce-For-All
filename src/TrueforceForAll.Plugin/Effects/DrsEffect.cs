@@ -47,7 +47,16 @@ namespace TrueforceForAll.Plugin.Effects
         /// the sustained component (chirp-only mode).</summary>
         public float SustainedAmp { get; set; } = 0.12f;
 
+        /// <summary>Waveform shape for the activation chirp ("blip" on the
+        /// rising edge).</summary>
         public Waveform Waveform { get; set; } = Waveform.Sine;
+
+        /// <summary>Waveform shape for the sustained tone ("trail" while
+        /// DRS stays open). Split off from <see cref="Waveform"/> in 0.1.3
+        /// so each layer can pick the shape that suits it; pre-0.1.3
+        /// presets had a single shared waveform which deserializes here
+        /// as the default Sine.</summary>
+        public Waveform SustainedWaveform { get; set; } = Waveform.Sine;
 
         private const double SampleRate = 4000.0;
 
@@ -98,7 +107,8 @@ namespace TrueforceForAll.Plugin.Effects
             float aAmp = ActivationAmp * Gain;
             float sAmp = SustainedAmp  * Gain * Math.Max(0f, SustainedDuckMultiplier);
             int total  = _envelopeTotal;
-            Waveform w = Waveform;
+            Waveform aW = Waveform;
+            Waveform sW = SustainedWaveform;
 
             for (int i = 0; i < count; i++)
             {
@@ -108,7 +118,7 @@ namespace TrueforceForAll.Plugin.Effects
                 if (_envelopeRemaining > 0 && total > 0)
                 {
                     float env = (float)_envelopeRemaining / total;
-                    sample += SampleAt(w, _activationPhase) * env * aAmp;
+                    sample += SampleAt(aW, _activationPhase) * env * aAmp;
                     _activationPhase += aStep;
                     if (_activationPhase >= 1.0) _activationPhase -= Math.Floor(_activationPhase);
                     _envelopeRemaining--;
@@ -117,7 +127,7 @@ namespace TrueforceForAll.Plugin.Effects
                 // Sustained tone while held
                 if (_drsHeld && sAmp > 0f)
                 {
-                    sample += SampleAt(w, _sustainedPhase) * sAmp;
+                    sample += SampleAt(sW, _sustainedPhase) * sAmp;
                     _sustainedPhase += sStep;
                     if (_sustainedPhase >= 1.0) _sustainedPhase -= Math.Floor(_sustainedPhase);
                 }
