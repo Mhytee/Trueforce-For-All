@@ -1867,33 +1867,36 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>UI hook: persist the Forza section and rebind the listener
-        /// if the active source is Forza. Settings are saved unconditionally;
-        /// the source rebind is a no-op when Forza isn't currently active.</summary>
+        /// when needed. Settings are saved unconditionally. The source is
+        /// rebuilt whenever either (a) a Forza source is currently running
+        /// (so port/bind/forward changes take effect, or a disable tears it
+        /// down) or (b) the new settings now say we should be listening (so
+        /// flipping AlwaysListen on starts the source without waiting for a
+        /// game change).</summary>
         public void ApplyForzaSettings()
         {
             if (Settings?.Forza == null) return;
             this.SaveCommonSettings("GeneralSettings", Settings);
 
-            // Re-evaluate source choice for the active game so a port change
-            // takes effect immediately. SwapTelemetrySource handles the case
-            // where Forza isn't currently active (no-op) and the case where
-            // it's active (tear down + rebind on new port).
-            if (!string.IsNullOrEmpty(_activeGame)
-                && (IsForzaGameName(_activeGame)
-                    || (Settings.Forza.AlwaysListen && Settings.Forza.Enabled)))
+            bool currentlyForza = _telemetrySource is ForzaUdpTelemetrySource;
+            bool shouldListen   = (Settings.Forza.AlwaysListen && Settings.Forza.Enabled)
+                               || (!string.IsNullOrEmpty(_activeGame) && IsForzaGameName(_activeGame));
+            if (!currentlyForza && !shouldListen) return;
+
+            // Route through the SimHub fallback first so the old source's
+            // dispose runs cleanly before SwapTelemetrySource (re)builds.
+            // SwapTelemetrySource decides what to attach next based on the
+            // new settings + active game; if we're disabling, it'll fall
+            // through to a non-Forza source (F1 if applicable, else SimHub).
+            if (currentlyForza)
             {
-                // Force a rebuild by routing through the existing fallback
-                // first so the dispose path runs cleanly.
-                if (_telemetrySource is ForzaUdpTelemetrySource)
-                {
-                    var oldFz = _telemetrySource;
-                    if (oldFz != null) oldFz.OnFrame = null;
-                    _simHubSource.OnFrame = DispatchFrame;
-                    _telemetrySource = _simHubSource;
-                    try { oldFz?.Dispose(); } catch { }
-                }
-                SwapTelemetrySource(_activeGame);
+                var oldFz = _telemetrySource;
+                oldFz.OnFrame = null;
+                _simHubSource.OnFrame = DispatchFrame;
+                _telemetrySource = _simHubSource;
+                try { oldFz.Dispose(); } catch { }
             }
+            SwapTelemetrySource(_activeGame);
         }
 
         /// <summary>Same shape as ApplyForzaSettings, for the F1 source.</summary>
@@ -1902,20 +1905,20 @@ namespace TrueforceForAll.Plugin
             if (Settings?.F1 == null) return;
             this.SaveCommonSettings("GeneralSettings", Settings);
 
-            if (!string.IsNullOrEmpty(_activeGame)
-                && (IsF1GameName(_activeGame)
-                    || (Settings.F1.AlwaysListen && Settings.F1.Enabled)))
+            bool currentlyF1 = _telemetrySource is F1UdpTelemetrySource;
+            bool shouldListen = (Settings.F1.AlwaysListen && Settings.F1.Enabled)
+                             || (!string.IsNullOrEmpty(_activeGame) && IsF1GameName(_activeGame));
+            if (!currentlyF1 && !shouldListen) return;
+
+            if (currentlyF1)
             {
-                if (_telemetrySource is F1UdpTelemetrySource)
-                {
-                    var oldF1 = _telemetrySource;
-                    if (oldF1 != null) oldF1.OnFrame = null;
-                    _simHubSource.OnFrame = DispatchFrame;
-                    _telemetrySource = _simHubSource;
-                    try { oldF1?.Dispose(); } catch { }
-                }
-                SwapTelemetrySource(_activeGame);
+                var oldF1 = _telemetrySource;
+                oldF1.OnFrame = null;
+                _simHubSource.OnFrame = DispatchFrame;
+                _telemetrySource = _simHubSource;
+                try { oldF1.Dispose(); } catch { }
             }
+            SwapTelemetrySource(_activeGame);
         }
 
         public Control GetWPFSettingsControl(PluginManager pluginManager) => new SettingsControl(this);

@@ -68,6 +68,17 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 4),
+                Title = "Bug fix",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Headline = "Forza/F1 UDP settings take effect without restarting SimHub",
+                        Description = "Changing the listen port, bind address, or AlwaysListen toggle while a listener was running could leave a stale socket bound to the old port (or keep listening after AlwaysListen was turned off) until SimHub was restarted. Settings changes now rebind the socket within about a second in every combination of game-running and AlwaysListen state.",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 3),
                 Title = "Advanced settings + polish",
                 Entries = new List<ChangelogEntry>
