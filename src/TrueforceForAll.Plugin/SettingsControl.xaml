@@ -1516,21 +1516,6 @@
                         ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
             </StackPanel>
 
-            <!-- Advanced settings entrypoint. Opens a modal hosting the three
-                 Expanders parked invisibly in AdvancedSettingsHost below
-                 (Performance, Sidechain ducking, Diagnostics). The Expanders
-                 stay in this XAML so InitializeComponent still produces named
-                 fields for every control inside them and the per-control
-                 event handlers in code-behind keep working without changes.
-                 The Click handler re-parents the host into a Window and
-                 restores it on close. -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button x:Name="OpenAdvancedSettingsButton" Content="Advanced settings…"
-                        Width="180" Height="28"
-                        Click="OpenAdvancedSettings_Click"
-                        ToolTip="Performance / latency tuning, sidechain ducking, and diagnostics. Rarely needed for day-to-day tuning."/>
-            </StackPanel>
-
             <!-- Support development -->
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Support development" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" FontSize="12"
@@ -1591,6 +1576,22 @@
                 <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
                         Click="OpenRepo_Click"
                         ToolTip="github.com/Mhytee/Trueforce-For-All"/>
+            </StackPanel>
+
+            <!-- Advanced settings entrypoint. Opens a modal hosting the three
+                 Expanders parked invisibly in AdvancedSettingsHost below
+                 (Performance, Sidechain ducking, Diagnostics). The Click
+                 handler re-parents the host into a Window and restores it
+                 on close, which keeps every existing per-control event
+                 handler reachable without changes. -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Advanced" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                Text="Performance / latency tuning, sidechain ducking, and diagnostics. Rarely needed for day-to-day tuning."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Button x:Name="OpenAdvancedSettingsButton" Content="Advanced settings…"
+                        Width="180" Height="28"
+                        Click="OpenAdvancedSettings_Click"
+                        ToolTip="Open the advanced settings dialog."/>
             </StackPanel>
 
             <!-- Hidden host for the Advanced Settings modal contents. Lives
