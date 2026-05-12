@@ -6,7 +6,7 @@ Logitech ships Trueforce for only a handful of officially-supported titles. This
 plugin makes it work everywhere SimHub does. Built on top of the wire
 protocol reverse-engineered by the [mescon Linux driver project][mescon].
 
-> **Status:** v0.1.0, actively in development. The plugin is functional today; the
+> **Status:** Actively in development. The plugin is functional today; the
 > default presets are still being tuned. Feedback welcome.
 
 ## Supported wheels
