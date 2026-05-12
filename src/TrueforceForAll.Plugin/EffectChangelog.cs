@@ -68,6 +68,33 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 2),
+                Title = "Settings panel + modal polish",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Headline = "Manage presets and Set-as-default are now real buttons",
+                        Description = "Promoted from understated text links to standard buttons so the primary preset actions stand out from the secondary 'Save as new' / 'Delete' / 'Clear default' links.",
+                    },
+                    new ChangelogEntry {
+                        Headline = "Update dialog renders Markdown release notes",
+                        Description = "GitHub release bodies use Markdown for headings and bullet lists; the update dialog now renders those instead of dumping the raw '##' and '-' characters as plain text.",
+                    },
+                    new ChangelogEntry {
+                        Headline = "Update now button is green",
+                        Description = "Confirm-action coloring on the primary button in the update dialog. Dismiss stays neutral.",
+                    },
+                    new ChangelogEntry {
+                        Headline = "All plugin dialogs paint in the SimHub dark theme",
+                        Description = "The Custom Engine editor, Manage Presets dialog, and every code-behind prompt now match the dark chrome of the host instead of falling back to system defaults (white background, black text).",
+                    },
+                    new ChangelogEntry {
+                        Headline = "Tidied spacing in the settings panel",
+                        Description = "ABS / Pit limiter / DRS / Collision sat further apart than the earlier effects; standardized. Performance and Diagnostics get the same treatment, with a real gap before the Presets section so it doesn't read as part of Diagnostics.",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 1),
                 Title = "Polish pass on the updater path",
                 Entries = new List<ChangelogEntry>

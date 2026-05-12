@@ -29,7 +29,7 @@ namespace TrueforceForAll.Plugin
     // PluginDescription is a compile-time constant attribute, so the version
     // must be hard-coded here. Keep it in sync with <Version> in the csproj
     // and the latest GitHub release tag on every bump.
-    [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO and RS50 wheels. (v0.1.1)")]
+    [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO and RS50 wheels. (v0.1.2)")]
     [PluginAuthor("Mhytee")]
     [PluginName("Trueforce For All")]
     public sealed class TrueforcePlugin : IDataPlugin, IWPFSettingsV2
