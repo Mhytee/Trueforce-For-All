@@ -104,13 +104,6 @@ Source: "{#UsbPcapSetup}"; DestDir: "{app}\vendor"; DestName: "USBPcapSetup.exe"
 ; own choice (preserves disable/hide on upgrade installs).
 Source: "RegisterPlugin.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
-; PowerShell helper for the postinstall "Launch SimHub now" action.
-; Launches SimHubWPF.exe and then calls ShowWindow(SW_RESTORE) +
-; SetForegroundWindow on the new process's main window once it appears,
-; so users with the "Start minimized" preference still see SimHub come
-; up as a window. See script comments for details.
-Source: "LaunchSimHub.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall
-
 ; License redistribution for the bundled USBPcap.
 Source: "USBPcap-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 
@@ -144,28 +137,24 @@ Filename: "powershell.exe"; \
 ; Postinstall checkbox on the Finished page: launch SimHub when the user
 ; clicks Finish (default checked).
 ;
-; Earlier iterations of this step tried direct exec, shellexec, and
-; "cmd /c start" in turn. Each surfaced a different failure mode (headless
-; process, stranded-behind-the-wizard window, or a window that respected
-; the user's "Start minimized" preference and went straight to the
-; taskbar). LaunchSimHub.ps1 is the durable fix: it spawns SimHubWPF.exe,
-; waits for the main window to appear, then forces ShowWindow(SW_RESTORE)
-; + SetForegroundWindow so the window comes up even when SimHub's own
-; StartMinimized user setting would otherwise self-minimize it.
+; We launch via "cmd /c start" rather than executing SimHubWPF.exe
+; directly. Direct CreateProcess from the elevated installer with
+; runasoriginaluser was producing a headless SimHub process (alive in
+; Task Manager, no visible window) in 0.1.0-localtest8. cmd /c start
+; spawns through the shell's normal launch path which avoids that.
 ;
-;   runasoriginaluser  drops the admin token; SimHub (and its parent
-;                      PowerShell process) run in the user's normal
-;                      context.
-;   nowait             return immediately after launching PowerShell;
-;                      the script does its own 15s wait-for-window loop
-;                      detached from the installer.
-;   skipifsilent       no-op on /SILENT installs.
-;   runhidden          keep PowerShell off-screen; only SimHub's window
-;                      should be visible to the user.
-Filename: "powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\LaunchSimHub.ps1"" -SimHubExe ""{app}\SimHubWPF.exe"""; \
+; If the user has SimHub's "Start minimized" preference enabled,
+; SimHub will minimize itself to the taskbar after launch regardless
+; of how we start it. An earlier revision shipped a PowerShell shim
+; that polled for the window and called ShowWindow + SetForegroundWindow
+; to overrule the minimize, but SimHub re-applies its preference late
+; in WPF init and would re-minimize after our restore. The Finished
+; page text (set in CurPageChanged below) tells the user to look at
+; the taskbar in that case.
+Filename: "{cmd}"; \
+    Parameters: "/c start """" /D ""{app}"" ""{app}\SimHubWPF.exe"""; \
     Description: "Launch SimHub now"; \
-    Flags: postinstall nowait skipifsilent runasoriginaluser runhidden
+    Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [Code]
 const
@@ -522,6 +511,7 @@ begin
     WizardForm.FinishedLabel.Caption :=
       'Make sure Logitech G HUB is closed before launching SimHub. G HUB claims the wheel''s HID interface and will block this plugin.' + #13#10 + #13#10 +
       'Trueforce For All has been enabled and pinned to SimHub''s sidebar automatically. Click "Launch SimHub now" below, then drive a supported game and tune via the plugin''s settings panel.' + #13#10 + #13#10 +
+      'If you have "Start minimized" enabled in SimHub, the window will open minimized to the taskbar. Click the SimHub icon in the taskbar to bring it up.' + #13#10 + #13#10 +
       'If the plugin doesn''t appear in the sidebar, click "Add/remove feature" at the bottom left of the SimHub window and enable Trueforce For All from the list.';
   end;
 end;
