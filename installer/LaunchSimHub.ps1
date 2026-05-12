@@ -57,6 +57,65 @@ try {
     exit 0
 }
 
+# Visible "Launching SimHub..." progress window. SimHub's cold start takes
+# several seconds on most rigs (more on first-run icon-cache scans), and
+# without this users see no visible feedback at all between clicking
+# Finish and SimHub's window appearing. Window is topmost + fixed-dialog
+# so it can't be lost behind other apps and reads as a system status
+# rather than a regular window the user might dismiss. Closed once the
+# foreground dance below finishes.
+$splash = $null
+try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    $splash = New-Object System.Windows.Forms.Form
+    $splash.Text            = 'Launching SimHub...'
+    $splash.Size            = New-Object System.Drawing.Size(420, 130)
+    $splash.StartPosition   = 'CenterScreen'
+    $splash.FormBorderStyle = 'FixedDialog'
+    $splash.MaximizeBox     = $false
+    $splash.MinimizeBox     = $false
+    $splash.ControlBox      = $false
+    $splash.TopMost         = $true
+    $splash.ShowInTaskbar   = $false
+    $splash.BackColor       = [System.Drawing.Color]::FromArgb(0x2A, 0x2A, 0x2A)
+    $splash.ForeColor       = [System.Drawing.Color]::FromArgb(0xEA, 0xEA, 0xEA)
+
+    $msg = New-Object System.Windows.Forms.Label
+    $msg.Text     = 'Starting SimHub. This usually takes a few seconds.'
+    $msg.AutoSize = $false
+    $msg.Location = New-Object System.Drawing.Point(20, 18)
+    $msg.Size     = New-Object System.Drawing.Size(380, 22)
+    $msg.ForeColor = $splash.ForeColor
+    $splash.Controls.Add($msg)
+
+    $bar = New-Object System.Windows.Forms.ProgressBar
+    $bar.Style                 = 'Marquee'
+    $bar.MarqueeAnimationSpeed = 30
+    $bar.Location              = New-Object System.Drawing.Point(20, 50)
+    $bar.Size                  = New-Object System.Drawing.Size(380, 18)
+    $splash.Controls.Add($bar)
+
+    $splash.Show()
+    [System.Windows.Forms.Application]::DoEvents()
+    Write-Log "Splash shown."
+} catch {
+    Write-Log "Splash creation threw: $($_.Exception.Message)"
+    $splash = $null
+}
+
+function Pump {
+    if ($null -ne $splash -and -not $splash.IsDisposed) {
+        try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+    }
+}
+
+function Close-Splash {
+    if ($null -ne $splash -and -not $splash.IsDisposed) {
+        try { $splash.Close(); $splash.Dispose() } catch {}
+    }
+}
+
 # Compile inline P/Invoke. Includes EnumWindows so we can find hidden
 # top-level windows that Process.MainWindowHandle misses.
 Add-Type -ErrorAction SilentlyContinue @'
@@ -142,7 +201,9 @@ $start = Get-Date
 $target = $null
 $targetPid = 0
 do {
+    Pump
     Start-Sleep -Milliseconds 300
+    Pump
     $procs = Get-Process -Name 'SimHubWPF' -ErrorAction SilentlyContinue
     if (-not $procs) { continue }
     foreach ($p in $procs) {
@@ -183,6 +244,7 @@ if ($null -eq $target) {
     } else {
         Write-Log "  SimHubWPF process not running."
     }
+    Close-Splash
     exit 0
 }
 
@@ -249,5 +311,6 @@ if ($iconic -or -not $visible) {
     }
 }
 
+Close-Splash
 Write-Log "Done."
 exit 0
