@@ -1236,117 +1236,8 @@
 
             </StackPanel> <!-- /TelemetryEffectsPanel -->
 
-            <!-- Sidechain ducking. Collapsed Expander, sits below the
-                 telemetry effects with Performance and Presets so it groups
-                 with other "global mixing / system" knobs rather than
-                 visually splitting Audio from the telemetry voices. -->
-            <Expander x:Name="DuckingExpander" IsExpanded="False" Margin="0,0,0,4">
-                <Expander.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Sidechain ducking" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        <Button x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                        <Button x:Name="DuckingSaveBtn"   Content="Save…" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                    </StackPanel>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                        Text="When transient effects (gear shift, ABS, road bumps, traction loss) fire, continuous effects (engine pulse, audio capture) duck to make room."/>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Depth:" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
-                                    Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                                    TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
-                    </Grid>
-                    <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
-                        <Expander.Header>
-                            <TextBlock Text="Advanced (envelope)" FontSize="12"/>
-                        </Expander.Header>
-                        <StackPanel Margin="0,8,0,0">
-                            <Grid Margin="0,0,0,4">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Attack (ms):" Style="{StaticResource LabelText}"/>
-                                <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
-                                            Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
-                                            TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
-                            </Grid>
-                            <Grid Margin="0,0,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Release (ms):" Style="{StaticResource LabelText}"/>
-                                <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
-                                            Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
-                                            TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
-                            </Grid>
-                        </StackPanel>
-                    </Expander>
-                </StackPanel>
-            </Expander>
-
-            <!-- Performance / latency tuning. Per-machine, NOT preset-saved
-                 (a friend's CPU/scheduler is different from yours). Collapsed
-                 Expander since most users never need to touch it. -->
-            <Expander x:Name="PerformanceExpander" IsExpanded="False" Margin="0,0,0,4">
-                <Expander.Header>
-                    <TextBlock Text="Performance" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                        Text="Smaller ring buffers = less latency between game and wheel, but require Windows to wake our threads on time. Auto starts at the smallest sizes and ratchets up if dropouts occur (one-way; survived size persists across sessions). Manual locks specific sizes — useful for streamers who want guaranteed-stable behavior, or to force-test the lowest values."/>
-
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Mode:" VerticalAlignment="Center" Opacity="0.7"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <RadioButton x:Name="PerfAutoRadio"   Content="Auto" GroupName="PerfMode"
-                                         Margin="0,0,16,0" VerticalAlignment="Center"
-                                         ToolTip="Start at smallest ring sizes; ratchet up on persistent dropouts. Survived size is remembered across sessions."
-                                         Checked="PerfMode_Changed"/>
-                            <RadioButton x:Name="PerfManualRadio" Content="Manual" GroupName="PerfMode"
-                                         Margin="0,0,16,0" VerticalAlignment="Center"
-                                         ToolTip="Lock the slider values. No automatic changes. Use for streaming or force-testing."
-                                         Checked="PerfMode_Changed"/>
-                            <Button x:Name="PerfResetButton" Content="Reset to lowest" Padding="10,2" VerticalAlignment="Center"
-                                    ToolTip="Drop both rings back to the smallest configured value. In Auto mode the ratchet will re-discover whether your machine can hold them."
-                                    Click="PerfReset_Click"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Trueforce ring:" VerticalAlignment="Center" Opacity="0.7"
-                                   ToolTip="Sample buffer between the audio mixer and the USB stream. Smaller = lower wheel latency, but Windows must wake the stream thread on time."/>
-                        <Slider     Grid.Column="1" x:Name="PerfTfRingSlider"
-                                    Minimum="8" Maximum="64" SmallChange="8" LargeChange="8"
-                                    TickFrequency="8" IsSnapToTickEnabled="True"
-                                    ValueChanged="PerfTfRingSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="PerfTfRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="8 (2ms)"/>
-                    </Grid>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Audio ring:" VerticalAlignment="Center" Opacity="0.7"
-                                   ToolTip="Sample buffer between WASAPI loopback and the audio mixer. WASAPI typically delivers ~12 decimated samples per ~3ms callback; 16 fits that with headroom. Setting 8 only works if your audio driver supports a ~2ms WASAPI period — uncommon. If you set 8 and hear continuous clicks, the auto-ratchet (Auto mode) will bump you back up."/>
-                        <Slider     Grid.Column="1" x:Name="PerfAudioRingSlider"
-                                    Minimum="8" Maximum="128" SmallChange="8" LargeChange="8"
-                                    TickFrequency="8" IsSnapToTickEnabled="True"
-                                    ValueChanged="PerfAudioRingSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="PerfAudioRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="16 (4ms)"/>
-                    </Grid>
-
-                    <Grid Margin="0,8,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Live counters:" VerticalAlignment="Top" Opacity="0.7" Margin="0,2,0,0"/>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock x:Name="PerfCountersText" FontSize="11" Opacity="0.8"
-                                       Text="Trueforce ring: — underruns/min · Audio ring: — glitches/min"/>
-                            <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,2,0,0"
-                                       Text="Counters tally events in a rolling 60-second window. If they're going up, your machine is glitching at the current ring size — Auto mode will bump it up."/>
-                        </StackPanel>
-                    </Grid>
-                </StackPanel>
-            </Expander>
+            <!-- Sidechain ducking + Performance moved into the Advanced
+                 Settings modal. See AdvancedSettingsHost near the bottom. -->
 
             <!-- Forza Data Out (UDP). Forza titles emit telemetry over UDP
                  instead of shared memory; the user enables UDP RACE TELEMETRY
@@ -1575,53 +1466,8 @@
             </Border>
             </StackPanel> <!-- /F1Section -->
 
-            <!-- Diagnostics. Sits between game-config sections (above) and
-                 preset/sharing/support sections (below). Collapsed by default,
-                 only opened when troubleshooting. -->
-            <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,16">
-                <Expander.Header>
-                    <TextBlock Text="Diagnostics" FontSize="13" FontWeight="SemiBold"/>
-                </Expander.Header>
-                <Grid Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Wheel:" Style="{StaticResource LabelText}"/>
-                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="(checking...)"/>
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Stream:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="StreamText" Text="(checking...)" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="FFB pass-through:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
-                        <TextBlock x:Name="FfbTapText" Text="(checking...)" VerticalAlignment="Center"/>
-                        <!-- Visible only when USBPcap can't be located. Lets users
-                             point at a non-standard install, or reinstall the
-                             driver from the bundled setup without re-running our
-                             installer. Toggled from code-behind on the tick. -->
-                        <Button x:Name="UsbPcapBrowseButton" Content="Browse..."
-                                Style="{StaticResource LinkButton}" Margin="10,0,0,0"
-                                Visibility="Collapsed"
-                                Click="UsbPcapBrowse_Click"
-                                ToolTip="Point at USBPcapCMD.exe if USBPcap is installed somewhere off the default Program Files path."/>
-                        <Button x:Name="UsbPcapReinstallButton" Content="Reinstall"
-                                Style="{StaticResource LinkButton}" Margin="10,0,0,0"
-                                Visibility="Collapsed"
-                                Click="UsbPcapReinstall_Click"
-                                ToolTip="Run the bundled USBPcap installer (requires admin). Use this if USBPcap was uninstalled or the install is broken."/>
-                    </StackPanel>
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Telemetry:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TelemetrySourceText" Text="(checking...)" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Active sources:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                    <TextBlock Grid.Row="4" Grid.Column="1" x:Name="VoicesText" Text="0" Margin="0,4,0,0"/>
-                </Grid>
-            </Expander>
+            <!-- Diagnostics moved into the Advanced Settings modal. See
+                 AdvancedSettingsHost near the bottom. -->
 
             <!-- Presets. The preset library, default-binding, and per-game
                  defaults. The active preset dropdown + ★ Save preset button
@@ -1668,6 +1514,21 @@
                         ToolTip="Pick which presets and car tunings to bundle into a shareable file."/>
                 <Button x:Name="ImportButton" Content="Import…" Width="140" Height="28" Click="Import_Click"
                         ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
+            </StackPanel>
+
+            <!-- Advanced settings entrypoint. Opens a modal hosting the three
+                 Expanders parked invisibly in AdvancedSettingsHost below
+                 (Performance, Sidechain ducking, Diagnostics). The Expanders
+                 stay in this XAML so InitializeComponent still produces named
+                 fields for every control inside them and the per-control
+                 event handlers in code-behind keep working without changes.
+                 The Click handler re-parents the host into a Window and
+                 restores it on close. -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Button x:Name="OpenAdvancedSettingsButton" Content="Advanced settings…"
+                        Width="180" Height="28"
+                        Click="OpenAdvancedSettings_Click"
+                        ToolTip="Performance / latency tuning, sidechain ducking, and diagnostics. Rarely needed for day-to-day tuning."/>
             </StackPanel>
 
             <!-- Support development -->
@@ -1730,6 +1591,171 @@
                 <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
                         Click="OpenRepo_Click"
                         ToolTip="github.com/Mhytee/Trueforce-For-All"/>
+            </StackPanel>
+
+            <!-- Hidden host for the Advanced Settings modal contents. Lives
+                 invisibly at the tail of the main panel so InitializeComponent
+                 still wires up every named field below; OpenAdvancedSettings_Click
+                 re-parents this StackPanel into a Window for display and
+                 restores it here when the user closes the dialog. -->
+            <StackPanel x:Name="AdvancedSettingsHost" Visibility="Collapsed">
+
+                <!-- Performance / latency tuning. Per-machine, NOT preset-saved
+                     (a friend's CPU/scheduler is different from yours).
+                     Collapsed Expander since most users never need to touch it. -->
+                <Expander x:Name="PerformanceExpander" IsExpanded="False" Margin="0,0,0,8">
+                    <Expander.Header>
+                        <TextBlock Text="Performance" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                            Text="Smaller ring buffers = less latency between game and wheel, but require Windows to wake our threads on time. Auto starts at the smallest sizes and ratchets up if dropouts occur (one-way; survived size persists across sessions). Manual locks specific sizes (useful for streamers who want guaranteed-stable behavior, or to force-test the lowest values)."/>
+
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Mode:" VerticalAlignment="Center" Opacity="0.7"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <RadioButton x:Name="PerfAutoRadio"   Content="Auto" GroupName="PerfMode"
+                                             Margin="0,0,16,0" VerticalAlignment="Center"
+                                             ToolTip="Start at smallest ring sizes; ratchet up on persistent dropouts. Survived size is remembered across sessions."
+                                             Checked="PerfMode_Changed"/>
+                                <RadioButton x:Name="PerfManualRadio" Content="Manual" GroupName="PerfMode"
+                                             Margin="0,0,16,0" VerticalAlignment="Center"
+                                             ToolTip="Lock the slider values. No automatic changes. Use for streaming or force-testing."
+                                             Checked="PerfMode_Changed"/>
+                                <Button x:Name="PerfResetButton" Content="Reset to lowest" Padding="10,2" VerticalAlignment="Center"
+                                        ToolTip="Drop both rings back to the smallest configured value. In Auto mode the ratchet will re-discover whether your machine can hold them."
+                                        Click="PerfReset_Click"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Trueforce ring:" VerticalAlignment="Center" Opacity="0.7"
+                                       ToolTip="Sample buffer between the audio mixer and the USB stream. Smaller = lower wheel latency, but Windows must wake the stream thread on time."/>
+                            <Slider     Grid.Column="1" x:Name="PerfTfRingSlider"
+                                        Minimum="8" Maximum="64" SmallChange="8" LargeChange="8"
+                                        TickFrequency="8" IsSnapToTickEnabled="True"
+                                        ValueChanged="PerfTfRingSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="PerfTfRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="8 (2ms)"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Audio ring:" VerticalAlignment="Center" Opacity="0.7"
+                                       ToolTip="Sample buffer between WASAPI loopback and the audio mixer. WASAPI typically delivers ~12 decimated samples per ~3ms callback; 16 fits that with headroom. Setting 8 only works if your audio driver supports a ~2ms WASAPI period (uncommon). If you set 8 and hear continuous clicks, the auto-ratchet (Auto mode) will bump you back up."/>
+                            <Slider     Grid.Column="1" x:Name="PerfAudioRingSlider"
+                                        Minimum="8" Maximum="128" SmallChange="8" LargeChange="8"
+                                        TickFrequency="8" IsSnapToTickEnabled="True"
+                                        ValueChanged="PerfAudioRingSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="PerfAudioRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="16 (4ms)"/>
+                        </Grid>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Live counters:" VerticalAlignment="Top" Opacity="0.7" Margin="0,2,0,0"/>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock x:Name="PerfCountersText" FontSize="11" Opacity="0.8"
+                                           Text="Trueforce ring: — underruns/min · Audio ring: — glitches/min"/>
+                                <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,2,0,0"
+                                           Text="Counters tally events in a rolling 60-second window. If they're going up, your machine is glitching at the current ring size; Auto mode will bump it up."/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Sidechain ducking. When transient effects fire,
+                     continuous effects duck to make room. -->
+                <Expander x:Name="DuckingExpander" IsExpanded="False" Margin="0,0,0,8">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Sidechain ducking" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="DuckingSaveBtn"   Content="Save…" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                            Text="When transient effects (gear shift, ABS, road bumps, traction loss) fire, continuous effects (engine pulse, audio capture) duck to make room."/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Depth:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
+                                        Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+                        </Grid>
+                        <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
+                            <Expander.Header>
+                                <TextBlock Text="Advanced (envelope)" FontSize="12"/>
+                            </Expander.Header>
+                            <StackPanel Margin="0,8,0,0">
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Attack (ms):" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
+                                                Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
+                                                TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Release (ms):" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
+                                                Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
+                                                TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Diagnostics. Wheel / stream / FFB / telemetry status.
+                     Useful for troubleshooting; rarely needed otherwise. -->
+                <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,8">
+                    <Expander.Header>
+                        <TextBlock Text="Diagnostics" FontSize="13" FontWeight="SemiBold"/>
+                    </Expander.Header>
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Wheel:" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="(checking...)"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Stream:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="StreamText" Text="(checking...)" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="FFB pass-through:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock x:Name="FfbTapText" Text="(checking...)" VerticalAlignment="Center"/>
+                            <!-- Visible only when USBPcap can't be located. Lets users
+                                 point at a non-standard install, or reinstall the
+                                 driver from the bundled setup without re-running our
+                                 installer. Toggled from code-behind on the tick. -->
+                            <Button x:Name="UsbPcapBrowseButton" Content="Browse..."
+                                    Style="{StaticResource LinkButton}" Margin="10,0,0,0"
+                                    Visibility="Collapsed"
+                                    Click="UsbPcapBrowse_Click"
+                                    ToolTip="Point at USBPcapCMD.exe if USBPcap is installed somewhere off the default Program Files path."/>
+                            <Button x:Name="UsbPcapReinstallButton" Content="Reinstall"
+                                    Style="{StaticResource LinkButton}" Margin="10,0,0,0"
+                                    Visibility="Collapsed"
+                                    Click="UsbPcapReinstall_Click"
+                                    ToolTip="Run the bundled USBPcap installer (requires admin). Use this if USBPcap was uninstalled or the install is broken."/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Telemetry:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TelemetrySourceText" Text="(checking...)" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Active sources:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="VoicesText" Text="0" Margin="0,4,0,0"/>
+                    </Grid>
+                </Expander>
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

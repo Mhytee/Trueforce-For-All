@@ -4083,6 +4083,71 @@ namespace TrueforceForAll.Plugin
             ShowUpdateModal();
         }
 
+        // ---------- Advanced settings modal ----------
+
+        // Performance, Sidechain ducking, and Diagnostics live invisibly in
+        // AdvancedSettingsHost at the tail of SettingsControl.xaml. The host
+        // is hidden by default. On click we move (re-parent) the host into
+        // a Window's content for display; on close we put it back where it
+        // came from. This keeps every existing per-control event handler in
+        // this code-behind reachable as-is (no field-routing changes), and
+        // means RefreshFromPlugin's per-tick text updates still hit the
+        // diagnostic / performance / ducking widgets whether the modal is
+        // open or closed.
+        private void OpenAdvancedSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (AdvancedSettingsHost == null) return;
+
+            // Remember where the host lives in the main panel so we can
+            // restore it exactly when the modal closes.
+            var originalParent = AdvancedSettingsHost.Parent as Panel;
+            int originalIndex = originalParent?.Children.IndexOf(AdvancedSettingsHost) ?? -1;
+
+            var win = new Window
+            {
+                Title = "Trueforce For All: advanced settings",
+                Width = 720,
+                Height = 640,
+                ResizeMode = ResizeMode.CanResize,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ShowInTaskbar = false,
+                Owner = Window.GetWindow(this),
+            };
+            if (win.Owner == null) win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            ApplyDarkTheme(win);
+
+            // Pull the host out of its current parent, wrap it in a scroller,
+            // and hand the scroller to the Window.
+            if (originalParent != null) originalParent.Children.Remove(AdvancedSettingsHost);
+            AdvancedSettingsHost.Visibility = Visibility.Visible;
+
+            var scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Padding = new Thickness(16),
+                Content = AdvancedSettingsHost,
+            };
+            win.Content = scroll;
+
+            win.Closed += (_, __) =>
+            {
+                // Detach from the dying window and slot the host back into
+                // the main panel at its original index. Re-collapsing keeps
+                // it invisible in the panel between modal openings.
+                scroll.Content = null;
+                AdvancedSettingsHost.Visibility = Visibility.Collapsed;
+                if (originalParent != null && !originalParent.Children.Contains(AdvancedSettingsHost))
+                {
+                    int idx = originalIndex >= 0 && originalIndex <= originalParent.Children.Count
+                        ? originalIndex
+                        : originalParent.Children.Count;
+                    originalParent.Children.Insert(idx, AdvancedSettingsHost);
+                }
+            };
+
+            win.ShowDialog();
+        }
+
         // Render a GitHub-flavored Markdown release body as a stack of styled
         // TextBlocks. Supports headings (#..######) and bullets (- / *); other
         // syntax falls through as plain text. We don't pull in a real markdown
