@@ -110,7 +110,9 @@ plugins that share those keep working.
 ## Per-game enhancements
 
 By default the plugin runs on SimHub's universal 60 Hz telemetry feed, which carries the standard fields all the core effects need.
-SimHub is free but the 60 Hz feed requires a licensed copy of SimHub, which carries a small one-time payment. Some titles read directly from the game's telemetry, bypassing SimHub's limitations and the need for a licensed copy (Assetto Corsa, Forza Horizon 4 and 5).
+SimHub is free but the 60 Hz feed requires a licensed copy of SimHub, which carries a small one-time payment. 
+
+Some titles read directly from the game's telemetry, bypassing SimHub's limitations and the need for a licensed copy (Assetto Corsa, Forza Horizon 4 and 5).
 
 **Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than SimHub's 60 Hz feed can deliver.
 
