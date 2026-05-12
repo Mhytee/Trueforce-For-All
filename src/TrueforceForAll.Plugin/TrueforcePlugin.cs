@@ -882,6 +882,66 @@ namespace TrueforceForAll.Plugin
             return EffectChangelog.EntriesNewerThan(since);
         }
 
+        /// <summary>True when LastSeenVersion is strictly older than the
+        /// running plugin's assembly version. Drives the What's new banner's
+        /// visibility independently of EffectChangelog content, so the
+        /// banner fires for any version upgrade even after we stop adding
+        /// EffectChangelog entries (GitHub release notes are canonical now).
+        /// Compares on Major.Minor.Build only because LastSeenVersion is
+        /// stamped via ToString(3); a four-component Assembly Version with
+        /// Revision=0 would otherwise read as "newer" than the parsed
+        /// three-component value (Revision=-1) and pin the banner on
+        /// forever after dismissal.</summary>
+        public bool HasUnseenChangelog
+        {
+            get
+            {
+                if (Settings == null || UpdateChecker == null) return false;
+                if (!EffectChangelog.TryParseVersion(Settings.LastSeenVersion, out var since)) return false;
+                return Compare3(UpdateChecker.CurrentVersion, since) > 0;
+            }
+        }
+
+        // 3-component Version comparison (Major.Minor.Build). Missing
+        // components on either side are treated as 0 so a freshly-parsed
+        // "0.1.7" (Build=7, Revision=-1) compares equal to an Assembly
+        // "0.1.7.0" (Build=7, Revision=0).
+        private static int Compare3(Version a, Version b)
+        {
+            if (a == null) return b == null ? 0 : -1;
+            if (b == null) return 1;
+            int c = a.Major.CompareTo(b.Major); if (c != 0) return c;
+            c = a.Minor.CompareTo(b.Minor); if (c != 0) return c;
+            int aBuild = a.Build < 0 ? 0 : a.Build;
+            int bBuild = b.Build < 0 ? 0 : b.Build;
+            return aBuild.CompareTo(bBuild);
+        }
+
+        /// <summary>Filter the fetched GitHub release list to the releases
+        /// the post-upgrade What's new modal should display: strictly newer
+        /// than LastSeenVersion, no newer than the running build, and not
+        /// prereleases. Returns empty when the fetch hasn't completed or
+        /// failed (caller falls back to EffectChangelog).</summary>
+        public IReadOnlyList<ReleaseInfo> GetGitHubReleasesForBanner()
+        {
+            if (Settings == null || UpdateChecker?.AllReleases == null
+                || UpdateChecker.AllReleases.Count == 0)
+                return Array.Empty<ReleaseInfo>();
+            if (!EffectChangelog.TryParseVersion(Settings.LastSeenVersion, out var since) || since == null)
+                return Array.Empty<ReleaseInfo>();
+            var current = UpdateChecker.CurrentVersion;
+            var list = new List<ReleaseInfo>();
+            foreach (var r in UpdateChecker.AllReleases)
+            {
+                if (r == null || r.IsPrerelease || r.Version == null) continue;
+                if (r.Version <= since) continue;
+                if (r.Version > current) continue;
+                list.Add(r);
+            }
+            list.Sort((a, b) => b.Version.CompareTo(a.Version));
+            return list;
+        }
+
         /// <summary>Stamps LastSeenVersion to the running build. Hides the
         /// banner permanently for this version. Idempotent.</summary>
         public void DismissChangelog()

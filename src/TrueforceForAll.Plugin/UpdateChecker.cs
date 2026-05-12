@@ -17,6 +17,7 @@
 //     on older Windows installs and GitHub's API drops those.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -27,10 +28,29 @@ using Newtonsoft.Json.Linq;
 
 namespace TrueforceForAll.Plugin
 {
+    /// <summary>One published GitHub release, parsed into the fields the
+    /// in-app surfaces care about. Drives both the update modal (latest
+    /// non-prerelease) and the "What's new" banner (every release in
+    /// (LastSeenVersion, CurrentVersion]).</summary>
+    public sealed class ReleaseInfo
+    {
+        public Version Version      { get; set; }
+        public string  TagName      { get; set; }
+        public string  Title        { get; set; }
+        public string  Body         { get; set; }
+        public string  HtmlUrl      { get; set; }
+        public string  DownloadUrl  { get; set; }
+        public bool    IsPrerelease { get; set; }
+    }
+
     public sealed class UpdateChecker
     {
+        // Switched from /releases/latest to /releases?per_page=50 so the
+        // What's new modal can render every release between LastSeenVersion
+        // and CurrentVersion off a single API call. 50 covers years of
+        // backlog; the project ships < 1 release/week.
         private const string ReleasesUrl =
-            "https://api.github.com/repos/Mhytee/Trueforce-For-All/releases/latest";
+            "https://api.github.com/repos/Mhytee/Trueforce-For-All/releases?per_page=50";
 
         public Version CurrentVersion { get; }
         public string  LatestVersionTag { get; private set; }
@@ -38,6 +58,13 @@ namespace TrueforceForAll.Plugin
         public string  DownloadUrl      { get; private set; }
         public string  ReleasePageUrl   { get; private set; }
         public string  LastError        { get; private set; }
+
+        // Full list of published releases, newest first, parsed from the
+        // /releases endpoint. Empty until CheckAsync succeeds; falls back
+        // to empty (not null) on network failure so callers can `.Count`
+        // without a null check. Includes prereleases; consumers filter.
+        public IReadOnlyList<ReleaseInfo> AllReleases { get; private set; }
+            = Array.Empty<ReleaseInfo>();
 
         public Action<string> Logger { get; set; }
 
@@ -87,15 +114,46 @@ namespace TrueforceForAll.Plugin
                     {
                         resp.EnsureSuccessStatusCode();
                         string json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        var root = JObject.Parse(json);
+                        var arr = JArray.Parse(json);
 
-                        LatestVersionTag = (string)root["tag_name"];
-                        ReleaseNotes     = (string)root["body"];
-                        ReleasePageUrl   = (string)root["html_url"];
-                        DownloadUrl      = FindExeAsset(root["assets"] as JArray);
+                        // Parse every release in one pass. The list endpoint
+                        // returns newest-first; preserve that order so the
+                        // What's new modal can iterate without re-sorting.
+                        var list = new List<ReleaseInfo>(arr.Count);
+                        foreach (var r in arr)
+                        {
+                            string tag = (string)r["tag_name"];
+                            var ver = ParseVersion(tag);
+                            if (ver == null) continue;
+                            list.Add(new ReleaseInfo
+                            {
+                                Version      = ver,
+                                TagName      = tag,
+                                Title        = (string)r["name"],
+                                Body         = (string)r["body"],
+                                HtmlUrl      = (string)r["html_url"],
+                                DownloadUrl  = FindExeAsset(r["assets"] as JArray),
+                                IsPrerelease = (bool?)r["prerelease"] ?? false,
+                            });
+                        }
+                        AllReleases = list;
+
+                        // "Latest" for the update-available check = newest
+                        // non-prerelease. Prereleases shouldn't surface as
+                        // upgrade targets for regular users.
+                        ReleaseInfo latest = null;
+                        foreach (var r in list)
+                        {
+                            if (r.IsPrerelease) continue;
+                            if (latest == null || r.Version > latest.Version) latest = r;
+                        }
+                        LatestVersionTag = latest?.TagName;
+                        ReleaseNotes     = latest?.Body;
+                        ReleasePageUrl   = latest?.HtmlUrl;
+                        DownloadUrl      = latest?.DownloadUrl;
                         LastError        = null;
 
-                        Log($"Update check OK: latest={LatestVersionTag} current={CurrentVersion} hasUpdate={IsUpdateAvailable}");
+                        Log($"Update check OK: parsed={list.Count} latest={LatestVersionTag} current={CurrentVersion} hasUpdate={IsUpdateAvailable}");
                     }
                 }
             }

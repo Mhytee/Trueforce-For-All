@@ -1106,27 +1106,23 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Show / hide the "What's new" banner based on whether
-        /// the running build has any changelog entries newer than the
-        /// user's stamped LastSeenVersion. Idempotent. Called from
-        /// RefreshFromPlugin.</summary>
+        /// the running build is newer than the user's stamped LastSeenVersion.
+        /// Header reads "What's new in v{CurrentVersion}". Idempotent. Called
+        /// from RefreshFromPlugin.</summary>
         private void RefreshChangelogBanner()
         {
             if (_plugin == null || WhatsNewBanner == null) return;
-            var pending = _plugin.GetPendingChangelog();
-            bool show = pending != null && pending.Count > 0;
+            bool show = _plugin.HasUnseenChangelog;
             var want = show ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             if (WhatsNewBanner.Visibility != want) WhatsNewBanner.Visibility = want;
             if (show && WhatsNewBannerText != null)
             {
-                // Pick the true max across pending rather than the last item:
-                // EffectChangelog.Versions ordering has drifted from its
-                // documented oldest -> newest invariant, so positional reads
-                // can land on an older entry.
-                System.Version latest = null;
-                foreach (var v in pending)
-                    if (latest == null || v.Version > latest) latest = v.Version;
-                string desired = "What's new in v" + latest.ToString(3);
-                if (WhatsNewBannerText.Text != desired) WhatsNewBannerText.Text = desired;
+                var curr = _plugin.UpdateChecker?.CurrentVersion;
+                if (curr != null)
+                {
+                    string desired = "What's new in v" + curr.ToString(3);
+                    if (WhatsNewBannerText.Text != desired) WhatsNewBannerText.Text = desired;
+                }
             }
         }
 
@@ -4314,31 +4310,66 @@ namespace TrueforceForAll.Plugin
                 }
 
                 // Bullet rows ("- foo" / "* foo"). Use a real bullet glyph
-                // indented one step.
+                // indented one step. Inline **bold** spans get rendered as
+                // bold runs so release notes like "- **Headline.** desc"
+                // don't show literal asterisks.
                 if (trimmed.Length >= 2
                     && (trimmed[0] == '-' || trimmed[0] == '*')
                     && trimmed[1] == ' ')
                 {
-                    panel.Children.Add(new TextBlock
+                    var tb = new TextBlock
                     {
-                        Text = "• " + trimmed.Substring(2),
                         FontSize = 12,
                         Margin = new Thickness(8, 2, 0, 2),
                         TextWrapping = TextWrapping.Wrap,
-                    });
+                    };
+                    tb.Inlines.Add(new Run("• "));
+                    AppendInlineMarkdown(tb, trimmed.Substring(2));
+                    panel.Children.Add(tb);
                     continue;
                 }
 
-                // Plain paragraph line.
-                panel.Children.Add(new TextBlock
+                // Plain paragraph line. Same **bold** treatment as bullets.
+                var para = new TextBlock
                 {
-                    Text = trimmed,
                     FontSize = 12,
                     Margin = new Thickness(0, 2, 0, 2),
                     TextWrapping = TextWrapping.Wrap,
-                });
+                };
+                AppendInlineMarkdown(para, trimmed);
+                panel.Children.Add(para);
             }
             return panel;
+        }
+
+        // Append `text` to a TextBlock's Inlines, rendering **bold** runs in
+        // bold. Anything outside ** ** pairs is plain. An unclosed `**` at
+        // the end is treated as literal text rather than dropped, so a body
+        // that opens bold without closing degrades gracefully.
+        private static void AppendInlineMarkdown(TextBlock tb, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            int i = 0;
+            while (i < text.Length)
+            {
+                int boldStart = text.IndexOf("**", i, StringComparison.Ordinal);
+                if (boldStart < 0)
+                {
+                    tb.Inlines.Add(new Run(text.Substring(i)));
+                    return;
+                }
+                if (boldStart > i)
+                    tb.Inlines.Add(new Run(text.Substring(i, boldStart - i)));
+                int boldEnd = text.IndexOf("**", boldStart + 2, StringComparison.Ordinal);
+                if (boldEnd < 0)
+                {
+                    tb.Inlines.Add(new Run(text.Substring(boldStart)));
+                    return;
+                }
+                string boldText = text.Substring(boldStart + 2, boldEnd - boldStart - 2);
+                tb.Inlines.Add(new Run(boldText) { FontWeight = FontWeights.Bold });
+                i = boldEnd + 2;
+            }
         }
 
         // Manual "Check for updates" link in the header. The plugin already
@@ -4539,17 +4570,22 @@ namespace TrueforceForAll.Plugin
             ShowWhatsNewModal();
         }
 
-        /// <summary>Modal listing every changelog version newer than the
-        /// user's stamped LastSeenVersion. Closing the modal (either via
-        /// the button or by dismissing the window) stamps LastSeenVersion
-        /// to the running build, which hides the banner for this version.
-        /// Modeled on ShowUpdateModal so it inherits the same Window
-        /// chrome / centering behavior.</summary>
+        /// <summary>Modal listing every release between the user's stamped
+        /// LastSeenVersion and the running build. Prefers GitHub release
+        /// notes (canonical source: GitHub release body for each version);
+        /// falls back to the in-source EffectChangelog when the GH fetch
+        /// hasn't completed or failed, so offline / first-launch flows
+        /// still show something. Closing the modal stamps LastSeenVersion
+        /// to the running build and hides the banner for this version.</summary>
         private void ShowWhatsNewModal()
         {
             if (_plugin == null) return;
-            var pending = _plugin.GetPendingChangelog();
-            if (pending == null || pending.Count == 0) return;
+
+            var ghReleases = _plugin.GetGitHubReleasesForBanner();
+            var pending    = _plugin.GetPendingChangelog();
+            bool useGitHub = ghReleases != null && ghReleases.Count > 0;
+            bool useLocal  = !useGitHub && pending != null && pending.Count > 0;
+            if (!useGitHub && !useLocal) return;
 
             var win = new Window
             {
@@ -4594,52 +4630,75 @@ namespace TrueforceForAll.Plugin
             footer.Children.Add(gotItBtn);
             root.Children.Add(footer);
 
-            // Body: a scrolling stack of (version title) + (per-entry headline + description).
-            // Renders newest first so the most recent additions are at the top.
-            // Sort explicitly by Version instead of relying on pending's declared
-            // order, which has historically been inconsistent.
-            var ordered = new List<ChangelogVersion>(pending);
-            ordered.Sort((a, b) => b.Version.CompareTo(a.Version));
             var bodyStack = new StackPanel();
-            for (int i = 0; i < ordered.Count; i++)
+            if (useGitHub)
             {
-                var ver = ordered[i];
-                bodyStack.Children.Add(new TextBlock
+                // Render each release's GitHub body as Markdown via the same
+                // helper the update modal uses. Body is canonical; the version
+                // header is added by us so users still see a clear divider
+                // between releases even if a body forgets its own heading.
+                for (int i = 0; i < ghReleases.Count; i++)
                 {
-                    Text = "v" + ver.Version.ToString(3) + (string.IsNullOrEmpty(ver.Title) ? "" : "  ·  " + ver.Title),
-                    FontWeight = FontWeights.SemiBold,
-                    FontSize = 14,
-                    Margin = new Thickness(0, i == 0 ? 0 : 14, 0, 6),
-                });
-                if (ver.Entries != null)
-                {
-                    foreach (var entry in ver.Entries)
+                    var r = ghReleases[i];
+                    string title = string.IsNullOrEmpty(r.Title) ? ("v" + r.Version.ToString(3)) : r.Title;
+                    bodyStack.Children.Add(new TextBlock
                     {
-                        if (entry == null) continue;
-                        if (!string.IsNullOrEmpty(entry.Headline))
+                        Text = title,
+                        FontWeight = FontWeights.SemiBold,
+                        FontSize = 14,
+                        Margin = new Thickness(0, i == 0 ? 0 : 14, 0, 6),
+                    });
+                    bodyStack.Children.Add(RenderReleaseNotes(r.Body));
+                }
+            }
+            else
+            {
+                // Offline fallback: EffectChangelog. Same rendering shape as
+                // before this refactor so the in-source structured form still
+                // looks right when network is unavailable.
+                var ordered = new List<ChangelogVersion>(pending);
+                ordered.Sort((a, b) => b.Version.CompareTo(a.Version));
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    var ver = ordered[i];
+                    bodyStack.Children.Add(new TextBlock
+                    {
+                        Text = "v" + ver.Version.ToString(3) + (string.IsNullOrEmpty(ver.Title) ? "" : "  ·  " + ver.Title),
+                        FontWeight = FontWeights.SemiBold,
+                        FontSize = 14,
+                        Margin = new Thickness(0, i == 0 ? 0 : 14, 0, 6),
+                    });
+                    if (ver.Entries != null)
+                    {
+                        foreach (var entry in ver.Entries)
                         {
-                            bodyStack.Children.Add(new TextBlock
+                            if (entry == null) continue;
+                            if (!string.IsNullOrEmpty(entry.Headline))
                             {
-                                Text = "• " + entry.Headline,
-                                TextWrapping = TextWrapping.Wrap,
-                                FontSize = 12,
-                                Margin = new Thickness(0, 4, 0, 0),
-                            });
-                        }
-                        if (!string.IsNullOrEmpty(entry.Description))
-                        {
-                            bodyStack.Children.Add(new TextBlock
+                                bodyStack.Children.Add(new TextBlock
+                                {
+                                    Text = "• " + entry.Headline,
+                                    TextWrapping = TextWrapping.Wrap,
+                                    FontSize = 12,
+                                    Margin = new Thickness(0, 4, 0, 0),
+                                });
+                            }
+                            if (!string.IsNullOrEmpty(entry.Description))
                             {
-                                Text = entry.Description,
-                                TextWrapping = TextWrapping.Wrap,
-                                FontSize = 11,
-                                Opacity = 0.7,
-                                Margin = new Thickness(14, 2, 0, 0),
-                            });
+                                bodyStack.Children.Add(new TextBlock
+                                {
+                                    Text = entry.Description,
+                                    TextWrapping = TextWrapping.Wrap,
+                                    FontSize = 11,
+                                    Opacity = 0.7,
+                                    Margin = new Thickness(14, 2, 0, 0),
+                                });
+                            }
                         }
                     }
                 }
             }
+
             var notesScroll = new ScrollViewer
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
