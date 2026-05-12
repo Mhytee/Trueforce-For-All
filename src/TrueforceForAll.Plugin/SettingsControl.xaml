@@ -235,6 +235,8 @@
                 <TextBlock Text="Trueforce For All" FontSize="22" FontWeight="Bold"/>
                 <TextBlock x:Name="HeaderVersionText" Text="" FontSize="13" Opacity="0.5"
                            VerticalAlignment="Bottom" Margin="8,0,0,3"/>
+                <!-- "Check for updates" link. Hidden when an update is available;
+                     the UpdateAvailableButton takes its place. -->
                 <Button x:Name="CheckForUpdatesButton" Content="Check for updates"
                         Style="{StaticResource LinkButton}" Margin="12,0,0,3"
                         VerticalAlignment="Bottom"
@@ -242,29 +244,22 @@
                         ToolTip="Re-poll GitHub for a newer release. The plugin also checks once automatically on startup."/>
                 <TextBlock x:Name="CheckForUpdatesStatus" Text="" FontSize="11" Opacity="0.6"
                            VerticalAlignment="Bottom" Margin="8,0,0,3"/>
+                <!-- Prominent inline CTA. Hidden until UpdateChecker confirms a
+                     newer GitHub release; visibility + label are driven from
+                     RefreshFromPlugin. Click opens the same modal that the
+                     legacy banner used to open. -->
+                <Button x:Name="UpdateAvailableButton" Visibility="Collapsed"
+                        Margin="12,0,0,3" VerticalAlignment="Bottom"
+                        Padding="10,4,10,4" FontSize="12" FontWeight="SemiBold"
+                        Background="#FFB300" Foreground="#222" BorderBrush="#FFA000"
+                        BorderThickness="1" Cursor="Hand"
+                        Click="UpdateAvailableButton_Click"
+                        ToolTip="Open the update dialog (release notes + Update now button).">
+                    <TextBlock x:Name="UpdateAvailableButtonText" Text="Update available"/>
+                </Button>
             </StackPanel>
             <TextBlock Text="Brings Trueforce-style haptics to any SimHub-enabled game. Unofficial — a reverse-engineered implementation of Logitech's Trueforce protocol, not affiliated with Logitech. Supports G PRO / RS50 wheels."
                        FontSize="13" Opacity="0.7" Margin="0,0,0,12" TextWrapping="Wrap"/>
-
-            <!-- Update-available banner. Hidden until UpdateChecker confirms
-                 a newer GitHub release. Click opens a modal with the changelog
-                 and an "Update now" button that downloads + runs the new
-                 installer. -->
-            <Border x:Name="UpdateBanner" Visibility="Collapsed"
-                    Background="#FFB300" CornerRadius="4" Padding="10,8,10,8" Margin="0,0,0,10"
-                    Cursor="Hand" MouseLeftButtonUp="UpdateBanner_Click">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="UpdateBannerText" Foreground="#222"
-                               FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
-                               Text="Update available"/>
-                    <TextBlock Grid.Column="1" Foreground="#222" Opacity="0.7"
-                               FontSize="12" VerticalAlignment="Center" Text="View →"/>
-                </Grid>
-            </Border>
 
             <!-- "What's new" banner. Shown when the running build's version
                  is ahead of Settings.LastSeenVersion (i.e. the user just

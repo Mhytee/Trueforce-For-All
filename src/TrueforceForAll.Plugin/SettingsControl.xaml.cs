@@ -5,7 +5,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
@@ -593,19 +595,37 @@ namespace TrueforceForAll.Plugin
                     if (F1Section.Visibility != want) F1Section.Visibility = want;
                 }
 
-                // Update banner. Hidden until UpdateChecker confirms a newer
-                // GitHub release, then surfaces the version in its label.
+                // Header update controls. When an update is available, the
+                // "Check for updates" link + transient status hide and a
+                // prominent "Update to vX.Y.Z" button takes their place inline
+                // with the version readout. Otherwise the link stays visible
+                // so users can re-poll on demand.
                 var upd = _plugin.UpdateChecker;
-                if (UpdateBanner != null)
+                bool hasUpdate = upd != null && upd.IsUpdateAvailable;
+                if (UpdateAvailableButton != null)
                 {
-                    bool show = upd != null && upd.IsUpdateAvailable;
-                    var want = show ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-                    if (UpdateBanner.Visibility != want) UpdateBanner.Visibility = want;
-                    if (show && UpdateBannerText != null)
+                    var want = hasUpdate ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    if (UpdateAvailableButton.Visibility != want) UpdateAvailableButton.Visibility = want;
+                    if (hasUpdate && UpdateAvailableButtonText != null)
                     {
-                        string desired = $"Update available: v{upd.LatestVersionDisplay}";
-                        if (UpdateBannerText.Text != desired) UpdateBannerText.Text = desired;
+                        string desired = $"Update to v{upd.LatestVersionDisplay}  →";
+                        if (UpdateAvailableButtonText.Text != desired) UpdateAvailableButtonText.Text = desired;
                     }
+                }
+                if (CheckForUpdatesButton != null)
+                {
+                    var want = hasUpdate ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    if (CheckForUpdatesButton.Visibility != want) CheckForUpdatesButton.Visibility = want;
+                }
+                if (CheckForUpdatesStatus != null && hasUpdate && CheckForUpdatesStatus.Visibility != System.Windows.Visibility.Collapsed)
+                {
+                    // Don't keep a stale "Up to date" / "Checking..." line
+                    // visible next to the prominent update CTA.
+                    CheckForUpdatesStatus.Visibility = System.Windows.Visibility.Collapsed;
+                }
+                else if (CheckForUpdatesStatus != null && !hasUpdate && CheckForUpdatesStatus.Visibility != System.Windows.Visibility.Visible)
+                {
+                    CheckForUpdatesStatus.Visibility = System.Windows.Visibility.Visible;
                 }
 
                 // "What's new" banner + per-effect NEW badges. Both driven by
@@ -4038,9 +4058,22 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // ---------- Update banner / modal ----------
+        // ---------- Update CTA / modal ----------
 
-        private void UpdateBanner_Click(object sender, MouseButtonEventArgs e)
+        // Paint a fresh Window to match the host SimHub BaseDark theme. Code-
+        // behind modals don't inherit the panel's theme styles automatically;
+        // without this, every Window we open lands on the system default
+        // (white background, black text) which is unreadable inside SimHub.
+        private static void ApplyDarkTheme(Window win)
+        {
+            win.Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
+            // TextElement.Foreground is the inherited property that TextBlock,
+            // Button content, etc all pick up by default. Setting it on the
+            // Window propagates to every descendant that doesn't override.
+            TextElement.SetForeground(win, new SolidColorBrush(Color.FromRgb(0xEA, 0xEA, 0xEA)));
+        }
+
+        private void UpdateAvailableButton_Click(object sender, RoutedEventArgs e)
         {
             ShowUpdateModal();
         }
@@ -4097,7 +4130,7 @@ namespace TrueforceForAll.Plugin
 
             var win = new Window
             {
-                Title = "Trueforce For All — Update available",
+                Title = "Trueforce For All: update available",
                 Width = 600,
                 Height = 520,
                 ResizeMode = ResizeMode.NoResize,
@@ -4106,6 +4139,7 @@ namespace TrueforceForAll.Plugin
                 Owner = Window.GetWindow(this),
             };
             if (win.Owner == null) win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            ApplyDarkTheme(win);
 
             var root = new DockPanel { Margin = new Thickness(16) };
 
@@ -4174,7 +4208,7 @@ namespace TrueforceForAll.Plugin
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 BorderThickness = new Thickness(1),
-                BorderBrush = System.Windows.Media.Brushes.Gray,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                 Padding = new Thickness(10),
             };
             var notesText = new TextBlock
@@ -4258,7 +4292,7 @@ namespace TrueforceForAll.Plugin
 
             var win = new Window
             {
-                Title = "Trueforce For All — What's new",
+                Title = "Trueforce For All: what's new",
                 Width = 600,
                 Height = 480,
                 ResizeMode = ResizeMode.NoResize,
@@ -4267,6 +4301,7 @@ namespace TrueforceForAll.Plugin
                 Owner = Window.GetWindow(this),
             };
             if (win.Owner == null) win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            ApplyDarkTheme(win);
 
             var root = new DockPanel { Margin = new Thickness(16) };
 
@@ -4306,7 +4341,7 @@ namespace TrueforceForAll.Plugin
                 var ver = pending[i];
                 bodyStack.Children.Add(new TextBlock
                 {
-                    Text = "v" + ver.Version.ToString(3) + (string.IsNullOrEmpty(ver.Title) ? "" : "  —  " + ver.Title),
+                    Text = "v" + ver.Version.ToString(3) + (string.IsNullOrEmpty(ver.Title) ? "" : "  ·  " + ver.Title),
                     FontWeight = FontWeights.SemiBold,
                     FontSize = 14,
                     Margin = new Thickness(0, i == pending.Count - 1 ? 0 : 14, 0, 6),
@@ -4344,7 +4379,7 @@ namespace TrueforceForAll.Plugin
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 BorderThickness = new Thickness(1),
-                BorderBrush = System.Windows.Media.Brushes.Gray,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                 Padding = new Thickness(12),
                 Content = bodyStack,
             };
