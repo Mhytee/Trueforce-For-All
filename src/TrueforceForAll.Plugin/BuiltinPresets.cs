@@ -59,31 +59,32 @@ namespace TrueforceForAll.Plugin
         // These are GameSettingsSnapshot shapes (no top-level wrapper). Source:
         // exported from a real tuning session, then minified.
 
+        // Refreshed in 0.1.3 from a recent live "Assetto Corsa" preset
+        // export. Earlier baseline (May 2026) predated PitLimiter / DRS /
+        // Collision as effects and the RoadBumps surface channel / engine
+        // load-layer + high-RPM boost fields. The values here are also the
+        // basis for the C# class defaults in TrueforceSettings.cs.
         private const string AssettoCorsaJson = @"{
             ""MasterGain"":0.9995428,
             ""FfbScale"":0.8008723,
             ""FfbInvertSign"":true,
-            ""FfbSmoothTimeConstantMs"":0.1301488,
+            ""FfbSmoothTimeConstantMs"":0.0,
             ""FfbSpikeTamingEnabled"":true,
-            ""FfbSpikeMaxLsbPerMs"":2060.923,
-            ""FfbPeakSoftLimitLsb"":1561.78564,
+            ""FfbSpikeMaxLsbPerMs"":2508.35864,
+            ""FfbPeakSoftLimitLsb"":2061.90381,
             ""SkipFfbPassthrough"":false,
-            ""DuckDepth"":0.6952232,
+            ""DuckDepth"":0.5953513,
             ""DuckAttackMs"":5.0,
             ""DuckReleaseMs"":80.0,
             ""AudioCapture"":{""Enabled"":true,""Gain"":0.05952296,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595},
-            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":7,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Triangle""},
-            ""RoadBumps"":{""Enabled"":true,""Gain"":0.448169053,""Freq"":61.45767,""Waveform"":""Triangle""},
-            ""TractionLoss"":{""Enabled"":true,""Gain"":0.06434366,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},
-            ""GearShift"":{""Enabled"":true,""Gain"":0.396566778,""Freq"":34.6132431,""Waveform"":""Sine""},
+            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Sine"",""ElectricMode"":""MutedHum"",""Layout"":""Auto"",""CustomEngineId"":"""",""CustomFiringPattern"":"""",""CustomFiringPatternName"":"""",""LoadLayerEnabled"":false,""LoadLayerGain"":0.3,""HighRpmBoostEnabled"":false,""HighRpmBoostAmount"":0.4,""Cylinders"":0,""EngineConfig"":""Auto"",""FiringOrderEnabled"":true},
+            ""RoadBumps"":{""Enabled"":true,""Gain"":0.448169053,""Freq"":61.45767,""Waveform"":""Triangle"",""SurfaceEnabled"":true,""SurfaceGain"":0.69514066,""SurfaceFreq"":120.0,""SurfaceRumbleScale"":1.0,""SurfaceLowpassHz"":800.0,""SurfaceHighpassHz"":60.0,""SurfaceWaveform"":""Noise"",""RumbleStripPulseAmp"":0.0172855314,""RumbleStripPulseMs"":120},
+            ""TractionLoss"":{""Enabled"":true,""Gain"":0.0387813151,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},
+            ""GearShift"":{""Enabled"":true,""Gain"":0.396566778,""Freq"":34.6132431,""Waveform"":""Square""},
             ""AbsClick"":{""Enabled"":true,""Gain"":0.140768245,""Freq"":150.0,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""},
-            ""CarOverrides"":{
-                ""ks_nissan_skyline_r34"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.07882283,""Cylinders"":6,""Pitch"":1.00160933,""LowpassHz"":338.3869,""Waveform"":""Triangle""}},
-                ""nohesi_realistic_nissan_gtr_r35_vlct"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":7,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Triangle""},""TractionLoss"":{""Enabled"":true,""Gain"":0.121609129,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":30.0,""Waveform"":""Noise""},""AbsClick"":{""Enabled"":true,""Gain"":0.244887292,""Freq"":150.0,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""}},
-                ""bdc_streetspec_ae86_v4"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.0755927339,""Cylinders"":4,""Pitch"":1.00160933,""LowpassHz"":513.3297,""Waveform"":""Sine""}},
-                ""ks_toyota_ae86_tuned"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":4,""Pitch"":1.00160933,""LowpassHz"":333.1809,""Waveform"":""Triangle""}},
-                ""gravygarage_street_e36_touring"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":8,""Pitch"":1.00160933,""LowpassHz"":775.6869,""Waveform"":""Triangle""},""TractionLoss"":{""Enabled"":true,""Gain"":0.06434366,""Sensitivity"":0.1,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},""AudioCapture"":{""Enabled"":true,""Gain"":0.0517140329,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595}}
-            }
+            ""PitLimiter"":{""Enabled"":true,""Gain"":0.0832266361,""Freq"":50.49936,""PulseFreq"":4.340589,""DutyCycle"":0.483226657,""ActiveAmp"":0.3,""Waveform"":""Square""},
+            ""Drs"":{""Enabled"":true,""Gain"":0.280409724,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0481434,""Waveform"":""Square"",""SustainedWaveform"":""Square""},
+            ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.85,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""}
         }";
 
         // Forza Horizon baseline. Tuned for arcade-leaning physics where
@@ -145,28 +146,32 @@ namespace TrueforceForAll.Plugin
             ""Drs"":{""Enabled"":true,""Gain"":0.5,""ActivationFreq"":600.0,""ActivationMs"":80,""ActivationAmp"":0.30,""SustainedFreq"":150.0,""SustainedAmp"":0.20,""Waveform"":""Sine""}
         }";
 
+        // Wreckfest 2 baseline. Per project owner: use the same effect
+        // settings as the AC default since they're a reasonable
+        // cross-game starting point on a GPRO; only the CarOverrides
+        // differ (Wreckfest has its own car-id namespace, so the AC
+        // overrides don't transfer).
         private const string Wreckfest2Json = @"{
             ""MasterGain"":0.9995428,
             ""FfbScale"":0.8008723,
             ""FfbInvertSign"":true,
             ""FfbSmoothTimeConstantMs"":0.0,
-            ""FfbSpikeTamingEnabled"":false,
-            ""FfbSpikeMaxLsbPerMs"":2993.42236,
-            ""FfbPeakSoftLimitLsb"":1822.08325,
+            ""FfbSpikeTamingEnabled"":true,
+            ""FfbSpikeMaxLsbPerMs"":2508.35864,
+            ""FfbPeakSoftLimitLsb"":2061.90381,
             ""SkipFfbPassthrough"":false,
-            ""DuckDepth"":0.6952232,
+            ""DuckDepth"":0.5953513,
             ""DuckAttackMs"":5.0,
             ""DuckReleaseMs"":80.0,
-            ""AudioCapture"":{""Enabled"":true,""Gain"":0.04390511,""LowpassCutoffHz"":352.0876,""HighpassCutoffHz"":30.0},
-            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":8,""Pitch"":1.00160933,""LowpassHz"":401.7727,""Waveform"":""Sine""},
-            ""RoadBumps"":{""Enabled"":true,""Gain"":0.2867846,""Freq"":61.45767,""Waveform"":""Triangle""},
-            ""TractionLoss"":{""Enabled"":true,""Gain"":0.06434366,""Sensitivity"":0.5108411,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":30.0,""Waveform"":""Noise""},
-            ""GearShift"":{""Enabled"":true,""Gain"":0.396566778,""Freq"":34.6132431,""Waveform"":""Sine""},
-            ""AbsClick"":{""Enabled"":true,""Gain"":0.2657111,""Freq"":132.820358,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""PerTick"",""Waveform"":""Square""},
-            ""CarOverrides"":{
-                ""ks_nissan_skyline_r34"":{""EnginePulse"":{""Enabled"":false,""Gain"":0.0996466354,""Cylinders"":6,""Pitch"":0.25,""LowpassHz"":0.0,""Waveform"":""Sine""}},
-                ""car11:default"":{""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Cylinders"":8,""Pitch"":1.00160933,""LowpassHz"":401.7727,""Waveform"":""Sine""}}
-            }
+            ""AudioCapture"":{""Enabled"":true,""Gain"":0.05952296,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595},
+            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Sine"",""ElectricMode"":""MutedHum"",""Layout"":""Auto"",""CustomEngineId"":"""",""CustomFiringPattern"":"""",""CustomFiringPatternName"":"""",""LoadLayerEnabled"":false,""LoadLayerGain"":0.3,""HighRpmBoostEnabled"":false,""HighRpmBoostAmount"":0.4,""Cylinders"":0,""EngineConfig"":""Auto"",""FiringOrderEnabled"":true},
+            ""RoadBumps"":{""Enabled"":true,""Gain"":0.448169053,""Freq"":61.45767,""Waveform"":""Triangle"",""SurfaceEnabled"":true,""SurfaceGain"":0.69514066,""SurfaceFreq"":120.0,""SurfaceRumbleScale"":1.0,""SurfaceLowpassHz"":800.0,""SurfaceHighpassHz"":60.0,""SurfaceWaveform"":""Noise"",""RumbleStripPulseAmp"":0.0172855314,""RumbleStripPulseMs"":120},
+            ""TractionLoss"":{""Enabled"":true,""Gain"":0.0387813151,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},
+            ""GearShift"":{""Enabled"":true,""Gain"":0.396566778,""Freq"":34.6132431,""Waveform"":""Square""},
+            ""AbsClick"":{""Enabled"":true,""Gain"":0.140768245,""Freq"":150.0,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""},
+            ""PitLimiter"":{""Enabled"":true,""Gain"":0.0832266361,""Freq"":50.49936,""PulseFreq"":4.340589,""DutyCycle"":0.483226657,""ActiveAmp"":0.3,""Waveform"":""Square""},
+            ""Drs"":{""Enabled"":true,""Gain"":0.280409724,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0481434,""Waveform"":""Square"",""SustainedWaveform"":""Square""},
+            ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.85,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""}
         }";
     }
 }

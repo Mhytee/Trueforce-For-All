@@ -69,12 +69,34 @@ namespace TrueforceForAll.Plugin
             },
             new ChangelogVersion {
                 Version = new Version(0, 1, 3),
-                Title = "Advanced settings dialog",
+                Title = "Advanced settings + polish",
                 Entries = new List<ChangelogEntry>
                 {
                     new ChangelogEntry {
                         Headline = "Performance, Sidechain ducking, and Diagnostics moved out of the main panel",
                         Description = "These three sections are rarely touched once tuning is dialed in. They now live behind an 'Advanced settings…' button near the bottom of the panel, so day-to-day tuning has less to scroll past. The controls themselves are unchanged.",
+                    },
+                    new ChangelogEntry {
+                        EffectId = "Drs",
+                        Headline = "DRS: separate waveforms for the blip vs the trail",
+                        Description = "The activation chirp (rising edge) and the sustained tone (held while DRS stays open) used to share one waveform setting. Each gets its own selector now, so a sharp Square blip can be paired with a softer Sine trail. Old presets keep the single waveform you'd set, then default to Sine for the trail; tune the trail picker if you want them matched.",
+                    },
+                    new ChangelogEntry {
+                        EffectId = "Collision",
+                        Headline = "Collision: waveform selector",
+                        Description = "The Collision section now exposes its waveform picker like every other effect (Sine / Square / Saw / Triangle / Noise). Default Square matches the previous bake.",
+                    },
+                    new ChangelogEntry {
+                        Headline = "Save button clears when a slider returns to its prior value",
+                        Description = "Dirty comparison was using a tolerance slightly smaller than the slider's display precision, so a slider that visibly returned to the same value could still flag the section as unsaved. The comparison now rounds both sides to the displayed precision before comparing.",
+                    },
+                    new ChangelogEntry {
+                        Headline = "Built-in Assetto Corsa + Wreckfest 2 presets refreshed",
+                        Description = "The factory 'Assetto Corsa (default)' and 'Wreckfest 2 (default)' presets were carrying tuning from before PitLimiter / DRS / Collision and the RoadBumps surface channel existed. Both presets are refreshed from a current AC tuning so a fresh install lands on sensible numbers across every effect. Existing custom presets are untouched.",
+                    },
+                    new ChangelogEntry {
+                        Headline = "Out-of-the-box class defaults aligned with AC tuning",
+                        Description = "Fresh installs (with no preset loaded yet) used to start with maximum-gain effect defaults, which were uncomfortably aggressive on most wheelbases. The C# defaults for every effect's gain / frequency / waveform are now anchored to the same conservative starting point as the refreshed AC preset.",
                     },
                 },
             },
