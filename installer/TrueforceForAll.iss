@@ -137,21 +137,31 @@ Filename: "powershell.exe"; \
 ; Postinstall checkbox on the Finished page: launch SimHub when the user
 ; clicks Finish (default checked).
 ;
-;   shellexec      - go through ShellExecute (the same path Explorer uses
-;                    when double-clicking the exe). Without this, direct
-;                    CreateProcess from an elevated installer with
-;                    runasoriginaluser was producing a headless SimHub
-;                    process — alive in Task Manager, no visible window —
-;                    in 0.1.0-localtest8.
-;   WorkingDir     - SimHub looks for resources relative to its install
-;                    dir; without this the CWD is the installer's tmp dir.
-;   runasoriginaluser - drop elevation so SimHub runs in the user's normal
-;                    token, not as admin.
-;   nowait + skipifsilent - exit immediately and skip on /SILENT installs.
-Filename: "{app}\SimHubWPF.exe"; \
-    WorkingDir: "{app}"; \
+; We launch via "cmd /c start" rather than executing SimHubWPF.exe
+; directly. Two prior approaches were broken in different ways:
+;   - Direct CreateProcess from the elevated installer (no shellexec)
+;     produced a headless SimHub process: alive in Task Manager but no
+;     visible window. (Seen on 0.1.0-localtest8.)
+;   - shellexec on its own launched the process but left it stranded
+;     behind the closing wizard, so the user saw only a taskbar button
+;     and had to click it to surface the window.
+; cmd /c start is the canonical "act like a desktop double-click"
+; pattern on Windows: it spawns the shell's normal launch path, the
+; process is properly detached, and the new window gets its usual
+; SW_SHOWNORMAL treatment from the shell.
+;
+;   /D "{app}"       sets SimHub's CWD; without this it inherits the
+;                    installer's tmp dir and SimHub fails to locate
+;                    relative resources.
+;   ""               empty quoted title argument that "start" requires
+;                    when the path that follows is itself quoted.
+;   runasoriginaluser drops the admin token; SimHub runs in the user's
+;                    normal context. nowait + skipifsilent: fire and
+;                    forget, skip on /SILENT.
+Filename: "{cmd}"; \
+    Parameters: "/c start """" /D ""{app}"" ""{app}\SimHubWPF.exe"""; \
     Description: "Launch SimHub now"; \
-    Flags: postinstall nowait skipifsilent runasoriginaluser shellexec
+    Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [Code]
 const
