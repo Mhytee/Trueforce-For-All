@@ -454,10 +454,11 @@ namespace TrueforceForAll.Plugin
         /// otherwise.</summary>
         public string CustomFiringPatternName { get; set; } = "";
 
-        // ---- Experimental high-RPM perceptibility helpers ----
+        // ---- High-RPM perceptibility helpers ----
         //
         // Wheel motors mechanically lowpass at high firing frequencies, so
-        // the pulse feels weak as RPM climbs. Two opt-in additions:
+        // the pulse feels weak as RPM climbs. Two compensations, both on
+        // by default:
         //
         //   LoadLayer: adds a sine at the engine cycle frequency (RPM/120 Hz)
         //     alongside the firing-rate wavetable. Phase-locked subharmonic
@@ -467,12 +468,10 @@ namespace TrueforceForAll.Plugin
         //   HighRpmBoost: ramps an extra gain factor on the firing pulse
         //     from 0 at 50% RPM to (Amount) at redline, partially
         //     compensating for the wheel's mechanical rolloff.
-        //
-        // Both default Off so existing presets / wheel feel are unchanged.
-        public bool   LoadLayerEnabled    { get; set; } = false;
-        public float  LoadLayerGain       { get; set; } = 0.3f;
-        public bool   HighRpmBoostEnabled { get; set; } = false;
-        public float  HighRpmBoostAmount  { get; set; } = 0.4f;
+        public bool   LoadLayerEnabled    { get; set; } = true;
+        public float  LoadLayerGain       { get; set; } = 0.80f;
+        public bool   HighRpmBoostEnabled { get; set; } = true;
+        public float  HighRpmBoostAmount  { get; set; } = 0.70f;
 
         // ---- Legacy migration fields (pre-2026-05-11) ----
         //

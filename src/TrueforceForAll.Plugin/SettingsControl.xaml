@@ -717,12 +717,12 @@
                                     ToolTip="Opens a Google Form pre-filled with what's auto-detected and what you've selected in the dropdowns / slider. Just hit Submit on the form, no typing needed and no account required."/>
                         </Grid>
 
-                        <!-- Experimental high-RPM perceptibility helpers.
-                             Both off by default; toggle to A/B against the
-                             current behavior. -->
+                        <!-- High-RPM perceptibility helpers. On by default;
+                             keep the engine feel present where the wheel
+                             motor naturally rolls off the firing pulse. -->
                         <Separator Margin="0,8,0,8"/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6"
-                                   Text="Experimental: helps the engine still feel present at high RPM, where the wheel's motor can't keep up with the firing rate. Both off by default."/>
+                                   Text="Helps the engine still feel present at high RPM, where the wheel's motor can't keep up with the firing rate."/>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="EngineLoadLayerCheck"
@@ -735,21 +735,21 @@
                             <TextBlock Grid.Column="0" Text="  Strength:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EngineLoadLayerGainSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="EngineLoadLayerGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EngineLoadLayerGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
+                            <TextBlock Grid.Column="2" x:Name="EngineLoadLayerGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.80"/>
                         </Grid>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="EngineHighRpmBoostCheck"
                                       Content="High-RPM boost" VerticalAlignment="Center"
                                       Checked="EngineHighRpmBoost_Changed" Unchecked="EngineHighRpmBoost_Changed"
-                                      ToolTip="Pre-emphasis: extra firing-pulse gain ramping in above 50% RPM. Partially compensates for the wheel's natural high-frequency rolloff. Subtle by default; turn up if top-end still feels weak."/>
+                                      ToolTip="Pre-emphasis: extra firing-pulse gain ramping in above 50% RPM. Partially compensates for the wheel's natural high-frequency rolloff."/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="  Amount:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EngineHighRpmBoostSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="EngineHighRpmBoostSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EngineHighRpmBoostText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.40"/>
+                            <TextBlock Grid.Column="2" x:Name="EngineHighRpmBoostText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.70"/>
                         </Grid>
                     </StackPanel>
                 </Expander>

@@ -68,6 +68,21 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 9),
+                Title = "Engine: load layer + high-RPM boost",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Headline = "Engine: load layer for high-RPM perceptibility",
+                        Description = "Adds a low-frequency oscillation at the engine's cycle rate (RPM/120 Hz) alongside the firing pulse. Sits in the band the wheel motor can actually render, so the engine keeps feeling present as the firing pulse rolls off at top end. On by default at strength 0.80; tune in the Engine section.",
+                    },
+                    new ChangelogEntry {
+                        Headline = "Engine: high-RPM boost on the firing pulse",
+                        Description = "Pre-emphasis on the firing-rate pulse, ramping in above 50% RPM up to the set amount at redline. Partially compensates for the wheel's natural high-frequency rolloff. On by default at amount 0.70; tune in the Engine section.",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 7),
                 Title = "Preset workflow + Manage Presets polish",
                 Entries = new List<ChangelogEntry>

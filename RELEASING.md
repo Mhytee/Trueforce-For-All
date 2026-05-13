@@ -50,7 +50,11 @@ For each release:
    dotnet publish src\TrueforceForAll.LoopbackHelper\TrueforceForAll.LoopbackHelper.csproj -c Release -r win-x64
    # confirm installer\vendor\USBPcapSetup.exe is present
    $env:TRUEFORCEFORALL_VERSION = 'X.Y.Z'  # same value as the csproj <Version>
-   & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" installer\TrueforceForAll.iss
+   # ISCC location varies by install mode: system-wide installs sit under
+   # "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"; per-user installs (the
+   # default if you opted into "Install for me only") sit under
+   # "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe".
+   & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\TrueforceForAll.iss
    ```
 
    The artifact lands at `installer\output\TrueforceForAll-Setup.exe`.

@@ -273,7 +273,7 @@ namespace TrueforceForAll.Plugin
                         EngineElectricModeCombo.SelectedIndex =
                             es.ElectricMode == ElectricCarMode.Silent ? 1 : 0;
 
-                    // Experimental high-RPM helpers
+                    // High-RPM helpers (Load layer + boost)
                     if (EngineLoadLayerCheck != null)
                     {
                         EngineLoadLayerCheck.IsChecked       = es.LoadLayerEnabled;

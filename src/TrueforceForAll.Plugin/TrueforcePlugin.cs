@@ -655,6 +655,7 @@ namespace TrueforceForAll.Plugin
             // store; Settings.CarOverrides is now an in-memory cache only.
             _carStore = new CarPresetStore(msg => SimHub.Logging.Current.Info(msg));
             LoadAndMigrateCarPresets();
+            MigrateEngineHighRpmHelpersDefaults();
 
             _mixer.MasterGain = Settings.MasterGain;
 
@@ -2279,6 +2280,10 @@ namespace TrueforceForAll.Plugin
                 Layout = s.Layout, CustomEngineId = s.CustomEngineId,
                 CustomFiringPattern = s.CustomFiringPattern,
                 CustomFiringPatternName = s.CustomFiringPatternName,
+                LoadLayerEnabled = s.LoadLayerEnabled,
+                LoadLayerGain    = s.LoadLayerGain,
+                HighRpmBoostEnabled = s.HighRpmBoostEnabled,
+                HighRpmBoostAmount  = s.HighRpmBoostAmount,
             };
         private static RoadBumpsSettings    Clone(RoadBumpsSettings s)
             => new RoadBumpsSettings    {
@@ -2936,6 +2941,100 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // EnginePulse LoadLayer + HighRpmBoost shipped Off at 0.3 / 0.4 in
+        // 0.1.7-0.1.8. In 0.1.9 the defaults flipped to On at 0.8 / 0.7. Saved
+        // presets carry the old serialized values, so a flat default change
+        // here doesn't reach them. Migrate per-field: if the saved value
+        // exactly matches the prior default (Off + 0.3 / 0.4), treat it as
+        // never-customized and upgrade. Any non-default tuning is preserved.
+        // Touches Settings.EnginePulse, every game-preset snapshot, the live
+        // CarOverrides cache, and rewrites any matching .tfcar.json files so
+        // non-active per-car presets also pick up the new defaults.
+        private void MigrateEngineHighRpmHelpersDefaults()
+        {
+            if (Settings == null) return;
+            bool changed = false;
+
+            if (MigrateEngineHighRpmFields(Settings.EnginePulse)) changed = true;
+
+            if (Settings.Presets != null)
+            {
+                foreach (var snap in Settings.Presets.Values)
+                {
+                    if (snap?.EnginePulse == null) continue;
+                    if (MigrateEngineHighRpmFields(snap.EnginePulse)) changed = true;
+                }
+            }
+
+            if (Settings.CarOverrides != null)
+            {
+                foreach (var ovr in Settings.CarOverrides.Values)
+                {
+                    if (ovr?.EnginePulse == null) continue;
+                    if (MigrateEngineHighRpmFields(ovr.EnginePulse)) changed = true;
+                }
+                // Resync _lastPersistedCarOverrides so dirty checks against the
+                // live cache match the just-migrated values (otherwise every
+                // car would read as dirty on first load).
+                if (changed)
+                {
+                    foreach (var kv in Settings.CarOverrides)
+                    {
+                        if (kv.Value == null) continue;
+                        _lastPersistedCarOverrides[kv.Key] = CloneCarOverride(kv.Value);
+                    }
+                }
+            }
+
+            // Rewrite .tfcar.json files for any non-active preset (or active
+            // ones whose live cache we just migrated) so the new defaults
+            // persist across launches.
+            if (_carStore != null)
+            {
+                var loaded = _carStore.LoadAll();
+                foreach (var carKv in loaded)
+                {
+                    foreach (var entry in carKv.Value.Values)
+                    {
+                        if (entry?.Override?.EnginePulse == null) continue;
+                        if (MigrateEngineHighRpmFields(entry.Override.EnginePulse))
+                        {
+                            _carStore.Save(entry.CarId, entry.PresetName, entry.GameName,
+                                           entry.Override, entry.IsBuiltin);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                this.SaveCommonSettings("GeneralSettings", Settings);
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Migrated EnginePulse LoadLayer / HighRpmBoost defaults "
+                    + "(Off @ 0.3 / 0.4 -> On @ 0.8 / 0.7) for presets at the old defaults.");
+            }
+        }
+
+        private static bool MigrateEngineHighRpmFields(EnginePulseSettings s)
+        {
+            if (s == null) return false;
+            bool changed = false;
+            if (!s.LoadLayerEnabled && System.Math.Abs(s.LoadLayerGain - 0.3f) < 0.001f)
+            {
+                s.LoadLayerEnabled = true;
+                s.LoadLayerGain    = 0.80f;
+                changed = true;
+            }
+            if (!s.HighRpmBoostEnabled && System.Math.Abs(s.HighRpmBoostAmount - 0.4f) < 0.001f)
+            {
+                s.HighRpmBoostEnabled = true;
+                s.HighRpmBoostAmount  = 0.70f;
+                changed = true;
+            }
+            return changed;
+        }
+
         // ---------- per-section dirty check (vs active preset) ----------
 
         /// <summary>True iff the current values for this section differ from
@@ -3134,7 +3233,11 @@ namespace TrueforceForAll.Plugin
                 && a.Layout == b.Layout
                 && string.Equals(a.CustomEngineId ?? "", b.CustomEngineId ?? "", System.StringComparison.Ordinal)
                 && string.Equals(a.CustomFiringPattern ?? "", b.CustomFiringPattern ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPatternName ?? "", b.CustomFiringPatternName ?? "", System.StringComparison.Ordinal);
+                && string.Equals(a.CustomFiringPatternName ?? "", b.CustomFiringPatternName ?? "", System.StringComparison.Ordinal)
+                && a.LoadLayerEnabled    == b.LoadLayerEnabled
+                && EqF2(a.LoadLayerGain,      b.LoadLayerGain)
+                && a.HighRpmBoostEnabled == b.HighRpmBoostEnabled
+                && EqF2(a.HighRpmBoostAmount, b.HighRpmBoostAmount);
         }
         private static bool Eq(RoadBumpsSettings a, RoadBumpsSettings b)
         {

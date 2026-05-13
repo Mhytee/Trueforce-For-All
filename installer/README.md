@@ -36,7 +36,10 @@ dotnet build src\TrueforceForAll.Plugin\TrueforceForAll.Plugin.csproj -c Release
 dotnet publish src\TrueforceForAll.LoopbackHelper\TrueforceForAll.LoopbackHelper.csproj -c Release -r win-x64
 # Drop USBPcapSetup-1.5.4.0.exe (or current) into installer\vendor\USBPcapSetup.exe
 $env:TRUEFORCEFORALL_VERSION = 'X.Y.Z'  # match the csproj <Version>; iss falls back to 0.1.0-dev when empty
-& "C:\Program Files (x86)\Inno Setup 6\iscc.exe" installer\TrueforceForAll.iss
+# ISCC location varies by Inno Setup install mode: system-wide installs sit
+# under "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"; per-user installs
+# under "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe". Both work.
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\TrueforceForAll.iss
 ```
 
 Output goes to `installer\output\TrueforceForAll-Setup.exe`.

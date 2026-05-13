@@ -132,29 +132,27 @@ namespace TrueforceForAll.Plugin.Effects
         public double LowpassHz { get; set; } = 0.0;
         private float _lpY;
 
-        // ---- Experimental high-RPM perceptibility helpers ----
+        // ---- High-RPM perceptibility helpers ----
         //
         // Wheel motors lowpass mechanically (rotor inertia + coil inductance),
         // so as firing frequency climbs past ~100 Hz the user feels less per
-        // pulse even though the electrical signal is at full amplitude. These
-        // two opt-in enhancements address the perceptual drop two ways:
+        // pulse even though the electrical signal is at full amplitude. Two
+        // compensations applied here, both on by default:
         //
         //   LoadLayer: a sine at the engine cycle frequency (RPM/120 Hz)
         //     summed alongside the firing-rate wavetable. The cycle freq is
         //     by construction a subharmonic of the firing rate (firing rate =
-        //     N × cycle freq for N-pulse patterns), so the layer is phase-
+        //     N x cycle freq for N-pulse patterns), so the layer is phase-
         //     compatible with the pulse and sweeps 7-58 Hz across idle-to-
-        //     redline — squarely in the band the wheel can render.
+        //     redline, squarely in the band the wheel can render.
         //
         //   HighRpmBoost: pre-emphasis gain on the firing-rate pulse, ramped
         //     from 0 boost at 50% RPM to (Amount) extra gain at redline.
         //     Partially compensates for the wheel's natural rolloff.
-        //
-        // Both default Off; users opt-in via the Experimental section.
-        public bool   LoadLayerEnabled    { get; set; } = false;
-        public float  LoadLayerGain       { get; set; } = 0.3f;
-        public bool   HighRpmBoostEnabled { get; set; } = false;
-        public float  HighRpmBoostAmount  { get; set; } = 0.4f;
+        public bool   LoadLayerEnabled    { get; set; } = true;
+        public float  LoadLayerGain       { get; set; } = 0.80f;
+        public bool   HighRpmBoostEnabled { get; set; } = true;
+        public float  HighRpmBoostAmount  { get; set; } = 0.70f;
         private double _loadLayerAmp;
         private double _loadPhase;   // radians, [0, 2π)
 
