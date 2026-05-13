@@ -158,7 +158,7 @@ gracefully
 The wire protocol (init sequence and ep3 streaming format) was
 reverse-engineered by the [mescon Linux driver project][mescon]. This
 repo is the Windows-side glue on top of that: a SimHub plugin that opens
-the wheel, synthesizes the telemetry- and audio-derived effects, handles
+the wheel, synthesizes the telemetry/audio-derived effects, handles
 per-game tuning, and runs the USBPcap-based FFB tap that mirrors the
 game's HID++ output into bytes 6-9 of the Trueforce ep3 stream.
 
