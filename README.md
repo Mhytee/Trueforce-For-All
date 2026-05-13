@@ -9,6 +9,7 @@ protocol reverse-engineered by the [mescon Linux driver project][mescon].
 > **Status:** Actively in development. The plugin is functional today; the
 > default presets are still being tuned. Feedback welcome.
 >
+> Note: My Reddit account was immediately banned after sharing this and all of my posts have been removed across several subreddits. If you find this useful, sharing it outside Reddit (Discord servers, sim-racing forums, YouTube) helps other drivers find it. I've appealed the ban and have yet to hear back.
 
 For the record on what this project is: Original Windows code built on top of a wire protocol reverse-engineered by the [mescon Linux driver project][mescon] from USB traffic. No Logitech source, firmware, or proprietary assets are used or redistributed. GPL-2.0, same as mescon's work. Logitech trademarks are acknowledged in the section below; this project is unaffiliated.
 
