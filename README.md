@@ -2,8 +2,8 @@
 
 **Logitech Trueforce-compatible haptics for any SimHub-supported game.**
 
-Logitech ships Trueforce for only a limited number of officially-supported titles. This
-plugin makes it work everywhere SimHub does. Built on top of the wire
+While official support for Trueforce has been steadily growing, there are still many major titles which are yet to receive support or will never get support. This
+plugin fills those gaps by allowing it to work everywhere SimHub does. Built on top of the wire
 protocol reverse-engineered by the [mescon Linux driver project][mescon].
 
 > **Status:** Actively in development. The plugin is functional today; the
