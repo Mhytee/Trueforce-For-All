@@ -228,7 +228,6 @@ namespace TrueforceForAll.Plugin
                     ForzaEnabledCheck.IsChecked        = fz.Enabled;
                     ForzaPortBox.Text                  = fz.Port.ToString();
                     ForzaBindBox.Text                  = fz.BindAddress ?? "0.0.0.0";
-                    ForzaAlwaysListenCheck.IsChecked   = fz.AlwaysListen;
                     ForzaForwardEnabledCheck.IsChecked = fz.ForwardEnabled;
                     ForzaForwardHostBox.Text           = fz.ForwardHost ?? "127.0.0.1";
                     ForzaForwardPortBox.Text           = fz.ForwardPort > 0 ? fz.ForwardPort.ToString() : "";
@@ -2957,13 +2956,6 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
             _plugin.Settings.Forza.Enabled = ForzaEnabledCheck.IsChecked == true;
-            _plugin.ApplyForzaSettings();
-        }
-
-        private void ForzaAlwaysListen_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
-            _plugin.Settings.Forza.AlwaysListen = ForzaAlwaysListenCheck.IsChecked == true;
             _plugin.ApplyForzaSettings();
         }
 

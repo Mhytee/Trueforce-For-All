@@ -25,3 +25,8 @@ __*
 /src/SineTest/
 /src/DiscoveryTest/
 /src/UsbPcapTest/
+
+# Maintainer-only release process + running changelog. Local dev notes,
+# not user-facing product docs.
+/RELEASING.md
+/CHANGELOG_UNRELEASED.md

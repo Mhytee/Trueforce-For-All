@@ -127,7 +127,7 @@ Some titles read directly from the game's telemetry, bypassing SimHub's limitati
 
 **Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than SimHub's 60 Hz feed can deliver.
 
-**Forza Horizon 4, 5 and 6** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. This additional surface information is updated at 60 Hz but allows for more depth in surface detail effects than some other titles may offer. A forward-compatible always-listen mode is available for use with FH6 on day one before SimHub adds game-name detection for it.
+**Forza Horizon 4, 5 and 6** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. This additional surface information is updated at 60 Hz but allows for more depth in surface detail effects than some other titles may offer. All three are auto-detected from SimHub's game profile, so the only setup is pointing Forza's DATA OUT at the listener's IP and port.
 
 Additional per-title enhancements/bypasses will be added over time.
 

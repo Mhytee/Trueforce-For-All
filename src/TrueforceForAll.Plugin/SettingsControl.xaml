@@ -1353,8 +1353,6 @@
                 <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" Margin="8,0,0,0" VerticalAlignment="Center"
                            Text="0.0.0.0 = listen on every network adapter."/>
             </Grid>
-            <CheckBox x:Name="ForzaAlwaysListenCheck" Content="Always listen (use for FH6 day-1 / unrecognized Forza titles)" Click="ForzaAlwaysListen_Changed" Margin="0,4,0,4"
-                      ToolTip="Keep the Forza source open even when SimHub doesn't recognize the running game. Lets you use the plugin with FH6 before SimHub adds its game-name detection."/>
             <Grid Margin="0,4,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
