@@ -19,15 +19,14 @@ For the record on what this project is: Original Windows code built on top of a 
 |---|---|---|
 | Logitech G PRO Racing Wheel (Xbox/PC) | `046D:C272` | Full: Trueforce haptics + game FFB pass-through |
 | Logitech G PRO Racing Wheel (PS/PC) | `046D:C268` | Full: Trueforce haptics + game FFB pass-through |
-| Logitech RS50 | `046D:C276` | Partial: Trueforce haptics work, native game FFB does not yet pass through (fix in progress) |
+| Logitech RS50 | `046D:C276` | Full: Trueforce haptics + game FFB pass-through |
 
 The G PRO and RS50 use byte-identical Trueforce packets, so the haptic
 layer works on both. The plugin keeps a game's normal force feedback alive
-by tapping it off the USB bus and mirroring it into the haptic stream. That
-tap currently reads the form Logitech's runtime uses for the G PRO; the RS50
-delivers force differently, so on an RS50 you get Trueforce haptics but the
-game's constant force is lost. A wheel-independent tap that fixes this is in
-progress. Until it lands, treat the RS50 as Trueforce-only.
+by tapping it off the USB bus and mirroring it into the haptic stream. The
+tap resolves the wheel's HID++ force-feedback feature index automatically,
+so both the G PRO and the RS50 get Trueforce haptics and their native game
+force feedback at the same time.
 
 G923 support may come in the future.
 
@@ -157,15 +156,7 @@ gracefully
   wheel's own Trueforce intensity scaling stops responding to the dial.
   Use the in-plugin Master Gain and per-effect Gain controls to set
   intensity instead.
-- **RS50 native FFB pass-through does not work yet (known, not just
-  untested).** On the RS50, Trueforce haptics and all of our
-  telemetry/audio effects work, but the game's own force feedback is
-  lost while the plugin is active. The FFB tap currently reads the form
-  Logitech's runtime uses for the G PRO; the RS50 delivers force
-  differently, so the tap latches nothing and the constant force never
-  reaches the wheel. A wheel-independent tap that fixes this is in
-  progress. Until it lands, treat the RS50 as Trueforce-only.
-- **Validated only on G PRO + AC + Wreckfest 2 + FH5 + FH6** so far.
+- **Validated on G PRO and RS50 + AC + Wreckfest 2 + FH5 + FH6** so far.
   Other SimHub-supported games should work but haven't been tested by us
   yet. Feedback welcome.
 

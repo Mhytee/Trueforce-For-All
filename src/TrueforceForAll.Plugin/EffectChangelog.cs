@@ -68,6 +68,17 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 12),
+                Title = "RS50 native force feedback now works",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Headline = "Logitech RS50: game force feedback alongside Trueforce",
+                        Description = "The FFB tap now resolves the HID++ force-feedback feature index per wheel instead of assuming the G PRO's. On the RS50 the game's native constant force is mirrored into the Trueforce stream, so you feel the game's normal force feedback and Trueforce haptics at the same time. G PRO is unchanged.",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 11),
                 Title = "FFB protocol diagnostics for unsupported wheels",
                 Entries = new List<ChangelogEntry>
