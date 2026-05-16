@@ -319,7 +319,13 @@ namespace TrueforceForAll.Core
         /// collection that owns its report ID. <paramref name="rgbLed1to10"/>
         /// is 30 bytes in physical order (LED1 first); protocol wants LED10
         /// first so we reverse per-LED triplets into the wire payload.</summary>
-        public void ApplyRgb(byte[] rgbLed1to10)
+        public void ApplyRgb(byte[] rgbLed1to10) => ApplyRgbMode(0x05, rgbLed1to10);
+
+        /// <summary>Same as ApplyRgb but with an explicit LIGHTSYNC effect
+        /// mode in step 1. mescon's RS50 uses mode 5; the G PRO's
+        /// static/per-LED mode is unknown, so the diagnostic Test sweeps this
+        /// to find which mode renders our RGB buffer verbatim and steady.</summary>
+        public void ApplyRgbMode(byte effectMode, byte[] rgbLed1to10)
         {
             if (!_ready || rgbLed1to10 == null || rgbLed1to10.Length < LedCount * 3) return;
             const byte slot = 0x00, dir = 0x00;
@@ -328,8 +334,8 @@ namespace TrueforceForAll.Core
             {
                 try
                 {
-                    // 1: SET_EFFECT mode 5  (SHORT, page 0x807A fn3)
-                    WriteShort(new byte[] { RepShort, DevWired, _idxEffect, 0x3C, 0x05, 0x00, 0x00 });
+                    // 1: SET_EFFECT  (SHORT, page 0x807A fn3)
+                    WriteShort(new byte[] { RepShort, DevWired, _idxEffect, 0x3C, effectMode, 0x00, 0x00 });
 
                     // 2: PRE_CONFIG  (LONG, page 0x807A fn6)
                     var pre = new byte[LenLong];
@@ -385,17 +391,36 @@ namespace TrueforceForAll.Core
             else _short.Write(r);
         }
 
-        /// <summary>Turn every LED off (on disable / shutdown).</summary>
-        public void Clear()
+        /// <summary>Turn the rim LEDs off. Zeroed RGB through a possibly-wrong
+        /// effect mode does NOT reliably clear them (observed: LEDs stuck lit
+        /// after Test), so this sets LIGHTSYNC effect mode 0 and refreshes,
+        /// which returns the rim to its idle/native state, then also pushes a
+        /// zero buffer as a belt-and-braces follow-up.</summary>
+        public void TurnOff()
         {
-            if (_ready) ApplyRgb(new byte[LedCount * 3]);
+            if (!_ready) return;
+            lock (_io)
+            {
+                try
+                {
+                    // effect mode 0 = off  (SHORT, page 0x807A fn3)
+                    WriteShort(new byte[] { RepShort, DevWired, _idxEffect, 0x3C, 0x00, 0x00, 0x00 });
+                    // enable/refresh so the mode change takes effect
+                    WriteShort(new byte[] { RepShort, DevWired, _idxEffect, 0x7C, 0x00, 0x00, 0x00 });
+                }
+                catch (Exception ex) { _log($"[RPM-LED] TurnOff failed: {ex.Message}"); }
+            }
+            try { ApplyRgbMode(0x00, new byte[LedCount * 3]); } catch { }
         }
+
+        /// <summary>Turn every LED off (on disable / shutdown).</summary>
+        public void Clear() => TurnOff();
 
         public void Dispose()
         {
             lock (_io)
             {
-                try { if (_ready) ApplyRgb(new byte[LedCount * 3]); } catch { }
+                try { if (_ready) TurnOff(); } catch { }
                 foreach (var s in new[] { _short, _long, _veryLong })
                 {
                     if (s == null) continue;

@@ -1425,6 +1425,11 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info($"[RPM-LED] Test started, duration={ms} ms ({_rpmLeds.Status})");
         }
 
+        /// <summary>Force the rim LEDs off (feature unchecked / plugin
+        /// disabled). No telemetry frames arrive after that to drive the
+        /// gate-off path, so callers must invoke this explicitly.</summary>
+        public void TurnOffRpmLeds() => _rpmLeds?.ForceOff();
+
         public string RpmLedStatus => _rpmLeds?.Status ?? "(n/a)";
 
         // ---------- Performance auto-ratchet ----------

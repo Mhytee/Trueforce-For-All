@@ -2971,6 +2971,7 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.RpmLedsEnabled = RpmLedEnabledCheck.IsChecked == true;
             _plugin.PersistSettings();
+            if (!_plugin.Settings.RpmLedsEnabled) _plugin.TurnOffRpmLeds();
         }
 
         private void RpmLedTest_Click(object sender, RoutedEventArgs e)

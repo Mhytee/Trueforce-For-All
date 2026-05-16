@@ -137,50 +137,60 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // Diagnostic sequence (not the final UX). Each phase applies ONCE
-            // and holds untouched so we can see, separately: does a single
-            // apply latch? are colours/order/count right? does slow stepping
-            // work without the re-arm flicker the 50 Hz sweep caused?
-            const int staticHoldMs = 4000;
-            const int steps        = 10;
-            const int stepMs       = 500;
-            const int redlineMs    = 3000;
-            int total = staticHoldMs + steps * stepMs + redlineMs;
+            // Effect-mode finder. The protocol latches (LEDs stick on) but
+            // mescon's RS50 "mode 5" doesn't render a clean bar on the G PRO,
+            // and the wheel's onboard profile has its own rev-LED behaviour
+            // that may be fighting our writes. Sweep effect modes 1..8 with an
+            // unmistakable asymmetric pattern held 3 s each so the user can
+            // call out which mode shows EXACTLY:
+            //   LED1=red  LED2=green  LED3=blue  LED4=white  LED5-10=off
+            // steady (not animated, not the onboard rev sweep). The asymmetry
+            // also reveals physical order / fill direction (user's profile is
+            // set to outside-in, so a correct static mode should ignore that
+            // and show our literal LED1..4).
+            byte[] pattern = new byte[WheelLedChannel.LedCount * 3];
+            void Set(int led, byte r, byte g, byte b)
+            { pattern[led*3]=r; pattern[led*3+1]=g; pattern[led*3+2]=b; }
+            Set(0, 255, 0, 0); Set(1, 0, 255, 0); Set(2, 0, 0, 255); Set(3, 255, 255, 255);
+
+            byte[] modes = { 1, 2, 3, 4, 5, 6, 7, 8 };
+            const int holdMs = 3000;
+            int total = modes.Length * holdMs + 500;
 
             _testing = true;
             Task.Run(() =>
             {
                 try
                 {
-                    // Phase 1: static half bar, applied once, held 4 s. If it
-                    // holds steady the protocol latches and the earlier
-                    // flicker was purely from re-arming at 50 Hz.
-                    _log("[RPM-LED] Test phase 1: static 50% bar (one apply, 4 s hold)");
-                    _channel.ApplyRevBar(0.5, false);
-                    Thread.Sleep(staticHoldMs);
-
-                    // Phase 2: slow stepped ramp, one apply per ~500 ms step.
-                    _log("[RPM-LED] Test phase 2: slow stepped ramp (2 Hz)");
-                    for (int i = 1; i <= steps && _channel.IsReady; i++)
+                    foreach (byte m in modes)
                     {
-                        _channel.ApplyRevBar(i / (double)steps, false);
-                        Thread.Sleep(stepMs);
+                        if (!_channel.IsReady) break;
+                        _log($"[RPM-LED] Test: trying effect mode {m} " +
+                             "(expect LED1=red 2=green 3=blue 4=white, rest off, steady)");
+                        _channel.ApplyRgbMode(m, pattern);
+                        Thread.Sleep(holdMs);
                     }
-
-                    // Phase 3: solid full red (redline), one apply, no blink.
-                    _log("[RPM-LED] Test phase 3: solid redline (3 s, no blink)");
-                    _channel.ApplyRevBar(1.0, true);
-                    Thread.Sleep(redlineMs);
                 }
                 catch (Exception ex) { _log($"[RPM-LED] test error: {ex.Message}"); }
                 finally
                 {
-                    try { _channel.Clear(); } catch { }
+                    try { _channel.TurnOff(); } catch { }
                     _lastBucket = -1;
                     _testing = false;
+                    _log("[RPM-LED] Test: finished, LEDs turned off (effect mode 0).");
                 }
             });
             return total;
+        }
+
+        /// <summary>Explicitly turn the rim LEDs off now. Called when the
+        /// user unchecks the feature or disables the plugin, since no further
+        /// telemetry frames will arrive to trigger the gate-off path.</summary>
+        public void ForceOff()
+        {
+            if (_testing) return;
+            try { if (_channel.IsReady) _channel.TurnOff(); } catch { }
+            _lastBucket = -1;
         }
 
         public void Dispose()
