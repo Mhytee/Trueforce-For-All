@@ -31,6 +31,26 @@ namespace TrueforceForAll.Plugin
             var d = data?.NewData;
             if (d == null) return;
 
+            // Rev-bar fill for the rim LEDs. iRacing's own rev lights use the
+            // car's SHIFT-LIGHT band (first-light RPM -> shift RPM), a narrow
+            // window near the top, NOT CurrentDisplayedRPMPercent (which spans
+            // MinimumShownRPM..redline and reads high through normal driving,
+            // so our bar lit ~8 while iRacing's was still 0). Prefer the
+            // shift-light band so the fill matches the sim; fall back to the
+            // displayed percent, then raw Rpms/MaxRpm, for games/cars that
+            // don't publish shift points.
+            double slFirst = d.CarSettings_RPMShiftLight1;
+            double slShift = d.CarSettings_RPMShiftLight2;
+            double revPct;
+            if (slFirst > 0 && slShift > slFirst)
+                revPct = (d.Rpms - slFirst) / (slShift - slFirst);
+            else if (d.CarSettings_CurrentDisplayedRPMPercent > 0)
+                revPct = d.CarSettings_CurrentDisplayedRPMPercent / 100.0;
+            else if (d.MaxRpm > 0)
+                revPct = d.Rpms / d.MaxRpm;
+            else
+                revPct = 0;
+
             var frame = new TelemetryFrame
             {
                 Rpms      = d.Rpms,
@@ -63,11 +83,8 @@ namespace TrueforceForAll.Plugin
                 PitLimiterActive = d.PitLimiterOn,
                 DrsActive        = d.DRSEnabled,
 
-                // Rev-bar fill SimHub already computes for its own dash LEDs:
-                // normalized over the idle→shift band (per-gear redline aware),
-                // not raw Rpms/MaxRpm which would light far too late. SimHub
-                // reports it 0..100; we want 0..1. RPMRedLineReached is 0/1.
-                RpmPercent     = Clamp01(d.CarSettings_CurrentDisplayedRPMPercent / 100.0),
+                // See revPct computation above (shift-light band, sim-matched).
+                RpmPercent     = Clamp01(revPct),
                 RedlineReached = d.CarSettings_RPMRedLineReached >= 0.5,
             };
             EmitFrame(frame);
