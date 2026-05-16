@@ -176,6 +176,10 @@ gracefully
   iRacing with MAIRA** so far. Other SimHub-supported games should work
   but haven't been tested by us yet. Feedback welcome.
 
+## Community coverage
+
+- **Armando Ramirez**, [Does Logitech TRUEFORCE Actually Matter in Forza Horizon 6?](https://www.youtube.com/watch?v=p5P_Ww14CNg): The first video walkthrough of the plugin in Forza Horizon 6, including custom presets the creator tuned.
+
 ## How it works
 
 The wire protocol (init sequence and ep3 streaming format) was
@@ -212,6 +216,8 @@ The wire protocol and init sequence are derived from the
   detection plus auto-named per-car presets) is built from this data.
 - **[SimHub][simhub]**: the host application. This plugin is unofficial
   and not affiliated with the SimHub project.
+- **Armando Ramirez**: produced a [video walkthrough][armando] of the
+  plugin in Forza Horizon 6 and tuned his own presets for it.
 - **Caleb Pearson**: reported that the plugin was not working on the
   RS50, exported the TF4ALL logs that helped pinpoint the cause, and
   validated the fix on his hardware. Without his report the RS50 issue
@@ -229,3 +235,4 @@ project is not affiliated with, endorsed by, or sponsored by Logitech.
 [manteomax]: https://www.manteomax.com/
 [simhub]: https://www.simhubdash.com/
 [releases]: https://github.com/Mhytee/Trueforce-For-All/releases
+[armando]: https://www.youtube.com/watch?v=p5P_Ww14CNg
