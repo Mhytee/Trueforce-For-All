@@ -207,7 +207,7 @@ The wire protocol and init sequence are derived from the
 - **[SimHub][simhub]**: the host application. This plugin is unofficial
   and not affiliated with the SimHub project.
 - **Caleb Pearson**: reported that the plugin was not working on the
-  RS50, exported the bus-capture logs that helped pinpoint the cause, and
+  RS50, exported the TF4ALL logs that helped pinpoint the cause, and
   validated the fix on his hardware. Without his report the RS50 issue
   would have gone unnoticed. He also discovered and confirmed that the
   plugin brings Trueforce back to iRacing when running MAIRA.
