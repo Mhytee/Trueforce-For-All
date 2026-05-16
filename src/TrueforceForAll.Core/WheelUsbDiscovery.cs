@@ -121,7 +121,11 @@ namespace TrueforceForAll.Core
             int ifaces = scans.Count;
             if (ifaces == 0)
             {
-                log?.Invoke("WheelUsbDiscovery: no USBPcap interfaces reported");
+                log?.Invoke("WheelUsbDiscovery: no USBPcap interfaces reported. USBPcap's capture " +
+                            "driver is not loaded. This is expected right after installing it: restart " +
+                            "the computer so the driver attaches at boot, then relaunch SimHub. If it " +
+                            "persists after a reboot, USBPcap is missing or blocked (antivirus, or " +
+                            "Windows 11 Memory integrity / Smart App Control).");
             }
             else if (totalCandidates == 0)
             {
@@ -144,8 +148,10 @@ namespace TrueforceForAll.Core
                 log?.Invoke(
                     $"WheelUsbDiscovery: HID enumerated wheel {hidFoundVid.Value:X4}:{hidFoundPid.Value:X4} " +
                     "but USBPcap discovery did NOT see it. The wheel is plugged in and the HID stack found it, " +
-                    "USBPcap just can't see it on the bus. Try (1) replugging the wheel so USBPcap re-caches its descriptor, " +
-                    "or (2) running SimHub as administrator, or (3) picking the device manually from the diagnostics panel.");
+                    "USBPcap just can't see it on the bus. Try, in order: (1) restart the computer " +
+                    "(USBPcap's capture driver only attaches at boot, especially right after it was " +
+                    "installed), (2) replug the wheel so USBPcap re-caches its descriptor, (3) run " +
+                    "SimHub as administrator, or (4) pick the device manually from the diagnostics panel.");
             }
             return null;
         }

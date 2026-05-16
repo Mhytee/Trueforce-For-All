@@ -68,6 +68,17 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 14),
+                Title = "Clearer 'restart after install' guidance",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Headline = "Reboot prompt after a fresh USBPcap install",
+                        Description = "USBPcap's capture driver (the part that lets the plugin read your game's force feedback) only attaches to your USB ports at boot, so right after a first-time install it does nothing until you restart. The installer now offers a 'restart now' option when it just installed USBPcap, and if the wheel is found but the FFB tap can't see it on the USB bus, the plugin and the in-panel banner now tell you to restart your computer first. This is the most common cause of 'Trueforce works but I get no in-game force feedback' on a new install.",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 13),
                 Title = "Forza UDP settings only show up in Forza",
                 Entries = new List<ChangelogEntry>

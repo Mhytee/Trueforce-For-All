@@ -421,7 +421,7 @@
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Foreground="#222"
                                        FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Text="Your wheel is connected, but FFB pass-through can't find it on the USB bus. Your game's force feedback may feel wrong or be silenced. Pick the wheel manually to fix it."/>
+                                       Text="Your wheel is connected, but FFB pass-through can't find it on the USB bus, so your game's force feedback may feel wrong or be silenced. This is most often fixed by restarting your computer (USBPcap's capture driver only loads at boot, especially right after it was installed). If a reboot doesn't fix it, pick the wheel manually."/>
                             <Button Grid.Column="2" x:Name="FfbTapPickerBannerButton"
                                     Content="Pick device manually..."
                                     Width="170" Height="28" Margin="10,0,0,0"

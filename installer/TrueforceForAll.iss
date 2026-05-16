@@ -154,6 +154,7 @@ Filename: "powershell.exe"; \
 Filename: "{cmd}"; \
     Parameters: "/c start """" /D ""{app}"" ""{app}\SimHubWPF.exe"""; \
     Description: "Launch SimHub now"; \
+    Check: CanLaunchNow; \
     Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [Code]
@@ -166,6 +167,12 @@ const
 
 var
   CachedSimHubDir: string;
+  // Set once we've decided to run the bundled USBPcap installer this
+  // session. USBPcap's kernel filter driver only attaches to the USB
+  // controllers at boot, so a fresh install does nothing until the PC is
+  // restarted. Drives NeedsRestart and the Finished-page wording so users
+  // actually reboot instead of hitting "FFB pass-through disabled".
+  UsbPcapInstalledThisRun: Boolean;
 
 function StripTrailingSlash(S: string): string;
 begin
@@ -482,6 +489,28 @@ end;
 function NeedsUSBPcap: Boolean;
 begin
   Result := not IsUSBPcapInstalled;
+  // Evaluated as the Check for the bundled USBPcap [Run] step, i.e. right
+  // before that installer runs. If we're about to install USBPcap, a
+  // reboot is mandatory before its capture driver works.
+  if Result then
+    UsbPcapInstalledThisRun := True;
+end;
+
+// Inno calls this after the install step to decide the Finished page.
+// Returning True makes Setup offer the "restart now / restart later"
+// choice instead of a plain Finish button.
+function NeedsRestart: Boolean;
+begin
+  Result := UsbPcapInstalledThisRun;
+end;
+
+// Check for the optional "Launch SimHub now" step. Suppress it when a
+// reboot is pending: launching before USBPcap's driver has attached just
+// reproduces the broken "no wheel on the USB bus" state and makes users
+// think the plugin itself is broken.
+function CanLaunchNow: Boolean;
+begin
+  Result := not UsbPcapInstalledThisRun;
 end;
 
 function GetUSBPcapCmdPath(Param: string): string;
@@ -508,9 +537,14 @@ begin
   begin
     WizardForm.FinishedHeadingLabel.Caption :=
       'Trueforce For All is installed';
-    WizardForm.FinishedLabel.Caption :=
-      'Close Logitech G HUB before launching SimHub. G HUB claims the wheel''s HID interface and will block this plugin.' + #13#10 + #13#10 +
-      'If you have "Start minimized" enabled in SimHub, the window will open minimized to the taskbar. Click the SimHub icon to bring it up.';
+    if UsbPcapInstalledThisRun then
+      WizardForm.FinishedLabel.Caption :=
+        'IMPORTANT: USBPcap was just installed. You must restart your computer before the plugin can read your game''s force feedback. Until you reboot you will get Trueforce haptics, but the in-game force feedback pass-through stays disabled (the plugin reports "no wheel on the USB bus", which is expected until the restart).' + #13#10 + #13#10 +
+        'Please pick "restart now" below. After the reboot, close Logitech G HUB, then launch SimHub.'
+    else
+      WizardForm.FinishedLabel.Caption :=
+        'Close Logitech G HUB before launching SimHub. G HUB claims the wheel''s HID interface and will block this plugin.' + #13#10 + #13#10 +
+        'If you have "Start minimized" enabled in SimHub, the window will open minimized to the taskbar. Click the SimHub icon to bring it up.';
 
     // The default FinishedLabel is sized for a short single-paragraph
     // message and clips longer text behind the RunList (the postinstall
@@ -519,7 +553,10 @@ begin
     // checkbox doesn't overlap. ScaleY tracks DPI.
     WizardForm.FinishedLabel.AutoSize := False;
     WizardForm.FinishedLabel.WordWrap := True;
-    WizardForm.FinishedLabel.Height   := ScaleY(120);
+    if UsbPcapInstalledThisRun then
+      WizardForm.FinishedLabel.Height := ScaleY(190)
+    else
+      WizardForm.FinishedLabel.Height := ScaleY(120);
     WizardForm.RunList.Top    := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(16);
     WizardForm.RunList.Height := WizardForm.RunList.Parent.ClientHeight - WizardForm.RunList.Top - ScaleY(8);
   end;
