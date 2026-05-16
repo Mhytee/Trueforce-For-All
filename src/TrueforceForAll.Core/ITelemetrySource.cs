@@ -150,6 +150,18 @@ namespace TrueforceForAll.Core
         /// Null when the source doesn't expose it (AC, SimHub fallback).</summary>
         public int? NumCylinders;
 
+        // ---- Rev / shift LEDs (SimHub-only) ----
+        /// <summary>Rev-bar fill, 0..1, mapped over the meaningful idle→shift
+        /// band the same way SimHub's dashboard rev bars are (from
+        /// CarSettings_CurrentDisplayedRPMPercent). 0 on raw UDP sources that
+        /// don't compute it; RpmLedController falls back to Rpms/MaxRpm then.</summary>
+        public double RpmPercent;
+
+        /// <summary>True when the sim says the shift point / redline has been
+        /// reached (CarSettings_RPMRedLineReached). Drives the all-LED flash.
+        /// False on sources that don't surface it.</summary>
+        public bool RedlineReached;
+
         // ---- Diagnostics ----
         /// <summary>Stopwatch ticks at which the source captured this frame. Set by EmitFrame.</summary>
         public long CapturedAtTicks;

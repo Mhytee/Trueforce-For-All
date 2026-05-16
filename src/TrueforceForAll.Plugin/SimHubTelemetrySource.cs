@@ -62,6 +62,13 @@ namespace TrueforceForAll.Plugin
                 // overlay that derives it from the ERS-percent derivative.
                 PitLimiterActive = d.PitLimiterOn,
                 DrsActive        = d.DRSEnabled,
+
+                // Rev-bar fill SimHub already computes for its own dash LEDs:
+                // normalized over the idle→shift band (per-gear redline aware),
+                // not raw Rpms/MaxRpm which would light far too late. SimHub
+                // reports it 0..100; we want 0..1. RPMRedLineReached is 0/1.
+                RpmPercent     = Clamp01(d.CarSettings_CurrentDisplayedRPMPercent / 100.0),
+                RedlineReached = d.CarSettings_RPMRedLineReached >= 0.5,
             };
             EmitFrame(frame);
         }

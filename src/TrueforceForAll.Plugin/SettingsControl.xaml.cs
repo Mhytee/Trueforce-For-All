@@ -221,6 +221,12 @@ namespace TrueforceForAll.Plugin
 
                 CaptureExeOverrideBox.Text = _plugin.ActiveCaptureExeOverride ?? "";
 
+                // Rim rev/shift LEDs (iRacing)
+                if (RpmLedEnabledCheck != null)
+                    RpmLedEnabledCheck.IsChecked = _plugin.Settings?.RpmLedsEnabled == true;
+                if (RpmLedStatusText != null)
+                    RpmLedStatusText.Text = _plugin.RpmLedStatus;
+
                 // Forza section
                 var fz = _plugin.Settings?.Forza;
                 if (fz != null)
@@ -2956,6 +2962,30 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings?.Forza == null) return;
             _plugin.Settings.Forza.Enabled = ForzaEnabledCheck.IsChecked == true;
             _plugin.ApplyForzaSettings();
+        }
+
+        // ---------- Rim rev/shift LEDs (iRacing) ----------
+
+        private void RpmLedEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.RpmLedsEnabled = RpmLedEnabledCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void RpmLedTest_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.TestRpmLeds();
+            // Surface the probe result after the open attempt settles.
+            var t = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromMilliseconds(1500) };
+            t.Tick += (s2, e2) =>
+            {
+                t.Stop();
+                if (RpmLedStatusText != null) RpmLedStatusText.Text = _plugin.RpmLedStatus;
+            };
+            t.Start();
         }
 
         private void ForzaPort_LostFocus(object sender, RoutedEventArgs e) => CommitForzaPort();

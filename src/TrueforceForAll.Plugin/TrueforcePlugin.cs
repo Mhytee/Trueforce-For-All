@@ -107,6 +107,11 @@ namespace TrueforceForAll.Plugin
         public CollisionEffect    Collision    { get; private set; }
         private TelemetryEffect[] _effects;
 
+        // Rim rev/shift LEDs over HID++ (iRacing-scoped, separate from the
+        // Trueforce stream). Lazily opens its own HID handle on first gated
+        // frame; never touches the ep3 audio-haptic device.
+        private RpmLedController _rpmLeds;
+
         // Active telemetry source. The plugin currently always uses
         // SimHubTelemetrySource (universal, ~60 Hz from the SimHub data
         // pipeline). Per-game enhanced sources (AC native MMF, etc.) will
@@ -881,6 +886,8 @@ namespace TrueforceForAll.Plugin
             Collision    = new CollisionEffect();
             _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, GearShift, AbsClick, PitLimiter, Drs, Collision };
             foreach (var fx in _effects) _mixer.Add(fx);
+
+            _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
             // Pull initial values from globals (no car detected yet).
             ApplyActiveCarOverride();
 
@@ -1048,6 +1055,9 @@ namespace TrueforceForAll.Plugin
 
             // UI changes are written through to Settings on the fly, so just save.
             if (Settings != null) this.SaveCommonSettings("GeneralSettings", Settings);
+
+            try { _rpmLeds?.Dispose(); } catch { }
+            _rpmLeds = null;
 
             try { _audio?.Dispose(); } catch { }
             _audio = null;
@@ -1384,7 +1394,38 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
+
+            // Rim rev/shift LEDs. Gated to iRacing (where MAIRA users lose
+            // native rev lights after disabling in-game Trueforce) and the
+            // opt-in setting. Independent HID++ channel; can't disturb FFB or
+            // the ep3 stream even when it shares the wheel with native FFB.
+            if (_rpmLeds != null)
+            {
+                bool gate = (Settings?.RpmLedsEnabled ?? false)
+                            && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal);
+                try
+                {
+                    _rpmLeds.OnFrame(frame.RpmPercent, frame.Rpms, frame.MaxRpm,
+                                     frame.RedlineReached, gate);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error("[Trueforce] RPM-LED telemetry error", ex);
+                }
+            }
         }
+
+        /// <summary>Run the simulated rev/shift sweep on the rim LEDs (settings
+        /// "Test" button). Opens the HID++ channel on demand so it works with
+        /// nothing running; safe regardless of active game.</summary>
+        public void TestRpmLeds()
+        {
+            if (_rpmLeds == null) { SimHub.Logging.Current.Info("[RPM-LED] controller not initialized"); return; }
+            int ms = _rpmLeds.RunTest();
+            SimHub.Logging.Current.Info($"[RPM-LED] Test started, duration={ms} ms ({_rpmLeds.Status})");
+        }
+
+        public string RpmLedStatus => _rpmLeds?.Status ?? "(n/a)";
 
         // ---------- Performance auto-ratchet ----------
 

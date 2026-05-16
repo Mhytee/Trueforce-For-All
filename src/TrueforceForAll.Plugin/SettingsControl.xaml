@@ -1307,6 +1307,33 @@
 
             </StackPanel> <!-- /TelemetryEffectsPanel -->
 
+            <!-- Rim rev/shift LEDs (iRacing). iRacing's native rev lights ride
+                 its Trueforce SDK hook, so MAIRA users who disable in-game
+                 Trueforce lose them. This drives the wheel's 10 RGB LEDs from
+                 SimHub's rev-bar telemetry over a separate HID++ channel that
+                 can't disturb FFB or the Trueforce stream. Experimental;
+                 default off; verify with Test before relying on it. -->
+            <StackPanel x:Name="RpmLedSection">
+            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Rim rev/shift LEDs (iRacing)" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                Text="For iRacing + MAIRA: when you disable Trueforce in iRacing, the wheel's RPM lights go dark too (iRacing routes them through its Trueforce hook). This re-drives the 10 rim LEDs from SimHub's rev-bar telemetry over a separate HID++ channel. Experimental. Click Test to verify your wheel lights up before relying on it; if nothing happens, use 'Bundle logs' and check the log for which HID interfaces were probed."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <CheckBox x:Name="RpmLedEnabledCheck" Content="Drive rim rev LEDs in iRacing"
+                          VerticalAlignment="Center"
+                          Checked="RpmLedEnabled_Changed" Unchecked="RpmLedEnabled_Changed"
+                          ToolTip="Only active while iRacing is the running game. No effect in other titles."/>
+                <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
+            </StackPanel>
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="LED channel:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="1" x:Name="RpmLedStatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
+            </Grid>
+            </StackPanel> <!-- /RpmLedSection -->
+
             <!-- Sidechain ducking + Performance moved into the Advanced
                  Settings modal. See AdvancedSettingsHost near the bottom. -->
 

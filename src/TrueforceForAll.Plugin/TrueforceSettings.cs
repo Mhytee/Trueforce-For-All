@@ -21,6 +21,13 @@ namespace TrueforceForAll.Plugin
         // ep3 stream would conflict with the game's own.
         public bool PluginEnabled { get; set; } = true;
 
+        // Drive the wheel rim's RGB rev/shift LEDs from SimHub telemetry over
+        // HID++ (separate channel from the Trueforce stream). Scoped to iRacing:
+        // iRacing's native rev lights ride its Trueforce SDK hook, so MAIRA
+        // users who disable in-game Trueforce lose them; this puts them back.
+        // Default off (new hardware-output feature, opt-in).
+        public bool RpmLedsEnabled { get; set; } = false;
+
         // Per-game auto-remembered enable state. When the active game changes,
         // the plugin looks up this dict and applies the saved value (default
         // true for games never seen before). Independent of preset assignment.
