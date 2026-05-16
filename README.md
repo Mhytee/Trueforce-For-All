@@ -130,6 +130,16 @@ Some titles read directly from the game's telemetry, bypassing SimHub's limitati
 
 Additional per-title enhancements/bypasses will be added over time.
 
+## iRacing + MAIRA
+
+iRacing ships native Trueforce, so this plugin normally stays out of its
+way. The exception is **Marvin's Awesome iRacing App (MAIRA)**: running
+MAIRA on a Logitech wheel requires setting `loadTrueForceAPI=0` in
+iRacing's `app.ini`, which turns iRacing's Trueforce fully off. This
+plugin can restore the Trueforce textural haptics for MAIRA users,
+running alongside MAIRA's force feedback without conflict. Step-by-step
+setup is in [docs/iracing-maira-trueforce.md](docs/iracing-maira-trueforce.md).
+
 ## Auto-discovery
 
  On startup the plugin:
@@ -156,9 +166,9 @@ gracefully
   wheel's own Trueforce intensity scaling stops responding to the dial.
   Use the in-plugin Master Gain and per-effect Gain controls to set
   intensity instead.
-- **Validated on G PRO and RS50 + AC + Wreckfest 2 + FH5 + FH6** so far.
-  Other SimHub-supported games should work but haven't been tested by us
-  yet. Feedback welcome.
+- **Validated on G PRO and RS50 + AC + Wreckfest 2 + FH5 + FH6 +
+  iRacing with MAIRA** so far. Other SimHub-supported games should work
+  but haven't been tested by us yet. Feedback welcome.
 
 ## How it works
 
@@ -196,6 +206,11 @@ The wire protocol and init sequence are derived from the
   detection plus auto-named per-car presets) is built from this data.
 - **[SimHub][simhub]**: the host application. This plugin is unofficial
   and not affiliated with the SimHub project.
+- **Caleb Pearson**: reported that the plugin was not working on the
+  RS50, exported the bus-capture logs that helped pinpoint the cause, and
+  validated the fix on his hardware. Without his report the RS50 issue
+  would have gone unnoticed. He also discovered and confirmed that the
+  plugin brings Trueforce back to iRacing when running MAIRA.
 
 Logitech, Trueforce, G PRO, and RS50 are trademarks of Logitech. This
 project is not affiliated with, endorsed by, or sponsored by Logitech.
