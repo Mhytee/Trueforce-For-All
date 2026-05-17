@@ -1431,8 +1431,16 @@ namespace TrueforceForAll.Plugin
             // the ep3 stream even when it shares the wheel with native FFB.
             if (_rpmLeds != null)
             {
+                // LEDs are only SAFE when there is no PID on the wheel's HID++
+                // pipe, i.e. MAIRA passthrough is live (MAIRA publishing to
+                // shared memory, PID suppressed). In the no-MAIRA iRacing path
+                // (Trueforce disabled in app.ini) iRacing sends PID and an LED
+                // write stalls FFB ~1.5 s, so auto-suppress LEDs there. The
+                // setting can be on; it just can't fight FFB.
+                bool mairaLive = _mairaIpc != null && _mairaIpc.IsOpen;
                 bool gate = (Settings?.RpmLedsEnabled ?? false)
-                            && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal);
+                            && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
+                            && mairaLive;
                 try
                 {
                     _rpmLeds.OnFrame(frame.RpmPercent, frame.Rpms, frame.MaxRpm,

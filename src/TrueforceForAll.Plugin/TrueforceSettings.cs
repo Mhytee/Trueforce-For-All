@@ -38,7 +38,11 @@ namespace TrueforceForAll.Plugin
         // iRacing's native rev lights ride its Trueforce SDK hook, so MAIRA
         // users who disable in-game Trueforce lose them; this puts them back.
         // Default off (new hardware-output feature, opt-in).
-        public bool RpmLedsEnabled { get; set; } = false;
+        // On by default: it is gated to iRacing AND to MAIRA passthrough
+        // being live (no PID on the HID++ pipe), so default-on only ever
+        // drives LEDs in the safe iRacing+MAIRA configuration. Other games
+        // and the no-MAIRA iRacing path never see it.
+        public bool RpmLedsEnabled { get; set; } = true;
 
         // Per-game auto-remembered enable state. When the active game changes,
         // the plugin looks up this dict and applies the saved value (default
