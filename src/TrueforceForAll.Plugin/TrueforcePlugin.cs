@@ -809,10 +809,15 @@ namespace TrueforceForAll.Plugin
                 _device.FfbTargetProvider = () =>
                 {
                     // Prefer MAIRA shared-memory FFB when it's live (its toggle
-                    // is on and it's publishing). No PID is on the HID++ pipe
-                    // then, so LEDs + FFB coexist.
-                    var fromMaira = _mairaIpc?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
-                    if (fromMaira.HasValue) return fromMaira;
+                    // is on and it's publishing). Scoped to the iRacing profile
+                    // only , MAIRA is an iRacing app, and we don't want a stale
+                    // map to hijack FFB in other games. No PID is on the HID++
+                    // pipe in this mode, so LEDs + FFB coexist.
+                    if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
+                    {
+                        var fromMaira = _mairaIpc?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                        if (fromMaira.HasValue) return fromMaira;
+                    }
 
                     // SkipFfbPassthrough: return Some(0) so the device sends
                     // active packets (audio plays) with cur = 0x8000. The
@@ -5229,7 +5234,9 @@ namespace TrueforceForAll.Plugin
                     // the latest sample; ipc.IsOpen is false until MAIRA
                     // creates the map, so the LEDs stay off until MAIRA's
                     // toggle goes on, then "just talk".
-                    if (!(Settings?.RpmLedsEnabled ?? false))
+                    // Scoped to the iRacing profile (MAIRA is iRacing-only).
+                    if (!(Settings?.RpmLedsEnabled ?? false)
+                        || !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
                     {
                         leds.OnFrame(0, 0, 0, false, false);
                         continue;
