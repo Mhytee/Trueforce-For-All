@@ -620,11 +620,19 @@ namespace TrueforceForAll.Plugin
                 }
                 if (RpmLedSection != null)
                 {
-                    // Hidden until the tester unlocks it with the access code
-                    // (bottom of page). The MAIRA passthrough side is still in
-                    // PR / unvalidated on RS50/G923, so it stays out of the
-                    // public UI until then. Not game/profile gated anymore.
-                    var want = (_plugin.Settings?.RpmLedUnlocked == true)
+                    // Two gates, both required: (1) the tester unlocked it
+                    // with the access code (bottom of page) - the MAIRA
+                    // passthrough side is still in PR / unvalidated on
+                    // RS50/G923, so it stays out of the public UI until then;
+                    // and (2) the active SimHub game is iRacing
+                    // (ShouldShowRpmLedSection), since iRacing is the only game
+                    // these toggles apply to. Gate (2) is profile-level, not
+                    // run-state: _activeGame is data.GameName (the
+                    // SimHub-selected game), so it shows in the iRacing profile
+                    // whether or not iRacing is currently running, and stays
+                    // hidden in every other profile.
+                    var want = (_plugin.Settings?.RpmLedUnlocked == true
+                                && _plugin.ShouldShowRpmLedSection)
                         ? System.Windows.Visibility.Visible
                         : System.Windows.Visibility.Collapsed;
                     if (RpmLedSection.Visibility != want) RpmLedSection.Visibility = want;
@@ -3017,8 +3025,19 @@ namespace TrueforceForAll.Plugin
                 _plugin.PersistSettings();
             }
             AccessCodeBox.Text = string.Empty;
-            if (AccessCodeStatus != null) AccessCodeStatus.Text = "Test features unlocked.";
-            if (RpmLedSection != null) RpmLedSection.Visibility = System.Windows.Visibility.Visible;
+            // The unlock persists, but the section only appears in the iRacing
+            // SimHub profile (its toggles apply to iRacing only). If they
+            // unlock from another profile, say so plainly so the "nothing
+            // happened" isn't a mystery.
+            bool showNow = _plugin.ShouldShowRpmLedSection;
+            if (AccessCodeStatus != null)
+                AccessCodeStatus.Text = showNow
+                    ? "Test features unlocked."
+                    : "Test features unlocked (shows in the iRacing profile).";
+            if (RpmLedSection != null)
+                RpmLedSection.Visibility = showNow
+                    ? System.Windows.Visibility.Visible
+                    : System.Windows.Visibility.Collapsed;
         }
 
         // ---------- Rim rev/shift LEDs (iRacing) ----------
