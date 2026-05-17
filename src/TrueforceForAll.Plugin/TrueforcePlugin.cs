@@ -77,8 +77,6 @@ namespace TrueforceForAll.Plugin
         private HelperHost _helperHost;
         private UsbPcapFfbTap _ffbTap;
         private MairaIpcSource _mairaIpc;
-        private Thread _mairaLedThread;
-        private volatile bool _mairaLedStop;
 
         // Snapshot of the HID-side wheel match (Vid/Pid/Model) we found in Init.
         // Held so the manual USB-device picker can highlight the row that
@@ -795,8 +793,11 @@ namespace TrueforceForAll.Plugin
                 bool mairaAutoLink = Settings == null || Settings.MairaFfbPassthrough;
                 if (mairaAutoLink)
                 {
+                    // MAIRA passes FFB only. LEDs are driven by TF4ALL's
+                    // normal SimHub telemetry path (DispatchFrame ->
+                    // RpmLedController), the accurate per-car implementation;
+                    // no PID on the HID++ pipe in this mode so it's safe.
                     _mairaIpc = new MairaIpcSource(msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"));
-                    StartMairaLedPump();
                 }
 
                 var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
@@ -5187,73 +5188,12 @@ namespace TrueforceForAll.Plugin
 
         private void CleanupDevice()
         {
-            StopMairaLedPump();
             try { _mairaIpc?.Dispose(); } catch { }
             _mairaIpc = null;
             try { _ffbTap?.Dispose(); } catch { }
             _ffbTap = null;
             try { _device?.Dispose(); } catch { }
             _device = null;
-        }
-
-        // ---- MAIRA passthrough LED pump --------------------------------
-        // In MAIRA passthrough mode there is no SimHub game frame to drive the
-        // rim LEDs from, so pump RpmLedController off the IPC RPM/shift values
-        // at ~60 Hz. The LED HID++ writes are safe here because MAIRA is NOT
-        // sending PID to the wheel, the HID++ pipe is otherwise idle.
-        private void StartMairaLedPump()
-        {
-            _mairaLedStop = false;
-            _mairaLedThread = new Thread(MairaLedLoop)
-            { IsBackground = true, Name = "MairaRpmLedPump" };
-            _mairaLedThread.Start();
-        }
-
-        private void StopMairaLedPump()
-        {
-            _mairaLedStop = true;
-            var t = _mairaLedThread; _mairaLedThread = null;
-            try { t?.Join(400); } catch { }
-        }
-
-        private void MairaLedLoop()
-        {
-            while (!_mairaLedStop)
-            {
-                try
-                {
-                    Thread.Sleep(16);
-                    if (_mairaLedStop) break;
-                    var ipc = _mairaIpc;
-                    var leds = _rpmLeds;
-                    if (ipc == null || leds == null) continue;
-
-                    // Auto: drive the LEDs whenever MAIRA is actually
-                    // publishing (its toggle is on => map present & fresh)
-                    // and the user enabled rim LEDs. ipc.TryRefresh() pulls
-                    // the latest sample; ipc.IsOpen is false until MAIRA
-                    // creates the map, so the LEDs stay off until MAIRA's
-                    // toggle goes on, then "just talk".
-                    // Scoped to the iRacing profile (MAIRA is iRacing-only).
-                    if (!(Settings?.RpmLedsEnabled ?? false)
-                        || !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
-                    {
-                        leds.OnFrame(0, 0, 0, false, false);
-                        continue;
-                    }
-
-                    ipc.TryRefresh();
-                    float rpm = ipc.Rpm, slF = ipc.ShiftFirstRpm, slS = ipc.ShiftShiftRpm;
-                    double pct = 0;
-                    if (slS > slF && rpm > 0) pct = (rpm - slF) / (slS - slF);
-                    bool redline = slS > 0 && rpm >= slS;
-                    leds.OnFrame(pct, rpm, 0, redline, ipc.IsOpen);
-                }
-                catch (Exception ex)
-                {
-                    SimHub.Logging.Current.Error("[Trueforce] MAIRA LED pump error", ex);
-                }
-            }
         }
 
         // Persist the user-picked USBPcap path and restart the FFB tap with

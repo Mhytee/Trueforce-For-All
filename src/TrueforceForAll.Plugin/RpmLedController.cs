@@ -78,21 +78,45 @@ namespace TrueforceForAll.Plugin
             Push(rpmPercent, redline, force: false);
         }
 
+        private int _hystLevel = -1;
+
         private void Push(double pct, bool redline, bool force)
         {
-            int bucket = redline ? WheelLedChannel.LedCount
-                                 : (int)Math.Floor(pct * WheelLedChannel.LedCount + 0.5);
-            if (bucket > WheelLedChannel.LedCount) bucket = WheelLedChannel.LedCount;
-
             long nowMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
-            bool changed = bucket != _lastBucket || redline != _lastRedline;
+            int target;
+            if (redline)
+            {
+                // Peak: blink the full bar (~2.7 Hz) like iRacing's shift
+                // blink, instead of holding it solid.
+                bool on = ((nowMs / 185L) & 1L) == 0L;
+                target = on ? WheelLedChannel.LedCount : 0;
+            }
+            else
+            {
+                double scaled = pct * WheelLedChannel.LedCount;
+                int lvl = (int)Math.Floor(scaled + 0.5);
+                if (lvl < 0) lvl = 0;
+                else if (lvl > WheelLedChannel.LedCount) lvl = WheelLedChannel.LedCount;
+                // Hysteresis: need ~0.55 LED past the boundary to change, so a
+                // steady RPM with telemetry jitter doesn't flicker the bar
+                // (the mid-RPM flashing the user saw).
+                if (_hystLevel >= 0)
+                {
+                    if (lvl > _hystLevel && scaled < _hystLevel + 0.55) lvl = _hystLevel;
+                    else if (lvl < _hystLevel && scaled > _hystLevel - 0.55) lvl = _hystLevel;
+                }
+                _hystLevel = lvl;
+                target = lvl;
+            }
+
+            bool changed = target != _lastBucket || redline != _lastRedline;
             if (!force && !changed) return;
             if (!force && (nowMs - _lastPushTicks) < MinPushIntervalMs && !redline) return;
 
-            try { _channel.ApplyRevBar(pct, redline); }
+            try { _channel.SetLevel(target); }
             catch (Exception ex) { _log($"[RPM-LED] push error: {ex.Message}"); }
 
-            _lastBucket = bucket;
+            _lastBucket = target;
             _lastRedline = redline;
             _lastPushTicks = nowMs;
         }
