@@ -170,21 +170,18 @@ and everything SimHub drives both work at the same time.
 ## iRacing + MAIRA
 
 iRacing ships native Trueforce, so this plugin normally stays out of its
-way. Where it comes in is with **Marvin's Awesome iRacing App (MAIRA)**:
-running MAIRA on a Logitech wheel requires `loadTrueForceAPI=0` in
-iRacing's `app.ini`, which turns iRacing's own Trueforce off.
-
-Turn on MAIRA's **"Pass FFB through TF4ALL"** toggle and the two link up
-automatically. MAIRA stops sending PID force feedback to the wheel and
-hands its computed force to this plugin through shared memory; the
-plugin renders that force as Trueforce haptics and also drives the
-wheel's rim **rev/shift LEDs**. Because no PID traffic is on the wheel's
-HID++ pipe, the haptics and the rev lights run together with no force-
-feedback conflict. MAIRA users get both their Trueforce textural
-haptics and the rev lights back.
-
-Step-by-step setup is in
+way. The exception is **Marvin's Awesome iRacing App (MAIRA)**: running
+MAIRA on a Logitech wheel requires setting `loadTrueForceAPI=0` in
+iRacing's `app.ini`, which turns iRacing's Trueforce fully off. This
+plugin restores the Trueforce textural haptics for MAIRA users, running
+alongside MAIRA's force feedback without conflict. No MAIRA changes are
+needed. Step-by-step setup is in
 [docs/iracing-maira-trueforce.md](docs/iracing-maira-trueforce.md).
+
+A pull request to MAIRA is open that would additionally bring the wheel's
+rim rev/shift LEDs back (MAIRA hands its force to this plugin so the
+lights and haptics can run together). It is pending review and is not
+part of MAIRA yet.
 
 ## Auto-discovery
 
