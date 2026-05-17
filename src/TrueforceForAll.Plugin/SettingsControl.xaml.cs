@@ -953,6 +953,23 @@ namespace TrueforceForAll.Plugin
                     : Visibility.Collapsed;
             }
 
+            // Unverified-wheel info banner (Xbox G923 etc.): show when the
+            // plugin reports a non-null notice for the detected wheel.
+            if (UnverifiedWheelBanner != null)
+            {
+                string notice = _plugin?.UnverifiedWheelNotice;
+                if (string.IsNullOrEmpty(notice))
+                {
+                    UnverifiedWheelBanner.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    UnverifiedWheelBanner.Visibility = Visibility.Visible;
+                    if (UnverifiedWheelText.Text != notice)
+                        UnverifiedWheelText.Text = notice;
+                }
+            }
+
             // Performance counters update every meter tick (cheap; array sum
             // of 60 longs). Doesn't depend on any expander being open.
             UpdatePerfCounters();
@@ -1840,7 +1857,7 @@ namespace TrueforceForAll.Plugin
                 + $"- Active game: {game}\n"
                 + $"- Active car: {carId}\n"
                 + "- SimHub version: <fill in>\n"
-                + "- Wheel: <e.g. G PRO, RS50>\n"
+                + "- Wheel: <e.g. G PRO, RS50, G923>\n"
                 + "\n**Logs:** attach the .zip from your Desktop (if exported)\n";
             string url = ReportIssuesBase
                        + "?title=" + Uri.EscapeDataString("[bug] ")

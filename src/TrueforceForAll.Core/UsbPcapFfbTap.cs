@@ -467,6 +467,30 @@ namespace TrueforceForAll.Core
                     MaybeLogPcap(rh, payload, caplen);
                 }
 
+                // DirectInput-style FFB path: a non-Trueforce game writes the
+                // FFB target as report 0x11 / cmd 0x08 on an interrupt OUT
+                // endpoint (the wheel's normal FFB endpoint), force = int8
+                // offset-binary centered at 0x80 at report offset 2. Decoded
+                // from the FH5 G923 capture 2026-05-17. For interrupt OUT the
+                // report data starts right after the USBPcap pseudo-header
+                // (no setup stage, unlike the ep0 control path below).
+                // Independent of the ep0 HID++ path; whichever transport the
+                // running game uses latches the freshest value, and
+                // TryGetFreshFfbTarget arbitrates by recency. Normalized to
+                // the int16 scale the HID++ path uses (<<8) so FfbScale tuning
+                // behaves the same regardless of which path fed the value.
+                if (isOut && xfer == 0x01 && headerLen + 3 <= caplen
+                    && payload[headerLen] == 0x11 && payload[headerLen + 1] == 0x08)
+                {
+                    int force8 = payload[headerLen + 2] - 0x80;   // -128..+127
+                    short ffbTarget = (short)(force8 << 8);        // -> int16 scale
+                    long ts = _sw.ElapsedTicks & TimestampMask;
+                    long pk = (ts << 16) | (uint)(ushort)ffbTarget;
+                    System.Threading.Interlocked.Exchange(ref _packed, pk);
+                    System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
+                    FfbSamplesCaptured++;
+                }
+
                 MaybeEmitDiagnostics();
                 if (!_ffbIndexResolved)
                 {

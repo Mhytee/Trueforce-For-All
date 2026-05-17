@@ -17,6 +17,11 @@ namespace TrueforceForAll.Core
         public ushort Vid;
         public ushort Pid;
         public string Model;
+        // True when the PID is supported by inference (shared HID++ family)
+        // but not hardware-confirmed. The UI surfaces a "report back" notice
+        // so a user can tell us if Trueforce works but FFB pass-through
+        // doesn't on these.
+        public bool Unverified;
     }
 
     public static class WheelDiscovery
@@ -28,7 +33,26 @@ namespace TrueforceForAll.Core
             (0xC272, "Logitech G PRO Racing Wheel (Xbox/PC)"),
             (0xC268, "Logitech G PRO Racing Wheel (PS/PC)"),
             (0xC276, "Logitech RS50"),
+            // G923 PS/PC is hardware-confirmed (ACC + FH5 captures, 2026-05-17):
+            // Trueforce ep3 protocol identical to G PRO; non-Trueforce FFB on
+            // ep01 report 0x11/0x08. Xbox/PC PIDs (C26D primary, C26E firmware
+            // variant) share the HID++ family per the Linux lg4ff driver but
+            // are NOT hardware-tested; flagged Unverified below.
+            (0xC266, "Logitech G923 (PS/PC)"),
+            (0xC26D, "Logitech G923 (Xbox/PC)"),
+            (0xC26E, "Logitech G923 (Xbox/PC)"),
         };
+
+        // PIDs that resolve + stream by inference but aren't hardware-proven.
+        // Logitech's Xbox wheel variants have historically diverged from
+        // their PS siblings in init/handshake (cf. G920 vs G29), so we ship
+        // these but ask the user to report whether FFB pass-through works.
+        private static readonly HashSet<ushort> UnverifiedPids = new HashSet<ushort>
+        {
+            0xC26D, 0xC26E,
+        };
+
+        public static bool IsUnverified(ushort pid) => UnverifiedPids.Contains(pid);
 
         // Trueforce HID descriptor on interface 2: usage page 0xFFFD, usage 0xFD01,
         // 64-byte output reports (1 report ID byte + 63 data).
@@ -52,6 +76,7 @@ namespace TrueforceForAll.Core
                         Vid = LogitechVid,
                         Pid = pid,
                         Model = model,
+                        Unverified = IsUnverified(pid),
                     });
                 }
             }
