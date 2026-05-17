@@ -272,7 +272,7 @@
                     <TextBlock x:Name="UpdateAvailableButtonText" Text="Update available"/>
                 </Button>
             </StackPanel>
-            <TextBlock Text="Brings Trueforce-style haptics to any SimHub-enabled game. Unofficial reverse-engineered implementation of Logitech's Trueforce protocol, not affiliated with Logitech. Supports G PRO / RS50 wheels."
+            <TextBlock Text="Brings Trueforce-style haptics to any SimHub-enabled game. Unofficial reverse-engineered implementation of Logitech's Trueforce protocol, not affiliated with Logitech. Supports G PRO / RS50 / G923 wheels."
                        FontSize="13" Opacity="0.7" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
             <!-- "What's new" banner. Shown when the running build's version
@@ -429,6 +429,23 @@
                                     Background="#222" Foreground="#FFC107"
                                     BorderBrush="#222" BorderThickness="1"/>
                         </Grid>
+                    </Border>
+
+                    <!-- Unverified-wheel notice. Detected PID is supported by
+                         inference (Xbox G923) but not hardware-tested. Asks
+                         the user to report the one failure mode we can't rule
+                         out: Trueforce effects play but game FFB is silent
+                         (init/handshake divergence). Blue = informational,
+                         not an error. Hidden for confirmed wheels. -->
+                    <Border x:Name="UnverifiedWheelBanner" Visibility="Collapsed"
+                            Background="#1565C0" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="ⓘ" FontSize="14" Foreground="White"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="UnverifiedWheelText" Foreground="White"
+                                       FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Text=""/>
+                        </StackPanel>
                     </Border>
                 </StackPanel>
             </Border>

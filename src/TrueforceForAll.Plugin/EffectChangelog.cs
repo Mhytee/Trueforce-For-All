@@ -68,6 +68,17 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 15),
+                Title = "Logitech G923 support (community testing)",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Headline = "G923 wheels recognized, ready for testing",
+                        Description = "The Logitech G923 is now detected. Its protocol was decoded from USB captures: the G923's Trueforce motor uses the same protocol as the G PRO, and the plugin now taps the force-feedback path the G923 uses in non-Trueforce games so in-game FFB and Trueforce effects can coexist. This is built from confirmed captures but has not been tested on a physical G923 yet. G923 (PS/PC): please try it and report how it feels (effects playing, in-game FFB still present, direction and strength sensible). G923 (Xbox/PC): experimental, supported by inference only. If Trueforce effects work but your game's force feedback is silent, report it via Feedback then Report an issue with Export logs attached.",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 14),
                 Title = "Clearer 'restart after install' guidance",
                 Entries = new List<ChangelogEntry>

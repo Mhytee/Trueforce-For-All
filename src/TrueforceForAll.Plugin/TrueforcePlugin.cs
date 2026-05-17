@@ -31,7 +31,7 @@ namespace TrueforceForAll.Plugin
     // <Version> in TrueforceForAll.Plugin.csproj) is already surfaced at
     // runtime by UpdateChecker, the settings panel header, and the changelog
     // dialog. Adding it here too just creates a stale-copy hazard on bumps.
-    [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO and RS50 wheels.")]
+    [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO, RS50 and G923 wheels.")]
     [PluginAuthor("Mhytee")]
     [PluginName("Trueforce For All")]
     public sealed class TrueforcePlugin : IDataPlugin, IWPFSettingsV2
@@ -335,6 +335,13 @@ namespace TrueforceForAll.Plugin
         public string FfbTapStatus   => _ffbTap?.Status ?? "Not started";
         public int    ActiveVoiceCount => _mixer.SourceCount;
 
+        // Non-null when the detected wheel is a supported-by-inference PID
+        // (Xbox G923) we haven't hardware-verified. Surfaced as an info
+        // banner so the user knows to report the one divergence we can't
+        // rule out. Null for hardware-confirmed wheels.
+        private string _unverifiedWheelNotice;
+        public string UnverifiedWheelNotice => _unverifiedWheelNotice;
+
         // True when USBPcapCMD.exe is locatable right now (override path, env
         // var, or default Program Files paths). Cheap probe; the settings UI
         // polls this on its tick to show/hide the Browse + Reinstall buttons.
@@ -408,7 +415,7 @@ namespace TrueforceForAll.Plugin
                 //    + open path; "Not detected" is the default.
                 string wheel = WheelStatus ?? "";
                 if (wheel.StartsWith("Not detected", StringComparison.OrdinalIgnoreCase))
-                    return "Wheel not detected. Plug in your G PRO / RS50, or close any app that's holding the device exclusively.";
+                    return "Wheel not detected. Plug in your G PRO / RS50 / G923, or close any app that's holding the device exclusively.";
                 if (wheel.StartsWith("Open failed", StringComparison.OrdinalIgnoreCase)
                  || wheel.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
                     return $"Wheel reports: {wheel}. Try unplugging and reconnecting the wheel.";
@@ -752,15 +759,34 @@ namespace TrueforceForAll.Plugin
                 WheelStatus = "Not detected (close G HUB and reload plugins)";
                 SimHub.Logging.Current.Warn(
                     "[Trueforce] No supported wheel found. Is G HUB closed? " +
-                    "Plug in a G PRO / RS50 and reload SimHub plugins.");
+                    "Plug in a G PRO / RS50 / G923 and reload SimHub plugins.");
                 return;
             }
 
             var match = matches[0];
             _hidWheelVid = match.Vid;
             _hidWheelPid = match.Pid;
-            WheelStatus = $"{match.Model}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})";
+            WheelStatus = $"{match.Model}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
+                        + (match.Unverified ? "  [unconfirmed model]" : "");
             SimHub.Logging.Current.Info($"[Trueforce] Found {WheelStatus}.");
+
+            // Unverified PIDs (Xbox G923): resolve + stream by inference from
+            // the shared HID++ family, but not hardware-tested. Surface a
+            // notice asking the user to report the one failure mode we can't
+            // rule out (init/handshake divergence: Trueforce effects play but
+            // game FFB pass-through stays silent).
+            if (match.Unverified)
+            {
+                _unverifiedWheelNotice =
+                    $"{match.Model} is supported by inference but not hardware-tested. " +
+                    "If Trueforce effects work but your game's force feedback is silent, " +
+                    "please report it (Feedback > Report an issue, attach Export logs).";
+                SimHub.Logging.Current.Warn($"[Trueforce] {_unverifiedWheelNotice}");
+            }
+            else
+            {
+                _unverifiedWheelNotice = null;
+            }
 
             try
             {
