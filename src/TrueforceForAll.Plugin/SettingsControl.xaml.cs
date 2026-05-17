@@ -224,6 +224,8 @@ namespace TrueforceForAll.Plugin
                 // Rim rev/shift LEDs (iRacing)
                 if (RpmLedEnabledCheck != null)
                     RpmLedEnabledCheck.IsChecked = _plugin.Settings?.RpmLedsEnabled == true;
+                if (MairaPassthroughCheck != null)
+                    MairaPassthroughCheck.IsChecked = _plugin.Settings?.MairaFfbPassthrough == true;
                 if (RpmLedStatusText != null)
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
 
@@ -2972,6 +2974,18 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.RpmLedsEnabled = RpmLedEnabledCheck.IsChecked == true;
             _plugin.PersistSettings();
             if (!_plugin.Settings.RpmLedsEnabled) _plugin.TurnOffRpmLeds();
+        }
+
+        private void MairaPassthrough_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.MairaFfbPassthrough = MairaPassthroughCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            // Takes effect on next device (re)start; surface that to the user.
+            if (RpmLedStatusText != null)
+                RpmLedStatusText.Text = "MAIRA passthrough "
+                    + (_plugin.Settings.MairaFfbPassthrough ? "ON" : "OFF")
+                    + " (restart plugin to apply)";
         }
 
         private void RpmLedTest_Click(object sender, RoutedEventArgs e)

@@ -1324,6 +1324,10 @@
                           ToolTip="Only active while iRacing is the running game. No effect in other titles."/>
                 <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
             </StackPanel>
+            <CheckBox x:Name="MairaPassthroughCheck" Content="MAIRA passthrough (FFB via shared memory, no USBPcap)"
+                      VerticalAlignment="Center" Margin="0,0,0,6"
+                      Checked="MairaPassthrough_Changed" Unchecked="MairaPassthrough_Changed"
+                      ToolTip="Turn on together with MAIRA's 'Pass FFB signal through TF4ALL' toggle. MAIRA stops sending PID FFB to the wheel and writes its force here; TF4ALL renders it via Trueforce and drives the LEDs with no FFB contention. Restart the plugin (or SimHub) after changing."/>
             <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>

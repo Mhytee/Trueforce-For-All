@@ -21,6 +21,16 @@ namespace TrueforceForAll.Plugin
         // ep3 stream would conflict with the game's own.
         public bool PluginEnabled { get; set; } = true;
 
+        // MAIRA "Pass FFB signal through TF4ALL" passthrough. When MAIRA has
+        // its matching toggle on, it stops sending PID FFB to the wheel and
+        // writes its force + RPM into a shared memory file; TF4ALL renders the
+        // force through the Trueforce ep3 stream and drives the rim LEDs over
+        // HID++. With no PID on the HID++ pipe, LEDs and FFB no longer fight
+        // (the device-level 0x807A vs 0x8123 mutual exclusion only bites when
+        // PID is present). Off = TF4ALL behaves exactly as before (USBPcap
+        // FFB tap). Default off.
+        public bool MairaFfbPassthrough { get; set; } = false;
+
         // Drive the wheel rim's RGB rev/shift LEDs from SimHub telemetry over
         // HID++ (separate channel from the Trueforce stream). Scoped to iRacing:
         // iRacing's native rev lights ride its Trueforce SDK hook, so MAIRA

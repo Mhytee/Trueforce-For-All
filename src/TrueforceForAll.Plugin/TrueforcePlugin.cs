@@ -76,6 +76,9 @@ namespace TrueforceForAll.Plugin
         private AudioCaptureSource _audio;
         private HelperHost _helperHost;
         private UsbPcapFfbTap _ffbTap;
+        private MairaIpcSource _mairaIpc;
+        private Thread _mairaLedThread;
+        private volatile bool _mairaLedStop;
 
         // Snapshot of the HID-side wheel match (Vid/Pid/Model) we found in Init.
         // Held so the manual USB-device picker can highlight the row that
@@ -781,26 +784,40 @@ namespace TrueforceForAll.Plugin
                 // The persisted picker exists because USBPcap's descriptor-cache
                 // can go stale for hot-plugged wheels, leaving auto-discovery
                 // unable to find a wheel that HID enumeration sees fine.
-                var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
-                _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
+                if (Settings != null && Settings.MairaFfbPassthrough)
                 {
-                    Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
-                };
-                _ffbTap.SetHidDiscoveredWheel(match.Vid, match.Pid);
-                ApplyUsbBytesLoggingSetting();
-                _device.FfbTargetProvider = () =>
+                    // MAIRA passthrough: no USBPcap tap, no PID on the HID++
+                    // pipe. MAIRA writes its force into shared memory; we
+                    // render it through ep3 and (separately) drive the LEDs.
+                    _mairaIpc = new MairaIpcSource(msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"));
+                    _device.FfbTargetProvider = () =>
+                        _mairaIpc?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                    SimHub.Logging.Current.Info("[Trueforce] MAIRA FFB passthrough mode: USBPcap tap disabled, FFB via shared memory.");
+                    StartMairaLedPump();
+                }
+                else
                 {
-                    // SkipFfbPassthrough: return Some(0) so the device sends
-                    // active packets (audio plays) with cur = 0x8000. The
-                    // wheel uses cur as motor torque and IGNORES ep0 once
-                    // active packets are streaming, so this means zero motor
-                    // force from the FFB-target path. Only correct for games
-                    // that drive the wheel's motor through their own native
-                    // ep3 path (Forza Horizon, AC Rally, iRacing); for games
-                    // that rely on ep0 (vanilla AC, F1, PC2), this kills FFB.
-                    if (Settings != null && Settings.SkipFfbPassthrough) return (short?)0;
-                    return _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
-                };
+                    var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
+                    _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
+                    {
+                        Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                    };
+                    _ffbTap.SetHidDiscoveredWheel(match.Vid, match.Pid);
+                    ApplyUsbBytesLoggingSetting();
+                    _device.FfbTargetProvider = () =>
+                    {
+                        // SkipFfbPassthrough: return Some(0) so the device sends
+                        // active packets (audio plays) with cur = 0x8000. The
+                        // wheel uses cur as motor torque and IGNORES ep0 once
+                        // active packets are streaming, so this means zero motor
+                        // force from the FFB-target path. Only correct for games
+                        // that drive the wheel's motor through their own native
+                        // ep3 path (Forza Horizon, AC Rally, iRacing); for games
+                        // that rely on ep0 (vanilla AC, F1, PC2), this kills FFB.
+                        if (Settings != null && Settings.SkipFfbPassthrough) return (short?)0;
+                        return _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                    };
+                }
                 _device.FfbScale                 = Settings.FfbScale;
                 _device.FfbInvertSign            = Settings.FfbInvertSign;
                 _device.FfbSmoothTimeConstantMs  = Settings.FfbSmoothTimeConstantMs;
@@ -818,7 +835,7 @@ namespace TrueforceForAll.Plugin
                     TrueforceDevice.MinRingSize, TrueforceDevice.MaxRingSize, TrueforceDevice.DefaultRingSize);
                 _device.SetRingCapacity(Settings.Performance.TfRingSize);
 
-                _ffbTap.Start();
+                _ffbTap?.Start();
 
                 _device.StartStream();
 
@@ -5158,10 +5175,63 @@ namespace TrueforceForAll.Plugin
 
         private void CleanupDevice()
         {
+            StopMairaLedPump();
+            try { _mairaIpc?.Dispose(); } catch { }
+            _mairaIpc = null;
             try { _ffbTap?.Dispose(); } catch { }
             _ffbTap = null;
             try { _device?.Dispose(); } catch { }
             _device = null;
+        }
+
+        // ---- MAIRA passthrough LED pump --------------------------------
+        // In MAIRA passthrough mode there is no SimHub game frame to drive the
+        // rim LEDs from, so pump RpmLedController off the IPC RPM/shift values
+        // at ~60 Hz. The LED HID++ writes are safe here because MAIRA is NOT
+        // sending PID to the wheel, the HID++ pipe is otherwise idle.
+        private void StartMairaLedPump()
+        {
+            _mairaLedStop = false;
+            _mairaLedThread = new Thread(MairaLedLoop)
+            { IsBackground = true, Name = "MairaRpmLedPump" };
+            _mairaLedThread.Start();
+        }
+
+        private void StopMairaLedPump()
+        {
+            _mairaLedStop = true;
+            var t = _mairaLedThread; _mairaLedThread = null;
+            try { t?.Join(400); } catch { }
+        }
+
+        private void MairaLedLoop()
+        {
+            while (!_mairaLedStop)
+            {
+                try
+                {
+                    Thread.Sleep(16);
+                    if (_mairaLedStop) break;
+                    var ipc = _mairaIpc;
+                    var leds = _rpmLeds;
+                    if (ipc == null || leds == null) continue;
+
+                    bool gate = (Settings?.MairaFfbPassthrough ?? false)
+                                && (Settings?.RpmLedsEnabled ?? false);
+                    if (!gate) { leds.OnFrame(0, 0, 0, false, false); continue; }
+
+                    ipc.TryRefresh();
+                    float rpm = ipc.Rpm, slF = ipc.ShiftFirstRpm, slS = ipc.ShiftShiftRpm;
+                    double pct = 0;
+                    if (slS > slF && rpm > 0) pct = (rpm - slF) / (slS - slF);
+                    bool redline = slS > 0 && rpm >= slS;
+                    leds.OnFrame(pct, rpm, 0, redline, ipc.IsOpen);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error("[Trueforce] MAIRA LED pump error", ex);
+                }
+            }
         }
 
         // Persist the user-picked USBPcap path and restart the FFB tap with
