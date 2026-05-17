@@ -68,6 +68,17 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 17),
+                Title = "Xbox G923 force feedback fix",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Headline = "Xbox G923: in-game force feedback now passes through",
+                        Description = "The Xbox/PC G923 delivers its force feedback as the same Logitech HID++ message the G PRO uses, but over a different USB transport and at a different feature index, so the plugin's tap missed it entirely. With it missed, the Trueforce stream silenced the wheel's own force feedback instead of carrying it. The plugin now also reads that interrupt-endpoint HID++ path, so Xbox G923 owners get their game force feedback and Trueforce effects together. Decoded from a community-submitted USB capture. Confirmed: Xbox G923 Trueforce effects already worked; this closes the force-feedback gap. Other wheels are unaffected (the new path only fires on traffic shaped this way).",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 15),
                 Title = "Logitech G923 support (community testing)",
                 Entries = new List<ChangelogEntry>

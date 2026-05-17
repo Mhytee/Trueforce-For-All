@@ -491,6 +491,36 @@ namespace TrueforceForAll.Core
                     FfbSamplesCaptured++;
                 }
 
+                // Interrupt-OUT HID++ FFB path. Some wheels deliver the SAME
+                // HID++ 0x8123 FFB long-form report as the ep0 control path
+                // below, but as a raw interrupt OUT report instead of an ep0
+                // SET_REPORT (no setup stage, report starts at headerLen).
+                // Decoded from the Xbox G923 (C26E) byte trace 2026-05-17:
+                // report 0x11, devIdx 0xff, feature index 0x0b, func 0x2d
+                // (fn&0xf0==0x20), force = signed int16 big-endian at payload
+                // offset 10-11 (identical encoding to the ep0 path; only the
+                // feature index and transport differ). We feed the tuple to
+                // the same feature-index resolver so 0x0b auto-promotes the
+                // way RS50's 0x10 does, then extract once it matches. The ep0
+                // path's resolver only sees ep0 traffic, so without this an
+                // interrupt-only wheel never resolves and never matches.
+                if (isOut && xfer == 0x01 && headerLen + 12 <= caplen
+                    && payload[headerLen] == 0x11 && payload[headerLen + 1] == 0xff)
+                {
+                    byte iFeat = payload[headerLen + 2];
+                    byte iFunc = payload[headerLen + 3];
+                    RecordTupleSeen(0x11, iFeat, iFunc);
+                    if (iFeat == _ffbFeatureIndex && (iFunc & 0xf0) == 0x20)
+                    {
+                        short ffbTarget = (short)((payload[headerLen + 10] << 8) | payload[headerLen + 11]);
+                        long ts = _sw.ElapsedTicks & TimestampMask;
+                        long pk = (ts << 16) | (uint)(ushort)ffbTarget;
+                        System.Threading.Interlocked.Exchange(ref _packed, pk);
+                        System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
+                        FfbSamplesCaptured++;
+                    }
+                }
+
                 MaybeEmitDiagnostics();
                 if (!_ffbIndexResolved)
                 {
