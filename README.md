@@ -180,10 +180,6 @@ alongside MAIRA's force feedback without conflict. No MAIRA changes are
 needed. Step-by-step setup is in
 [docs/iracing-maira-trueforce.md](docs/iracing-maira-trueforce.md).
 
-A pull request to MAIRA is open that would additionally bring the wheel's
-rim rev/shift LEDs back (MAIRA hands its force to this plugin so the
-lights and haptics can run together). It is pending review and is not
-part of MAIRA yet.
 
 ## Auto-discovery
 
