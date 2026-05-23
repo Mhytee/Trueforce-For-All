@@ -11,7 +11,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HidSharp" Version="2.1.0" />
+    <!-- Compile-time only. SimHub ships HidSharp 2.6.x in its install root and
+         loads it process-wide; our plugin binds to that at runtime. HidSharp
+         isn't strong-named, so this 2.1.0 compile reference resolves to
+         SimHub's newer copy by simple name (2.6.x is API-compatible with the
+         2.1.0 surface we use). We must NOT copy/ship our copy: doing so
+         overwrote SimHub's 2.6.x with 2.1.0, which lacks Device.GetProductName
+         that SimHub's own Simagic pedal driver calls, breaking it (issue #11).
+         ExcludeAssets=runtime keeps the compile reference but keeps the DLL out
+         of the plugin output. -->
+    <PackageReference Include="HidSharp" Version="2.1.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

@@ -81,9 +81,26 @@ Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignore
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
 
+; NOTE: We deliberately do NOT ship our own HidSharp.dll. SimHub ships
+; HidSharp 2.6.x in its install root and loads it process-wide; our plugin
+; binds to it at runtime (HidSharp isn't strong-named, so our 2.1.0 compile
+; reference resolves to SimHub's copy by simple name). Older builds of this
+; installer shipped stock NuGet HidSharp 2.1.0 with the "ignoreversion" flag,
+; which force-overwrote SimHub's newer 2.6.x with the older 2.1.0. That broke
+; SimHub's own Simagic pedal haptic driver, which calls
+; HidSharp.Device.GetProductName() (a method only present from 2.6.x). The
+; pedal reactor then showed "Disconnected". See GitHub issue #11.
+
+; Auto-repair for users hit by the old installer: if the HidSharp.dll sitting
+; in the SimHub root is the bad 2.1.0 we shipped, restore SimHub's 2.6.4 over
+; it. HidSharpNeedsRepair gates this on file version 2.1.x so we only ever
+; touch the file we damaged; SimHub's 2.6.x and anything newer are left alone.
+; HidSharp is Apache-2.0 (James F. Bellinger / Illusory Studios LLC).
+Source: "repair\HidSharp.dll"; DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall; Check: HidSharpNeedsRepair
+Source: "HidSharp-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall; Check: HidSharpNeedsRepair
+
 ; Shared deps — install if missing, but never remove on uninstall (SimHub
 ; or other plugins may be using them).
-Source: "{#PluginBin}\HidSharp.dll";          DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 Source: "{#PluginBin}\NAudio.dll";            DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 Source: "{#PluginBin}\NAudio.Core.dll";       DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 Source: "{#PluginBin}\NAudio.Wasapi.dll";     DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
@@ -462,6 +479,29 @@ begin
   end;
 
   Result := True;
+end;
+
+// True only when the HidSharp.dll currently in the SimHub root is the bad
+// 2.1.0 build older installers shipped (issue #11). SimHub ships 2.6.x; we
+// gate strictly on file version 2.1.x so we never overwrite SimHub's own
+// HidSharp or a newer one some future SimHub might ship. Used as the Check:
+// for the [Files] repair entry that restores SimHub's bundled 2.6.4.
+function HidSharpNeedsRepair: Boolean;
+var
+  Target: string;
+  MS, LS: Cardinal;
+  Major, Minor: Word;
+begin
+  Result := False;
+  Target := ExpandConstant('{app}\HidSharp.dll');
+  // SimHub always ships HidSharp. If it's somehow absent, don't meddle.
+  if not FileExists(Target) then Exit;
+  if not GetVersionNumbers(Target, MS, LS) then Exit;
+  Major := MS shr 16;
+  Minor := MS and $FFFF;
+  // The only HidSharp version this project ever wrongly shipped is 2.1.0.0.
+  if (Major = 2) and (Minor = 1) then
+    Result := True;
 end;
 
 function FindUsbPcapCmdPath: string;

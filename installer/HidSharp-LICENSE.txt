@@ -1,0 +1,14 @@
+HidSharp
+Copyright (c) 2010-2025 James F. Bellinger / Illusory Studios LLC
+http://software.seekye.com/hidsharp
+
+Licensed under the Apache License, Version 2.0.
+Full license text: http://www.apache.org/licenses/LICENSE-2.0
+
+This copy of HidSharp.dll (version 2.6.4) is the build distributed with
+SimHub. The Trueforce For All installer bundles it only to repair installs
+that an earlier version of this installer damaged: those builds shipped an
+older HidSharp (2.1.0) into SimHub's folder and overwrote SimHub's newer
+copy, which broke SimHub's Simagic pedal haptic driver (GitHub issue #11).
+The installer restores this file only when it detects that older 2.1.0 copy
+in the SimHub folder; otherwise it leaves SimHub's own HidSharp untouched.
