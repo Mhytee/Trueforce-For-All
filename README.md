@@ -318,12 +318,6 @@ claims the wheel's HID interface, so it must stay closed while you play. The
 wheel can drop out of PC mode after a PC restart or when you unplug it, so
 you may need to repeat the open-once-then-close step after each reboot.
 
-**The plugin installed but I don't feel anything.**
-Almost always one of three things: G HUB is still open (it must be closed),
-USBPcap isn't installed (rerun the installer), or the wheel isn't in PC mode
-(open G HUB once, then close it). The plugin logs a clear status line in
-SimHub explaining why it can't reach the wheel.
-
 **The effects feel weak or light.**
 Raise Master Gain and the per-effect Gain in the plugin settings. The
 Trueforce dial on the wheel itself does nothing while the plugin is running,
