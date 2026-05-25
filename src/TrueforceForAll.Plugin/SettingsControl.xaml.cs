@@ -2403,7 +2403,7 @@ namespace TrueforceForAll.Plugin
                     sb.AppendLine($"       Wheel recognized ({w.Model}) but its Trueforce/haptic USB "
                         + "interface isn't available (the 'wheel present but no haptic endpoint' case).");
                     sb.AppendLine("       Fix: open G HUB once and let it finish detecting the wheel (this loads "
-                        + "the wheel's full interface set), then close G HUB and reload the plugin. If it "
+                        + "the wheel's full interface set), then close G HUB and restart SimHub. If it "
                         + "persists, reboot.");
                 }
                 else if (consoleish != null && consoleish.Count > 0)
@@ -2411,12 +2411,12 @@ namespace TrueforceForAll.Plugin
                     var w0 = consoleish[0];
                     sb.AppendLine($"       Found a Logitech wheel in an unsupported mode: {w0.Name} "
                         + $"(PID 0x{w0.Pid:X4}). Open G HUB once and let it detect the wheel, then close "
-                        + "G HUB and reload the plugin.");
+                        + "G HUB and restart SimHub.");
                 }
                 else
                 {
                     sb.AppendLine("       If your wheel is plugged in, open G HUB once and let it detect the "
-                        + "wheel, then close G HUB (it must be closed while this plugin runs).");
+                        + "wheel, then close G HUB and restart SimHub (G HUB must stay closed while this plugin runs).");
                 }
             }
             sb.AppendLine((streamOk ? "[OK]   " : "[FAIL] ") + "Stream: "

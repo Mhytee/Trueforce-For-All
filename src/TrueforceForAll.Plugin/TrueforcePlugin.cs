@@ -1255,11 +1255,12 @@ namespace TrueforceForAll.Plugin
             var matches = WheelDiscovery.FindAll();
             if (matches.Count == 0)
             {
-                WheelStatus = "Not detected (open and close G HUB once, then reload)";
+                WheelStatus = "Not detected (open/close G HUB once, then restart SimHub)";
                 SimHub.Logging.Current.Warn(
-                    "[Trueforce] No supported wheel found. Open G HUB once and let it finish " +
-                    "detecting the wheel, then close G HUB; it must stay closed while this plugin " +
-                    "runs. Plug in a G PRO / RS50 / G923 and reload SimHub plugins.");
+                    "[Trueforce] No supported wheel found. Make sure a supported wheel " +
+                    "(G PRO / RS50 / G923) is plugged in. If it is, open G HUB once and let it " +
+                    "finish detecting the wheel, then close G HUB (it must stay closed while this " +
+                    "plugin runs) and restart SimHub.");
                 return false;
             }
 
