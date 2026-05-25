@@ -191,6 +191,44 @@ alongside MAIRA's force feedback without conflict. No MAIRA changes are
 needed. Step-by-step setup is in
 [docs/iracing-maira-trueforce.md](docs/iracing-maira-trueforce.md).
 
+## Games with native Trueforce
+
+Some titles already ship Trueforce on PC, so the plugin defaults itself
+**off** for them. Switch off the game's native Trueforce and you can run
+the plugin instead, tuning the feel yourself rather than taking whatever
+the game hardcodes (and on Automobilista 2, adding Trueforce that was never
+really there).
+
+The catch: **a slider at 0 is not off.** Many games keep the Trueforce API
+live even at 0, so the plugin fights a channel the game is still driving and
+the wheel whines. Only a real on/off switch or a config-file setting fully
+releases the wheel.
+
+<br>
+
+| Game | How to disable native Trueforce | Plugin takes over? |
+|---|---|---|
+| iRacing | `app.ini` `loadTrueForceAPI=0` (see iRacing + MAIRA above) | Yes |
+| Dirt Rally 2.0 | In-game Trueforce on/off switch | Yes |
+| GRID (2019) | In-game Trueforce on/off switch | Yes |
+| Automobilista 2 | Steam launch option `disableTF` (try `-disableTF` if that fails) | Likely, untested |
+| Assetto Corsa Competizione | Slider only, no off switch found | No, stays live |
+| Assetto Corsa EVO | Slider only, no off switch found | No, stays live |
+| Assetto Corsa Rally | Slider only, no off switch found | No, stays live |
+
+<br>
+
+**AMS2 is a special case:** per Reiza's devs it loads the Logitech SDK but
+never actually implements Trueforce, so it behaves like a non-Trueforce
+game with the channel left live. The `disableTF`
+launch option falls back to legacy mode and should let the plugin take
+over, but I haven't confirmed it on hardware. (Steam launch options: right-
+click the game, Properties, General, Launch Options.)
+
+I don't own some of these titles, so this table grows from user reports. If
+you find an off switch or config setting for one of the ones still marked
+"no", or get the plugin working on a native-Trueforce game that isn't listed
+here at all, please open an issue and let me know.
 
 ## Auto-discovery
 
@@ -269,6 +307,10 @@ The wire protocol and init sequence are derived from the
   validated the fix on his hardware. Without his report the RS50 issue
   would have gone unnoticed. He also discovered and confirmed that the
   plugin brings Trueforce back to iRacing when running MAIRA.
+- **Svenmoor**: tested the plugin against a range of native-Trueforce
+  titles and mapped which ones have a true Trueforce off switch (so the
+  plugin can take over cleanly) versus which only expose an intensity
+  slider, which populated the "Games with native Trueforce" table above.
 
 Logitech, Trueforce, G PRO, RS50, and G923 are trademarks of Logitech.
 This project is not affiliated with, endorsed by, or sponsored by Logitech.
