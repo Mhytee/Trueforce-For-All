@@ -47,7 +47,15 @@ G PRO and RS50, so if it feels light, raise master or Trueforce gain.
 ## What it does
 
 The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
-in real time, mixing several signal sources:
+in real time. Everything rides on top of your real force feedback, which it
+preserves via FFB pass-through. It mixes:
+
+**FFB pass-through (the foundation).** Driving the Trueforce motor would
+  otherwise silence the game's own force feedback, so the plugin taps that
+  signal off the USB bus and folds it back into the Trueforce stream. Your
+  real cornering load, weight transfer and kerb forces keep coming through
+  underneath every effect below, in any game whose force feedback uses
+  standard HID++ (effectively all of them on these wheels).
 
 - **Telemetry-derived effects** synthesized from live game data.
 
@@ -90,11 +98,6 @@ in real time, mixing several signal sources:
   wheel as low-latency haptics. Lets you feel things the telemetry
   doesn't expose, and works even for games which do not output telemetry data
   since capture targets the game process directly.
-
-- **FFB pass-through.** When a game already drives the wheel via standard
-  HID++ force feedback (Assetto Corsa does), the plugin transparently taps
-  that signal off the USB bus and mirrors it into the Trueforce stream so
-  cornering load coexists with the haptic effects above.
 
 All of it is configurable per-game, per-car, via SimHub's settings UI:
 master gain, individual effect tuning, sidechain ducking between
@@ -204,8 +207,6 @@ live even at 0, so the plugin fights a channel the game is still driving and
 the wheel whines. Only a real on/off switch or a config-file setting fully
 releases the wheel.
 
-<br>
-
 | Game | How to disable native Trueforce | Plugin takes over? |
 |---|---|---|
 | iRacing | `app.ini` `loadTrueForceAPI=0` (see iRacing + MAIRA above) | Yes |
@@ -216,8 +217,6 @@ releases the wheel.
 | Assetto Corsa EVO | Slider only, no off switch found | No, stays live |
 | Assetto Corsa Rally | Slider only, no off switch found | No, stays live |
 
-<br>
-
 **AMS2 is a special case:** per Reiza's devs it loads the Logitech SDK but
 never actually implements Trueforce, so it behaves like a non-Trueforce
 game with the channel left live. The `disableTF`
@@ -225,7 +224,7 @@ launch option falls back to legacy mode and should let the plugin take
 over, but I haven't confirmed it on hardware. (Steam launch options: right-
 click the game, Properties, General, Launch Options.)
 
-I don't own some of these titles, so this table grows from user reports. If
+>I don't own some of these titles, so this table grows from user reports. If
 you find an off switch or config setting for one of the ones still marked
 "no", or get the plugin working on a native-Trueforce game that isn't listed
 here at all, please open an issue and let me know.
