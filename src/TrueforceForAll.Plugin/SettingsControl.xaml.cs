@@ -2402,24 +2402,21 @@ namespace TrueforceForAll.Plugin
                     var w = noEndpoint[0];
                     sb.AppendLine($"       Wheel recognized ({w.Model}) but its Trueforce/haptic USB "
                         + "interface isn't available (the 'wheel present but no haptic endpoint' case).");
-                    sb.AppendLine("       Fix: open G HUB once and let it finish detecting the wheel (this puts it "
-                        + "in PC mode and loads the full interface set), then close G HUB and replug. If it "
+                    sb.AppendLine("       Fix: open G HUB once and let it finish detecting the wheel (this loads "
+                        + "the wheel's full interface set), then close G HUB and reload the plugin. If it "
                         + "persists, reboot.");
                 }
                 else if (consoleish != null && consoleish.Count > 0)
                 {
                     var w0 = consoleish[0];
                     sb.AppendLine($"       Found a Logitech wheel in an unsupported mode: {w0.Name} "
-                        + $"(PID 0x{w0.Pid:X4}). Switch the wheel to PC mode (not PlayStation/Xbox). Some wheels "
-                        + "need G HUB run once to switch into PC mode; open it, let it detect the wheel, then "
-                        + "close G HUB and reload.");
+                        + $"(PID 0x{w0.Pid:X4}). Open G HUB once and let it detect the wheel, then close "
+                        + "G HUB and reload the plugin.");
                 }
                 else
                 {
-                    sb.AppendLine("       If your wheel is plugged in, make sure it's in PC mode (not "
-                        + "PlayStation/Xbox console mode). Some wheels need G HUB run once to switch into PC "
-                        + "mode; open it, let it detect the wheel, then close G HUB (it must be closed while "
-                        + "this plugin runs).");
+                    sb.AppendLine("       If your wheel is plugged in, open G HUB once and let it detect the "
+                        + "wheel, then close G HUB (it must be closed while this plugin runs).");
                 }
             }
             sb.AppendLine((streamOk ? "[OK]   " : "[FAIL] ") + "Stream: "
