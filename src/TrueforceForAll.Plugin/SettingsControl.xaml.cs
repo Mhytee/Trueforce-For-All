@@ -33,6 +33,21 @@ namespace TrueforceForAll.Plugin
         private bool _forceForzaStall;
         private static readonly long ForzaStallExpandTicks =
             System.Diagnostics.Stopwatch.Frequency * 12;   // 12 s sustained zero packets
+        // F1 mirror of _forzaZeroSinceTicks, gating the persistent UDP-setup banner.
+        private long _f1ZeroSinceTicks;
+        // Which game's UDP section the setup banner should jump to.
+        private enum UdpSetupTarget { Forza, F1 }
+        private UdpSetupTarget _udpSetupTarget = UdpSetupTarget.Forza;
+        // UDP test code: 0 = off, 1 = force Forza banner, 2 = force F1 banner.
+        // Lets us exercise the setup-banner -> "Set up..." -> jump flow without a
+        // live (broken) Forza/F1 session.
+        private int _forceUdpSetupBanner;
+        // Which game the unified "UDP telemetry" section is configuring. Auto
+        // follows the running game (the plugin already picks the parser from the
+        // detected game); Forza / F1 pin it so the user can pre-configure with
+        // nothing running. UI-only, defaults to Auto each session.
+        private enum UdpGame { Auto, Forza, F1 }
+        private UdpGame _udpGameSel = UdpGame.Auto;
         // CarIds we've already prompted to submit engine data for in this
         // SimHub session. The save-time prompt only fires for cars with no
         // resolver-cached engine info AND only once per car so a user who
@@ -133,14 +148,29 @@ namespace TrueforceForAll.Plugin
         private static bool SectionUsesDraftModel(EffectKind w)
             => w == EffectKind.RevLimiter;
 
+        // The inline preset library hosted in the Presets tab (replaces the old
+        // Manage Presets pop-up Window). Created in the plugin constructor.
+        private PresetManagerControl _presetManager;
+
         public SettingsControl()
         {
             InitializeComponent();
+            WireEditableReadouts();
         }
 
         public SettingsControl(TrueforcePlugin plugin) : this()
         {
             _plugin = plugin;
+
+            // Host the preset library inline as the Presets tab. LibraryChanged
+            // keeps the always-visible header combos + the live engine in sync
+            // after any mutation (rename / delete / set-default / import / …);
+            // EditPresetRequested drives the dormant offline-edit flow.
+            _presetManager = new PresetManagerControl();
+            _presetManager.Init(_plugin);
+            _presetManager.LibraryChanged += OnPresetLibraryChanged;
+            _presetManager.EditPresetRequested += name => EnterOfflineEditMode(name);
+            PresetManagerHost.Children.Add(_presetManager);
 
             // Header version readout. Read once at construction; doesn't change
             // at runtime within a session. ToString(3) drops the build/revision
@@ -164,13 +194,46 @@ namespace TrueforceForAll.Plugin
             Loaded   += (_, __) =>
             {
                 _meterTimer.Start();
-                if (_plugin != null) _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
+                if (_plugin != null)
+                {
+                    _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
+                    _plugin.MasterGainChangedExternally += OnMasterGainChangedExternally;
+                }
+                // SimHub caches this control, so navigating away and back does NOT
+                // rebuild it. Re-pull values on every (re)load so edits made
+                // elsewhere while we were hidden (e.g. the home-screen Feedback
+                // gain tile) are reflected instead of showing stale slider values.
+                RefreshFromPlugin();
             };
             Unloaded += (_, __) =>
             {
                 _meterTimer.Stop();
-                if (_plugin != null) _plugin.AutoRatchetBumped -= OnAutoRatchetBumped;
+                if (_plugin != null)
+                {
+                    _plugin.AutoRatchetBumped -= OnAutoRatchetBumped;
+                    _plugin.MasterGainChangedExternally -= OnMasterGainChangedExternally;
+                }
             };
+        }
+
+        // A bound controller button (Controls tab) nudged master gain while the
+        // panel is open. Mirror the new value into the slider without re-firing
+        // its ValueChanged (the plugin already applied + persisted it), then
+        // surface the unsaved-preset state the way a manual drag would.
+        private void OnMasterGainChangedExternally()
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_plugin == null) return;
+                _suppressEvents = true;
+                try
+                {
+                    MasterGainSlider.Value = _plugin.Settings?.MasterGain ?? MasterGainSlider.Value;
+                    MasterGainText.Text = MasterGainSlider.Value.ToString("F2");
+                }
+                finally { _suppressEvents = false; }
+                MarkEffectDirty(EffectKind.Master);
+            }));
         }
 
         /// <summary>Pull all visible UI values from the plugin's effective settings.</summary>
@@ -188,6 +251,10 @@ namespace TrueforceForAll.Plugin
 
                 MasterGainSlider.Value = _plugin.Settings?.MasterGain ?? 1.0;
                 MasterGainText.Text    = MasterGainSlider.Value.ToString("F2");
+                MasterGainStepSlider.Value = _plugin.MasterGainStep;
+                MasterGainStepText.Text    = _plugin.MasterGainStep.ToString("F2");
+                if (ShowFeedbackBoxCheck != null)
+                    ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
 
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
                 FfbScaleText.Text      = FfbScaleSlider.Value.ToString("F2");
@@ -289,7 +356,6 @@ namespace TrueforceForAll.Plugin
                 var f1 = _plugin.Settings?.F1;
                 if (f1 != null)
                 {
-                    F1EnabledCheck.IsChecked        = f1.Enabled;
                     F1PortBox.Text                  = f1.Port.ToString();
                     F1BindBox.Text                  = f1.BindAddress ?? "0.0.0.0";
                     F1AlwaysListenCheck.IsChecked   = f1.AlwaysListen;
@@ -690,25 +756,9 @@ namespace TrueforceForAll.Plugin
                     if (UsbPcapReinstallButton.Visibility != want) UsbPcapReinstallButton.Visibility = want;
                 }
 
-                // Forza UDP section visibility. Shown only while a Forza
-                // title is the active game; hidden in every other game.
-                if (ForzaSection != null)
-                {
-                    // _forceForzaStall (STALL test code) keeps the section
-                    // visible even outside a Forza session so the simulated
-                    // stall + auto-expand can be seen on demand.
-                    var want = (_plugin.ShouldShowForzaSection || _forceForzaStall)
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-                    if (ForzaSection.Visibility != want) ForzaSection.Visibility = want;
-                }
-                if (F1Section != null)
-                {
-                    var want = _plugin.ShouldShowF1Section
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-                    if (F1Section.Visibility != want) F1Section.Visibility = want;
-                }
+                // Unified UDP telemetry section: the game selector decides which
+                // per-game body shows (Auto follows the detected game).
+                UpdateUdpSectionVisibility();
                 if (RpmLedSection != null)
                 {
                     // Two gates, both required: (1) the tester unlocked it
@@ -873,6 +923,10 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
+                // Set by the Forza / F1 blocks below; drives the persistent
+                // UDP-setup banner once either game is running but silent.
+                bool forzaNeedsSetup = false, f1NeedsSetup = false;
+
                 if (ForzaStatusText != null)
                 {
                     var fzSrc = _plugin.TelemetrySource as TrueforceForAll.Core.ForzaUdpTelemetrySource;
@@ -952,6 +1006,13 @@ namespace TrueforceForAll.Plugin
                         _forzaTroubleshootAutoExpanded = true;
                     }
 
+                    // Prompt UDP setup only when the Forza process is actually
+                    // running (not just a selected-but-closed profile) and
+                    // nothing has arrived past the sustain window. The STALL
+                    // test code bypasses the running gate on purpose.
+                    forzaNeedsSetup = zeroPacketsSustained
+                                      && (_plugin.IsForzaRunning || _forceForzaStall);
+
                     if (ForzaForwardStatusText != null)
                     {
                         var fwd = _plugin.Settings?.Forza;
@@ -996,19 +1057,26 @@ namespace TrueforceForAll.Plugin
                     var f1Src = _plugin.TelemetrySource as TrueforceForAll.Core.F1UdpTelemetrySource;
                     if (f1Src == null)
                     {
-                        F1StatusText.Text = (_plugin.Settings?.F1?.Enabled ?? true)
-                            ? "(idle, not active for current game)"
-                            : "(disabled)";
+                        F1StatusText.Text = "(idle, not active for current game)";
                         if (F1RateWarning != null) F1RateWarning.Visibility = System.Windows.Visibility.Collapsed;
+                        _f1ZeroSinceTicks = 0;
                     }
                     else if (f1Src.PacketsReceived == 0)
                     {
                         F1StatusText.Text =
                             $"Listening on {(_plugin.Settings?.F1?.BindAddress ?? "0.0.0.0")}:{(_plugin.Settings?.F1?.Port ?? 0)}. No packets yet (check F1's UDP Telemetry settings).";
                         if (F1RateWarning != null) F1RateWarning.Visibility = System.Windows.Visibility.Collapsed;
+                        // Mirror the Forza sustain gate so the banner doesn't
+                        // flash during the first second after a title launches,
+                        // and only prompt when the F1 process is actually running.
+                        long nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        if (_f1ZeroSinceTicks == 0) _f1ZeroSinceTicks = nowTicks;
+                        if (nowTicks - _f1ZeroSinceTicks >= ForzaStallExpandTicks && _plugin.IsF1Running)
+                            f1NeedsSetup = true;
                     }
                     else
                     {
+                        _f1ZeroSinceTicks = 0;
                         double hz = f1Src.MeasuredHz;
                         F1StatusText.Text = $"Receiving {f1Src.PacketsReceived:N0} packets at ~{hz:0} Hz";
                         if (F1RateWarning != null)
@@ -1064,6 +1132,11 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+
+                // UDP test code override (forces the banner without a session).
+                if (_forceUdpSetupBanner == 1) forzaNeedsSetup = true;
+                else if (_forceUdpSetupBanner == 2) { forzaNeedsSetup = false; f1NeedsSetup = true; }
+                UpdateUdpSetupBanner(forzaNeedsSetup, f1NeedsSetup);
             }
 
             // Telemetry-source line in Diagnostics: source name + live measured Hz,
@@ -2147,6 +2220,113 @@ namespace TrueforceForAll.Plugin
             MasterGainText.Text = v.ToString("F2");
             _plugin.MasterGain = v;
             MarkEffectDirty(EffectKind.Master);
+        }
+        // Controls tab: how far each bound-button press moves master gain.
+        // Per-machine (not preset-saved), persisted immediately.
+        private void MasterGainStepSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            MasterGainStepText.Text = v.ToString("F2");
+            _plugin.MasterGainStep = v;
+            _plugin.PersistSettings();
+        }
+
+        // ---------- Editable slider readouts ----------
+
+        // Readouts that show a transformed value (percent = value * 100). Typed
+        // input is divided by this before being written to the slider; keyed by
+        // the readout field name. Everything else maps 1:1.
+        private static readonly Dictionary<string, double> _readoutScale =
+            new Dictionary<string, double>
+            {
+                ["RevLimiterThresholdText"] = 100.0,
+                ["AirborneReductionText"]   = 100.0,
+            };
+
+        // Make every "<X>Slider" + "<X>Text" pair a click-to-type field. Each
+        // box writes back to its OWN slider (its own range), and that slider's
+        // existing ValueChanged still formats the display (units, precision,
+        // percent), so values stay per-slider, nothing is normalized. Paired by
+        // reflection over the generated x:Name fields, so new sliders are
+        // covered automatically as long as they keep the naming convention.
+        private void WireEditableReadouts()
+        {
+            var fields = GetType().GetFields(System.Reflection.BindingFlags.Instance
+                                             | System.Reflection.BindingFlags.NonPublic
+                                             | System.Reflection.BindingFlags.Public);
+            var byName = new Dictionary<string, System.Reflection.FieldInfo>();
+            foreach (var f in fields) byName[f.Name] = f;
+
+            foreach (var f in fields)
+            {
+                if (f.FieldType != typeof(Slider) || !f.Name.EndsWith("Slider")) continue;
+                string readoutName = f.Name.Substring(0, f.Name.Length - "Slider".Length) + "Text";
+                if (!byName.TryGetValue(readoutName, out var rf) || rf.FieldType != typeof(TextBox)) continue;
+                if (f.GetValue(this) is Slider slider && rf.GetValue(this) is TextBox box)
+                    AttachEditableReadout(box, slider, readoutName);
+            }
+        }
+
+        private void AttachEditableReadout(TextBox box, Slider slider, string readoutName)
+        {
+            double scale = _readoutScale.TryGetValue(readoutName, out var sc) ? sc : 1.0;
+
+            // Flat readout look (no border/background), but now focusable + typeable.
+            box.BorderThickness = new Thickness(0);
+            box.Background = Brushes.Transparent;
+            box.Padding = new Thickness(0);
+            box.HorizontalAlignment = HorizontalAlignment.Stretch;
+            box.TextAlignment = TextAlignment.Right;
+            box.HorizontalContentAlignment = HorizontalAlignment.Right;
+            box.Cursor = Cursors.IBeam;
+            if (box.ToolTip == null) box.ToolTip = "Click to type an exact value.";
+
+            box.GotKeyboardFocus += (s, e) =>
+            {
+                // Swap the formatted display (e.g. "8 (2ms)", "75%") for a clean
+                // editable number in display units, and select it.
+                box.Tag = box.Text;
+                box.Text = (slider.Value * scale).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+                box.Dispatcher.BeginInvoke(new Action(box.SelectAll), DispatcherPriority.Input);
+            };
+            box.PreviewKeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Enter)       { CommitReadout(box, slider, scale); Keyboard.ClearFocus(); e.Handled = true; }
+                else if (e.Key == Key.Escape) { RestoreReadout(box);               Keyboard.ClearFocus(); e.Handled = true; }
+            };
+            box.LostFocus += (s, e) => CommitReadout(box, slider, scale);
+        }
+
+        // Parse the first number the user typed and write it back to the slider
+        // (clamped to the slider's range, undoing any display scale). The cached
+        // display in box.Tag doubles as an "edit in progress" sentinel so Enter
+        // followed by LostFocus only commits once (re-parsing a rounded display
+        // like "86%" would otherwise drift the value).
+        private void CommitReadout(TextBox box, Slider slider, double scale)
+        {
+            if (!(box.Tag is string cached)) return; // not in an edit session
+            box.Tag = null;                          // end the session
+            var m = System.Text.RegularExpressions.Regex.Match(box.Text ?? "", @"-?\d+(\.\d+)?");
+            if (m.Success && double.TryParse(m.Value, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out double typed))
+            {
+                double val = typed / scale;
+                if (val < slider.Minimum) val = slider.Minimum;
+                if (val > slider.Maximum) val = slider.Maximum;
+                if (Math.Abs(val - slider.Value) > 1e-9)
+                {
+                    slider.Value = val; // fires ValueChanged -> reformats + applies
+                    return;
+                }
+            }
+            box.Text = cached; // no-op or unparseable: restore the formatted display
+        }
+
+        private void RestoreReadout(TextBox box)
+        {
+            if (box.Tag is string cached) box.Text = cached;
+            box.Tag = null;
         }
         private void FfbScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -3414,33 +3594,32 @@ namespace TrueforceForAll.Plugin
 
         private void OpenManageCustomEnginesDialog()
         {
-            OpenManagePresetsDialog(ManagePresetsDialog.InitialTab.CustomEngines);
+            ShowPresetManager(PresetManagerControl.InitialTab.CustomEngines);
         }
 
-        /// <summary>Open the unified Manage Presets dialog. Refreshes the
-        /// preset combos, engine dropdown, and live engine application when
-        /// the dialog closes so any rename / delete / set-active changes
-        /// land immediately. If the user picked Edit on a game-preset row,
-        /// transitions the main panel into offline-edit mode for that
-        /// preset before refreshing.</summary>
-        private void OpenManagePresetsDialog(ManagePresetsDialog.InitialTab initialTab = ManagePresetsDialog.InitialTab.GamePresets)
+        /// <summary>Bring the inline preset library (Presets tab) forward,
+        /// optionally selecting one of its inner tabs. Mutations made there
+        /// flow back through OnPresetLibraryChanged, so no post-close refresh
+        /// is needed any more.</summary>
+        private void ShowPresetManager(PresetManagerControl.InitialTab initialTab = PresetManagerControl.InitialTab.GamePresets)
         {
             if (_plugin?.Settings == null) return;
             if (_plugin.Settings.CustomEngines == null)
                 _plugin.Settings.CustomEngines = new List<CustomEngineDef>();
-            var dlg = new ManagePresetsDialog { Owner = Window.GetWindow(this) };
-            dlg.Init(_plugin, initialTab);
-            dlg.ShowDialog();
-            // If Edit was clicked, hand off to the offline-edit entry point.
-            // EnterOfflineEditMode itself triggers a RefreshFromPlugin so we
-            // don't double-call the refresh; engine dropdown + live engine
-            // apply still need to happen so renames in the Custom Engines
-            // tab propagate.
-            string editTarget = dlg.RequestedEditPresetName;
-            if (!string.IsNullOrEmpty(editTarget))
-                EnterOfflineEditMode(editTarget);
-            else
-                RefreshFromPlugin();
+            _presetManager?.SelectTab(initialTab);
+            if (MainTabs != null && PresetsTab != null)
+                MainTabs.SelectedItem = PresetsTab;
+        }
+
+        // Called whenever the inline preset library mutates the library
+        // (rename / duplicate / delete / set-default / set-active / import /
+        // custom-engine edit). Mirrors what the old dialog did on close:
+        // re-pull the header combos, rebuild the engine dropdown, and re-apply
+        // the live engine so renames / deletions land immediately.
+        private void OnPresetLibraryChanged()
+        {
+            if (_plugin == null) return;
+            RefreshFromPlugin();
             RebuildEngineLayoutDropdown();
             Apply(EffectKind.Engine);
             UpdateFiringPatternReadout(_plugin.ActiveEngine);
@@ -3448,7 +3627,100 @@ namespace TrueforceForAll.Plugin
 
         private void ManagePresetsButton_Click(object sender, RoutedEventArgs e)
         {
-            OpenManagePresetsDialog(ManagePresetsDialog.InitialTab.GamePresets);
+            ShowPresetManager(PresetManagerControl.InitialTab.GamePresets);
+        }
+
+        // Persistent nudge for the UDP-telemetry games (Forza / F1): shown when
+        // the title is running but no packets are arriving, so a silent wheel
+        // points the user at the per-game UDP setup on the Settings tab.
+        private void UpdateUdpSetupBanner(bool forzaNeedsSetup, bool f1NeedsSetup)
+        {
+            if (UdpSetupBanner == null) return;
+            if (forzaNeedsSetup)
+            {
+                _udpSetupTarget = UdpSetupTarget.Forza;
+                UdpSetupBannerText.Text = "Forza is running but no telemetry is reaching the plugin. Forza sends telemetry over UDP, which has to be turned on in-game (Data Out) and pointed at the plugin.";
+                UdpSetupBanner.Visibility = Visibility.Visible;
+            }
+            else if (f1NeedsSetup)
+            {
+                _udpSetupTarget = UdpSetupTarget.F1;
+                UdpSetupBannerText.Text = "F1 is running but no telemetry is reaching the plugin. Turn on UDP Telemetry in the game's settings and point it at the plugin.";
+                UdpSetupBanner.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                UdpSetupBanner.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void UdpSetupBannerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
+            if (UdpTelemetryExpander != null) UdpTelemetryExpander.IsExpanded = true;
+            // Pin the UDP game selector to the relevant game so its section is
+            // shown even with nothing running (e.g. testing via the UDP code).
+            // SelectionChanged updates _udpGameSel + refreshes visibility.
+            if (UdpGameSelector != null)
+                UdpGameSelector.SelectedIndex = _udpSetupTarget == UdpSetupTarget.F1 ? 2 : 1;
+            FrameworkElement target = _udpSetupTarget == UdpSetupTarget.F1
+                ? (FrameworkElement)F1Section
+                : ForzaSection;
+            if (_udpSetupTarget == UdpSetupTarget.Forza && ForzaTroubleshootExpander != null)
+                ForzaTroubleshootExpander.IsExpanded = true;
+            // Defer the scroll until the Settings tab has laid out its content.
+            if (target != null)
+                Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),
+                    DispatcherPriority.Background);
+        }
+
+        // Home-screen gain tile toggle.
+        private void ShowFeedbackBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetShowFeedbackBox(ShowFeedbackBoxCheck.IsChecked == true);
+        }
+
+        // Game selector for the unified UDP telemetry section.
+        private void UdpGameSelector_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (UdpGameSelector == null) return;
+            _udpGameSel = UdpGameSelector.SelectedIndex == 1 ? UdpGame.Forza
+                        : UdpGameSelector.SelectedIndex == 2 ? UdpGame.F1
+                        : UdpGame.Auto;
+            UpdateUdpSectionVisibility();
+        }
+
+        // Show the per-game body that matches the selector. Auto shows whichever
+        // game is currently detected (and nothing but a hint when idle); Forza /
+        // F1 pin their body so it can be pre-configured with nothing running.
+        private void UpdateUdpSectionVisibility()
+        {
+            if (_plugin == null) return;
+            // "Active" here means the game's process is actually running, so Auto
+            // and the "detected" label don't fire on a selected-but-closed profile.
+            bool forzaActive = _plugin.IsForzaRunning || _forceForzaStall;
+            bool f1Active    = _plugin.IsF1Running;
+
+            bool showForza, showF1;
+            switch (_udpGameSel)
+            {
+                case UdpGame.Forza: showForza = true;         showF1 = false;                  break;
+                case UdpGame.F1:    showForza = false;        showF1 = true;                   break;
+                default:            showForza = forzaActive;  showF1 = f1Active && !forzaActive; break;
+            }
+
+            if (ForzaSection != null)
+                ForzaSection.Visibility = showForza ? Visibility.Visible : Visibility.Collapsed;
+            if (F1Section != null)
+                F1Section.Visibility = showF1 ? Visibility.Visible : Visibility.Collapsed;
+            if (UdpNoGameNote != null)
+                UdpNoGameNote.Visibility = (!showForza && !showF1) ? Visibility.Visible : Visibility.Collapsed;
+            if (UdpDetectedText != null)
+            {
+                string d = forzaActive ? "Forza detected" : f1Active ? "F1 detected" : "";
+                UdpDetectedText.Text = (_udpGameSel == UdpGame.Auto && d.Length > 0) ? "· " + d : "";
+            }
         }
 
         // Sync the pattern readout textbox to the currently selected layout.
@@ -4147,7 +4419,8 @@ namespace TrueforceForAll.Plugin
             "HELP / CODES   Show this list.\n" +
             "SHARE          Force the 'spread the word' banner on now.\n" +
             "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
-            "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter (toggle).\n" +
+            "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
+            "UDP            Cycle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> F1 -> off.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
             "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
@@ -4157,6 +4430,7 @@ namespace TrueforceForAll.Plugin
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
+            "HOMEBOX        Show a Trueforce master + audio gain tile in SimHub's home 'Feedback' section, next to Motors/Wind. Experimental visual-tree splice; persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
         private void CommitAccessCode()
@@ -4229,8 +4503,24 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = _forceForzaStall
-                        ? "Forza stall simulated: status reads stalled and the troubleshooter auto-opens (type STALL again to clear)."
+                        ? "Forza stall simulated: status reads stalled, the troubleshooter auto-opens, and the UDP setup banner shows (type STALL again to clear)."
                         : "Forza stall simulation cleared.";
+                return;
+            }
+
+            // Cycle the persistent UDP-setup banner so the whole flow (banner ->
+            // "Set up..." -> jump to the game's UDP section on the Settings tab)
+            // can be tested without a live session: off -> Forza -> F1 -> off.
+            // Lands on the next refresh tick.
+            if (code.Equals("UDP", StringComparison.OrdinalIgnoreCase))
+            {
+                _forceUdpSetupBanner = (_forceUdpSetupBanner + 1) % 3;
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text =
+                        _forceUdpSetupBanner == 1 ? "UDP setup banner: simulating Forza (type UDP again for F1)."
+                      : _forceUdpSetupBanner == 2 ? "UDP setup banner: simulating F1 (type UDP again to clear)."
+                      : "UDP setup banner simulation cleared.";
                 return;
             }
 
@@ -4362,6 +4652,21 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Experimental FFB capture ON (persists). Load a game and drive for a few seconds so the tap re-resolves the FFB index; check the FFB-tap status. Type FFBX again to turn it off."
                         : "Experimental FFB capture OFF. Back to the standard capture path.";
+                return;
+            }
+
+            // Opt in to the experimental home-screen Feedback gain tile. Splices a
+            // Trueforce master + audio gain box into SimHub's hardcoded Feedback
+            // section (next to Motors/Wind) via a defensive visual-tree injection.
+            // Persisted and applied live. Toggle.
+            if (code.Equals("HOMEBOX", StringComparison.OrdinalIgnoreCase))
+            {
+                bool on = _plugin.DebugToggleFeedbackBox();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "Home Feedback gain tile ON (persists). Open SimHub's home screen; a 'Trueforce' box appears next to Motors/Wind. If it doesn't show, the home tab may not be open yet, switch to it. Type HOMEBOX again to turn it off."
+                        : "Home Feedback gain tile OFF. Removed from the home screen.";
                 return;
             }
 
@@ -4505,13 +4810,6 @@ namespace TrueforceForAll.Plugin
         // ---- F1 UDP handlers ----
         // Mirror the Forza ones; no forwarder field (F1 doesn't share a
         // single-destination limitation the way Forza does).
-
-        private void F1Enabled_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            _plugin.Settings.F1.Enabled = F1EnabledCheck.IsChecked == true;
-            _plugin.ApplyF1Settings();
-        }
 
         private void F1AlwaysListen_Changed(object sender, RoutedEventArgs e)
         {
@@ -5968,69 +6266,24 @@ namespace TrueforceForAll.Plugin
             ShowUpdateModal();
         }
 
-        // ---------- Advanced settings modal ----------
+        // ---------- Advanced settings ----------
 
-        // Performance, Sidechain ducking, and Diagnostics live invisibly in
-        // AdvancedSettingsHost at the tail of SettingsControl.xaml. The host
-        // is hidden by default. On click we move (re-parent) the host into
-        // a Window's content for display; on close we put it back where it
-        // came from. This keeps every existing per-control event handler in
-        // this code-behind reachable as-is (no field-routing changes), and
-        // means RefreshFromPlugin's per-tick text updates still hit the
-        // diagnostic / performance / ducking widgets whether the modal is
-        // open or closed.
+        // Performance, Sidechain ducking, and Diagnostics live inline in
+        // AdvancedSettingsHost at the bottom of the Settings tab. This entry
+        // point used to open a modal; now it just brings the Settings tab
+        // forward and expands Diagnostics. Kept because the "No, still no FFB"
+        // path (ExperimentalSuccessNo_Click) routes users here.
         private void OpenAdvancedSettings_Click(object sender, RoutedEventArgs e)
         {
-            if (AdvancedSettingsHost == null) return;
-
-            // Remember where the host lives in the main panel so we can
-            // restore it exactly when the modal closes.
-            var originalParent = AdvancedSettingsHost.Parent as Panel;
-            int originalIndex = originalParent?.Children.IndexOf(AdvancedSettingsHost) ?? -1;
-
-            var win = new Window
+            if (MainTabs != null && SettingsTab != null)
+                MainTabs.SelectedItem = SettingsTab;
+            if (DiagnosticsExpander != null)
             {
-                Title = "Trueforce For All: advanced settings",
-                Width = 720,
-                Height = 640,
-                ResizeMode = ResizeMode.CanResize,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                ShowInTaskbar = false,
-                Owner = Window.GetWindow(this),
-            };
-            if (win.Owner == null) win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            ApplyDarkTheme(win);
-
-            // Pull the host out of its current parent, wrap it in a scroller,
-            // and hand the scroller to the Window.
-            if (originalParent != null) originalParent.Children.Remove(AdvancedSettingsHost);
-            AdvancedSettingsHost.Visibility = Visibility.Visible;
-
-            var scroll = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Padding = new Thickness(16),
-                Content = AdvancedSettingsHost,
-            };
-            win.Content = scroll;
-
-            win.Closed += (_, __) =>
-            {
-                // Detach from the dying window and slot the host back into
-                // the main panel at its original index. Re-collapsing keeps
-                // it invisible in the panel between modal openings.
-                scroll.Content = null;
-                AdvancedSettingsHost.Visibility = Visibility.Collapsed;
-                if (originalParent != null && !originalParent.Children.Contains(AdvancedSettingsHost))
-                {
-                    int idx = originalIndex >= 0 && originalIndex <= originalParent.Children.Count
-                        ? originalIndex
-                        : originalParent.Children.Count;
-                    originalParent.Children.Insert(idx, AdvancedSettingsHost);
-                }
-            };
-
-            win.ShowDialog();
+                DiagnosticsExpander.IsExpanded = true;
+                // Defer the scroll until the tab's content has laid out.
+                Dispatcher.BeginInvoke(new Action(() => DiagnosticsExpander.BringIntoView()),
+                    System.Windows.Threading.DispatcherPriority.Background);
+            }
         }
 
         // Render a GitHub-flavored Markdown release body as a stack of styled

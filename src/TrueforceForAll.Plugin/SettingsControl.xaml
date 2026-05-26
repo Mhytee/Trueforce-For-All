@@ -4,6 +4,8 @@
              mc:Ignorable="d"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:shui="clr-namespace:SimHub.Plugins.UI;assembly=SimHub.Plugins"
+             xmlns:sh="clr-namespace:SimHub.Plugins.Styles;assembly=SimHub.Plugins"
              d:DesignHeight="900" d:DesignWidth="700">
     <UserControl.Resources>
         <Style x:Key="SectionHeaderBorder" TargetType="Border">
@@ -276,8 +278,16 @@
             </Setter>
         </Style>
     </UserControl.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="20">
+    <!-- Root is a two-row Grid: a persistent header (title + update CTA +
+         conditional banners + Game/Car/Preset context card) that stays put on
+         every tab, and a TabControl beneath it (Effects / Presets / Controls /
+         Settings). Each tab scrolls independently. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="20,20,20,4">
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <TextBlock Text="Trueforce For All" FontSize="22" FontWeight="Bold"/>
                 <TextBlock x:Name="HeaderVersionText" Text="" FontSize="13" Opacity="0.5"
@@ -461,6 +471,33 @@
                                 Click="OfflineEditDiscard_Click"
                                 ToolTip="Throw away your edits and restore the state you had before entering edit mode."/>
                     </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- UDP setup nudge. Forza / F1 deliver telemetry over UDP, which
+                 must be turned on in-game and pointed at the plugin. The per-game
+                 setup lives on the Settings tab; this persistent banner surfaces
+                 when one of those titles is running but no packets are arriving,
+                 so a user whose wheel is silent doesn't have to go digging.
+                 Driven from UpdateUdpSetupBanner on the refresh tick. -->
+            <Border x:Name="UdpSetupBanner" Visibility="Collapsed"
+                    Background="#FF8F00" CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="⚠" FontSize="14" Foreground="#222"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Grid.Column="1" x:Name="UdpSetupBannerText" Foreground="#222"
+                               FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Text=""/>
+                    <Button Grid.Column="2" x:Name="UdpSetupBannerButton" Content="Set up…"
+                            Width="90" Height="28" Margin="10,0,0,0"
+                            Click="UdpSetupBannerButton_Click"
+                            Background="#222" Foreground="#FFC107"
+                            BorderBrush="#222" BorderThickness="1" Cursor="Hand"
+                            ToolTip="Jump to the UDP telemetry setup for this game."/>
                 </Grid>
             </Border>
 
@@ -659,6 +696,13 @@
                     </Border>
                 </StackPanel>
             </Border>
+        </StackPanel>
+
+        <sh:SHTabControl x:Name="MainTabs" Grid.Row="1" Margin="20,4,20,12">
+            <!-- ============================ EFFECTS (main) ============================ -->
+            <sh:SHTabItem Header="Effects">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14,12,14,14">
 
             <!-- Master -->
             <Border Style="{StaticResource SectionHeaderBorder}">
@@ -679,7 +723,7 @@
                 <Slider     Grid.Column="1" x:Name="MasterGainSlider"
                             Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                             TickFrequency="0.25" ValueChanged="MasterGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2" x:Name="MasterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                <TextBox Grid.Column="2" x:Name="MasterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
             </Grid>
             <!-- Promoted FFB pass-through toggle. Visible only when the active
                  game ships native Trueforce (see ActiveGameIsNativeTrueforce).
@@ -692,36 +736,56 @@
                            Text="This game ships native Trueforce. Enable to let the game drive the wheel directly while our effects play on top. Disable only if you prefer to mirror the game's FFB through our capture (rarely needed)."/>
             </StackPanel>
 
-            <!-- FFB pass-through controls. Greyed when SkipFfbPassthrough is on. -->
-            <StackPanel x:Name="FfbPassthroughControls">
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="FFB scale:" Style="{StaticResource LabelText}"/>
-                    <Slider     Grid.Column="1" x:Name="FfbScaleSlider"
-                                Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
-                                TickFrequency="0.25" ValueChanged="FfbScaleSlider_ValueChanged" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" x:Name="FfbScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
-                </Grid>
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="FFB smooth (ms):" Style="{StaticResource LabelText}"
-                               ToolTip="Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms; smoothing converts the staircase into a ramp. Higher = smoother feel but more lag. Lower = tighter response but possible faint mechanical tick. 0 = pure passthrough (tightest response)."/>
-                    <Slider     Grid.Column="1" x:Name="FfbSmoothSlider"
-                                Minimum="0" Maximum="10" SmallChange="0.5" LargeChange="1"
-                                TickFrequency="1" ValueChanged="FfbSmoothSlider_ValueChanged" VerticalAlignment="Center"
-                                ToolTip="Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms; smoothing converts the staircase into a ramp. Higher = smoother feel but more lag. Lower = tighter response but possible faint mechanical tick. 0 = pure passthrough (tightest response)."/>
-                    <TextBlock Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
-                </Grid>
-                <!-- Invert FFB sign. Default on (correct for the common games
-                     on the wheels we've tested), but NOT universal: RaceRoom
-                     and some wheels report the opposite convention, so this
-                     stays a user toggle. Uncheck if forces feel reversed. -->
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <CheckBox Grid.Column="1" x:Name="FfbInvertCheck" Content="Invert FFB sign (uncheck if forces feel reversed)"
-                              VerticalAlignment="Center" Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"
-                              ToolTip="Flips the direction of the game's force feedback sent to the wheel. On by default. If your wheel pushes the wrong way (e.g. forces feel reversed in RaceRoom), uncheck this."/>
-                </Grid>
+            <!-- (The old "Active car" Save/Delete box was removed: per-car
+                 tuning now saves via each effect's ★/Save popover ("For this
+                 car"), and deleting a car preset lives in Manage Presets. The
+                 header car-preset picker still switches the active car preset.) -->
+
+            <!-- FFB tweaks: optional force-feedback comfort/feel adjustments,
+                 collapsed by default so they don't crowd the top of the Effects
+                 tab. Holds the parked-car "stationary spring" and FFB spike
+                 reduction. -->
+            <Expander x:Name="FfbTweaksExpander" IsExpanded="False" Margin="0,12,0,4">
+                <Expander.Header>
+                    <TextBlock Text="FFB tweaks" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+
+                <!-- FFB pass-through: how the game's own force feedback is
+                     mirrored to the wheel - output scale, smoothing, and sign.
+                     FfbPassthroughControls is greyed for native-Trueforce games
+                     where pass-through is skipped (the game drives the wheel
+                     directly); invert lives here too so all three grey together. -->
+                <Expander IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <TextBlock Text="FFB pass-through" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </Expander.Header>
+                    <StackPanel x:Name="FfbPassthroughControls" Margin="0,8,0,0">
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="FFB scale:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="FfbScaleSlider"
+                                        Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.25" ValueChanged="FfbScaleSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="FfbScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="FFB smooth (ms):" Style="{StaticResource LabelText}"
+                                       ToolTip="Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms; smoothing converts the staircase into a ramp. Higher = smoother feel but more lag. Lower = tighter response but possible faint mechanical tick. 0 = pure passthrough (tightest response)."/>
+                            <Slider     Grid.Column="1" x:Name="FfbSmoothSlider"
+                                        Minimum="0" Maximum="10" SmallChange="0.5" LargeChange="1"
+                                        TickFrequency="1" ValueChanged="FfbSmoothSlider_ValueChanged" VerticalAlignment="Center"
+                                        ToolTip="Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms; smoothing converts the staircase into a ramp. Higher = smoother feel but more lag. Lower = tighter response but possible faint mechanical tick. 0 = pure passthrough (tightest response)."/>
+                            <TextBox Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
+                        </Grid>
+                        <CheckBox x:Name="FfbInvertCheck" Content="Invert FFB sign (uncheck if forces feel reversed)"
+                                  Margin="0,2,0,0" VerticalAlignment="Center"
+                                  Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"
+                                  ToolTip="Flips the direction of the game's force feedback sent to the wheel. On by default. If your wheel pushes the wrong way (e.g. forces feel reversed in RaceRoom), uncheck this."/>
+                    </StackPanel>
+                </Expander>
+
                 <!-- Stationary spring: synthesizes a parked-car centering
                      force the game itself doesn't send (a stationary tire has
                      ~0 self-aligning torque). Deficit-fill + speed-fade, so it
@@ -732,124 +796,122 @@
                      it works in any game; always off for iRacing (MAIRA already
                      weights it). Forza's steering is coarse so the consumer
                      smooths it. -->
-                <Grid Margin="0,8,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <CheckBox Grid.Column="1" x:Name="StationarySpringCheck"
-                              Content="Stationary spring (adds parked-car wheel weight)"
-                              VerticalAlignment="Center"
-                              Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                              ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (MAIRA already weights the wheel)."/>
-                </Grid>
-                <StackPanel x:Name="StationarySpringSliders">
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Spring strength:" Style="{StaticResource LabelText}"
-                               ToolTip="How much centering weight to add when fully parked, as a fraction of full FFB. Start low; a strong spring snaps a direct-drive rim to center hard."/>
-                    <Slider     Grid.Column="1" x:Name="StationarySpringStrengthSlider"
-                                Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.25"
-                                TickFrequency="0.25" ValueChanged="StationarySpringStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" x:Name="StationarySpringStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
-                </Grid>
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Fade-out (km/h):" Style="{StaticResource LabelText}"
-                               ToolTip="The spring is at full strength when stopped and fades to nothing by this speed. Keep it low so it's gone before real cornering forces build."/>
-                    <Slider     Grid.Column="1" x:Name="StationarySpringCutoffSlider"
-                                Minimum="2" Maximum="30" SmallChange="1" LargeChange="5"
-                                TickFrequency="2" ValueChanged="StationarySpringCutoffSlider_ValueChanged" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" x:Name="StationarySpringCutoffText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="12"/>
-                </Grid>
+                <Expander IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <TextBlock Text="Stationary spring" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <CheckBox x:Name="StationarySpringCheck"
+                                  Content="Stationary spring (adds parked-car wheel weight)"
+                                  Margin="0,0,0,6" VerticalAlignment="Center"
+                                  Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
+                                  ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (MAIRA already weights the wheel)."/>
+                        <StackPanel x:Name="StationarySpringSliders">
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Spring strength:" Style="{StaticResource LabelText}"
+                                           ToolTip="How much centering weight to add when fully parked, as a fraction of full FFB. Start low; a strong spring snaps a direct-drive rim to center hard."/>
+                                <Slider     Grid.Column="1" x:Name="StationarySpringStrengthSlider"
+                                            Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.25"
+                                            TickFrequency="0.25" ValueChanged="StationarySpringStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="2" x:Name="StationarySpringStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Fade-out (km/h):" Style="{StaticResource LabelText}"
+                                           ToolTip="The spring is at full strength when stopped and fades to nothing by this speed. Keep it low so it's gone before real cornering forces build."/>
+                                <Slider     Grid.Column="1" x:Name="StationarySpringCutoffSlider"
+                                            Minimum="2" Maximum="30" SmallChange="1" LargeChange="5"
+                                            TickFrequency="2" ValueChanged="StationarySpringCutoffSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="2" x:Name="StationarySpringCutoffText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="12"/>
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+                <!-- FFB spike reduction. Save/Revert live in the expander header. -->
+                <Expander IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="FFB spike reduction" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button x:Name="SpikeReductionRevertBtn" Content="↶" Tag="SpikeReduction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="SpikeReductionSaveBtn"   Content="Save…" Tag="SpikeReduction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <CheckBox x:Name="SpikeTamingEnabledCheck" Content="FFB spike reduction (recommended for Assetto Corsa)"
+                                  FontWeight="SemiBold" Margin="0,0,0,4"
+                                  Checked="SpikeTamingEnabled_Changed" Unchecked="SpikeTamingEnabled_Changed"/>
+                        <!-- Spike reduction has two mutually exclusive methods: exactly
+                             one runs when the box above is on, neither when it's off.
+                             The selector and tuning stay readable even when it's off so
+                             the method can be set any time. The active method's controls
+                             show; the other method's are hidden (no graying). The label,
+                             help text and description swap by method in code
+                             (UpdateSpikeModeUi). The shared limit slider is one setting
+                             (FfbSpikeMaxLsbPerMs) read as LSB/ms in slew or an LSB
+                             threshold in transient. "Cap softness" is transient-only so
+                             it only appears under Transient. -->
+                        <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,0">
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                                       Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
+                            <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <RadioButton x:Name="SpikeModeTransientRadio" GroupName="SpikeMode"
+                                             Content="Transient detector" VerticalAlignment="Center"
+                                             Checked="SpikeMode_Changed"/>
+                                <RadioButton x:Name="SpikeModeSlewRadio" GroupName="SpikeMode"
+                                             Content="Slew-rate limiter (iRacing-style)" VerticalAlignment="Center"
+                                             Margin="18,0,0,0" Checked="SpikeMode_Changed"/>
+                            </StackPanel>
+                            <TextBlock x:Name="SpikeModeDescription" Style="{StaticResource HelpText}" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" x:Name="FfbSpikeLimitLabel" Text="Slew rate (LSB/ms):" Style="{StaticResource LabelText}"/>
+                                <Slider     Grid.Column="1" x:Name="FfbSpikeLimitSlider"
+                                            Minimum="0" Maximum="30000" SmallChange="500" LargeChange="2000"
+                                            TickFrequency="2500" ValueChanged="FfbSpikeLimitSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="2" x:Name="FfbSpikeLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="2061"/>
+                            </Grid>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,8" x:Name="FfbSpikeLimitHelp"/>
+                            <StackPanel x:Name="SpikeCapSoftnessRow">
+                                <Grid Margin="0,0,0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Cap softness (LSB):" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="FfbPeakLimitSlider"
+                                                Minimum="0" Maximum="20000" SmallChange="500" LargeChange="2000"
+                                                TickFrequency="2000" ValueChanged="FfbPeakLimitSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="2" x:Name="FfbPeakLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1562"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,0"
+                                           Text="How hard spikes above the threshold get compressed. Peak force during a big hit asymptotes toward threshold plus this value. Transient method only."/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Experimental FFB detection. Synced with the copy in the
+                     Settings tab's FFB pass-through expander and the FFBX access
+                     code. A recovery tool for games that should have force
+                     feedback but give none, so it lives with the other FFB
+                     tweaks. -->
+                <Expander IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <TextBlock Text="Experimental FFB detection" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <CheckBox x:Name="ExperimentalFfbMainCheck" Content="Enable experimental FFB detection"
+                                  Margin="0,0,0,2" Checked="ExperimentalFfbDetectionMain_Changed" Unchecked="ExperimentalFfbDetectionMain_Changed"
+                                  ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). After enabling, load the game and drive for a few seconds. Turn it back off if it causes any trouble."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
+                                   Text="Try this if you are not getting force feedback in a game that should have it."/>
+                    </StackPanel>
+                </Expander>
                 </StackPanel>
-
-            </StackPanel>
-
-            <!-- Experimental FFB detection. Surfaced on the main page so a user
-                 with no force feedback can find it, but kept at the bottom of
-                 the Master section so it isn't crammed between the primary
-                 tuning controls. Synced with the copy in Advanced > FFB
-                 pass-through and the FFBX access code. Outside
-                 FfbPassthroughControls so it stays enabled regardless of the
-                 skip-pass-through state. -->
-            <CheckBox x:Name="ExperimentalFfbMainCheck" Content="Enable experimental FFB detection"
-                      Margin="0,8,0,2" Checked="ExperimentalFfbDetectionMain_Changed" Unchecked="ExperimentalFfbDetectionMain_Changed"
-                      ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). After enabling, load the game and drive for a few seconds. Turn it back off if it causes any trouble."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                       Text="Try this if you are not getting force feedback in a game that should have it."/>
-
-            <!-- (The old "Active car" Save/Delete box was removed: per-car
-                 tuning now saves via each effect's ★/Save popover ("For this
-                 car"), and deleting a car preset lives in Manage Presets. The
-                 header car-preset picker still switches the active car preset.) -->
-
-            <!-- FFB spike taming: comfort filter for over-the-top curb /
-                 collision FFB. Pulled out into its own top-level section
-                 (was nested inside Master's FFB controls) since it's a
-                 distinct safety / comfort feature, not just FFB tuning.
-                 Extra top margin so the header isn't crammed against the
-                 stationary-spring controls in the Master section above. -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,12">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="FFB spike reduction" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
-                    <Button Grid.Column="1" x:Name="SpikeReductionRevertBtn" Content="↶" Tag="SpikeReduction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                    <Button Grid.Column="2" x:Name="SpikeReductionSaveBtn"   Content="Save…" Tag="SpikeReduction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                </Grid>
-            </Border>
-            <CheckBox x:Name="SpikeTamingEnabledCheck" Content="FFB spike reduction (recommended for Assetto Corsa)"
-                      FontWeight="SemiBold" Margin="0,0,0,4"
-                      Checked="SpikeTamingEnabled_Changed" Unchecked="SpikeTamingEnabled_Changed"/>
-            <!-- Spike reduction has two mutually exclusive methods: exactly
-                 one runs when the box above is on, neither when it's off.
-                 The selector and tuning stay readable even when it's off so
-                 the method can be set any time. The active method's controls
-                 show; the other method's are hidden (no graying). The label,
-                 help text and description swap by method in code
-                 (UpdateSpikeModeUi). The shared limit slider is one setting
-                 (FfbSpikeMaxLsbPerMs) read as LSB/ms in slew or an LSB
-                 threshold in transient. "Cap softness" is transient-only so
-                 it only appears under Transient. -->
-            <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,16">
-                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
-                <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"/>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <RadioButton x:Name="SpikeModeTransientRadio" GroupName="SpikeMode"
-                                 Content="Transient detector" VerticalAlignment="Center"
-                                 Checked="SpikeMode_Changed"/>
-                    <RadioButton x:Name="SpikeModeSlewRadio" GroupName="SpikeMode"
-                                 Content="Slew-rate limiter (iRacing-style)" VerticalAlignment="Center"
-                                 Margin="18,0,0,0" Checked="SpikeMode_Changed"/>
-                </StackPanel>
-                <TextBlock x:Name="SpikeModeDescription" Style="{StaticResource HelpText}" Margin="0,0,0,8"/>
-                <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="FfbSpikeLimitLabel" Text="Slew rate (LSB/ms):" Style="{StaticResource LabelText}"/>
-                    <Slider     Grid.Column="1" x:Name="FfbSpikeLimitSlider"
-                                Minimum="0" Maximum="30000" SmallChange="500" LargeChange="2000"
-                                TickFrequency="2500" ValueChanged="FfbSpikeLimitSlider_ValueChanged" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" x:Name="FfbSpikeLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="2061"/>
-                </Grid>
-                <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,8" x:Name="FfbSpikeLimitHelp"/>
-                <StackPanel x:Name="SpikeCapSoftnessRow">
-                    <Grid Margin="0,0,0,2">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Cap softness (LSB):" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="FfbPeakLimitSlider"
-                                    Minimum="0" Maximum="20000" SmallChange="500" LargeChange="2000"
-                                    TickFrequency="2000" ValueChanged="FfbPeakLimitSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="FfbPeakLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1562"/>
-                    </Grid>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,0"
-                               Text="How hard spikes above the threshold get compressed. Peak force during a big hit asymptotes toward threshold plus this value. Transient method only."/>
-                </StackPanel>
-            </StackPanel>
+            </Expander>
 
             <!-- Effects -->
-            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Effects" Style="{StaticResource SectionHeaderText}"/></Border>
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12"><TextBlock Text="Effects" Style="{StaticResource SectionHeaderText}"/></Border>
 
             <!-- Audio capture (game audio → wheel). Lives outside the
                  telemetry-greyed panel because it works even when the game
@@ -877,7 +939,7 @@
                         <Slider     Grid.Column="1" x:Name="AudioGainSlider"
                                     Minimum="0" Maximum="3.0" SmallChange="0.05" LargeChange="0.25"
                                     TickFrequency="0.5" ValueChanged="AudioGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="AudioGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        <TextBox Grid.Column="2" x:Name="AudioGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                     </Grid>
                     <Grid Margin="0,0,0,4">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -885,7 +947,7 @@
                         <Slider     Grid.Column="1" x:Name="AudioHighpassSlider"
                                     Minimum="0" Maximum="200" SmallChange="5" LargeChange="20"
                                     TickFrequency="20" ValueChanged="AudioHighpassSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="AudioHighpassText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
+                        <TextBox Grid.Column="2" x:Name="AudioHighpassText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
                     </Grid>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -893,7 +955,7 @@
                         <Slider     Grid.Column="1" x:Name="AudioFilterSlider"
                                     Minimum="100" Maximum="1500" SmallChange="10" LargeChange="50"
                                     TickFrequency="100" ValueChanged="AudioFilterSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="AudioFilterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="350"/>
+                        <TextBox Grid.Column="2" x:Name="AudioFilterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="350"/>
                     </Grid>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -956,14 +1018,14 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EngineGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="EngineGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EngineGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="EngineGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Pitch:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EnginePitchSlider" Minimum="0.25" Maximum="4.0" SmallChange="0.05" LargeChange="0.25"
                                         TickFrequency="0.25" ValueChanged="EnginePitchSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EnginePitchText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="EnginePitchText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -978,7 +1040,7 @@
                                        ToolTip="0 = disabled. Lowers buzzy harmonics on Square/Saw without changing pitch."/>
                             <Slider     Grid.Column="1" x:Name="EngineLowpassSlider" Minimum="0" Maximum="2000" SmallChange="10" LargeChange="50"
                                         TickFrequency="200" ValueChanged="EngineLowpassSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EngineLowpassText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0"/>
+                            <TextBox Grid.Column="2" x:Name="EngineLowpassText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0"/>
                         </Grid>
                         <!-- Electric car behavior: applies only when the resolver
                              flags the active car as a pure EV. Combustion cars
@@ -1064,7 +1126,7 @@
                             <TextBlock Grid.Column="0" Text="  Strength:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EngineLoadLayerGainSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="EngineLoadLayerGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EngineLoadLayerGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.80"/>
+                            <TextBox Grid.Column="2" x:Name="EngineLoadLayerGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.80"/>
                         </Grid>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1078,7 +1140,7 @@
                             <TextBlock Grid.Column="0" Text="  Amount:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EngineHighRpmBoostSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="EngineHighRpmBoostSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="EngineHighRpmBoostText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.70"/>
+                            <TextBox Grid.Column="2" x:Name="EngineHighRpmBoostText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.70"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
@@ -1105,7 +1167,7 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="SlipGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="SlipGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="SlipGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="SlipGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1119,7 +1181,7 @@
                             <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="BumpsFreqSlider" Minimum="20" Maximum="300" SmallChange="1" LargeChange="10"
                                         TickFrequency="20" ValueChanged="BumpsFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="BumpsFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="60"/>
+                            <TextBox Grid.Column="2" x:Name="BumpsFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="60"/>
                         </Grid>
 
                         <!-- Surface texture (Forza-supplied SurfaceRumble + WheelOnRumbleStrip).
@@ -1138,14 +1200,14 @@
                                     <TextBlock Grid.Column="0" Text="Surface gain:" Style="{StaticResource LabelText}"/>
                                     <Slider     Grid.Column="1" x:Name="BumpsSurfaceGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                                 TickFrequency="0.25" ValueChanged="BumpsSurfaceGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" x:Name="BumpsSurfaceGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                                    <TextBox Grid.Column="2" x:Name="BumpsSurfaceGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                                 </Grid>
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Surface freq (Hz):" Style="{StaticResource LabelText}"/>
                                     <Slider     Grid.Column="1" x:Name="BumpsSurfaceFreqSlider" Minimum="20" Maximum="600" SmallChange="5" LargeChange="25"
                                                 TickFrequency="50" ValueChanged="BumpsSurfaceFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" x:Name="BumpsSurfaceFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
+                                    <TextBox Grid.Column="2" x:Name="BumpsSurfaceFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
                                 </Grid>
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1160,7 +1222,7 @@
                                                ToolTip="Multiplier on Forza's SurfaceRumble before driving the oscillator. 1.0 = use as-is. Bump up for more aggressive surface feel."/>
                                     <Slider     Grid.Column="1" x:Name="BumpsSurfaceRumbleScaleSlider" Minimum="0.1" Maximum="3.0" SmallChange="0.1" LargeChange="0.25"
                                                 TickFrequency="0.25" ValueChanged="BumpsSurfaceRumbleScaleSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" x:Name="BumpsSurfaceRumbleScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                                    <TextBox Grid.Column="2" x:Name="BumpsSurfaceRumbleScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                                 </Grid>
                                 <Grid Margin="0,0,0,0">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1168,7 +1230,7 @@
                                                ToolTip="Extra amplitude added on the rising edge of any wheel touching a rumble strip. 0 = disabled."/>
                                     <Slider     Grid.Column="1" x:Name="BumpsRumbleStripPulseSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
                                                 TickFrequency="0.25" ValueChanged="BumpsRumbleStripPulseSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" x:Name="BumpsRumbleStripPulseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+                                    <TextBox Grid.Column="2" x:Name="BumpsRumbleStripPulseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
                                 </Grid>
                             </StackPanel>
                         </Border>
@@ -1197,14 +1259,14 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="TractionGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="TractionGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="TractionGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="TractionGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Sensitivity:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="TractionSensitivitySlider" Minimum="0.1" Maximum="3.0" SmallChange="0.1" LargeChange="0.25"
                                         TickFrequency="0.25" ValueChanged="TractionSensitivitySlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="TractionSensitivityText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="TractionSensitivityText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1218,7 +1280,7 @@
                             <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="TractionFreqSlider" Minimum="20" Maximum="300" SmallChange="1" LargeChange="10"
                                         TickFrequency="20" ValueChanged="TractionFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="TractionFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="100"/>
+                            <TextBox Grid.Column="2" x:Name="TractionFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="100"/>
                         </Grid>
                         <!-- Noise filter rows: only relevant for Noise waveform.
                              Collapsed otherwise so the panel doesn't show
@@ -1229,7 +1291,7 @@
                                        ToolTip="Cut high frequencies from noise. Lower = smoother rumble, higher = grittier."/>
                             <Slider     Grid.Column="1" x:Name="TractionNoiseLpSlider" Minimum="50" Maximum="1000" SmallChange="10" LargeChange="50"
                                         TickFrequency="100" ValueChanged="TractionNoiseLpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="TractionNoiseLpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="250"/>
+                            <TextBox Grid.Column="2" x:Name="TractionNoiseLpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="250"/>
                         </Grid>
                         <Grid x:Name="TractionNoiseHpRow" Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1237,7 +1299,7 @@
                                        ToolTip="Cut sub-audible drift / DC thump from noise. 0 disables."/>
                             <Slider     Grid.Column="1" x:Name="TractionNoiseHpSlider" Minimum="0" Maximum="200" SmallChange="5" LargeChange="20"
                                         TickFrequency="20" ValueChanged="TractionNoiseHpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="TractionNoiseHpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
+                            <TextBox Grid.Column="2" x:Name="TractionNoiseHpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
@@ -1264,7 +1326,7 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="ShiftGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="ShiftGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="ShiftGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="ShiftGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1278,7 +1340,7 @@
                             <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="ShiftFreqSlider" Minimum="20" Maximum="100" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="ShiftFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="ShiftFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="40"/>
+                            <TextBox Grid.Column="2" x:Name="ShiftFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="40"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
@@ -1308,7 +1370,7 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="AbsGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="AbsGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="AbsGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="AbsGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1330,7 +1392,7 @@
                             <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="AbsFreqSlider" Minimum="30" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="AbsFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="AbsFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
+                            <TextBox Grid.Column="2" x:Name="AbsFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
                         </Grid>
                         <!-- Pulse rate / duty are only meaningful in Pulse mode.
                              Greyed when AbsMode = PerTick. -->
@@ -1340,14 +1402,14 @@
                                 <TextBlock Grid.Column="0" Text="Pulse rate (Hz):" Style="{StaticResource LabelText}"/>
                                 <Slider     Grid.Column="1" x:Name="AbsPulseFreqSlider" Minimum="3" Maximum="30" SmallChange="0.5" LargeChange="2"
                                             TickFrequency="2" ValueChanged="AbsPulseFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" x:Name="AbsPulseFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="12"/>
+                                <TextBox Grid.Column="2" x:Name="AbsPulseFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="12"/>
                             </Grid>
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Pulse duty:" Style="{StaticResource LabelText}"/>
                                 <Slider     Grid.Column="1" x:Name="AbsDutyCycleSlider" Minimum="0.1" Maximum="0.9" SmallChange="0.05" LargeChange="0.1"
                                             TickFrequency="0.1" ValueChanged="AbsDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" x:Name="AbsDutyCycleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.40"/>
+                                <TextBox Grid.Column="2" x:Name="AbsDutyCycleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.40"/>
                             </Grid>
                         </StackPanel>
                     </StackPanel>
@@ -1379,7 +1441,7 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="PitLimiterGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="PitLimiterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="PitLimiterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1394,7 +1456,7 @@
                                        ToolTip="Tone within each pulse. Lower = deeper thud; higher = brighter."/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterFreqSlider" Minimum="20" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="PitLimiterFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="PitLimiterFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="50"/>
+                            <TextBox Grid.Column="2" x:Name="PitLimiterFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="50"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1402,7 +1464,7 @@
                                        ToolTip="How fast the pulse opens / closes. 5–10 Hz feels like a real pit limiter cadence."/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterPulseFreqSlider" Minimum="3" Maximum="15" SmallChange="0.5" LargeChange="2"
                                         TickFrequency="1" ValueChanged="PitLimiterPulseFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="PitLimiterPulseFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6.0"/>
+                            <TextBox Grid.Column="2" x:Name="PitLimiterPulseFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6.0"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1410,7 +1472,7 @@
                                        ToolTip="Fraction of each pulse during which the carrier is audible. Higher = more sustained; lower = more punctuated."/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterDutyCycleSlider" Minimum="0.1" Maximum="0.9" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="PitLimiterDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="PitLimiterDutyCycleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.60"/>
+                            <TextBox Grid.Column="2" x:Name="PitLimiterDutyCycleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.60"/>
                         </Grid>
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1418,7 +1480,7 @@
                                        ToolTip="Peak amplitude while the limiter is engaged."/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterActiveAmpSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
                                         TickFrequency="0.1" ValueChanged="PitLimiterActiveAmpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="PitLimiterActiveAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
+                            <TextBox Grid.Column="2" x:Name="PitLimiterActiveAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
@@ -1449,7 +1511,7 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="DrsGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DrsGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="DrsGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,4" Text="Activation chirp (rising edge of DRS)" FontWeight="SemiBold"/>
                         <Grid Margin="0,0,0,8">
@@ -1465,21 +1527,21 @@
                             <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsActivationFreqSlider" Minimum="40" Maximum="200" SmallChange="1" LargeChange="5"
                                         TickFrequency="20" ValueChanged="DrsActivationFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DrsActivationFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
+                            <TextBox Grid.Column="2" x:Name="DrsActivationFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Duration (ms):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsActivationMsSlider" Minimum="20" Maximum="200" SmallChange="5" LargeChange="20"
                                         TickFrequency="20" ValueChanged="DrsActivationMsSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DrsActivationMsText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="60"/>
+                            <TextBox Grid.Column="2" x:Name="DrsActivationMsText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="60"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Amp:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsActivationAmpSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
                                         TickFrequency="0.1" ValueChanged="DrsActivationAmpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DrsActivationAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
+                            <TextBox Grid.Column="2" x:Name="DrsActivationAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
                         </Grid>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,4" Text="Sustained tone (while DRS held open). Set amp to 0 for chirp-only mode." FontWeight="SemiBold"/>
                         <Grid Margin="0,0,0,8">
@@ -1495,14 +1557,14 @@
                             <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsSustainedFreqSlider" Minimum="20" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="DrsSustainedFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DrsSustainedFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="70"/>
+                            <TextBox Grid.Column="2" x:Name="DrsSustainedFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="70"/>
                         </Grid>
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Amp:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsSustainedAmpSlider" Minimum="0" Maximum="0.4" SmallChange="0.02" LargeChange="0.05"
                                         TickFrequency="0.05" ValueChanged="DrsSustainedAmpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DrsSustainedAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.12"/>
+                            <TextBox Grid.Column="2" x:Name="DrsSustainedAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.12"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
@@ -1535,7 +1597,7 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="CollisionGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="CollisionGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="CollisionGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            <TextBox Grid.Column="2" x:Name="CollisionGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1543,7 +1605,7 @@
                                        ToolTip="Lower = lighter contacts trigger. Raise if light scrapes are too noisy."/>
                             <Slider     Grid.Column="1" x:Name="CollisionMinThresholdSlider" Minimum="0.05" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="CollisionMinThresholdSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="CollisionMinThresholdText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.20"/>
+                            <TextBox Grid.Column="2" x:Name="CollisionMinThresholdText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.20"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1551,7 +1613,7 @@
                                        ToolTip="Cap on the loudest hit. Safety knob for wrists / wheelbase."/>
                             <Slider     Grid.Column="1" x:Name="CollisionMaxAmpSlider" Minimum="0.2" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="CollisionMaxAmpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="CollisionMaxAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.85"/>
+                            <TextBox Grid.Column="2" x:Name="CollisionMaxAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.85"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1559,14 +1621,14 @@
                                        ToolTip="Lower = deeper thud. 50 Hz default."/>
                             <Slider     Grid.Column="1" x:Name="CollisionFreqSlider" Minimum="20" Maximum="120" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="CollisionFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="CollisionFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="50"/>
+                            <TextBox Grid.Column="2" x:Name="CollisionFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="50"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Duration (ms):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="CollisionEnvelopeMsSlider" Minimum="40" Maximum="300" SmallChange="5" LargeChange="20"
                                         TickFrequency="20" ValueChanged="CollisionEnvelopeMsSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="CollisionEnvelopeMsText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
+                            <TextBox Grid.Column="2" x:Name="CollisionEnvelopeMsText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="120"/>
                         </Grid>
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1607,7 +1669,7 @@
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.25" ValueChanged="RevLimiterGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="RevLimiterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.10"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.10"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1623,7 +1685,7 @@
                                        ToolTip="Fraction of the car's hard rev limit at which the buzz starts. Used for games without a separate redline (e.g. Forza). Games that report a real redline (Assetto Corsa, iRacing) fire right at the redline instead, so this is hidden for them."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterThresholdSlider" Minimum="0.50" Maximum="1.00" SmallChange="0.01" LargeChange="0.05"
                                         TickFrequency="0.05" ValueChanged="RevLimiterThresholdSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="RevLimiterThresholdText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="85%"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterThresholdText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="85%"/>
                         </Grid>
                         <TextBlock x:Name="RevLimiterRedlineNote" Style="{StaticResource HelpText}" Visibility="Collapsed" Margin="0,0,0,8"
                                    Text="This game reports the car's redline, so the buzz fires at the redline. Use the offset below to fire a little before it (early shift cue) or after. (The engage % only applies to games without a redline, like Forza.)"/>
@@ -1633,7 +1695,7 @@
                                        ToolTip="Shift the engage point relative to the car's redline. Negative fires the buzz before the redline (an early shift cue); positive fires it after. 0 = right at the redline. Only used when firing at a real redline; the percentage path ignores it."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterOffsetSlider" Minimum="-3000" Maximum="1000" SmallChange="50" LargeChange="250"
                                         TickFrequency="250" ValueChanged="RevLimiterOffsetSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="RevLimiterOffsetText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterOffsetText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1648,7 +1710,7 @@
                                        ToolTip="Tone within each pulse. Higher reads as a more urgent buzz."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterFreqSlider" Minimum="30" Maximum="200" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="RevLimiterFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="RevLimiterFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="90"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="90"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1656,7 +1718,7 @@
                                        ToolTip="How fast the buzz stutters. Faster feels like an aggressive soft-cut limiter."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterPulseFreqSlider" Minimum="5" Maximum="40" SmallChange="0.5" LargeChange="2"
                                         TickFrequency="5" ValueChanged="RevLimiterPulseFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="RevLimiterPulseFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="20.0"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterPulseFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="20.0"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1664,7 +1726,7 @@
                                        ToolTip="Fraction of each pulse during which the carrier is audible. Higher = more sustained; lower = more punctuated."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterDutyCycleSlider" Minimum="0.1" Maximum="0.9" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="RevLimiterDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="RevLimiterDutyCycleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterDutyCycleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
                         </Grid>
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1672,7 +1734,7 @@
                                        ToolTip="Peak amplitude while engaged."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterActiveAmpSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
                                         TickFrequency="0.1" ValueChanged="RevLimiterActiveAmpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="RevLimiterActiveAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.35"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterActiveAmpText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.35"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
@@ -1707,7 +1769,7 @@
                                        ToolTip="How far to turn the chosen effects down while airborne. 100% = fully silent; lower values just dial them back."/>
                             <Slider     Grid.Column="1" x:Name="AirborneReductionSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="AirborneReductionSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="AirborneReductionText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="100%"/>
+                            <TextBox Grid.Column="2" x:Name="AirborneReductionText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="100%"/>
                         </Grid>
                         <TextBlock Text="Duck these while airborne:" Style="{StaticResource LabelText}" Margin="0,0,0,6"/>
                         <WrapPanel Orientation="Horizontal">
@@ -1763,8 +1825,157 @@
             </TextBlock>
             </StackPanel> <!-- /RpmLedSection -->
 
-            <!-- Sidechain ducking + Performance moved into the Advanced
-                 Settings modal. See AdvancedSettingsHost near the bottom. -->
+            <!-- Support development -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,12"><TextBlock Text="Support development" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" FontSize="12"
+                Text="If this plugin made your wheel feel better, a tip is appreciated but never expected. Cheers."/>
+            <!-- Custom-templated button: SimHub's theme overrides Button.Background
+                 on stock buttons. A full ControlTemplate replaces the visual tree
+                 so the Ko-fi brand red survives intact. -->
+            <Button x:Name="DonateButton" Click="Donate_Click" Cursor="Hand"
+                    HorizontalAlignment="Left" Width="200" Height="44" Margin="0,0,0,8">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="DonateBd" Background="#FF5E5B" CornerRadius="8" BorderThickness="0"
+                                SnapsToDevicePixels="True">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#000000" BlurRadius="6" ShadowDepth="1" Opacity="0.35"/>
+                            </Border.Effect>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Canvas Grid.Column="0" Width="22" Height="22" Margin="14,0,8,0" VerticalAlignment="Center">
+                                    <Path Stroke="White" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M 7,2 C 9,4 5,6 7,8"/>
+                                    <Path Stroke="White" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M 12,2 C 14,4 10,6 12,8"/>
+                                    <Path Fill="White" Data="M 3,10 L 14,10 L 13,18 C 13,19.5 12,20 10.5,20 L 6.5,20 C 5,20 4,19.5 4,18 Z"/>
+                                    <Path Stroke="White" StrokeThickness="1.6" Fill="Transparent"
+                                          Data="M 14,12 C 18,12 18,17 14,17"/>
+                                </Canvas>
+                                <TextBlock Grid.Column="1" Text="Support on Ko-fi"
+                                           Foreground="White" FontWeight="Bold" FontSize="14"
+                                           VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="DonateBd" Property="Background" Value="#E54E4B"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="DonateBd" Property="Background" Value="#CC3F3D"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+            <TextBlock Text="ko-fi.com/mhytee" FontSize="11" Opacity="0.5" Margin="0,0,0,8"/>
+
+            <!-- Spread the word. Always available (unlike the one-and-done
+                 banner up top). Word of mouth is the only thing that gets
+                 this in front of people, so it's a first-class action here,
+                 not buried. Same dialog the banner opens. -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Spread the word" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                Text="Almost nobody knows this plugin exists; sharing is the best way to help get the word out."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Button x:Name="SharePanelButton" Content="Share TF4ALL…" Width="160" Height="28" Margin="0,0,8,0"
+                        Click="SharePanelButton_Click"
+                        ToolTip="Post on X, Reddit, or Facebook, or open the Nexus Mods / GitHub page."/>
+            </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </sh:SHTabItem>
+
+            <!-- ============================ PRESETS ============================ -->
+            <!-- The full preset library is hosted inline here (PresetManagerHost),
+                 replacing the old Manage Presets pop-up. Populated in code-behind. -->
+            <sh:SHTabItem x:Name="PresetsTab" Header="Presets">
+                <Grid x:Name="PresetManagerHost" Margin="14,12,14,14"/>
+            </sh:SHTabItem>
+
+            <!-- ============================ CONTROLS ============================ -->
+            <sh:SHTabItem x:Name="ControlsTab" Header="Controls">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ControlsTabHost" Margin="14,12,14,14">
+                        <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Controller bindings" Style="{StaticResource SectionHeaderText}"/></Border>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,12" FontSize="12"
+                            Text="Bind a wheel or button-box control to change master gain on the fly, without opening this panel. Click a field below, then press the button you want to use. Master gain is clamped to 0 - 2."/>
+
+                        <!-- How much each press of a bound button moves master gain. -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Step per press" Style="{StaticResource LabelText}"
+                                       ToolTip="How far master gain moves on each press of the bound buttons below."/>
+                            <Slider Grid.Column="1" x:Name="MasterGainStepSlider"
+                                    Minimum="0.01" Maximum="0.5" SmallChange="0.01" LargeChange="0.05"
+                                    TickFrequency="0.05" IsSnapToTickEnabled="False"
+                                    ValueChanged="MasterGainStepSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="MasterGainStepText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.05"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Master gain up" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforceForAll.MasterGainUp"
+                                                 FriendlyName="Trueforce: master gain up"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Master gain down" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforceForAll.MasterGainDown"
+                                                 FriendlyName="Trueforce: master gain down"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,8,0,0" FontSize="11"
+                            Text="These actions also appear in SimHub's Controls and events list. Bindings are stored by SimHub, not in your Trueforce preset."/>
+                    </StackPanel>
+                </ScrollViewer>
+            </sh:SHTabItem>
+
+            <!-- ============================ SETTINGS ============================ -->
+            <sh:SHTabItem x:Name="SettingsTab" Header="Settings">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14,12,14,14">
+
+            <!-- UDP telemetry: per-game UDP setup (Forza / F1) as its own
+                 collapsible, so it reads as a primary setting rather than
+                 trailing Diagnostics. Body is the unified game selector +
+                 the per-game sections (shown one at a time). -->
+            <Expander x:Name="UdpTelemetryExpander" IsExpanded="False" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="UDP telemetry" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+            <!-- Unified UDP telemetry config. Forza and F1 deliver telemetry
+                 over UDP (not shared memory); the game selector picks which one
+                 this configures. Auto follows the running game (the plugin picks
+                 the matching parser from the detected game); Forza / F1 pin it so
+                 ports can be pre-set with nothing running. The per-game bodies
+                 (ForzaSection / F1Section) below are shown one at a time by
+                 UpdateUdpSectionVisibility. -->
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                Text="Forza and F1 send telemetry over UDP instead of shared memory. Pick your game below (or leave it on Auto to follow whatever's running), then point that game's in-game UDP output at the port shown."/>
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Game:" Style="{StaticResource LabelText}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ComboBox x:Name="UdpGameSelector" Width="200" SelectedIndex="0"
+                              VerticalAlignment="Center" SelectionChanged="UdpGameSelector_Changed">
+                        <ComboBoxItem Content="Auto (detect running game)"/>
+                        <ComboBoxItem Content="Forza"/>
+                        <ComboBoxItem Content="F1"/>
+                    </ComboBox>
+                    <TextBlock x:Name="UdpDetectedText" VerticalAlignment="Center" Margin="10,0,0,0"
+                               FontSize="11" Opacity="0.6" Text=""/>
+                </StackPanel>
+            </Grid>
+            <TextBlock x:Name="UdpNoGameNote" Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                       Visibility="Collapsed"
+                       Text="No supported UDP game is running. Pick Forza or F1 above to set its port up now, or launch the game and leave this on Auto."/>
 
             <!-- Forza Data Out (UDP). Forza titles emit telemetry over UDP
                  instead of shared memory; the user enables UDP RACE TELEMETRY
@@ -1779,8 +1990,7 @@
                  This whole section is collapsed unless a Forza title is the
                  active game (ShouldShowForzaSection), so non-Forza users
                  never see it. -->
-            <StackPanel x:Name="ForzaSection" Visibility="Collapsed" Margin="0,20,0,0">
-            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Forza telemetry (UDP)" Style="{StaticResource SectionHeaderText}"/></Border>
+            <StackPanel x:Name="ForzaSection" Visibility="Collapsed">
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
                 Text="In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE TELEMETRY. Turn DATA OUT ON, set DATA OUT IP ADDRESS to 127.0.0.1, and set DATA OUT IP PORT to the Port shown below. That is the whole setup. The listener is always on for Forza; per-tire surface rumble, kerbs, and cylinder count flow through automatically."/>
             <Grid Margin="0,0,0,4">
@@ -1893,11 +2103,8 @@
                  line. Recommend 60 Hz Send Rate; warn if the observed rate
                  drops well below that. -->
             <StackPanel x:Name="F1Section" Visibility="Collapsed">
-            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="F1 telemetry (UDP)" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
                 Text="In F1 25, open Settings → Telemetry Settings. Set UDP Telemetry to On, UDP IP Address to 127.0.0.1, UDP Port to the port below, UDP Send Rate to 60Hz, and UDP Format to 2025. Enables direct per-wheel slip, KERS deployment, pit limiter, DRS, and surface type."/>
-            <CheckBox x:Name="F1EnabledCheck" Content="Enable F1 UDP listener" Click="F1Enabled_Changed" Margin="0,0,0,8"
-                      ToolTip="When off, F1 titles fall back to SimHub's universal telemetry (60 Hz, no direct slip, no KERS)."/>
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
@@ -1990,133 +2197,17 @@
                 </StackPanel>
             </Border>
             </StackPanel> <!-- /F1Section -->
+                </StackPanel>
+            </Expander>
 
-            <!-- Diagnostics moved into the Advanced Settings modal. See
-                 AdvancedSettingsHost near the bottom. -->
-
-            <!-- The standalone "Presets" section was removed: preset handling is
-                 now unified in the context card up top (pick + ★ Save all +
-                 conditional Set-as-default + Save as new inline with the game
-                 preset dropdown; Manage presets… at the bottom of that card). -->
-
-            <!-- Backup & sync. Two smart buttons: Export opens the pack
-                 picker (preselects the current car, hides built-ins);
-                 Import auto-detects the file kind (preset, car preset,
-                 pack, or full settings backup). -->
-            <!-- Top margin: when the Forza/F1 sections above are hidden (most
-                 users), this is the first section after the effects list and
-                 would otherwise sit flush against the last effect's 4px margin
-                 (this margin formerly lived on the removed Presets header). -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,28,0,12"><TextBlock Text="Backup &amp; sync" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                       Text="Share presets and car tunings with other users. Export bundles your picks into a single file; Import auto-detects whatever file you point it at."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button x:Name="ExportButton" Content="Export…" Width="140" Height="28" Margin="0,0,8,0" Click="Export_Click"
-                        ToolTip="Pick which presets and car tunings to bundle into a shareable file."/>
-                <Button x:Name="ImportButton" Content="Import…" Width="140" Height="28" Click="Import_Click"
-                        ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
-            </StackPanel>
-
-            <!-- Support development -->
-            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Support development" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" FontSize="12"
-                Text="If this plugin made your wheel feel better, a tip is appreciated but never expected. Cheers."/>
-            <!-- Custom-templated button: SimHub's theme overrides Button.Background
-                 on stock buttons. A full ControlTemplate replaces the visual tree
-                 so the Ko-fi brand red survives intact. -->
-            <Button x:Name="DonateButton" Click="Donate_Click" Cursor="Hand"
-                    HorizontalAlignment="Left" Width="200" Height="44" Margin="0,0,0,8">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="DonateBd" Background="#FF5E5B" CornerRadius="8" BorderThickness="0"
-                                SnapsToDevicePixels="True">
-                            <Border.Effect>
-                                <DropShadowEffect Color="#000000" BlurRadius="6" ShadowDepth="1" Opacity="0.35"/>
-                            </Border.Effect>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Canvas Grid.Column="0" Width="22" Height="22" Margin="14,0,8,0" VerticalAlignment="Center">
-                                    <Path Stroke="White" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                          Data="M 7,2 C 9,4 5,6 7,8"/>
-                                    <Path Stroke="White" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                          Data="M 12,2 C 14,4 10,6 12,8"/>
-                                    <Path Fill="White" Data="M 3,10 L 14,10 L 13,18 C 13,19.5 12,20 10.5,20 L 6.5,20 C 5,20 4,19.5 4,18 Z"/>
-                                    <Path Stroke="White" StrokeThickness="1.6" Fill="Transparent"
-                                          Data="M 14,12 C 18,12 18,17 14,17"/>
-                                </Canvas>
-                                <TextBlock Grid.Column="1" Text="Support on Ko-fi"
-                                           Foreground="White" FontWeight="Bold" FontSize="14"
-                                           VerticalAlignment="Center" Margin="0,0,16,0"/>
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="DonateBd" Property="Background" Value="#E54E4B"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="DonateBd" Property="Background" Value="#CC3F3D"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
-            <TextBlock Text="ko-fi.com/mhytee" FontSize="11" Opacity="0.5" Margin="0,0,0,8"/>
-
-            <!-- Spread the word. Always available (unlike the one-and-done
-                 banner up top). Word of mouth is the only thing that gets
-                 this in front of people, so it's a first-class action here,
-                 not buried. Same dialog the banner opens. -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Spread the word" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="Almost nobody knows this plugin exists; sharing is the best way to help get the word out."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button x:Name="SharePanelButton" Content="Share TF4ALL…" Width="160" Height="28" Margin="0,0,8,0"
-                        Click="SharePanelButton_Click"
-                        ToolTip="Post on X, Reddit, or Facebook, or open the Nexus Mods / GitHub page."/>
-            </StackPanel>
-
-            <!-- Report-issue + repo link: separate from cylinder reporting; this
-                 is for everything else (bugs, feature requests, weird behavior). -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Feedback" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="Found a bug, weird behavior, or have a feature request? Open an issue on GitHub."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <Button x:Name="ReportIssueButton" Content="Report an issue…" Width="160" Height="26"
-                        Click="ReportIssue_Click" Margin="0,0,8,0"
-                        ToolTip="Opens a new GitHub issue. Pre-fills plugin version and active game so you don't have to type it."/>
-                <Button x:Name="ExportLogsButton" Content="Export logs…" Width="120" Height="26"
-                        Click="ExportLogs_Click" Margin="0,0,8,0"
-                        ToolTip="Zips your SimHub logs + Trueforce settings to your Desktop. Attach the zip to your GitHub issue so I can debug what's happening on your machine."/>
-                <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
-                        Click="OpenRepo_Click"
-                        ToolTip="github.com/Mhytee/Trueforce-For-All"/>
-            </StackPanel>
-
-            <!-- Advanced settings entrypoint. Opens a modal hosting the three
-                 Expanders parked invisibly in AdvancedSettingsHost below
-                 (Performance, Sidechain ducking, Diagnostics). The Click
-                 handler re-parents the host into a Window and restores it
-                 on close, which keeps every existing per-control event
-                 handler reachable without changes. -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Advanced" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="Performance / latency tuning, sidechain ducking, and diagnostics. Rarely needed for day-to-day tuning."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button x:Name="OpenAdvancedSettingsButton" Content="Advanced settings…"
-                        Width="180" Height="28"
-                        Click="OpenAdvancedSettings_Click"
-                        ToolTip="Open the advanced settings dialog."/>
-            </StackPanel>
-
-            <!-- Hidden host for the Advanced Settings modal contents. Lives
-                 invisibly at the tail of the main panel so InitializeComponent
-                 still wires up every named field below; OpenAdvancedSettings_Click
-                 re-parents this StackPanel into a Window for display and
-                 restores it here when the user closes the dialog. -->
-            <StackPanel x:Name="AdvancedSettingsHost" Visibility="Collapsed">
+            <!-- No "Advanced" heading: these are ordinary settings, shown as
+                 flat peer collapsibles (FFB pass-through, Performance, Sidechain
+                 ducking, Diagnostics) below the UDP telemetry section; Backup &
+                 sync, Issue reporting and the access-code box follow. The host
+                 StackPanel is kept (named) so InitializeComponent wires up every
+                 field inside and OpenAdvancedSettings_Click / RefreshFromPlugin
+                 can reach them. -->
+            <StackPanel x:Name="AdvancedSettingsHost" Margin="0,0,0,0">
 
                 <!-- FFB pass-through. Only relevant for games that ship native
                      Trueforce (AC Rally, iRacing, etc). For those games the
@@ -2185,7 +2276,7 @@
                                         Minimum="8" Maximum="64" SmallChange="8" LargeChange="8"
                                         TickFrequency="8" IsSnapToTickEnabled="True"
                                         ValueChanged="PerfTfRingSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="PerfTfRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="8 (2ms)"/>
+                            <TextBox Grid.Column="2" x:Name="PerfTfRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="8 (2ms)"/>
                         </Grid>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
@@ -2195,7 +2286,7 @@
                                         Minimum="8" Maximum="128" SmallChange="8" LargeChange="8"
                                         TickFrequency="8" IsSnapToTickEnabled="True"
                                         ValueChanged="PerfAudioRingSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="PerfAudioRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="16 (4ms)"/>
+                            <TextBox Grid.Column="2" x:Name="PerfAudioRingText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="16 (4ms)"/>
                         </Grid>
 
                         <Grid Margin="0,8,0,0">
@@ -2230,7 +2321,7 @@
                             <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
                                         Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+                            <TextBox Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
                         </Grid>
                         <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
                             <Expander.Header>
@@ -2243,7 +2334,7 @@
                                     <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
                                                 Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
                                                 TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
+                                    <TextBox Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
                                 </Grid>
                                 <Grid Margin="0,0,0,0">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -2251,7 +2342,7 @@
                                     <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
                                                 Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
                                                 TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
+                                    <TextBox Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
                                 </Grid>
                             </StackPanel>
                         </Expander>
@@ -2349,7 +2440,67 @@
                     </Grid>
                 </Expander>
 
-                <!-- Tester access code. Unhides the rim-LED / MAIRA
+                
+            </StackPanel>
+
+
+
+
+            <!-- Extras: misc preferences that aren't game/FFB tuning. Placed
+                 below the collapsibles (not above) so it doesn't read as their
+                 parent. Currently just the home-screen gain tile toggle. -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,12"><TextBlock Text="Extras" Style="{StaticResource SectionHeaderText}"/></Border>
+            <CheckBox x:Name="ShowFeedbackBoxCheck" Content="Show Trueforce gain tile on SimHub's home screen"
+                      Margin="0,0,0,2" Checked="ShowFeedbackBox_Changed" Unchecked="ShowFeedbackBox_Changed"
+                      ToolTip="Adds a Trueforce master + audio gain box to SimHub's home 'Feedback' section, next to Motors and Wind, for quick access without opening this panel."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
+                       Text="Quick master + audio gain control from SimHub's home screen. Turn off to remove the tile."/>
+
+            <!-- Diagnostics moved into the Advanced Settings modal. See
+                 AdvancedSettingsHost near the bottom. -->
+
+            <!-- The standalone "Presets" section was removed: preset handling is
+                 now unified in the context card up top (pick + ★ Save all +
+                 conditional Set-as-default + Save as new inline with the game
+                 preset dropdown; Manage presets… at the bottom of that card). -->
+
+            <!-- Backup & sync. Two smart buttons: Export opens the pack
+                 picker (preselects the current car, hides built-ins);
+                 Import auto-detects the file kind (preset, car preset,
+                 pack, or full settings backup). -->
+            <!-- Top margin: when the Forza/F1 sections above are hidden (most
+                 users), this is the first section after the effects list and
+                 would otherwise sit flush against the last effect's 4px margin
+                 (this margin formerly lived on the removed Presets header). -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,28,0,12"><TextBlock Text="Backup &amp; sync" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                       Text="Share presets and car tunings with other users. Export bundles your picks into a single file; Import auto-detects whatever file you point it at."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Button x:Name="ExportButton" Content="Export…" Width="140" Height="28" Margin="0,0,8,0" Click="Export_Click"
+                        ToolTip="Pick which presets and car tunings to bundle into a shareable file."/>
+                <Button x:Name="ImportButton" Content="Import…" Width="140" Height="28" Click="Import_Click"
+                        ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
+            </StackPanel>
+
+            <!-- Report-issue + repo link: separate from cylinder reporting; this
+                 is for everything else (bugs, feature requests, weird behavior). -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Issue reporting" Style="{StaticResource SectionHeaderText}"/></Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                Text="Found a bug, weird behavior, or have a feature request? Open an issue on GitHub."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <Button x:Name="ReportIssueButton" Content="Report an issue…" Width="160" Height="26"
+                        Click="ReportIssue_Click" Margin="0,0,8,0"
+                        ToolTip="Opens a new GitHub issue. Pre-fills plugin version and active game so you don't have to type it."/>
+                <Button x:Name="ExportLogsButton" Content="Export logs…" Width="120" Height="26"
+                        Click="ExportLogs_Click" Margin="0,0,8,0"
+                        ToolTip="Zips your SimHub logs + Trueforce settings to your Desktop. Attach the zip to your GitHub issue so I can debug what's happening on your machine."/>
+                <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
+                        Click="OpenRepo_Click"
+                        ToolTip="github.com/Mhytee/Trueforce-For-All"/>
+            </StackPanel>
+
+            
+                    <!-- Tester access code. Unhides the rim-LED / MAIRA
                      passthrough section (MAIRA side still in PR, RS50/G923
                      unvalidated, so it stays out of the public UI). Type
                      MAIRA or TEST to unlock; persists for this install. -->
@@ -2362,7 +2513,9 @@
                              LostFocus="AccessCode_Changed" KeyDown="AccessCode_KeyDown"/>
                     <TextBlock x:Name="AccessCodeStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
                 </StackPanel>
-            </StackPanel>
-        </StackPanel>
-    </ScrollViewer>
+                    </StackPanel>
+                </ScrollViewer>
+            </sh:SHTabItem>
+        </sh:SHTabControl>
+    </Grid>
 </UserControl>

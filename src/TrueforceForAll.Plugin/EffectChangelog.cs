@@ -73,6 +73,58 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 20),
+                Title = "Redesigned interface, control bindings, and a home-screen gain tile",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Bind master gain to any control",
+                        Description = "A new Controls tab lets you map any button or input to raise or lower master gain on the fly without opening the panel, with an adjustable step per press. These bindings also show up in SimHub's own Controls and events list.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Home-screen gain tile",
+                        Description = "A Trueforce master and audio gain box right in SimHub's home Feedback section, next to Motors and Wind, for quick adjustments without opening the plugin. Can be turned off in Settings.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Redesigned interface",
+                        Description = "The panel is now organized into tabs (Effects, Presets, Controls, Settings) instead of one long scroll, matching the look of other SimHub plugins. Force-feedback options are grouped under a single collapsible 'FFB tweaks' section, and the old 'Advanced settings' pop-up is gone.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Type exact slider values",
+                        Description = "Every slider's value can be clicked and typed for precise tuning, not just dragged.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Presets get their own tab",
+                        Description = "The full preset library (game presets, car presets, custom engines) now lives on a dedicated Presets tab instead of a separate pop-up window, so it's always a click away while you tune.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Improved UDP telemetry setup (Forza / F1)",
+                        Description = "A single 'UDP telemetry' section with a game selector that follows whatever's running, always available so you can set ports up any time. If a UDP game is running but no telemetry is arriving, a banner now points you straight to the setup.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "A selected game profile was mistaken for a running game",
+                        Description = "Having a SimHub game profile selected with the game closed no longer makes the plugin think the game is running. The 'no telemetry' notice (any game) and the Forza/F1 'set up UDP' prompt now appear only when the game is actually running.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "F1 telemetry needed a manual toggle",
+                        Description = "F1 telemetry no longer requires a separate 'enable' switch. It turns on automatically when an F1 title is running, the same as Forza.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Thanks",
+                        Headline = "Thank you",
+                        Description = "Thank you to everyone who has donated, shared the project, and reported issues. I read every report, and your feedback genuinely helps decide what comes next. This project is shaped by the people who use it and I am committed to keeping it growing for a long time to come. I am grateful to have you all along for the ride!",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 19),
                 Title = "Two new effects, smoother tuning, and FFB fixes",
                 Entries = new List<ChangelogEntry>

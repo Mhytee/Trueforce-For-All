@@ -84,6 +84,24 @@ namespace TrueforceForAll.Plugin
 
         public float MasterGain { get; set; } = 1.0f;
 
+        // Step master gain moves on each press of a bound Controls-tab action
+        // (master gain up / down). Per-machine, not preset-saved. Defaults to
+        // the master-gain slider's small step (0.05).
+        public float MasterGainStep { get; set; } = 0.05f;
+
+        // Inject a Trueforce quick-gain box into SimHub's home-screen "Feedback"
+        // section, next to Motors/Wind. That section is hardcoded in SimHubWPF
+        // with no plugin extension point, so the box is added by a defensive
+        // runtime visual-tree splice (FeedbackBoxInjector) that fails silently
+        // if SimHub's home layout changes. On by default (with a Settings toggle
+        // to remove it); FeedbackBoxDefaultedOn migrates existing installs on.
+        public bool ShowFeedbackBox { get; set; } = true;
+
+        // One-time migration latch: flips existing installs' ShowFeedbackBox on
+        // once, when they update to the build that made the home tile default-on,
+        // without overriding a later user opt-out.
+        public bool FeedbackBoxDefaultedOn { get; set; } = false;
+
         // FFB pass-through tuning. Scale lets users dial down the felt strength
         // when their wheel firmware applies a different gain to ep3 cur than
         // to ep0 PID FFB; invert flips sign in case AC's HID++ feature 0x0e

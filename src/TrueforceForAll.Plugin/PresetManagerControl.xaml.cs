@@ -24,11 +24,27 @@ using Microsoft.Win32;
 
 namespace TrueforceForAll.Plugin
 {
-    public partial class ManagePresetsDialog : Window
+    public partial class PresetManagerControl : UserControl
     {
         public enum InitialTab { GamePresets, CarPresets, CustomEngines }
 
         private TrueforcePlugin _plugin;
+
+        // Raised after any library-mutating action (rename / duplicate / delete /
+        // set-default / set-active / import / custom-engine edit). The host
+        // (SettingsControl) subscribes to refresh its always-visible header
+        // combos and re-apply the live engine. Suppressed during the initial
+        // Init load so the host isn't churned on first display.
+        public event Action LibraryChanged;
+
+        // Raised when the user clicks Edit on a game-preset row (currently a
+        // dormant/hidden action). The host transitions the live panel into
+        // offline-edit mode for the named preset.
+        public event Action<string> EditPresetRequested;
+
+        // True only during Init's first Reload* pass, so those reloads don't
+        // fire LibraryChanged.
+        private bool _initializing;
 
         // IsChecked on every row model backs the checkbox column. Plain bool
         // is enough: WPF writes UI → model via the TwoWay binding, and the
@@ -104,7 +120,7 @@ namespace TrueforceForAll.Plugin
         private ListSortState _carSort;
         private ListSortState _customSort;
 
-        public ManagePresetsDialog()
+        public PresetManagerControl()
         {
             InitializeComponent();
             GameList.ItemsSource   = _gameRows;
@@ -208,9 +224,14 @@ namespace TrueforceForAll.Plugin
         public void Init(TrueforcePlugin plugin, InitialTab initialTab = InitialTab.GamePresets)
         {
             _plugin = plugin;
-            ReloadGames();
-            ReloadCars();
-            ReloadCustoms();
+            _initializing = true;
+            try
+            {
+                ReloadGames();
+                ReloadCars();
+                ReloadCustoms();
+            }
+            finally { _initializing = false; }
 
             // Restore last-used sort per tab from settings. Reload* clears
             // and re-fills the ObservableCollections but the view's
@@ -224,22 +245,47 @@ namespace TrueforceForAll.Plugin
                 HydrateSort(_customSort, s.ManageCustomsSort);
             }
 
-            switch (initialTab)
+            SelectTab(initialTab);
+        }
+
+        /// <summary>Bring one of the inner tabs (game / car / custom) forward.
+        /// Called by the host when it switches to the Presets tab from a
+        /// context-specific entry point (e.g. "manage custom engines").</summary>
+        public void SelectTab(InitialTab tab)
+        {
+            switch (tab)
             {
-                case InitialTab.CarPresets:    Tabs.SelectedIndex = 1; break;
-                case InitialTab.CustomEngines: Tabs.SelectedIndex = 2; break;
-                default:                       Tabs.SelectedIndex = 0; break;
+                case InitialTab.CarPresets:    if (SegCar    != null) SegCar.IsChecked    = true; break;
+                case InitialTab.CustomEngines: if (SegCustom != null) SegCustom.IsChecked = true; break;
+                default:                       if (SegGame   != null) SegGame.IsChecked   = true; break;
             }
         }
 
-        // Set non-null when the user clicked Edit on a game-preset row. The
-        // caller (SettingsControl.OpenManagePresetsDialog) reads this after
-        // ShowDialog returns and transitions the main panel into offline-
-        // edit mode for the named preset. Null means "no edit requested,
-        // refresh the UI normally."
+        // Segmented selector clicked (or set programmatically). Show the chosen
+        // view, hide the other two. Guarded so it's a no-op during the XAML
+        // load pass, when SegGame's default IsChecked fires before the panels
+        // exist (initial visibility is set in XAML instead).
+        private void Segment_Checked(object sender, RoutedEventArgs e)
+        {
+            if (GamePanel == null || CarPanel == null || CustomPanel == null) return;
+            GamePanel.Visibility   = SegGame.IsChecked   == true ? Visibility.Visible : Visibility.Collapsed;
+            CarPanel.Visibility    = SegCar.IsChecked    == true ? Visibility.Visible : Visibility.Collapsed;
+            CustomPanel.Visibility = SegCustom.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // Last preset the user clicked Edit on. Kept for reference; the actual
+        // hand-off to offline-edit mode now happens via the EditPresetRequested
+        // event (the control is embedded, there's no dialog close to read on).
         public string RequestedEditPresetName { get; private set; }
 
         // ===================== Reload =====================
+
+        // Fire LibraryChanged unless we're inside Init's first load. Called at
+        // the tail of each Reload*, which the mutating handlers all run.
+        private void MaybeNotifyChanged()
+        {
+            if (!_initializing) LibraryChanged?.Invoke();
+        }
 
         private void ReloadGames()
         {
@@ -272,6 +318,7 @@ namespace TrueforceForAll.Plugin
                 });
             }
             GameList_SelectionChanged(null, null);
+            MaybeNotifyChanged();
         }
 
         private void ReloadCars()
@@ -300,6 +347,7 @@ namespace TrueforceForAll.Plugin
                 }
             }
             CarList_SelectionChanged(null, null);
+            MaybeNotifyChanged();
         }
 
         private void ReloadCustoms()
@@ -312,6 +360,7 @@ namespace TrueforceForAll.Plugin
                     if (c != null) _customRows.Add(new CustomRow { Def = c });
             }
             CustomList_SelectionChanged(null, null);
+            MaybeNotifyChanged();
         }
 
         // ===================== Selection state =====================
@@ -342,6 +391,24 @@ namespace TrueforceForAll.Plugin
         private void RowCheckBox_Toggled(object sender, RoutedEventArgs e)
         {
             if (!(sender is CheckBox cb)) return;
+            // Checking a row also highlights it, so the single-row actions
+            // (Rename / Duplicate / Set default / Set active / Edit) treat a
+            // check as a selection. Unchecking the highlighted row clears it.
+            if (cb.IsChecked == true)
+            {
+                switch (cb.DataContext)
+                {
+                    case GameRow gr:    GameList.SelectedItem   = gr; break;
+                    case CarRow cr:     CarList.SelectedItem    = cr; break;
+                    case CustomRow cu:  CustomList.SelectedItem = cu; break;
+                }
+            }
+            else
+            {
+                if (cb.DataContext is GameRow gr && ReferenceEquals(GameList.SelectedItem, gr))     GameList.SelectedItem   = null;
+                if (cb.DataContext is CarRow cr && ReferenceEquals(CarList.SelectedItem, cr))       CarList.SelectedItem    = null;
+                if (cb.DataContext is CustomRow cu && ReferenceEquals(CustomList.SelectedItem, cu)) CustomList.SelectedItem = null;
+            }
             switch (cb.DataContext)
             {
                 case GameRow _:   RefreshGameButtons();   break;
@@ -419,13 +486,13 @@ namespace TrueforceForAll.Plugin
             if (newName == sel.Name) return;
             if (_plugin.Settings?.Presets?.ContainsKey(newName) == true)
             {
-                MessageBox.Show(this, $"A preset named '{newName}' already exists.", "Rename preset",
+                MessageBox.Show(Window.GetWindow(this), $"A preset named '{newName}' already exists.", "Rename preset",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!_plugin.RenamePreset(sel.Name, newName))
             {
-                MessageBox.Show(this, "Rename failed.", "Rename preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(Window.GetWindow(this), "Rename failed.", "Rename preset", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             ReloadGames();
@@ -442,13 +509,13 @@ namespace TrueforceForAll.Plugin
             newName = newName.Trim();
             if (_plugin.Settings?.Presets?.ContainsKey(newName) == true)
             {
-                MessageBox.Show(this, $"A preset named '{newName}' already exists.", "Duplicate preset",
+                MessageBox.Show(Window.GetWindow(this), $"A preset named '{newName}' already exists.", "Duplicate preset",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!_plugin.DuplicatePreset(sel.Name, newName))
             {
-                MessageBox.Show(this, "Duplicate failed.", "Duplicate preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(Window.GetWindow(this), "Duplicate failed.", "Duplicate preset", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             ReloadGames();
@@ -468,7 +535,7 @@ namespace TrueforceForAll.Plugin
                     : "";
                 string list = string.Join(", ", bulk.Take(10).Select(r => "'" + r.Name + "'"))
                     + (bulk.Count > 10 ? $" and {bulk.Count - 10} more" : "");
-                if (MessageBox.Show(this, $"Delete {bulk.Count} preset(s)?\n\n{list}{detail}",
+                if (MessageBox.Show(Window.GetWindow(this), $"Delete {bulk.Count} preset(s)?\n\n{list}{detail}",
                     "Delete presets", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
                 foreach (var r in bulk) _plugin.DeletePreset(r.Name);
                 ReloadGames();
@@ -480,7 +547,7 @@ namespace TrueforceForAll.Plugin
             string warning = sel.Defaults.Count > 0
                 ? $"Delete preset '{sel.Name}'?\n\nIt's currently the default for: {string.Join(", ", sel.Defaults)}. Those games will lose their auto-load binding."
                 : $"Delete preset '{sel.Name}'?";
-            if (MessageBox.Show(this, warning, "Delete preset", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            if (MessageBox.Show(Window.GetWindow(this), warning, "Delete preset", MessageBoxButton.YesNo, MessageBoxImage.Question)
                 != MessageBoxResult.Yes) return;
             _plugin.DeletePreset(sel.Name);
             ReloadGames();
@@ -492,12 +559,12 @@ namespace TrueforceForAll.Plugin
         // pickers sit above the manage dialog instead of behind it.
         private void DialogExport_Click(object sender, RoutedEventArgs e)
         {
-            SettingsControl.RunExportFlow(this, _plugin);
+            SettingsControl.RunExportFlow(Window.GetWindow(this), _plugin);
         }
 
         private void DialogImport_Click(object sender, RoutedEventArgs e)
         {
-            if (SettingsControl.RunImportFlow(this, _plugin))
+            if (SettingsControl.RunImportFlow(Window.GetWindow(this), _plugin))
             {
                 // Imported preset / car preset / pack / settings, reload all
                 // three tabs since any kind of import can touch any tab's view.
@@ -514,7 +581,7 @@ namespace TrueforceForAll.Plugin
             var known = CollectKnownGames();
             if (known.Count == 0)
             {
-                MessageBox.Show(this,
+                MessageBox.Show(Window.GetWindow(this),
                     "No games seen yet. Launch a game once so SimHub registers it, then come back to bind a default preset.",
                     "Set default for game", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
@@ -548,8 +615,7 @@ namespace TrueforceForAll.Plugin
             var sel = SelectedGame;
             if (sel == null) return;
             RequestedEditPresetName = sel.Name;
-            DialogResult = true;
-            Close();
+            EditPresetRequested?.Invoke(sel.Name);
         }
 
         private void SelectGameByName(string name)
@@ -578,7 +644,7 @@ namespace TrueforceForAll.Plugin
             if (newName == sel.PresetName) return;
             if (!_plugin.RenameCarPreset(sel.CarId, sel.PresetName, newName))
             {
-                MessageBox.Show(this,
+                MessageBox.Show(Window.GetWindow(this),
                     "Rename failed. A preset with that name may already exist for this car, or the source preset is a built-in.",
                     "Rename car preset", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -604,13 +670,13 @@ namespace TrueforceForAll.Plugin
             newName = newName.Trim();
             if (existing.Contains(newName))
             {
-                MessageBox.Show(this, $"A preset named '{newName}' already exists for this car.",
+                MessageBox.Show(Window.GetWindow(this), $"A preset named '{newName}' already exists for this car.",
                     "Duplicate car preset", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!_plugin.DuplicateCarPreset(sel.CarId, sel.PresetName, newName))
             {
-                MessageBox.Show(this, "Duplicate failed.", "Duplicate car preset",
+                MessageBox.Show(Window.GetWindow(this), "Duplicate failed.", "Duplicate car preset",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -627,7 +693,7 @@ namespace TrueforceForAll.Plugin
                 string detail = active > 0
                     ? $"\n\n{active} of the selected preset(s) are currently active for their car. Those cars will fall back to their built-in default or globals."
                     : "";
-                if (MessageBox.Show(this,
+                if (MessageBox.Show(Window.GetWindow(this),
                     $"Delete {bulk.Count} car preset(s)?{detail}",
                     "Delete car presets", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
                 foreach (var r in bulk) _plugin.DeleteCarPreset(r.CarId, r.PresetName);
@@ -640,7 +706,7 @@ namespace TrueforceForAll.Plugin
             string warning = sel.Active
                 ? $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?\n\nIt's currently active for this car, the car will fall back to its built-in default (or globals)."
                 : $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?";
-            if (MessageBox.Show(this, warning, "Delete car preset",
+            if (MessageBox.Show(Window.GetWindow(this), warning, "Delete car preset",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             _plugin.DeleteCarPreset(sel.CarId, sel.PresetName);
             ReloadCars();
@@ -686,7 +752,7 @@ namespace TrueforceForAll.Plugin
                 ElectricMode = row.Def.ElectricMode,
                 Pattern      = row.Def.Pattern,
             };
-            var editor = new CustomEngineEditor { Owner = this };
+            var editor = new CustomEngineEditor { Owner = Window.GetWindow(this) };
             editor.Init(draft, "Edit custom engine");
             if (editor.ShowDialog() == true && editor.Saved)
             {
@@ -705,7 +771,7 @@ namespace TrueforceForAll.Plugin
             var bulk = _customRows.Where(r => r.IsChecked && r.Def != null).ToList();
             if (bulk.Count > 0)
             {
-                if (MessageBox.Show(this,
+                if (MessageBox.Show(Window.GetWindow(this),
                     $"Delete {bulk.Count} custom engine(s)?\n\n"
                     + "Presets that referenced them will fall back to silence until you repick from the engine dropdown.",
                     "Delete custom engines", MessageBoxButton.YesNo, MessageBoxImage.Question)
@@ -719,7 +785,7 @@ namespace TrueforceForAll.Plugin
 
             var row = SelectedCustom;
             if (row?.Def == null) return;
-            if (MessageBox.Show(this,
+            if (MessageBox.Show(Window.GetWindow(this),
                 $"Delete custom engine '{row.Def.Name}'?\n\n"
                 + "Presets that referenced it will fall back to silence until you repick from the engine dropdown.",
                 "Delete custom engine", MessageBoxButton.YesNo, MessageBoxImage.Question)
@@ -740,14 +806,6 @@ namespace TrueforceForAll.Plugin
                     break;
                 }
             }
-        }
-
-        // ===================== Close =====================
-
-        private void Close_Click(object sender, RoutedEventArgs e)
-        {
-            DialogResult = true;
-            Close();
         }
 
         // ===================== Helpers =====================
@@ -796,7 +854,7 @@ namespace TrueforceForAll.Plugin
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode = ResizeMode.NoResize,
                 ShowInTaskbar = false,
-                Owner = this,
+                Owner = Window.GetWindow(this),
             };
             SettingsControl.ApplyDarkTheme(win);
             var sp = new StackPanel { Margin = new Thickness(12) };
@@ -832,7 +890,7 @@ namespace TrueforceForAll.Plugin
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode = ResizeMode.CanResize,
                 ShowInTaskbar = false,
-                Owner = this,
+                Owner = Window.GetWindow(this),
             };
             SettingsControl.ApplyDarkTheme(win);
             var grid = new Grid { Margin = new Thickness(12) };

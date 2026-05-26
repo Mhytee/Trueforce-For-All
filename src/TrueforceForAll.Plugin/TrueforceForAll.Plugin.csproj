@@ -9,7 +9,7 @@
     <!-- Plugin version is read at runtime by UpdateChecker to compare against
          the latest GitHub release tag. CI can override via -p:Version=X.Y.Z;
          local builds default to the value below. Bump this on every release. -->
-    <Version Condition="'$(Version)' == ''">0.1.19</Version>
+    <Version Condition="'$(Version)' == ''">0.1.20</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <!-- AnyCPU: SimHub runs as 32-bit (it's installed under Program Files
@@ -62,6 +62,17 @@
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(SimHubPath)\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- MahApps icon packs: SimHub bundles these and its home tiles use
+         PackIconMaterial, so the home Feedback tile can match the built-in
+         Motors/Wind look with the same control. Compile-only. -->
+    <Reference Include="MahApps.Metro.IconPacks.Core">
+      <HintPath>$(SimHubPath)\MahApps.Metro.IconPacks.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="MahApps.Metro.IconPacks.Material">
+      <HintPath>$(SimHubPath)\MahApps.Metro.IconPacks.Material.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <!-- System.Net.Http ships in net48's BCL but isn't auto-referenced by

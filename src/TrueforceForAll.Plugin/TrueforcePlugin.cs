@@ -76,6 +76,7 @@ namespace TrueforceForAll.Plugin
         private AudioCaptureSource _audio;
         private HelperHost _helperHost;
         private UsbPcapFfbTap _ffbTap;
+        private FeedbackBoxInjector _feedbackInjector;
         // Reads the wheel's physical steering off its HID controller interface,
         // so the stationary spring has a position to work with even when the
         // game reports none (Forza pause / pre-race countdown). See
@@ -620,14 +621,32 @@ namespace TrueforceForAll.Plugin
                 if (!stream.StartsWith("Streaming", StringComparison.OrdinalIgnoreCase))
                     return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel, check the Diagnostics panel.";
 
-                // 6. No game / not in session
-                if (string.IsNullOrEmpty(_activeGame))
+                // 6. No game actually running. _activeGame can be a selected-
+                //    but-closed profile, so gate on _currentGameName, which is
+                //    only set while the process is up (data.GameRunning). Avoids
+                //    falsely reporting a closed game as "detected but no telemetry".
+                if (string.IsNullOrEmpty(_currentGameName))
                     return "No game running. Start a supported game and load into a session.";
 
                 var src = _telemetrySource;
                 double hz = src?.MeasuredHz ?? 0;
                 if (hz <= 0)
-                    return $"'{_activeGame}' is detected but no telemetry is arriving. You may be in a menu or paused.";
+                {
+                    // Forza / F1 deliver telemetry over UDP. If nothing has EVER
+                    // arrived this session it's a UDP-setup problem, not a pause,
+                    // so point at the setup instead of the generic menu/paused
+                    // line (which would just duplicate the UDP setup banner).
+                    long udpPackets = -1;
+                    if (src is TrueforceForAll.Core.ForzaUdpTelemetrySource fz) udpPackets = fz.PacketsReceived;
+                    else if (src is TrueforceForAll.Core.F1UdpTelemetrySource f1) udpPackets = f1.PacketsReceived;
+                    // Nothing has ever arrived: this is a UDP-setup case, owned
+                    // by the dedicated setup banner (with its "Set up..." button).
+                    // Stay silent here so we don't duplicate that with a text
+                    // instruction; the button is the action.
+                    if (udpPackets == 0)
+                        return null;
+                    return $"'{_currentGameName}' is detected but no telemetry is arriving. You may be in a menu or paused.";
+                }
 
                 // 7. All telemetry-driven effects disabled. Engine pulse,
                 //    bumps, traction, gear, ABS, pit limiter, DRS, if all
@@ -681,6 +700,91 @@ namespace TrueforceForAll.Plugin
         {
             get => _mixer.MasterGain;
             set { _mixer.MasterGain = value; if (Settings != null) Settings.MasterGain = value; }
+        }
+
+        // Raised when master gain is changed outside the settings panel (e.g. a
+        // bound controller button via the Controls tab). An open SettingsControl
+        // subscribes to keep its slider in step.
+        public event Action MasterGainChangedExternally;
+
+        // Master-gain min/max mirror the settings slider (Minimum=0, Maximum=2).
+        private const float MasterGainMin = 0f;
+        private const float MasterGainMax = 2f;
+
+        // Per-press step for the bindable master-gain actions, persisted in
+        // Settings and editable from the Controls tab. Clamped to [0.01, 0.5]
+        // so a stored value can't make a press do nothing or slam the gain.
+        public float MasterGainStep
+        {
+            get
+            {
+                float s = Settings?.MasterGainStep ?? 0.05f;
+                if (s < 0.01f) s = 0.01f;
+                if (s > 0.5f)  s = 0.5f;
+                return s;
+            }
+            set { if (Settings != null) Settings.MasterGainStep = value; }
+        }
+
+        /// <summary>Nudge master gain by <paramref name="delta"/>, clamped to the
+        /// slider's [0, 2] range. Applies live (mixer + Settings), persists, and
+        /// raises MasterGainChangedExternally. Backs the bindable Controls-tab
+        /// "master gain +/-" actions.</summary>
+        public void NudgeMasterGain(float delta)
+        {
+            float cur = MasterGain;
+            float next = cur + delta;
+            if (next < MasterGainMin) next = MasterGainMin;
+            if (next > MasterGainMax) next = MasterGainMax;
+            if (Math.Abs(next - cur) < 0.0001f) return;
+            MasterGain = next;
+            PersistSettings();
+            try { MasterGainChangedExternally?.Invoke(); } catch { }
+        }
+
+        // Current effective audio-capture gain (active car override if any, else
+        // the global setting). Read by the home Feedback tile to mirror the
+        // settings panel's Audio "Gain" slider.
+        public float ActiveAudioGain => ActiveAudio?.Gain ?? 0f;
+
+        // Apply an audio-capture gain live (settings object + running _audio
+        // source) without persisting; the caller debounces the disk write. Mirrors
+        // the settings panel's AudioGainSlider path (ActiveAudio + apply).
+        public void SetActiveAudioGainLive(float v)
+        {
+            var a = ActiveAudio;
+            if (a == null) return;
+            a.Gain = v;
+            ApplyAudioCaptureSettings(a);
+        }
+
+        // Whether audio haptics (the loopback-capture layer) are enabled for the
+        // active settings. Read + toggled by the home Feedback tile's audio button.
+        public bool ActiveAudioEnabled => ActiveAudio?.Enabled ?? false;
+
+        public void SetActiveAudioEnabledLive(bool on)
+        {
+            var a = ActiveAudio;
+            if (a == null) return;
+            a.Enabled = on;
+            ApplyAudioCaptureSettings(a);
+        }
+
+        // Persisted opt-in for the home-screen Feedback gain tile. Toggled by the
+        // HOMEBOX access code. Applies live to the injector so the tile appears /
+        // disappears without a SimHub restart.
+        public void SetShowFeedbackBox(bool on)
+        {
+            if (Settings != null) Settings.ShowFeedbackBox = on;
+            PersistSettings();
+            _feedbackInjector?.SetEnabled(on);
+        }
+
+        public bool DebugToggleFeedbackBox()
+        {
+            bool on = !(Settings?.ShowFeedbackBox ?? false);
+            SetShowFeedbackBox(on);
+            return on;
         }
 
         public bool PluginEnabled => Settings?.PluginEnabled ?? true;
@@ -1167,6 +1271,17 @@ namespace TrueforceForAll.Plugin
                 try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
             }
 
+            // One-time: the home-screen gain tile is now on by default. Flip it
+            // on for existing installs that predate that change, once, so an
+            // update lights it up. A later user opt-out (Settings toggle) sticks
+            // because the latch is already set.
+            if (!Settings.FeedbackBoxDefaultedOn)
+            {
+                Settings.ShowFeedbackBox = true;
+                Settings.FeedbackBoxDefaultedOn = true;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+
             // Fresh install (factory ran) or first run on a settings file
             // written before the badge feature existed (LastSeenVersion never
             // stamped): pre-seed every known effect as already-seen and
@@ -1239,6 +1354,23 @@ namespace TrueforceForAll.Plugin
                     + "keep retrying automatically (replug the wheel / close G HUB).");
 
             InitPipeline();
+
+            // Bindable actions for SimHub's Controls system. Surfaced in our
+            // Controls tab via embedded ControlsEditor widgets, and also in
+            // SimHub's global Controls & Events list. Each press nudges master
+            // gain by the slider's small-step (0.05), clamped to [0, 2].
+            // Wrapped so a SimHub API hiccup can't abort Init.
+            try
+            {
+                pluginManager.AddAction("TrueforceForAll.MasterGainUp", GetType(),
+                    (pm, a) => NudgeMasterGain(+MasterGainStep), (pm, a) => { });
+                pluginManager.AddAction("TrueforceForAll.MasterGainDown", GetType(),
+                    (pm, a) => NudgeMasterGain(-MasterGainStep), (pm, a) => { });
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[Trueforce] AddAction (master gain) failed: {ex.Message}");
+            }
         }
 
         // Discover the wheel, open it, run the init sequence, start the FFB
@@ -1546,6 +1678,12 @@ namespace TrueforceForAll.Plugin
             };
             _capturePollThread.Start();
             SimHub.Logging.Current.Info("[Trueforce] Audio capture armed; waiting for a supported game to start.");
+
+            // Optional, default-off: splice a Trueforce gain tile into SimHub's
+            // home "Feedback" section. Self-retrying + defensive; if the home tab
+            // isn't realized yet (or the layout differs), it just won't appear.
+            _feedbackInjector = new FeedbackBoxInjector(this);
+            _feedbackInjector.Start();
         }
         private System.Threading.CancellationTokenSource _updateCheckerCts;
         public System.Threading.CancellationToken UpdateCheckerToken
@@ -1732,6 +1870,11 @@ namespace TrueforceForAll.Plugin
         public void End(PluginManager pluginManager)
         {
             _shuttingDown = true;
+
+            // Tear down the home Feedback tile (best-effort; dispatches to the UI
+            // thread, which may already be shutting down).
+            try { _feedbackInjector?.Stop(); } catch { }
+            _feedbackInjector = null;
 
             // Cancel any in-flight update check / installer download so they
             // don't outlive the plugin and write to a dead instance.
@@ -2523,6 +2666,16 @@ namespace TrueforceForAll.Plugin
         public bool ShouldShowForzaSection =>
             IsForzaGameName(_activeGame);
 
+        /// <summary>True only while the game's process is actually running
+        /// (SimHub data.GameRunning), not merely when a profile is selected.
+        /// _currentGameName is null whenever nothing is running, so these are
+        /// false for a profile that's open with the game closed. Used to gate
+        /// the "set up UDP" prompt so it never fires on a selected-but-not-
+        /// launched title.</summary>
+        public bool IsGameRunning  => !string.IsNullOrEmpty(_currentGameName);
+        public bool IsForzaRunning => IsForzaGameName(_currentGameName);
+        public bool IsF1Running    => IsF1GameName(_currentGameName);
+
         /// <summary>True when the F1 UDP section should be visible.</summary>
         public bool ShouldShowF1Section =>
             IsF1GameName(_activeGame)
@@ -2693,31 +2846,32 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
-            else if (IsF1GameName(game)
-                     || (Settings?.F1?.AlwaysListen == true && Settings.F1.Enabled))
+            else if (IsF1GameName(game) || Settings?.F1?.AlwaysListen == true)
             {
-                if (Settings?.F1?.Enabled == true)
+                // Like Forza, the F1 UDP reader is the only source of F1's
+                // per-wheel slip / DRS / pit-limiter data, so it's always on for
+                // F1 (no user toggle); it binds only while an F1 title is the
+                // active game (or AlwaysListen is set), and a port conflict falls
+                // back to SimHub below.
+                try
                 {
-                    try
+                    var bindIp = ParseIpOrAny(Settings.F1.BindAddress);
+                    var forwardTo = BuildF1ForwardEndpoint(Settings.F1);
+                    var f1 = new F1UdpTelemetrySource(Settings.F1.Port, bindIp, forwardTo)
                     {
-                        var bindIp = ParseIpOrAny(Settings.F1.BindAddress);
-                        var forwardTo = BuildF1ForwardEndpoint(Settings.F1);
-                        var f1 = new F1UdpTelemetrySource(Settings.F1.Port, bindIp, forwardTo)
-                        {
-                            Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
-                        };
-                        f1.Start();
-                        newSource = f1;
-                    }
-                    catch (Exception ex)
+                        Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                    };
+                    f1.Start();
+                    newSource = f1;
+                }
+                catch (Exception ex)
+                {
+                    if (!silent)
                     {
-                        if (!silent)
-                        {
-                            SimHub.Logging.Current.Info(
-                                $"[Trueforce] F1 UDP source unavailable on port {Settings.F1.Port} " +
-                                $"({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
-                                "If another listener holds the port, change Trueforce's port to a free one and re-point F1's UDP Telemetry to it.");
-                        }
+                        SimHub.Logging.Current.Info(
+                            $"[Trueforce] F1 UDP source unavailable on port {Settings.F1.Port} " +
+                            $"({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
+                            "If another listener holds the port, change Trueforce's port to a free one and re-point F1's UDP Telemetry to it.");
                     }
                 }
             }
@@ -2984,7 +3138,7 @@ namespace TrueforceForAll.Plugin
             this.SaveCommonSettings("GeneralSettings", Settings);
 
             bool currentlyF1 = _telemetrySource is F1UdpTelemetrySource;
-            bool shouldListen = (Settings.F1.AlwaysListen && Settings.F1.Enabled)
+            bool shouldListen = Settings.F1.AlwaysListen
                              || (!string.IsNullOrEmpty(_activeGame) && IsF1GameName(_activeGame));
             if (!currentlyF1 && !shouldListen) return;
 
