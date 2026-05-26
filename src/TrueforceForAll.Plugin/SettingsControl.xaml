@@ -727,8 +727,8 @@
             </Grid>
             <!-- Promoted FFB pass-through toggle. Visible only when the active
                  game ships native Trueforce (see ActiveGameIsNativeTrueforce).
-                 For every other game the same toggle lives in Advanced
-                 settings, where it almost never needs touching. -->
+                 For every other game the same toggle lives in the Settings tab's
+                 FFB pass-through section, where it almost never needs touching. -->
             <StackPanel x:Name="FfbSkipPassthroughPromotedPanel" Visibility="Collapsed">
                 <CheckBox x:Name="FfbSkipPassthroughPromotedCheck" Content="Skip FFB pass-through (native Trueforce games)"
                           Margin="0,0,0,2" Checked="FfbSkipPassthroughPromoted_Changed" Unchecked="FfbSkipPassthroughPromoted_Changed"/>
@@ -2211,7 +2211,7 @@
 
                 <!-- FFB pass-through. Only relevant for games that ship native
                      Trueforce (AC Rally, iRacing, etc). For those games the
-                     same toggle is also promoted to the main panel so users
+                     same toggle is also promoted to the Effects tab so users
                      don't have to dig for it. -->
                 <Expander x:Name="FfbPassthroughExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
@@ -2229,8 +2229,8 @@
                              none. Widens how the tap recognizes the wheel's FFB
                              on the bus (HID++ report 0x12 + faster index
                              resolve; helps e.g. the RS50 in Forza, issue #8).
-                             Synced with the copy on the main page and the FFBX
-                             access code. -->
+                             Synced with the copy in the Effects tab's FFB tweaks
+                             and the FFBX access code. -->
                         <CheckBox x:Name="ExperimentalFfbCheck" Content="Enable experimental FFB detection"
                                   Margin="0,4,0,2" Checked="ExperimentalFfbDetection_Changed" Unchecked="ExperimentalFfbDetection_Changed"
                                   ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). After enabling, load the game and drive for a few seconds. Turn it back off if it causes any trouble."/>

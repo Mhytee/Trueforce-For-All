@@ -101,9 +101,10 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Every preset in your library. Rename, duplicate, or delete without needing the matching game loaded. The 'Default for' column shows which games auto-load this preset. Built-in presets shipped with the plugin can't be renamed or deleted; saving changes while on one forks a new user preset."/>
+                               Text="Rename, duplicate, or delete any preset, and set which games auto-load it. Select a preset to see what it contains; Edit loads it on the Effects tab to change values. Built-in presets can't be renamed or deleted (saving over one forks a copy)."/>
                     <ListView Grid.Row="1" x:Name="GameList" SelectionMode="Single"
                               SelectionChanged="GameList_SelectionChanged">
                         <ListView.View>
@@ -118,15 +119,23 @@
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
                                 <GridViewColumn Header="Preset name"  Width="240" DisplayMemberBinding="{Binding Name}"/>
-                                <GridViewColumn Header="Built-in"     Width="80"  DisplayMemberBinding="{Binding BuiltinLabel}"/>
-                                <GridViewColumn Header="Default for"  Width="320" DisplayMemberBinding="{Binding DefaultForLabel}"/>
+                                <GridViewColumn Header="Built-in"     Width="70"  DisplayMemberBinding="{Binding BuiltinLabel}"/>
+                                <GridViewColumn Header="Default for"  Width="240" DisplayMemberBinding="{Binding DefaultForLabel}"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
-                    <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="True">
-                        <TextBlock x:Name="GameCheckedLabel" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                   Foreground="#FFD54F" FontSize="11" Margin="8,0,0,0" Text=""/>
-                        <StackPanel Orientation="Horizontal">
+                    <!-- Read-only summary of the selected preset's contents.
+                         Filled from the snapshot in UpdateGameDetails. -->
+                    <Border Grid.Row="2" Background="#22000000" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="150">
+                            <TextBlock x:Name="GameDetailsText" TextWrapping="Wrap" FontSize="12"
+                                       Text="Select a preset to see the settings it contains."/>
+                        </ScrollViewer>
+                    </Border>
+                    <DockPanel Grid.Row="3" Margin="0,10,0,0" LastChildFill="True">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
+                                    ToolTip="Open this preset for editing: loads it and switches to the Effects tab with a Save / Save as new / Discard banner. Saving over a built-in forks a copy."/>
                             <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
                             <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
                             <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource RowButton}" Click="GameDelete_Click"     IsEnabled="False"/>
@@ -134,14 +143,9 @@
                                     ToolTip="Bind this preset as the auto-load default for a game you've seen before."/>
                             <Button x:Name="GameClearDefaultBtn" Content="Clear default…" Style="{StaticResource RowButton}" Width="120" Click="GameClearDefault_Click" IsEnabled="False"
                                     ToolTip="Remove a game's auto-load binding to this preset."/>
-                            <!-- Edit button hidden: the offline-edit flow exists but isn't
-                                 stable enough to expose yet and adds confusion next to
-                                 Rename/Duplicate. Code path (handler + RequestedEditPresetName)
-                                 kept in place so it can be re-enabled without rebuilding. -->
-                            <Button x:Name="GameEditBtn" Content="Edit" Style="{StaticResource RowButton}" Click="GameEdit_Click" IsEnabled="False"
-                                    Visibility="Collapsed"
-                                    ToolTip="Load this preset into the live settings panel for offline editing. The main UI gets a banner with Save / Save as new / Discard."/>
                         </StackPanel>
+                        <TextBlock x:Name="GameCheckedLabel" VerticalAlignment="Center"
+                                   Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
             </Grid>
 
@@ -153,7 +157,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Every car preset on disk across all cars. Stored as files under PluginsData/Common/TrueforceCars. Each car can have multiple presets, built-in factory defaults plus any user-saved or imported ones. Active = the preset that loads when this car shows up; switch the active one with 'Set as active'."/>
+                               Text="Every car preset, grouped by game then car. A car can have several presets; the ★ in Default marks the one that loads for that car. Rename, duplicate, delete, or set a preset as the car's default."/>
                     <ListView Grid.Row="1" x:Name="CarList" SelectionMode="Single"
                               SelectionChanged="CarList_SelectionChanged">
                         <ListView.View>
@@ -167,24 +171,26 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
+                                <GridViewColumn Header="Game"        Width="130" DisplayMemberBinding="{Binding GameLabel}"/>
                                 <GridViewColumn Header="Car ID"      Width="210" DisplayMemberBinding="{Binding CarId}"/>
                                 <GridViewColumn Header="Preset name" Width="190" DisplayMemberBinding="{Binding PresetName}"/>
-                                <GridViewColumn Header="Game"        Width="130" DisplayMemberBinding="{Binding GameLabel}"/>
+                                <GridViewColumn Header="Default"     Width="70"  DisplayMemberBinding="{Binding ActiveLabel}"/>
                                 <GridViewColumn Header="Built-in"    Width="70"  DisplayMemberBinding="{Binding BuiltinLabel}"/>
-                                <GridViewColumn Header="Active"      Width="60"  DisplayMemberBinding="{Binding ActiveLabel}"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
                     <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="True">
-                        <TextBlock x:Name="CarCheckedLabel" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                   Foreground="#FFD54F" FontSize="11" Margin="8,0,0,0" Text=""/>
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
+                                    ToolTip="Open this car preset for editing: loads it on the Effects tab with a Save / Save as new / Discard banner, and freezes this car so a live car change can't clobber the edit. Saving over a built-in forks a copy."/>
                             <Button x:Name="CarRenameBtn"    Content="Rename…"      Style="{StaticResource RowButton}" Click="CarRename_Click"    IsEnabled="False"/>
                             <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
                             <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource RowButton}" Click="CarDelete_Click"    IsEnabled="False"/>
-                            <Button x:Name="CarSetActiveBtn" Content="Set as active" Style="{StaticResource RowButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
-                                    ToolTip="Make this the preset that loads for this car. The matching CarDefaults entry is rewritten."/>
+                            <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource RowButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
+                                    ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten."/>
                         </StackPanel>
+                        <TextBlock x:Name="CarCheckedLabel" VerticalAlignment="Center"
+                                   Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
             </Grid>
 
@@ -196,7 +202,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Your saved custom engines. Delete removes them from the library, presets that referenced them fall back to silence until repicked from the engine dropdown. Built-in layouts (V8 cross-plane, Rotary, etc.) are shipped with the plugin and aren't shown here."/>
+                               Text="Your saved custom engines. Edit or delete them here; presets that referenced a deleted engine fall back to silence until repicked. Built-in layouts (V8, Rotary, etc.) aren't listed."/>
                     <ListView Grid.Row="1" x:Name="CustomList" SelectionMode="Single"
                               SelectionChanged="CustomList_SelectionChanged">
                         <ListView.View>
@@ -217,29 +223,22 @@
                         </ListView.View>
                     </ListView>
                     <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="True">
-                        <TextBlock x:Name="CustomCheckedLabel" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                   Foreground="#FFD54F" FontSize="11" Margin="8,0,0,0" Text=""/>
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="CustomEditBtn"   Content="Edit…"   Style="{StaticResource RowButton}" Click="CustomEdit_Click"   IsEnabled="False"/>
                             <Button x:Name="CustomDeleteBtn" Content="Delete"  Style="{StaticResource RowButton}" Click="CustomDelete_Click" IsEnabled="False"/>
                         </StackPanel>
+                        <TextBlock x:Name="CustomCheckedLabel" VerticalAlignment="Center"
+                                   Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
             </Grid>
             </Grid>
         </DockPanel>
 
-        <Grid Grid.Row="1" Margin="0,12,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Orientation="Horizontal">
-                <Button Content="Export…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogExport_Click"
-                        ToolTip="Pick which presets and car tunings to bundle into a shareable file. Same flow as the Export button on the main panel."/>
-                <Button Content="Import…" Width="100" Height="28" Click="DialogImport_Click"
-                        ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
-            </StackPanel>
-        </Grid>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+            <Button Content="Export…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogExport_Click"
+                    ToolTip="Pick which presets and car tunings to bundle into a shareable file. Same flow as the Export button on the main panel."/>
+            <Button Content="Import…" Width="100" Height="28" Click="DialogImport_Click"
+                    ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
+        </StackPanel>
     </Grid>
 </UserControl>

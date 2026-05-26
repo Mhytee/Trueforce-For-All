@@ -302,7 +302,7 @@ namespace TrueforceForAll.Plugin
         // never nags a user who already saw it.
         public bool ShareCtaDismissed { get; set; } = false;
 
-        // Persisted sort preferences for the Manage Presets modal, one per
+        // Persisted sort preferences for the preset manager, one per
         // tab. Key matches a column's binding path (e.g. "Name",
         // "BuiltinLabel"); empty/null = natural order. Hydrated when the
         // dialog opens, rewritten on every header click.
@@ -362,7 +362,7 @@ namespace TrueforceForAll.Plugin
     }
 
     /// <summary>User-authored engine definition. Stored in
-    /// <summary>Persisted sort state for one of the Manage Presets modal tabs.
+    /// <summary>Persisted sort state for one of the preset manager tabs.
     /// Empty Key = natural (insertion) order; populated Key matches the
     /// binding path of the column to sort on.</summary>
     public sealed class ManageSort

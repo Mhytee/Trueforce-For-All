@@ -170,6 +170,7 @@ namespace TrueforceForAll.Plugin
             _presetManager.Init(_plugin);
             _presetManager.LibraryChanged += OnPresetLibraryChanged;
             _presetManager.EditPresetRequested += name => EnterOfflineEditMode(name);
+            _presetManager.EditCarPresetRequested += (carId, name) => EnterOfflineEditModeForCar(carId, name);
             PresetManagerHost.Children.Add(_presetManager);
 
             // Header version readout. Read once at construction; doesn't change
@@ -631,6 +632,24 @@ namespace TrueforceForAll.Plugin
         private void UpdateOfflineEditBanner()
         {
             if (OfflineEditBanner == null) return;
+
+            // While car-editing, only per-car effects are editable; grey the
+            // game-global controls so a global change can't be made (and lost)
+            // inside a car edit.
+            bool carEdit = _plugin != null && _plugin.IsOfflineEditingCar;
+            SetCarEditLock(carEdit);
+
+            // Car-preset offline edit takes precedence (it freezes the car).
+            if (carEdit)
+            {
+                OfflineEditBanner.Visibility = Visibility.Visible;
+                bool carBuiltin = _plugin.IsActiveCarPresetBuiltin();
+                OfflineEditTitle.Text = $"Editing car preset '{_plugin.OfflineEditingCarPresetName}' for '{_plugin.OfflineEditingCarId}' (per-car settings only)";
+                OfflineEditSaveBtn.Content      = carBuiltin ? "Save as new…" : "Save";
+                OfflineEditSaveAsBtn.Visibility  = carBuiltin ? Visibility.Collapsed : Visibility.Visible;
+                return;
+            }
+
             string editing = _plugin?.OfflineEditingPresetName;
             if (string.IsNullOrEmpty(editing))
             {
@@ -649,6 +668,23 @@ namespace TrueforceForAll.Plugin
             OfflineEditSaveAsBtn.Visibility = builtin ? Visibility.Collapsed : Visibility.Visible;
         }
 
+        // While editing a car preset, only per-car effects are editable. Lock the
+        // game-global controls (master gain, FFB tweaks, airborne ducking, iRacing
+        // LEDs) so a global change can't be made/lost inside a car edit. The
+        // car-scoped effect expanders (engine, bumps, traction, shift, ABS, pit
+        // limiter, DRS, collision, rev limiter, audio) stay editable.
+        private void SetCarEditLock(bool locked)
+        {
+            bool en = !locked;
+            if (MasterGainSlider != null) MasterGainSlider.IsEnabled = en;
+            if (MasterGainText  != null)  MasterGainText.IsEnabled   = en;
+            if (MasterSaveBtn   != null)  MasterSaveBtn.IsEnabled     = en;
+            if (MasterRevertBtn != null)  MasterRevertBtn.IsEnabled   = en;
+            if (FfbTweaksExpander != null) FfbTweaksExpander.IsEnabled = en;
+            if (AirborneExpander  != null) AirborneExpander.IsEnabled  = en;
+            if (RpmLedSection     != null) RpmLedSection.IsEnabled     = en;
+        }
+
         // Public entry point used by ManagePresetsDialog when the user picks
         // Edit on a row. Load the preset and flip the banner on.
         public void EnterOfflineEditMode(string presetName)
@@ -657,11 +693,31 @@ namespace TrueforceForAll.Plugin
             if (!_plugin.EnterOfflineEdit(presetName)) return;
             ClearDirty();
             RefreshFromPlugin();
+            // Land on the Effects tab where the controls (and the offline-edit
+            // banner with Save / Save as new / Discard) are.
+            if (MainTabs != null) MainTabs.SelectedIndex = 0;
         }
 
         private void OfflineEditSave_Click(object sender, RoutedEventArgs e)
         {
-            if (_plugin == null || !_plugin.IsOfflineEditing) return;
+            if (_plugin == null) return;
+            if (_plugin.IsOfflineEditingCar)
+            {
+                if (_plugin.IsActiveCarPresetBuiltin())
+                {
+                    PromptAndSaveAsNewCar(_plugin.OfflineEditingCarPresetName);
+                    return;
+                }
+                if (!_plugin.ExitOfflineEditCarSave())
+                {
+                    MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                ClearDirty();
+                RefreshFromPlugin();
+                return;
+            }
+            if (!_plugin.IsOfflineEditing) return;
             string name = _plugin.OfflineEditingPresetName;
             if (_plugin.IsBuiltinPreset(name))
             {
@@ -681,8 +737,39 @@ namespace TrueforceForAll.Plugin
 
         private void OfflineEditSaveAs_Click(object sender, RoutedEventArgs e)
         {
-            if (_plugin == null || !_plugin.IsOfflineEditing) return;
+            if (_plugin == null) return;
+            if (_plugin.IsOfflineEditingCar)
+            {
+                PromptAndSaveAsNewCar(_plugin.OfflineEditingCarPresetName);
+                return;
+            }
+            if (!_plugin.IsOfflineEditing) return;
             PromptAndSaveAsNew(_plugin.OfflineEditingPresetName);
+        }
+
+        // Car variant of PromptAndSaveAsNew: prompt for a name and fork the car
+        // edits into a new preset for the edited car.
+        private void PromptAndSaveAsNewCar(string suggestedBaseName)
+        {
+            string carId = _plugin.OfflineEditingCarId;
+            string suggested = string.IsNullOrEmpty(suggestedBaseName) ? "My preset" : suggestedBaseName + " (edited)";
+            string newName = PromptForName("Save as new car preset", "New preset name:", suggested);
+            if (string.IsNullOrWhiteSpace(newName)) return;
+            newName = newName.Trim();
+            var existing = _plugin.GetCarPresets(carId);
+            if (existing != null && existing.ContainsKey(newName))
+            {
+                if (MessageBox.Show($"A preset called '{newName}' already exists for this car. Overwrite?",
+                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                _plugin.DeleteCarPreset(carId, newName);
+            }
+            if (!_plugin.ExitOfflineEditCarSaveAs(newName))
+            {
+                MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            ClearDirty();
+            RefreshFromPlugin();
         }
 
         private void PromptAndSaveAsNew(string suggestedBaseName)
@@ -710,10 +797,12 @@ namespace TrueforceForAll.Plugin
 
         private void OfflineEditDiscard_Click(object sender, RoutedEventArgs e)
         {
-            if (_plugin == null || !_plugin.IsOfflineEditing) return;
+            if (_plugin == null) return;
+            if (!_plugin.IsOfflineEditing && !_plugin.IsOfflineEditingCar) return;
             if (MessageBox.Show("Discard edits and restore the state you had before entering edit mode?",
                 "Discard edits", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            _plugin.ExitOfflineEditDiscard();
+            if (_plugin.IsOfflineEditingCar) _plugin.ExitOfflineEditCarDiscard();
+            else _plugin.ExitOfflineEditDiscard();
             ClearDirty();
             RefreshFromPlugin();
         }
@@ -1506,7 +1595,7 @@ namespace TrueforceForAll.Plugin
         {
             _plugin?.DismissExperimentalSuccessReport();
             RefreshExperimentalSuccessBanner();
-            // Open the Advanced dialog with Diagnostics expanded: self-test,
+            // Jump to the Settings tab with Diagnostics expanded: self-test,
             // the experimental toggle, manual device picker and USBPcap
             // reinstall all live there.
             if (DiagnosticsExpander != null) DiagnosticsExpander.IsExpanded = true;
@@ -1541,7 +1630,7 @@ namespace TrueforceForAll.Plugin
                 + $"- Plugin: {version}\n"
                 + $"- Capture: {fp}\n\n"
                 + "Anything else worth noting (other games tested, what wasn't working before): \n\n"
-                + "(Optional but very helpful: use Advanced > Diagnostics > Export logs and drag the zip in here.)\n";
+                + "(Optional but very helpful: use Settings > Diagnostics > Export logs and drag the zip in here.)\n";
 
             string url = FfbReportDiscussionsBase
                        + "&title=" + Uri.EscapeDataString(title)
@@ -1785,17 +1874,22 @@ namespace TrueforceForAll.Plugin
             //     default. So whenever the car side is dirty, the game side is
             //     offered too (the popover then lets you pick car / game /
             //     both).
+            // While car-editing, the header preset actions are suppressed: the
+            // loaded game preset is just a temporary baseline, and saving goes
+            // through the car-edit banner (Save / Save as new / Discard), not
+            // these header buttons (which would promote to the game default).
+            bool carEdit = _plugin?.IsOfflineEditingCar == true;
             if (HeaderGameSaveAllBtn != null)
-                HeaderGameSaveAllBtn.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+                HeaderGameSaveAllBtn.Visibility = (any && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
             if (HeaderCarSaveAllBtn != null)
-                HeaderCarSaveAllBtn.Visibility = carDirty ? Visibility.Visible : Visibility.Collapsed;
+                HeaderCarSaveAllBtn.Visibility = (carDirty && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
 
             // "Save as new…" mirrors its Save-all neighbour: it only makes sense
             // when there's unsaved tuning to capture under a new name.
             if (HeaderSaveAsNewBtn != null)
-                HeaderSaveAsNewBtn.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+                HeaderSaveAsNewBtn.Visibility = (any && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
             if (HeaderCarSaveAsNewBtn != null)
-                HeaderCarSaveAsNewBtn.Visibility = carDirty ? Visibility.Visible : Visibility.Collapsed;
+                HeaderCarSaveAsNewBtn.Visibility = (carDirty && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // Both header "Save all" buttons open the same target chooser (save to
@@ -2645,7 +2739,7 @@ namespace TrueforceForAll.Plugin
             // exactly what experimental mode widens, so suggest it.
             if (!tapLive && !ffbLiveWatch && !(_plugin.Settings?.ExperimentalFfbCapture ?? false))
                 sb.AppendLine("       If your wheel should have force feedback but you feel none, turn on "
-                    + "'Enable experimental FFB detection' (main page or Advanced > FFB pass-through), then drive a few seconds.");
+                    + "'Enable experimental FFB detection' (Effects tab, under FFB tweaks), then drive a few seconds.");
             if (!gameRun)
                 sb.AppendLine("[skip] Telemetry: no game running (start a game, load a session)");
             else
@@ -3625,6 +3719,19 @@ namespace TrueforceForAll.Plugin
             UpdateFiringPatternReadout(_plugin.ActiveEngine);
         }
 
+        // "Edit" on a car-preset row: enter car offline-edit mode (freezes the
+        // car so a live telemetry car change can't clobber it or misdirect a
+        // save), then land on the Effects tab with the Save / Save as new /
+        // Discard banner.
+        public void EnterOfflineEditModeForCar(string carId, string presetName)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
+            if (!_plugin.EnterOfflineEditCar(carId, presetName)) return;
+            ClearDirty();
+            RefreshFromPlugin();
+            if (MainTabs != null) MainTabs.SelectedIndex = 0; // Effects tab
+        }
+
         private void ManagePresetsButton_Click(object sender, RoutedEventArgs e)
         {
             ShowPresetManager(PresetManagerControl.InitialTab.GamePresets);
@@ -4430,7 +4537,7 @@ namespace TrueforceForAll.Plugin
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
-            "HOMEBOX        Show a Trueforce master + audio gain tile in SimHub's home 'Feedback' section, next to Motors/Wind. Experimental visual-tree splice; persists. Toggle.\n" +
+            "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
         private void CommitAccessCode()
@@ -5382,7 +5489,11 @@ namespace TrueforceForAll.Plugin
             bool hasActive    = !string.IsNullOrEmpty(activeP);
             bool isDefault    = hasActive
                 && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
-            HeaderSetDefaultBtn.Visibility = (gameDetected && hasActive && !isDefault)
+            // Hidden during car-edit: the loaded game preset is a temporary
+            // baseline for the car edit, not a preset the user chose to make the
+            // running game's default.
+            bool carEdit = _plugin.IsOfflineEditingCar;
+            HeaderSetDefaultBtn.Visibility = (gameDetected && hasActive && !isDefault && !carEdit)
                 ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -5656,8 +5767,8 @@ namespace TrueforceForAll.Plugin
             MaybePromptToSubmitEngineData(carId);
         }
 
-        // Per-preset Delete and Clear-default live in the Manage Presets dialog
-        // now; the inline buttons were removed in the unified-picker refactor.
+        // Per-preset Delete and Clear-default live in the preset manager (Presets
+        // tab) now; the inline buttons were removed in the unified-picker refactor.
 
         // Inline "Set as default" next to the game preset dropdown. Binds the
         // active preset as this game's auto-load default; the button then

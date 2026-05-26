@@ -1,10 +1,9 @@
-// Offline manager for the user's preset library. Three tabs: game presets
-// (Settings.Presets), car presets (TrueforceCars/*.tfcar.json), and custom
-// engines (Settings.CustomEngines). Reachable without a game or car loaded
-// so users can prune / rename / export / re-bind their library at any
-// time. The host SettingsControl opens this and refreshes its own
-// dropdowns once it closes, see the Manage presets… button in the header
-// context card.
+// Inline manager for the user's preset library, hosted on the Presets tab.
+// Three segments: game presets (Settings.Presets), car presets
+// (TrueforceCars/*.tfcar.json), and custom engines (Settings.CustomEngines).
+// Usable without a game or car loaded so users can prune / rename / export /
+// re-bind their library at any time. Mutations raise LibraryChanged so the
+// host SettingsControl refreshes its always-visible header preset combos.
 //
 // Phase 1 scope (this file): metadata actions only, rename, duplicate,
 // delete, export, and game-default binding. Editing a preset's effect
@@ -37,10 +36,15 @@ namespace TrueforceForAll.Plugin
         // Init load so the host isn't churned on first display.
         public event Action LibraryChanged;
 
-        // Raised when the user clicks Edit on a game-preset row (currently a
-        // dormant/hidden action). The host transitions the live panel into
-        // offline-edit mode for the named preset.
+        // Raised when the user clicks Edit on a game-preset row. The host
+        // transitions the live panel into offline-edit mode for the named preset.
         public event Action<string> EditPresetRequested;
+
+        // Raised when the user clicks Edit on a car-preset row (carId, presetName).
+        // The host pins that car as active, loads the preset, and switches to the
+        // Effects tab so the per-car edit/save flow targets it.
+        public event Action<string, string> EditCarPresetRequested;
+
 
         // True only during Init's first Reload* pass, so those reloads don't
         // fire LibraryChanged.
@@ -133,11 +137,83 @@ namespace TrueforceForAll.Plugin
             GameList.AddHandler(GridViewColumnHeader.ClickEvent,   new RoutedEventHandler((s, e) => HandleHeaderClick(e, _gameSort)));
             CarList.AddHandler(GridViewColumnHeader.ClickEvent,    new RoutedEventHandler((s, e) => HandleHeaderClick(e, _carSort)));
             CustomList.AddHandler(GridViewColumnHeader.ClickEvent, new RoutedEventHandler((s, e) => HandleHeaderClick(e, _customSort)));
+
+            // GridView has no star-width column, so flex the primary name column
+            // (index 1, after the checkbox) to fill the panel width. Was a fixed
+            // 860px dialog; this makes it fit the narrower Presets tab.
+            MakeFlexColumn(GameList, 1);
+            MakeFlexColumn(CarList, 2);   // Car ID column (after Game)
+            MakeFlexColumn(CustomList, 1);
+
+            // GridView columns are user-resizable but have no built-in minimum,
+            // so a divider can be dragged to zero and hide the column (and its
+            // header). Clamp each column's width to at least its header text.
+            ApplyColumnMinWidths(GameList);
+            ApplyColumnMinWidths(CarList);
+            ApplyColumnMinWidths(CustomList);
+        }
+
+        // Keep the flex column sized to whatever space the other (fixed) columns
+        // leave. Recomputed on every resize of the list.
+        private void MakeFlexColumn(ListView lv, int flexIndex)
+        {
+            if (lv == null) return;
+            lv.SizeChanged += (s, e) => { if (e.WidthChanged) ResizeFlexColumn(lv, flexIndex); };
+            lv.Loaded      += (s, e) => ResizeFlexColumn(lv, flexIndex);
+        }
+
+        private static void ResizeFlexColumn(ListView lv, int flexIndex)
+        {
+            if (!(lv.View is GridView gv) || flexIndex >= gv.Columns.Count) return;
+            double others = 0;
+            for (int i = 0; i < gv.Columns.Count; i++)
+                if (i != flexIndex) others += gv.Columns[i].ActualWidth;
+            // Leave room for the vertical scrollbar + content padding.
+            double avail = lv.ActualWidth - others - 32;
+            if (avail < 120) avail = 120;
+            gv.Columns[flexIndex].Width = avail;
+        }
+
+        // Enforce a per-column minimum width (header text + padding). The header
+        // gripper writes straight to GridViewColumn.Width with no floor, so we
+        // watch that property and snap it back up if a drag takes it below the
+        // minimum. Template-independent, unlike a header MinWidth.
+        private void ApplyColumnMinWidths(ListView lv)
+        {
+            if (!(lv?.View is GridView gv)) return;
+            var dpd = System.ComponentModel.DependencyPropertyDescriptor
+                .FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn));
+            if (dpd == null) return;
+            foreach (var column in gv.Columns)
+            {
+                string text = column.Header as string;
+                double min = string.IsNullOrEmpty(text) ? 28 : MeasureHeaderText(lv, text) + 26;
+                var col = column; // capture per iteration
+                dpd.AddValueChanged(col, (s, e) =>
+                {
+                    if (!double.IsNaN(col.Width) && col.Width < min) col.Width = min;
+                });
+            }
+        }
+
+        private static double MeasureHeaderText(Control owner, string text)
+        {
+            try
+            {
+                double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(owner).PixelsPerDip;
+                var tf = new System.Windows.Media.Typeface(owner.FontFamily, owner.FontStyle, owner.FontWeight, owner.FontStretch);
+                var ft = new System.Windows.Media.FormattedText(
+                    text, System.Globalization.CultureInfo.CurrentUICulture,
+                    FlowDirection.LeftToRight, tf, owner.FontSize,
+                    System.Windows.Media.Brushes.Black, dpi);
+                return ft.Width;
+            }
+            catch { return text.Length * 8.0; }
         }
 
         // Hydrate one ListSortState from a persisted ManageSort + apply.
-        // Called from Init once the plugin reference is wired so the dialog
-        // reopens at the user's last-used sort.
+        // Called from Init once the plugin reference is wired so the list opens
+        // at the user's last-used sort.
         private static void HydrateSort(ListSortState state, ManageSort pref)
         {
             if (pref == null || string.IsNullOrEmpty(pref.Key)) return;
@@ -328,8 +404,12 @@ namespace TrueforceForAll.Plugin
             var all = _plugin.GetAllCarPresets();
             var carDefaults = _plugin.Settings?.CarDefaults
                 ?? new Dictionary<string, string>();
-            // Sort by carId then preset name for predictable ordering.
-            foreach (var carKv in all.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+            // Group by game, then by car, then preset name: all of a game's cars
+            // sit together, and a car's presets sit together under it. A car's
+            // game comes from its presets (they share one); empty games sort first.
+            foreach (var carKv in all
+                .OrderBy(k => k.Value.Values.Select(v => v.GameName).FirstOrDefault() ?? "", StringComparer.OrdinalIgnoreCase)
+                .ThenBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
             {
                 string carId = carKv.Key;
                 carDefaults.TryGetValue(carId, out var activeName);
@@ -372,6 +452,53 @@ namespace TrueforceForAll.Plugin
         private void GameList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             RefreshGameButtons();
+            UpdateGameDetails();
+        }
+
+        // Read-only summary of the selected game preset's contents (master gain,
+        // FFB, and each effect's on/off + gain). Reflection over the effect
+        // objects keeps this in step with new effects without per-type code.
+        private void UpdateGameDetails()
+        {
+            if (GameDetailsText == null) return;
+            var sel = SelectedGame;
+            if (sel == null || _plugin?.Settings?.Presets == null
+                || !_plugin.Settings.Presets.TryGetValue(sel.Name, out var snap) || snap == null)
+            {
+                GameDetailsText.Text = "Select a preset to see the settings it contains.";
+                return;
+            }
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Master gain: {snap.MasterGain:0.##}");
+            sb.AppendLine($"FFB pass-through: scale {snap.FfbScale:0.##}, smooth {snap.FfbSmoothTimeConstantMs:0} ms, invert {(snap.FfbInvertSign ? "on" : "off")}");
+            sb.AppendLine($"FFB spike reduction: {(snap.FfbSpikeTamingEnabled ? "on" : "off")}");
+            AppendEffectLine(sb, "Audio capture",    snap.AudioCapture);
+            AppendEffectLine(sb, "Engine pulse",     snap.EnginePulse);
+            AppendEffectLine(sb, "Road bumps",       snap.RoadBumps);
+            AppendEffectLine(sb, "Traction loss",    snap.TractionLoss);
+            AppendEffectLine(sb, "Gear shift",       snap.GearShift);
+            AppendEffectLine(sb, "ABS",              snap.AbsClick);
+            AppendEffectLine(sb, "Pit limiter",      snap.PitLimiter);
+            AppendEffectLine(sb, "DRS",              snap.Drs);
+            AppendEffectLine(sb, "Collision",        snap.Collision);
+            AppendEffectLine(sb, "Rev limiter",      snap.RevLimiter);
+            AppendEffectLine(sb, "Airborne ducking", snap.Airborne);
+            GameDetailsText.Text = sb.ToString().TrimEnd();
+        }
+
+        private static void AppendEffectLine(System.Text.StringBuilder sb, string label, object eff)
+        {
+            if (eff == null) { sb.AppendLine($"{label}: (preset default)"); return; }
+            var t = eff.GetType();
+            bool enabled = (t.GetProperty("Enabled")?.GetValue(eff) as bool?) ?? true;
+            string gainStr = "";
+            if (enabled)
+            {
+                var g = t.GetProperty("Gain")?.GetValue(eff);
+                if (g is float gf)       gainStr = $" (gain {gf:0.##})";
+                else if (g is double gd) gainStr = $" (gain {gd:0.##})";
+            }
+            sb.AppendLine($"{label}: {(enabled ? "on" : "off")}{gainStr}");
         }
 
         private void CarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -430,12 +557,12 @@ namespace TrueforceForAll.Plugin
             bool  anySelected         = sel != null;
             bool  selUserPreset       = anySelected && !sel.Builtin;
 
+            GameEditBtn.IsEnabled         = anySelected   && checkedCount <= 1;
             GameRenameBtn.IsEnabled       = selUserPreset && checkedCount <= 1;
             GameDuplicateBtn.IsEnabled    = anySelected   && checkedCount <= 1;
             GameDeleteBtn.IsEnabled       = checkedNonBuiltin > 0 || selUserPreset;
             GameSetDefaultBtn.IsEnabled   = anySelected   && checkedCount <= 1;
             GameClearDefaultBtn.IsEnabled = anySelected   && checkedCount <= 1 && sel.Defaults.Count > 0;
-            GameEditBtn.IsEnabled         = anySelected   && checkedCount <= 1;
 
             GameCheckedLabel.Text = checkedCount > 0
                 ? $"{checkedCount} checked"
@@ -453,6 +580,7 @@ namespace TrueforceForAll.Plugin
             bool  anySelected       = sel != null;
             bool  selUserPreset     = anySelected && !sel.Builtin;
 
+            CarEditBtn.IsEnabled      = anySelected   && checkedCount <= 1;
             CarRenameBtn.IsEnabled    = selUserPreset && checkedCount <= 1;
             CarDuplicateBtn.IsEnabled = anySelected   && checkedCount <= 1;
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || selUserPreset;
@@ -553,10 +681,9 @@ namespace TrueforceForAll.Plugin
             ReloadGames();
         }
 
-        // Dialog-level Export / Import: routed through SettingsControl's
-        // shared flow so this dialog behaves the same as the main panel.
-        // Owner = this dialog, so the pack picker / metadata dialog / file
-        // pickers sit above the manage dialog instead of behind it.
+        // Export / Import: routed through SettingsControl's shared flow so this
+        // matches the Backup & sync buttons. Owner = the host window, so the
+        // pack picker / metadata dialog / file pickers sit above the panel.
         private void DialogExport_Click(object sender, RoutedEventArgs e)
         {
             SettingsControl.RunExportFlow(Window.GetWindow(this), _plugin);
@@ -617,6 +744,7 @@ namespace TrueforceForAll.Plugin
             RequestedEditPresetName = sel.Name;
             EditPresetRequested?.Invoke(sel.Name);
         }
+
 
         private void SelectGameByName(string name)
         {
@@ -691,7 +819,7 @@ namespace TrueforceForAll.Plugin
             {
                 int active = bulk.Count(r => r.Active);
                 string detail = active > 0
-                    ? $"\n\n{active} of the selected preset(s) are currently active for their car. Those cars will fall back to their built-in default or globals."
+                    ? $"\n\n{active} of the selected preset(s) are currently the default for their car. Those cars will fall back to their built-in default or globals."
                     : "";
                 if (MessageBox.Show(Window.GetWindow(this),
                     $"Delete {bulk.Count} car preset(s)?{detail}",
@@ -704,7 +832,7 @@ namespace TrueforceForAll.Plugin
             var sel = SelectedCar;
             if (sel == null || sel.Builtin) return;
             string warning = sel.Active
-                ? $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?\n\nIt's currently active for this car, the car will fall back to its built-in default (or globals)."
+                ? $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?\n\nIt's currently the default for this car; the car will fall back to its built-in default (or globals)."
                 : $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?";
             if (MessageBox.Show(Window.GetWindow(this), warning, "Delete car preset",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
@@ -719,6 +847,13 @@ namespace TrueforceForAll.Plugin
             _plugin.SwitchActiveCarPreset(sel.CarId, sel.PresetName);
             ReloadCars();
             SelectCarRow(sel.CarId, sel.PresetName);
+        }
+
+        private void CarEdit_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCar;
+            if (sel == null) return;
+            EditCarPresetRequested?.Invoke(sel.CarId, sel.PresetName);
         }
 
         private void SelectCarRow(string carId, string presetName)
@@ -842,7 +977,7 @@ namespace TrueforceForAll.Plugin
             return baseName + " (copy)";
         }
 
-        // Mirror of SettingsControl.PromptForName so this dialog stays self-
+        // Mirror of SettingsControl.PromptForName so this control stays self-
         // contained. Returns the trimmed text or null on Cancel.
         private string PromptForName(string title, string label, string defaultValue)
         {

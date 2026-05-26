@@ -118,6 +118,11 @@ namespace TrueforceForAll.Plugin
                         Description = "F1 telemetry no longer requires a separate 'enable' switch. It turns on automatically when an F1 title is running, the same as Forza.",
                     },
                     new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Preset columns could be dragged shut",
+                        Description = "On the Presets tab, a column divider could be dragged far enough to cover the column beside it and hide its header. Columns now stop at a minimum width that keeps every header readable.",
+                    },
+                    new ChangelogEntry {
                         Group = "Thanks",
                         Headline = "Thank you",
                         Description = "Thank you to everyone who has donated, shared the project, and reported issues. I read every report, and your feedback genuinely helps decide what comes next. This project is shaped by the people who use it and I am committed to keeping it growing for a long time to come. I am grateful to have you all along for the ride!",

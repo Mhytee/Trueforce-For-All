@@ -19,7 +19,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <UseWPF>true</UseWPF>
     <!-- WinForms is opted into ONLY for the FolderBrowserDialog used by the
-         Manage Presets dialog's bulk export action. WPF doesn't ship a
+         preset manager's bulk export action. WPF doesn't ship a
          native folder picker; FolderBrowserDialog (System.Windows.Forms)
          is the standard net48 stand-in. No actual WinForms controls in
          the plugin's UI tree. -->

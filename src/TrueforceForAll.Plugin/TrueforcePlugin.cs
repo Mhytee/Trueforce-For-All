@@ -375,6 +375,22 @@ namespace TrueforceForAll.Plugin
         public string OfflineEditingPresetName => _offlineEditPresetName;
         public bool   IsOfflineEditing         => !string.IsNullOrEmpty(_offlineEditPresetName);
 
+        // Car-preset offline edit. Mirrors the game-preset flow above but for a
+        // single car's override: loads the matching game default as the baseline
+        // (so the override doesn't read as spuriously dirty against the wrong
+        // game preset), pins the car, freezes it against live telemetry (see
+        // DataUpdate), and restores the pre-edit state on exit. Save / Save as
+        // new / Discard via the same banner.
+        private string _offlineEditCarId;
+        private string _offlineEditCarPresetName;
+        private GameSettingsSnapshot _preEditCarSnapshot;
+        private string _preEditCarActiveId;
+        private string _preEditCarActivePresetName;
+
+        public bool   IsOfflineEditingCar        => !string.IsNullOrEmpty(_offlineEditCarId);
+        public string OfflineEditingCarId        => _offlineEditCarId;
+        public string OfflineEditingCarPresetName => _offlineEditCarPresetName;
+
         /// <summary>Preset name bound as the auto-load default for the active
         /// game, or null if the active game has no default assigned.</summary>
         public string DefaultPresetForActiveGame
@@ -2067,6 +2083,11 @@ namespace TrueforceForAll.Plugin
             {
                 carId = _activeCarId;
             }
+            // While offline-editing a car preset, freeze the active car to the
+            // one being edited: a live car change must not switch away (which
+            // would discard the edit and aim a save at the wrong car).
+            if (IsOfflineEditingCar)
+                carId = _offlineEditCarId;
             if (carId != _activeCarId)
             {
                 // Switching cars discards the outgoing car's UNSAVED draft
@@ -4144,7 +4165,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Rename a car preset on disk. Updates CarDefaults for that
         /// car if the renamed preset was the active one. Refuses on built-ins
         /// and when the target name already exists for that car. Used by the
-        /// Manage Presets dialog.</summary>
+        /// preset manager.</summary>
         public bool RenameCarPreset(string carId, string oldName, string newName)
         {
             if (_carStore == null || Settings == null) return false;
@@ -4294,8 +4315,8 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Returns every car preset across every car, indexed by
-        /// carId then presetName. Single LoadAll pass for the Manage Presets
-        /// dialog (used when no specific car is active).</summary>
+        /// carId then presetName. Single LoadAll pass for the preset manager
+        /// (used when no specific car is active).</summary>
         public IReadOnlyDictionary<string, IReadOnlyDictionary<string, CarPresetEntry>> GetAllCarPresets()
         {
             if (_carStore == null)
@@ -5386,7 +5407,7 @@ namespace TrueforceForAll.Plugin
         /// GameDefaults entries that pointed to the old name and the
         /// ActivePresetName if it was the renamed one. Refuses on built-ins
         /// (factory names are part of the brand) and when the target name
-        /// already exists. Used by the Manage Presets dialog.</summary>
+        /// already exists. Used by the preset manager.</summary>
         public bool RenamePreset(string oldName, string newName)
         {
             if (Settings?.Presets == null) return false;
@@ -5436,7 +5457,7 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Bind a preset to auto-load for any game (not just the
-        /// active one). Used by the Manage Presets dialog's per-row Set
+        /// active one). Used by the preset manager's per-row Set
         /// default action. Returns false if the named preset isn't in the
         /// library.</summary>
         public bool SetDefaultPresetForGame(string gameName, string presetName)
@@ -5530,6 +5551,91 @@ namespace TrueforceForAll.Plugin
             _preEditSnapshot = null;
             _preEditActivePresetName = null;
             SimHub.Logging.Current.Info($"[Trueforce] Exited offline edit mode (discarded edits to '{was}').");
+        }
+
+        // ---------- Car-preset offline edit ----------
+
+        private string GetCarPresetGame(string carId, string presetName)
+        {
+            var presets = GetCarPresets(carId);
+            return presets != null && presets.TryGetValue(presetName, out var e) ? e?.GameName : null;
+        }
+
+        /// <summary>Enter offline edit for one car preset. Snapshots the live
+        /// state, loads that car's GAME default preset as the baseline (so the
+        /// override sits on the right globals and nothing reads as spuriously
+        /// dirty), then pins the car and loads its override. The car is frozen
+        /// against live telemetry until exit (see DataUpdate). Returns false if
+        /// the inputs are empty.</summary>
+        public bool EnterOfflineEditCar(string carId, string presetName)
+        {
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
+
+            _preEditCarSnapshot         = SnapshotCurrentAsPreset();
+            _preEditCarActiveId         = _activeCarId;
+            _preEditCarActivePresetName = _activePresetName;
+
+            // Baseline: the default game preset for the car's own game, so the
+            // override compares against the right globals (fixes the "wrong
+            // preset -> everything dirty" case when the running game differs).
+            string carGame = GetCarPresetGame(carId, presetName);
+            if (!string.IsNullOrEmpty(carGame)
+                && Settings?.GameDefaults != null
+                && Settings.GameDefaults.TryGetValue(carGame, out var gp)
+                && !string.IsNullOrEmpty(gp)
+                && Settings.Presets != null
+                && Settings.Presets.TryGetValue(gp, out var gsnap) && gsnap != null)
+            {
+                ApplyGamePreset(gsnap);
+                _activePresetName = gp;
+            }
+
+            if (!SelectCarForEditing(carId, presetName)) return false;
+            _offlineEditCarId         = carId;
+            _offlineEditCarPresetName = presetName;
+            SimHub.Logging.Current.Info($"[Trueforce] Offline edit mode: editing car preset '{presetName}' for '{carId}' (baseline game '{carGame}').");
+            return true;
+        }
+
+        // Restore the live state captured when car-edit began, then unfreeze so
+        // telemetry re-asserts the real car. Shared by all three exits.
+        private void RestorePreEditCarState()
+        {
+            _offlineEditCarId         = null;   // unfreeze first
+            _offlineEditCarPresetName = null;
+            if (_preEditCarSnapshot != null) ApplyGamePreset(_preEditCarSnapshot);
+            _activePresetName = _preEditCarActivePresetName;
+            _activeCarId      = _preEditCarActiveId;
+            _preEditCarSnapshot         = null;
+            _preEditCarActiveId         = null;
+            _preEditCarActivePresetName = null;
+        }
+
+        /// <summary>Save the car-edit in place (to the frozen car's preset).
+        /// Refuses a built-in (returns false so the caller forks via Save as
+        /// new); on success writes and restores the pre-edit state.</summary>
+        public bool ExitOfflineEditCarSave()
+        {
+            if (!IsOfflineEditingCar) return true;
+            if (IsActiveCarPresetBuiltin()) return false;
+            PersistActiveCarOverride();
+            RestorePreEditCarState();
+            return true;
+        }
+
+        public bool ExitOfflineEditCarSaveAs(string newName)
+        {
+            if (!IsOfflineEditingCar || string.IsNullOrEmpty(newName)) return false;
+            if (!SaveActiveCarPresetAs(newName)) return false;
+            RestorePreEditCarState();
+            return true;
+        }
+
+        public void ExitOfflineEditCarDiscard()
+        {
+            if (!IsOfflineEditingCar) return;
+            DiscardUnsavedCarDraft(_offlineEditCarId); // drop the unsaved override edits
+            RestorePreEditCarState();
         }
 
         /// <summary>Copy snapshot fields into Settings and re-push to live components.</summary>
@@ -5797,7 +5903,7 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Export a specific car preset (arbitrary carId / presetName)
-        /// to a shareable JSON file. Used by the Manage Presets dialog where
+        /// to a shareable JSON file. Used by the preset manager where
         /// the user can pick any preset regardless of which car is currently
         /// active. Returns false if the preset doesn't exist on disk.</summary>
         public bool ExportCarPreset(string carId, string presetName, string path,
@@ -6922,7 +7028,7 @@ namespace TrueforceForAll.Plugin
                 // a wheel sending force in a shape the default path doesn't
                 // recognize (e.g. RS50 on report 0x12) is exactly this case.
                 if (Settings != null && !Settings.ExperimentalFfbCapture)
-                    msg += " If your wheel should have force feedback, try turning on 'Enable experimental FFB detection' (main page or Advanced > FFB pass-through), then drive a few seconds.";
+                    msg += " If your wheel should have force feedback, try turning on 'Enable experimental FFB detection' (Effects tab, under FFB tweaks), then drive a few seconds.";
                 _noFfbCaptureNotice = msg;
                 SimHub.Logging.Current.Warn($"[Trueforce] {msg}");
             };
