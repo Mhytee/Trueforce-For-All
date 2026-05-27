@@ -1,34 +1,33 @@
-// File-based built-in preset store. Built-in presets ship as plain JSON
-// files in a folder (default: <plugin dll dir>\TrueforceForAll-Presets) plus a
-// manifest.json describing the set and the per-game default bindings. This
-// replaces the old C# string consts: presets are now data, not code, so they
-// can be exported / imported / reseeded / repaired without a recompile.
+// File-based built-in preset store. Built-in presets ship as plain JSON files
+// in a folder (default: <plugin dll dir>\TrueforceForAll-Presets) and are
+// discovered by directory scan, so dropping a file in makes it a built-in with
+// no manifest to maintain. This replaces the old C# string consts: presets are
+// data now, exportable / importable / reseedable / repairable without a
+// recompile.
 //
-// Folder layout (manifest schema 2):
-//   manifest.json   - { schema:2,
-//                       games:[{name,file}],          // game presets (GameSettingsSnapshot)
-//                       gameDefaults:{game:name},      // auto-bind map
-//                       cars:[{key,file}] }            // car presets (CarPresetFile)
-//   games/<Preset Name>.json
-//   cars/<carKey>.json
+// Folder layout:
+//   game-defaults.json            - { "<GameName>": "<game preset name>", ... }
+//   games/<Preset Name>.json      - one GameSettingsSnapshot per game built-in
+//                                    (name comes from the filename; a preset can
+//                                    be the default for several games, so games
+//                                    stay flat, not per-game).
+//   cars/<GameName>/<carId>.json  - one CarPresetFile per car built-in, grouped
+//                                    by the game the car belongs to.
 //
-// Schema 1 (games-only, flat) is still read: a "presets" array maps the same
-// as "games". A folder without a manifest is usable as a simple game "preset
-// pack": every root-level *.json loads as a game preset named by its file,
-// with no game-default bindings or cars. Lets a user point at a shared pack.
+// A folder pointed at a simple flat pack (game *.json at the root) still loads:
+// root-level *.json are read as game presets too.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace TrueforceForAll.Plugin
 {
     internal sealed class BuiltinPresetStore
     {
-        // Preset display name -> raw JSON text (a GameSettingsSnapshot).
+        // Game preset display name -> raw JSON text (a GameSettingsSnapshot).
         public Dictionary<string, string> PresetJsons { get; } =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -36,24 +35,19 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, string> GameDefaults { get; } =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // Car preset key (informational) -> raw JSON text (a CarPresetFile).
-        // Fed verbatim into CarPresetStore.InstallOrUpdateBuiltinCarPresets.
+        // Car preset key ("<game>/<carId>", informational) -> raw JSON text
+        // (a CarPresetFile). Fed verbatim into CarPresetStore.InstallOrUpdate.
         public Dictionary<string, string> CarPresetJsons { get; } =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // The folder this store was loaded from (may not exist, in which case
-        // it loaded nothing). Surfaced so the UI can show / open / repair it.
         public string FolderPath { get; private set; }
-
-        public bool HasManifest { get; private set; }
         public bool Loaded => PresetJsons.Count > 0 || CarPresetJsons.Count > 0;
 
-        public const string ManifestFileName = "manifest.json";
+        public const string GameDefaultsFileName = "game-defaults.json";
 
-        /// <summary>Load every built-in from <paramref name="folder"/>. Never
-        /// throws: a missing folder or unreadable file just yields an emptier
-        /// store and a logged warning, so a bad install degrades instead of
-        /// crashing the plugin. Callers check <see cref="Loaded"/>.</summary>
+        /// <summary>Load every built-in from <paramref name="folder"/> by
+        /// directory scan. Never throws: a missing folder or unreadable file
+        /// just yields an emptier store and a logged warning.</summary>
         public static BuiltinPresetStore LoadFromFolder(string folder)
         {
             var store = new BuiltinPresetStore { FolderPath = folder };
@@ -65,18 +59,11 @@ namespace TrueforceForAll.Plugin
                     return store;
                 }
 
-                string manifestPath = Path.Combine(folder, ManifestFileName);
-                if (File.Exists(manifestPath))
-                {
-                    store.HasManifest = true;
-                    store.LoadViaManifest(manifestPath, folder);
-                }
-                else
-                {
-                    store.LoadLooseJson(folder);
-                }
+                store.LoadGameDefaults(folder);
+                store.LoadGamePresets(folder);
+                store.LoadCarPresets(folder);
 
-                SimHub.Logging.Current.Info($"[Trueforce] Loaded {store.PresetJsons.Count} game + {store.CarPresetJsons.Count} car built-in preset(s) from '{folder}' (manifest: {store.HasManifest}).");
+                SimHub.Logging.Current.Info($"[Trueforce] Loaded {store.PresetJsons.Count} game + {store.CarPresetJsons.Count} car built-in preset(s) from '{folder}'.");
             }
             catch (Exception ex)
             {
@@ -85,73 +72,57 @@ namespace TrueforceForAll.Plugin
             return store;
         }
 
-        private void LoadViaManifest(string manifestPath, string folder)
+        private void LoadGameDefaults(string folder)
         {
-            var root = JObject.Parse(File.ReadAllText(manifestPath));
-
-            // Game presets: "games" (schema 2) or "presets" (schema 1).
-            var games = (root["games"] as JArray) ?? (root["presets"] as JArray);
-            if (games != null)
+            string path = Path.Combine(folder, GameDefaultsFileName);
+            if (!File.Exists(path)) return;
+            try
             {
-                foreach (var p in games)
-                {
-                    string name = (string)p["name"];
-                    string file = (string)p["file"];
-                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(file)) continue;
-                    string path = Path.Combine(folder, file);
-                    if (!File.Exists(path))
-                    {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Built-in game preset '{name}' references missing file '{file}'.");
-                        continue;
-                    }
-                    PresetJsons[name] = File.ReadAllText(path);
-                }
-            }
-
-            var defaults = root["gameDefaults"] as JObject;
-            if (defaults != null)
-                foreach (var kv in defaults)
+                var o = JObject.Parse(File.ReadAllText(path));
+                foreach (var kv in o)
                     if (kv.Value != null) GameDefaults[kv.Key] = (string)kv.Value;
-
-            // Car presets (schema 2). Keyed for log readability; the
-            // authoritative carId/name live inside each file.
-            var cars = root["cars"] as JArray;
-            if (cars != null)
+            }
+            catch (Exception ex)
             {
-                foreach (var c in cars)
+                SimHub.Logging.Current.Warn($"[Trueforce] Bad {GameDefaultsFileName}: {ex.Message}");
+            }
+        }
+
+        // Game presets: games/*.json (name = filename). Also accepts root-level
+        // *.json so a plain flat pack works when the folder is pointed there.
+        private void LoadGamePresets(string folder)
+        {
+            foreach (var dir in new[] { Path.Combine(folder, "games"), folder })
+            {
+                if (!Directory.Exists(dir)) continue;
+                foreach (var path in Directory.GetFiles(dir, "*.json"))
                 {
-                    string file = (string)c["file"];
-                    if (string.IsNullOrEmpty(file)) continue;
-                    string key = (string)c["key"] ?? Path.GetFileNameWithoutExtension(file);
-                    string path = Path.Combine(folder, file);
-                    if (!File.Exists(path))
-                    {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Built-in car preset '{key}' references missing file '{file}'.");
-                        continue;
-                    }
-                    CarPresetJsons[key] = File.ReadAllText(path);
+                    string file = Path.GetFileName(path);
+                    if (string.Equals(file, GameDefaultsFileName, StringComparison.OrdinalIgnoreCase)) continue;
+                    string name = Path.GetFileNameWithoutExtension(path);
+                    if (!string.IsNullOrEmpty(name) && !PresetJsons.ContainsKey(name))
+                        PresetJsons[name] = File.ReadAllText(path);
                 }
             }
         }
 
-        // Manifest-less folder: treat each *.json (except the manifest) as a
-        // preset named by its filename. No game-default bindings.
-        private void LoadLooseJson(string folder)
+        // Car presets: cars/<GameName>/<carId>.json (recursive under cars/).
+        private void LoadCarPresets(string folder)
         {
-            foreach (var path in Directory.GetFiles(folder, "*.json"))
+            string carsRoot = Path.Combine(folder, "cars");
+            if (!Directory.Exists(carsRoot)) return;
+            foreach (var path in Directory.GetFiles(carsRoot, "*.json", SearchOption.AllDirectories))
             {
-                string file = Path.GetFileName(path);
-                if (string.Equals(file, ManifestFileName, StringComparison.OrdinalIgnoreCase)) continue;
-                string name = Path.GetFileNameWithoutExtension(path);
-                if (string.IsNullOrEmpty(name)) continue;
-                PresetJsons[name] = File.ReadAllText(path);
+                string game = Path.GetFileName(Path.GetDirectoryName(path)) ?? "";
+                string carId = Path.GetFileNameWithoutExtension(path);
+                string key = string.IsNullOrEmpty(game) ? carId : game + "/" + carId;
+                CarPresetJsons[key] = File.ReadAllText(path);
             }
         }
 
-        /// <summary>Round-trip each built-in JSON to flag problems: ones that
-        /// fail to parse, and ones missing a top-level effect section that the
-        /// current snapshot shape defines (e.g. a preset shipped before an
-        /// effect was added). Returns human-readable lines for the dev panel.</summary>
+        /// <summary>Round-trip each game built-in JSON to flag problems: ones
+        /// that fail to parse, and ones missing a top-level effect section the
+        /// current snapshot shape defines. Returns lines for the dev panel.</summary>
         public List<string> Validate(IEnumerable<string> expectedSections)
         {
             var lines = new List<string>();

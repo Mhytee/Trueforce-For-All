@@ -3854,6 +3854,33 @@ namespace TrueforceForAll.Plugin
 
         public string BuiltinFolderPath => BuiltinPresets.CurrentFolder;
 
+        /// <summary>DEV authoring mode (the app owner). When on, saving a
+        /// preset writes it through to the built-in folder: editing a built-in
+        /// overwrites it in place, a new preset becomes a built-in. Non-dev
+        /// users keep the protective fork-on-built-in behaviour.</summary>
+        public bool DevMode => Settings?.DevModeUnlocked == true;
+
+        // In DEV mode, write a just-saved library game preset through to the
+        // built-in folder so the edit persists (the folder re-seeds the library
+        // on load) and the preset counts as a built-in. No-op otherwise.
+        private void WriteGamePresetThroughIfDev(string presetName)
+        {
+            if (!DevMode || Settings?.Presets == null || string.IsNullOrEmpty(presetName)) return;
+            if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) return;
+            try
+            {
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                    snap, Newtonsoft.Json.Formatting.Indented);
+                BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
+                BuiltinPresets.Reload();
+                SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote '{presetName}' through to the built-in folder.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] DEV write-through failed for '{presetName}': {ex.Message}");
+            }
+        }
+
         /// <summary>Export one library game preset into the built-in folder as
         /// a data file (+ manifest entry), then reload the store.</summary>
         public bool ExportGamePresetAsBuiltin(string presetName, out string error)
@@ -3898,7 +3925,7 @@ namespace TrueforceForAll.Plugin
                 };
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     file, Newtonsoft.Json.Formatting.Indented);
-                string rel = BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, carId, json);
+                string rel = BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carId, json);
                 BuiltinPresets.Reload();
                 SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{presetName}' -> built-in '{rel}'.");
                 return true;
@@ -3939,7 +3966,7 @@ namespace TrueforceForAll.Plugin
                             };
                             string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                                 file, Newtonsoft.Json.Formatting.Indented);
-                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, carKv.Key, json);
+                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carKv.Key, json);
                             cars++;
                         }
                 BuiltinPresets.Reload();
@@ -5458,7 +5485,9 @@ namespace TrueforceForAll.Plugin
         public void SavePresetAs(string presetName)
         {
             if (Settings == null || string.IsNullOrEmpty(presetName)) return;
-            if (IsBuiltinPreset(presetName))
+            // Non-dev: built-ins are read-only (caller forks). DEV authoring
+            // mode may overwrite a built-in in place (write-through below).
+            if (IsBuiltinPreset(presetName) && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[Trueforce] Refusing to overwrite built-in preset '{presetName}'.");
                 return;
@@ -5467,6 +5496,7 @@ namespace TrueforceForAll.Plugin
             Settings.Presets[presetName] = SnapshotCurrentAsPreset();
             _activePresetName = presetName;
             this.SaveCommonSettings("GeneralSettings", Settings);
+            WriteGamePresetThroughIfDev(presetName);
             SimHub.Logging.Current.Info($"[Trueforce] Saved preset '{presetName}'.");
         }
 
@@ -5481,7 +5511,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings?.Presets == null) return false;
             if (string.IsNullOrEmpty(_activePresetName)) return false;
-            if (IsBuiltinPreset(_activePresetName)) return false;
+            if (IsBuiltinPreset(_activePresetName) && !DevMode) return false; // DEV may edit built-ins in place
             if (!Settings.Presets.TryGetValue(_activePresetName, out var snap) || snap == null) return false;
 
             switch (kind)
@@ -5520,6 +5550,7 @@ namespace TrueforceForAll.Plugin
                 default: return false;
             }
             this.SaveCommonSettings("GeneralSettings", Settings);
+            WriteGamePresetThroughIfDev(_activePresetName);
             SimHub.Logging.Current.Info($"[Trueforce] Saved {kind} into preset '{_activePresetName}' (scoped).");
             return true;
         }
@@ -5732,7 +5763,10 @@ namespace TrueforceForAll.Plugin
         {
             if (!IsOfflineEditing) return true;
             string name = _offlineEditPresetName;
-            if (IsBuiltinPreset(name))
+            // Non-dev: built-ins fork (caller prompts for a new name). DEV
+            // authoring mode overwrites the built-in in place (SavePresetAs
+            // write-through updates the folder file too).
+            if (IsBuiltinPreset(name) && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[Trueforce] Can't overwrite built-in preset '{name}' on edit-mode save; fork via Save as new.");
                 return false;
@@ -5851,12 +5885,49 @@ namespace TrueforceForAll.Plugin
             _preEditCarActivePresetName = null;
         }
 
+        // DEV authoring: write the frozen car's edited override through to the
+        // built-in folder as a CarPresetFile (IsBuiltin=true), reload, and push
+        // the folder built-ins back into the live car store so the edit is
+        // active. Source of truth stays the folder.
+        private void WriteCarBuiltinThroughDev(string carId, string presetName)
+        {
+            try
+            {
+                if (Settings?.CarOverrides == null
+                    || !Settings.CarOverrides.TryGetValue(carId, out var ov) || ov == null) return;
+                string game = GetCarPresetGame(carId, presetName) ?? _activeGame ?? "";
+                var file = new CarPresetFile
+                {
+                    Type = CarPresetFile.FileType, Version = 2,
+                    GameName = game, CarId = carId,
+                    PresetName = carId + " (default)", IsBuiltin = true, Override = ov,
+                };
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                    file, Newtonsoft.Json.Formatting.Indented);
+                BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, json);
+                BuiltinPresets.Reload();
+                LoadAndMigrateCarPresets();   // push folder built-ins into the live store
+                SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote car '{carId}' through to the built-in folder.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] DEV car write-through failed for '{carId}': {ex.Message}");
+            }
+        }
+
         /// <summary>Save the car-edit in place (to the frozen car's preset).
-        /// Refuses a built-in (returns false so the caller forks via Save as
-        /// new); on success writes and restores the pre-edit state.</summary>
+        /// Non-dev refuses a built-in (returns false so the caller forks via
+        /// Save as new). DEV authoring mode writes the edit through to the
+        /// built-in folder instead. On success restores the pre-edit state.</summary>
         public bool ExitOfflineEditCarSave()
         {
             if (!IsOfflineEditingCar) return true;
+            if (DevMode)
+            {
+                WriteCarBuiltinThroughDev(_offlineEditCarId, _offlineEditCarPresetName);
+                RestorePreEditCarState();
+                return true;
+            }
             if (IsActiveCarPresetBuiltin()) return false;
             PersistActiveCarOverride();
             RestorePreEditCarState();
