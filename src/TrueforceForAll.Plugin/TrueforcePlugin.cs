@@ -2719,6 +2719,40 @@ namespace TrueforceForAll.Plugin
         public bool ActiveGameSupportsAbs =>
             string.IsNullOrEmpty(_activeGame) || !IsForzaGameName(_activeGame);
 
+        /// <summary>True when the "ABS not exposed by Forza UDP" badge should
+        /// show. We only want it in a Forza context, not always: when editing
+        /// a car preset, judge by that car preset's own game; when editing a
+        /// game preset, judge by whether that preset is a Forza game's default;
+        /// otherwise judge by the running/active game. This stops the badge
+        /// from appearing while a non-Forza preset is open.</summary>
+        public bool ShowAbsUnsupportedBadge
+        {
+            get
+            {
+                // Editing a car preset: the car preset carries its own game.
+                if (IsOfflineEditingCar)
+                {
+                    var g = GetCarPresetGame(_offlineEditCarId, _offlineEditCarPresetName);
+                    return !string.IsNullOrEmpty(g) && IsForzaGameName(g);
+                }
+                // Editing a game preset: show only if it's a Forza game default.
+                if (IsOfflineEditing)
+                    return PresetIsForzaGameDefault(_offlineEditPresetName);
+                // Live: judge by the active game.
+                return !ActiveGameSupportsAbs;
+            }
+        }
+
+        // True if any Forza game's auto-load default maps to this preset name.
+        private bool PresetIsForzaGameDefault(string presetName)
+        {
+            if (string.IsNullOrEmpty(presetName) || Settings?.GameDefaults == null) return false;
+            foreach (var kv in Settings.GameDefaults)
+                if (IsForzaGameName(kv.Key) && string.Equals(kv.Value, presetName, StringComparison.Ordinal))
+                    return true;
+            return false;
+        }
+
         /// <summary>True if SimHub's GameName looks like an EA / Codemasters
         /// F1 title we target. Currently F1 25 is the only validated wire
         /// format; older games (F1 22/23/24) may receive packets but the
@@ -3367,6 +3401,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:
                 case SectionKind.RevLimiter:
                 case SectionKind.Audio:
+                case SectionKind.Airborne:
                     return true;
                 default:
                     return false;
@@ -3389,6 +3424,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:  return ovr.Collision    != null;
                 case SectionKind.RevLimiter: return ovr.RevLimiter   != null;
                 case SectionKind.Audio:      return ovr.AudioCapture != null;
+                case SectionKind.Airborne:   return ovr.Airborne     != null;
                 default: return false;
             }
         }
@@ -3406,6 +3442,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:  ovr.Collision    = null; break;
                 case SectionKind.RevLimiter: ovr.RevLimiter   = null; break;
                 case SectionKind.Audio:      ovr.AudioCapture = null; break;
+                case SectionKind.Airborne:   ovr.Airborne     = null; break;
             }
         }
         private void CopyOverrideSection(CarOverride from, CarOverride to, SectionKind kind)
@@ -3422,6 +3459,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:  to.Collision    = Clone(from.Collision);    break;
                 case SectionKind.RevLimiter: to.RevLimiter   = Clone(from.RevLimiter);   break;
                 case SectionKind.Audio:      to.AudioCapture = CloneOrNull(from.AudioCapture); break;
+                case SectionKind.Airborne:   to.Airborne     = Clone(from.Airborne);     break;
             }
         }
 
@@ -3479,6 +3517,7 @@ namespace TrueforceForAll.Plugin
         public CollisionSettings    ActiveCollision  => GetActiveCarOverride()?.Collision    ?? Settings.Collision;
         public RevLimiterSettings   ActiveRevLimiter => GetActiveCarOverride()?.RevLimiter   ?? Settings.RevLimiter;
         public AudioCaptureSettings ActiveAudio    => GetActiveCarOverride()?.AudioCapture ?? Settings.AudioCapture;
+        public AirborneSettings     ActiveAirborne => GetActiveCarOverride()?.Airborne     ?? Settings.Airborne;
 
         // ----- apply settings to live effect -----
         private void ApplyEngineSettings(EnginePulseSettings s)
@@ -3675,13 +3714,12 @@ namespace TrueforceForAll.Plugin
             RevLimiter.EngageMode = s.EngageMode;
             RevLimiter.Waveform  = s.Waveform;
         }
-        // Airborne ducking is global (no per-car override), so this reads
-        // Settings.Airborne directly rather than taking a section argument like
-        // the per-car effects above. Public so the settings panel can re-apply
-        // live after an edit (it persists via PersistSettings, no Save button).
+        // Airborne ducking can be per-car (override) or global; this reads the
+        // effective value (ActiveAirborne = car override if present, else the
+        // global). Public so the settings panel can re-apply live after an edit.
         public void ApplyAirborneSettings()
         {
-            var s = Settings?.Airborne;
+            var s = ActiveAirborne;
             if (Airborne == null || s == null) return;
             Airborne.Enabled          = s.Enabled;
             Airborne.Reduction        = s.Reduction;
@@ -4098,6 +4136,7 @@ namespace TrueforceForAll.Plugin
                 Collision    = o.Collision    == null ? null : Clone(o.Collision),
                 RevLimiter   = o.RevLimiter   == null ? null : Clone(o.RevLimiter),
                 AudioCapture = CloneOrNull(o.AudioCapture),
+                Airborne     = o.Airborne     == null ? null : Clone(o.Airborne),
             };
         }
 
@@ -4418,7 +4457,8 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:  if (ovr.Collision    == null) ovr.Collision    = Clone(Settings.Collision);      break;
                 case SectionKind.RevLimiter: if (ovr.RevLimiter   == null) ovr.RevLimiter   = Clone(Settings.RevLimiter);     break;
                 case SectionKind.Audio:      if (ovr.AudioCapture == null) ovr.AudioCapture = CloneOrNull(Settings.AudioCapture); break;
-                default: return;  // Master / Ducking aren't per-car
+                case SectionKind.Airborne:   if (ovr.Airborne     == null) ovr.Airborne     = Clone(Settings.Airborne);       break;
+                default: return;  // Master / Ducking / SpikeReduction aren't per-car
             }
             ApplyActiveCarOverride();
         }
@@ -4446,6 +4486,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:  if (ovr.Collision    != null) { Settings.Collision    = Clone(ovr.Collision);      ovr.Collision    = null; } break;
                 case SectionKind.RevLimiter: if (ovr.RevLimiter   != null) { Settings.RevLimiter   = Clone(ovr.RevLimiter);     ovr.RevLimiter   = null; } break;
                 case SectionKind.Audio:      if (ovr.AudioCapture != null) { Settings.AudioCapture = CloneOrNull(ovr.AudioCapture); ovr.AudioCapture = null; } break;
+                case SectionKind.Airborne:   if (ovr.Airborne     != null) { Settings.Airborne     = Clone(ovr.Airborne);       ovr.Airborne     = null; } break;
                 default: return;
             }
             if (ovr.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
@@ -4677,6 +4718,7 @@ namespace TrueforceForAll.Plugin
                     case SectionKind.Drs:        if (liveCo?.Drs          != null) return !Eq(liveCo.Drs,          savedCo?.Drs);          break;
                     case SectionKind.Collision:  if (liveCo?.Collision    != null) return !Eq(liveCo.Collision,    savedCo?.Collision);    break;
                     case SectionKind.RevLimiter: if (liveCo?.RevLimiter   != null) return !Eq(liveCo.RevLimiter,   savedCo?.RevLimiter);   break;
+                    case SectionKind.Airborne:   if (liveCo?.Airborne     != null) return !Eq(liveCo.Airborne,     savedCo?.Airborne);     break;
                 }
             }
             return false;
@@ -4698,7 +4740,6 @@ namespace TrueforceForAll.Plugin
             // a game preset they have no anchor.
             if (kind == SectionKind.Master
                 || kind == SectionKind.Ducking
-                || kind == SectionKind.Airborne
                 || kind == SectionKind.SpikeReduction) return false;
             if (string.IsNullOrEmpty(_activeCarId) || Settings.CarOverrides == null) return false;
             if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo) || liveCo == null) return false;
@@ -4714,6 +4755,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Drs:        return liveCo.Drs          != null;
                 case SectionKind.Collision:  return liveCo.Collision    != null;
                 case SectionKind.RevLimiter: return liveCo.RevLimiter   != null;
+                case SectionKind.Airborne:   return liveCo.Airborne     != null;
             }
             return false;
         }
@@ -4748,8 +4790,8 @@ namespace TrueforceForAll.Plugin
         // default so the section reads clean until the user actually changes it.
         private bool AirborneEquals(GameSettingsSnapshot snap)
         {
-            var a = Settings.Airborne ?? new AirborneSettings();
-            var b = snap.Airborne     ?? new AirborneSettings();
+            var a = ActiveAirborne ?? new AirborneSettings();
+            var b = snap.Airborne  ?? new AirborneSettings();
             return a.Enabled          == b.Enabled
                 && EqF2(a.Reduction, b.Reduction)
                 && a.DuckEngine       == b.DuckEngine
@@ -4968,6 +5010,22 @@ namespace TrueforceForAll.Plugin
                 && EqF2(a.Gain,             b.Gain)
                 && EqI (a.LowpassCutoffHz,  b.LowpassCutoffHz)
                 && EqI (a.HighpassCutoffHz, b.HighpassCutoffHz);
+        }
+        private static bool Eq(AirborneSettings a, AirborneSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled          == b.Enabled
+                && EqF2(a.Reduction, b.Reduction)
+                && a.DuckEngine       == b.DuckEngine
+                && a.DuckAudio        == b.DuckAudio
+                && a.DuckRoadBumps    == b.DuckRoadBumps
+                && a.DuckTractionLoss == b.DuckTractionLoss
+                && a.DuckRevLimiter   == b.DuckRevLimiter
+                && a.DuckGearShift    == b.DuckGearShift
+                && a.DuckAbs          == b.DuckAbs
+                && a.DuckPitLimiter   == b.DuckPitLimiter
+                && a.DuckDrs          == b.DuckDrs
+                && a.DuckCollision    == b.DuckCollision;
         }
 
         // ---------- per-section revert (from active preset) ----------
@@ -5339,6 +5397,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:  patched.Collision    = live.Collision    != null ? Clone(live.Collision)    : null; break;
                 case SectionKind.RevLimiter: patched.RevLimiter   = live.RevLimiter   != null ? Clone(live.RevLimiter)   : null; break;
                 case SectionKind.Audio:      patched.AudioCapture = CloneOrNull(live.AudioCapture); break;
+                case SectionKind.Airborne:   patched.Airborne     = live.Airborne     != null ? Clone(live.Airborne)     : null; break;
                 default: return false;
             }
 
@@ -5514,43 +5573,60 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[Trueforce] Can't overwrite built-in preset '{name}' on edit-mode save; fork via Save as new.");
                 return false;
             }
-            SavePresetAs(name);   // SavePresetAs persists + sets _activePresetName
-            _offlineEditPresetName = null;
-            _preEditSnapshot = null;
-            _preEditActivePresetName = null;
-            SimHub.Logging.Current.Info($"[Trueforce] Exited offline edit mode (saved '{name}').");
+            SavePresetAs(name);            // persist edits to the edited preset
+            RestorePreEditGameState();     // return to the previously-active preset
+            SimHub.Logging.Current.Info($"[Trueforce] Saved '{name}' and exited offline edit (restored prior preset).");
             return true;
         }
 
         /// <summary>Exit offline edit mode by saving the in-memory edits as
-        /// a brand-new preset. Useful for forking off a built-in or just
-        /// keeping the original preset untouched.</summary>
+        /// a brand-new preset (forking off a built-in), then returning to the
+        /// previously-active preset.</summary>
         public bool ExitOfflineEditSaveAs(string newName)
         {
             if (!IsOfflineEditing || string.IsNullOrEmpty(newName)) return false;
             if (Settings.Presets != null && Settings.Presets.ContainsKey(newName)) return false;
             SavePresetAs(newName);
-            _offlineEditPresetName = null;
-            _preEditSnapshot = null;
-            _preEditActivePresetName = null;
-            SimHub.Logging.Current.Info($"[Trueforce] Exited offline edit mode (saved as new '{newName}').");
+            RestorePreEditGameState();
+            SimHub.Logging.Current.Info($"[Trueforce] Saved as new '{newName}' and exited offline edit (restored prior preset).");
             return true;
         }
 
-        /// <summary>Exit offline edit mode and restore the pre-edit live
-        /// state (everything the user had loaded before they clicked Edit).
-        /// Used by the banner's Discard button.</summary>
+        /// <summary>Exit offline edit mode and restore the previously-active
+        /// preset (dropping any unsaved edits). Used by the banner's Done (when
+        /// nothing's unsaved) and the discard path.</summary>
         public void ExitOfflineEditDiscard()
         {
             if (!IsOfflineEditing) return;
-            if (_preEditSnapshot != null)
-                ApplyGamePreset(_preEditSnapshot);
-            _activePresetName = _preEditActivePresetName;
             string was = _offlineEditPresetName;
+            RestorePreEditGameState();
+            SimHub.Logging.Current.Info($"[Trueforce] Exited offline edit mode (dropped unsaved edits to '{was}').");
+        }
+
+        // Re-apply the preset that was active before editing began, by name from
+        // the library. Handles both cases correctly: if you edited your active
+        // preset, re-loading it picks up its now-saved values (after Save) or the
+        // unchanged saved values (after a no-save exit, reverting unsaved tweaks);
+        // if you edited a different preset, this returns you to the one you were
+        // running. Falls back to the pre-edit live snapshot if the prior preset
+        // is gone.
+        private void RestorePreEditGameState()
+        {
+            string prior = _preEditActivePresetName;
             _offlineEditPresetName = null;
+            if (!string.IsNullOrEmpty(prior) && Settings?.Presets != null
+                && Settings.Presets.TryGetValue(prior, out var snap) && snap != null)
+            {
+                ApplyGamePreset(snap);
+                _activePresetName = prior;
+            }
+            else if (_preEditSnapshot != null)
+            {
+                ApplyGamePreset(_preEditSnapshot);
+                _activePresetName = prior;
+            }
             _preEditSnapshot = null;
             _preEditActivePresetName = null;
-            SimHub.Logging.Current.Info($"[Trueforce] Exited offline edit mode (discarded edits to '{was}').");
         }
 
         // ---------- Car-preset offline edit ----------

@@ -458,18 +458,17 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="OfflineEditTitle" Foreground="White" FontWeight="SemiBold"
-                               FontSize="13" VerticalAlignment="Center" Text="Editing preset"/>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock x:Name="OfflineEditTitle" Foreground="White" FontWeight="SemiBold"
+                                   FontSize="13" Text="Editing preset"/>
+                        <TextBlock x:Name="OfflineEditHint" Foreground="White" Opacity="0.85" FontSize="11"
+                                   Margin="0,2,0,0" TextWrapping="Wrap"
+                                   Text="The game defaults are shown (and locked) for context; only the per-car effects are editable. Save the usual way, or Revert a section to undo it. Done finishes and returns to your live setup."/>
+                    </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
-                        <Button x:Name="OfflineEditSaveBtn" Content="Save" Width="78" Height="26"
-                                Margin="0,0,6,0" Click="OfflineEditSave_Click"
-                                ToolTip="Write your edits back into the preset being edited."/>
-                        <Button x:Name="OfflineEditSaveAsBtn" Content="Save as new…" Width="110" Height="26"
-                                Margin="0,0,6,0" Click="OfflineEditSaveAs_Click"
-                                ToolTip="Save your edits under a new preset name and exit edit mode."/>
-                        <Button x:Name="OfflineEditDiscardBtn" Content="Discard" Width="80" Height="26"
-                                Click="OfflineEditDiscard_Click"
-                                ToolTip="Throw away your edits and restore the state you had before entering edit mode."/>
+                        <Button x:Name="OfflineEditDoneBtn" Content="Done" Width="84" Height="26"
+                                Click="OfflineEditDone_Click"
+                                ToolTip="Finish editing: keep what you've saved, drop the live edit overlay, and return to your running game/car."/>
                     </StackPanel>
                 </Grid>
             </Border>

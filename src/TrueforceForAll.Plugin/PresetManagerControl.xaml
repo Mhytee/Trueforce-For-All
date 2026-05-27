@@ -135,7 +135,7 @@
                     <DockPanel Grid.Row="3" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
-                                    ToolTip="Open this preset for editing: loads it and switches to the Effects tab with a Save / Save as new / Discard banner. Saving over a built-in forks a copy."/>
+                                    ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Tune and save the usual way; Done returns you to your previously-active preset (saving over a built-in forks a copy)."/>
                             <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
                             <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
                             <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource RowButton}" Click="GameDelete_Click"     IsEnabled="False"/>

@@ -50,6 +50,23 @@ namespace TrueforceForAll.Plugin
         // fire LibraryChanged.
         private bool _initializing;
 
+        // Dev/test view: when on, the game- and car-preset lists show only the
+        // built-in (factory) presets, hiding the user's own. Nothing is
+        // deleted; it just filters the rows so we can eyeball the fresh-install
+        // library a new user would see. Toggled by the FRESH access code.
+        private bool _builtinsOnly;
+        public bool BuiltinsOnly
+        {
+            get => _builtinsOnly;
+            set
+            {
+                if (_builtinsOnly == value) return;
+                _builtinsOnly = value;
+                ReloadGames();
+                ReloadCars();
+            }
+        }
+
         // IsChecked on every row model backs the checkbox column. Plain bool
         // is enough: WPF writes UI → model via the TwoWay binding, and the
         // checkbox's own visual state handles its display. Re-adding rows on
@@ -385,6 +402,7 @@ namespace TrueforceForAll.Plugin
             // Alphabetical so the list is stable across reloads.
             foreach (var name in _plugin.Settings.Presets.Keys.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
             {
+                if (_builtinsOnly && !_plugin.IsBuiltinPreset(name)) continue;
                 reverseDefaults.TryGetValue(name, out var defaults);
                 _gameRows.Add(new GameRow
                 {
@@ -416,6 +434,7 @@ namespace TrueforceForAll.Plugin
                 foreach (var presetKv in carKv.Value.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
                 {
                     var entry = presetKv.Value;
+                    if (_builtinsOnly && !entry.IsBuiltin) continue;
                     _carRows.Add(new CarRow
                     {
                         CarId      = carId,

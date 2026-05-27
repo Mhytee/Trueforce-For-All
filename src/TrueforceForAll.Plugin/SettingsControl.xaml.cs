@@ -568,9 +568,9 @@ namespace TrueforceForAll.Plugin
                     UpdateRevLimiterEngageVisibility();
                 }
 
-                // Airborne ducking (global; no per-car override). Reads from
-                // Settings directly since there's no per-car draft for it.
-                var air = _plugin.Settings?.Airborne;
+                // Airborne ducking (per-car capable). Reads the effective values
+                // (the active car's override if present, else the global).
+                var air = _plugin.ActiveAirborne;
                 if (air != null && AirborneEnabledCheck != null)
                 {
                     AirborneEnabledCheck.IsChecked       = air.Enabled;
@@ -597,7 +597,7 @@ namespace TrueforceForAll.Plugin
                 ShiftOverrideBadge.Visibility    = (_plugin.IsShiftOverridden    && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 AbsOverrideBadge.Visibility      = (_plugin.IsAbsOverridden      && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (AbsUnsupportedBadge != null)
-                    AbsUnsupportedBadge.Visibility = _plugin.ActiveGameSupportsAbs ? Visibility.Collapsed : Visibility.Visible;
+                    AbsUnsupportedBadge.Visibility = _plugin.ShowAbsUnsupportedBadge ? Visibility.Visible : Visibility.Collapsed;
                 if (PitLimiterOverrideBadge != null)
                     PitLimiterOverrideBadge.Visibility = (_plugin.IsPitLimiterOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (DrsOverrideBadge != null)
@@ -643,10 +643,9 @@ namespace TrueforceForAll.Plugin
             if (carEdit)
             {
                 OfflineEditBanner.Visibility = Visibility.Visible;
-                bool carBuiltin = _plugin.IsActiveCarPresetBuiltin();
-                OfflineEditTitle.Text = $"Editing car preset '{_plugin.OfflineEditingCarPresetName}' for '{_plugin.OfflineEditingCarId}' (per-car settings only)";
-                OfflineEditSaveBtn.Content      = carBuiltin ? "Save as new…" : "Save";
-                OfflineEditSaveAsBtn.Visibility  = carBuiltin ? Visibility.Collapsed : Visibility.Visible;
+                OfflineEditTitle.Text = $"Editing per-car settings for '{_plugin.OfflineEditingCarId}' (preset '{_plugin.OfflineEditingCarPresetName}')";
+                if (OfflineEditHint != null)
+                    OfflineEditHint.Text = "The game defaults are shown (and locked) for context; only the per-car effects are editable. Save the usual way, or Revert a section to undo it. Done finishes and returns to your live setup.";
                 return;
             }
 
@@ -657,22 +656,16 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             OfflineEditBanner.Visibility = Visibility.Visible;
-            bool builtin = _plugin.IsBuiltinPreset(editing);
             OfflineEditTitle.Text = $"Editing preset '{editing}'";
-            // Save button on a built-in becomes "Save as new…" since the
-            // in-place save isn't allowed; collapse the explicit Save-as
-            // button to avoid two paths that do the same thing. The relabel
-            // is the user's cue that built-in edits fork instead of
-            // overwriting; no need for a second explainer in the banner.
-            OfflineEditSaveBtn.Content      = builtin ? "Save as new…" : "Save";
-            OfflineEditSaveAsBtn.Visibility = builtin ? Visibility.Collapsed : Visibility.Visible;
+            if (OfflineEditHint != null)
+                OfflineEditHint.Text = "Save the usual way, or Revert a section to undo it. Done finishes editing.";
         }
 
         // While editing a car preset, only per-car effects are editable. Lock the
-        // game-global controls (master gain, FFB tweaks, airborne ducking, iRacing
-        // LEDs) so a global change can't be made/lost inside a car edit. The
-        // car-scoped effect expanders (engine, bumps, traction, shift, ABS, pit
-        // limiter, DRS, collision, rev limiter, audio) stay editable.
+        // game-global controls (master gain, FFB tweaks, iRacing LEDs) so a global
+        // change can't be made/lost inside a car edit. The car-scoped effect
+        // expanders (engine, bumps, traction, shift, ABS, pit limiter, DRS,
+        // collision, rev limiter, audio, airborne) stay editable.
         private void SetCarEditLock(bool locked)
         {
             bool en = !locked;
@@ -681,7 +674,7 @@ namespace TrueforceForAll.Plugin
             if (MasterSaveBtn   != null)  MasterSaveBtn.IsEnabled     = en;
             if (MasterRevertBtn != null)  MasterRevertBtn.IsEnabled   = en;
             if (FfbTweaksExpander != null) FfbTweaksExpander.IsEnabled = en;
-            if (AirborneExpander  != null) AirborneExpander.IsEnabled  = en;
+            // Airborne is per-car, so it stays editable during car-edit.
             if (RpmLedSection     != null) RpmLedSection.IsEnabled     = en;
         }
 
@@ -698,10 +691,29 @@ namespace TrueforceForAll.Plugin
             if (MainTabs != null) MainTabs.SelectedIndex = 0;
         }
 
-        private void OfflineEditSave_Click(object sender, RoutedEventArgs e)
+        // "Done": finish the edit session. Saving itself happens the normal way
+        // (per-section / header Save) during the edit; Done commits anything
+        // still unsaved and restores the prior state. Built-ins fork to a new
+        // name. With nothing unsaved it just exits.
+        private void OfflineEditDone_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            if (_plugin.IsOfflineEditingCar)
+            bool car = _plugin.IsOfflineEditingCar;
+            if (!car && !_plugin.IsOfflineEditing) return;
+
+            bool dirty = car ? _plugin.IsActiveCarPresetDirty() : _dirty;
+            if (!dirty)
+            {
+                // No-op edit: leave edit mode and restore prior state (no write,
+                // no built-in fork prompt).
+                if (car) _plugin.ExitOfflineEditCarDiscard();
+                else     _plugin.ExitOfflineEditDiscard();
+                ClearDirty();
+                RefreshFromPlugin();
+                return;
+            }
+
+            if (car)
             {
                 if (_plugin.IsActiveCarPresetBuiltin())
                 {
@@ -713,38 +725,23 @@ namespace TrueforceForAll.Plugin
                     MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
-                ClearDirty();
-                RefreshFromPlugin();
-                return;
             }
-            if (!_plugin.IsOfflineEditing) return;
-            string name = _plugin.OfflineEditingPresetName;
-            if (_plugin.IsBuiltinPreset(name))
+            else
             {
-                // Built-in fast path. Same as Save as new with a suggested
-                // name derived from the built-in's name.
-                PromptAndSaveAsNew(name);
-                return;
-            }
-            if (!_plugin.ExitOfflineEditSave())
-            {
-                MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                string name = _plugin.OfflineEditingPresetName;
+                if (_plugin.IsBuiltinPreset(name))
+                {
+                    PromptAndSaveAsNew(name);
+                    return;
+                }
+                if (!_plugin.ExitOfflineEditSave())
+                {
+                    MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
             }
             ClearDirty();
             RefreshFromPlugin();
-        }
-
-        private void OfflineEditSaveAs_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            if (_plugin.IsOfflineEditingCar)
-            {
-                PromptAndSaveAsNewCar(_plugin.OfflineEditingCarPresetName);
-                return;
-            }
-            if (!_plugin.IsOfflineEditing) return;
-            PromptAndSaveAsNew(_plugin.OfflineEditingPresetName);
         }
 
         // Car variant of PromptAndSaveAsNew: prompt for a name and fork the car
@@ -791,18 +788,6 @@ namespace TrueforceForAll.Plugin
                 MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            ClearDirty();
-            RefreshFromPlugin();
-        }
-
-        private void OfflineEditDiscard_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            if (!_plugin.IsOfflineEditing && !_plugin.IsOfflineEditingCar) return;
-            if (MessageBox.Show("Discard edits and restore the state you had before entering edit mode?",
-                "Discard edits", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            if (_plugin.IsOfflineEditingCar) _plugin.ExitOfflineEditCarDiscard();
-            else _plugin.ExitOfflineEditDiscard();
             ClearDirty();
             RefreshFromPlugin();
         }
@@ -1874,22 +1859,22 @@ namespace TrueforceForAll.Plugin
             //     default. So whenever the car side is dirty, the game side is
             //     offered too (the popover then lets you pick car / game /
             //     both).
-            // While car-editing, the header preset actions are suppressed: the
-            // loaded game preset is just a temporary baseline, and saving goes
-            // through the car-edit banner (Save / Save as new / Discard), not
-            // these header buttons (which would promote to the game default).
+            // During car-edit the loaded game preset is only a temporary baseline,
+            // so the GAME-side header actions are suppressed (saving to them would
+            // be wrong); the CAR-side Save buttons stay, since saving the car is
+            // exactly the point.
             bool carEdit = _plugin?.IsOfflineEditingCar == true;
             if (HeaderGameSaveAllBtn != null)
                 HeaderGameSaveAllBtn.Visibility = (any && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
             if (HeaderCarSaveAllBtn != null)
-                HeaderCarSaveAllBtn.Visibility = (carDirty && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
+                HeaderCarSaveAllBtn.Visibility = carDirty ? Visibility.Visible : Visibility.Collapsed;
 
             // "Save as new…" mirrors its Save-all neighbour: it only makes sense
             // when there's unsaved tuning to capture under a new name.
             if (HeaderSaveAsNewBtn != null)
                 HeaderSaveAsNewBtn.Visibility = (any && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
             if (HeaderCarSaveAsNewBtn != null)
-                HeaderCarSaveAsNewBtn.Visibility = (carDirty && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
+                HeaderCarSaveAsNewBtn.Visibility = carDirty ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // Both header "Save all" buttons open the same target chooser (save to
@@ -4257,14 +4242,16 @@ namespace TrueforceForAll.Plugin
             Apply(EffectKind.RevLimiter);
         }
 
-        // ---------- Airborne ducking (global section; uses the dirty/save flow
-        // like the other effects, so changes surface a Save button + feed the
-        // ★ Save all pill instead of persisting silently) ----------
+        // ---------- Airborne ducking (per-car capable, like the other effects:
+        // EnsureSectionDraft routes the edit to the active car's override when a
+        // car is loaded, else the global; changes surface a Save button + feed
+        // the ★ Save all pill) ----------
 
         private void AirborneEnabled_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.Airborne.Enabled = AirborneEnabledCheck.IsChecked == true;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.Airborne);
+            _plugin.ActiveAirborne.Enabled = AirborneEnabledCheck.IsChecked == true;
             _plugin.ApplyAirborneSettings();
             MarkEffectDirty(EffectKind.Airborne);
         }
@@ -4273,17 +4260,18 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null) return;
             float v = (float)e.NewValue;
             AirborneReductionText.Text = ((int)Math.Round(v * 100)).ToString() + "%";
-            _plugin.Settings.Airborne.Reduction = v;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.Airborne);
+            _plugin.ActiveAirborne.Reduction = v;
             _plugin.ApplyAirborneSettings();
             MarkEffectDirty(EffectKind.Airborne);
         }
         // One handler for every per-effect toggle: read all the checkboxes back
-        // into Settings, re-apply, persist. Cheaper to write than ten near-
-        // identical handlers and the work is trivial.
+        // into the effective Airborne settings, re-apply, mark dirty.
         private void AirborneToggle_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            var a = _plugin.Settings.Airborne;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.Airborne);
+            var a = _plugin.ActiveAirborne;
             a.DuckEngine       = AirborneDuckEngineCheck.IsChecked    == true;
             a.DuckAudio        = AirborneDuckAudioCheck.IsChecked     == true;
             a.DuckRoadBumps    = AirborneDuckRoadBumpsCheck.IsChecked == true;
@@ -4538,6 +4526,7 @@ namespace TrueforceForAll.Plugin
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
             "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
+            "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
         private void CommitAccessCode()
@@ -4628,6 +4617,24 @@ namespace TrueforceForAll.Plugin
                         _forceUdpSetupBanner == 1 ? "UDP setup banner: simulating Forza (type UDP again for F1)."
                       : _forceUdpSetupBanner == 2 ? "UDP setup banner: simulating F1 (type UDP again to clear)."
                       : "UDP setup banner simulation cleared.";
+                return;
+            }
+
+            // Dev-only: filter the preset library to built-ins only, so we can
+            // see the fresh-install library a brand-new user gets. Toggle: type
+            // FRESH again to restore the full view. Nothing is deleted; the
+            // user's own presets are just hidden while it's on.
+            if (code.Equals("FRESH", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (_presetManager != null)
+                {
+                    _presetManager.BuiltinsOnly = !_presetManager.BuiltinsOnly;
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = _presetManager.BuiltinsOnly
+                            ? "Built-ins-only view ON: the Presets tab now shows only the shipped factory presets (your own are hidden, not deleted). Type FRESH again to restore."
+                            : "Built-ins-only view OFF: your full preset library is back.";
+                }
                 return;
             }
 
@@ -5090,6 +5097,10 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             if (!(sender is System.Windows.Controls.Button b) || !(b.Tag is string tag)) return;
             if (!Enum.TryParse<EffectKind>(tag, out var which)) return;
+            // During car-edit the loaded game preset is only a temporary baseline,
+            // so the car override is the one valid save target. Save this section
+            // straight to the car instead of offering the game-scope popover.
+            if (_plugin.IsOfflineEditingCar) { ApplyEffectSaveForCar(which); return; }
             ShowEffectSavePopover(which);
         }
 

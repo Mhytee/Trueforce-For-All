@@ -949,11 +949,12 @@ namespace TrueforceForAll.Plugin
         public CollisionSettings    Collision    { get; set; }
         public RevLimiterSettings   RevLimiter   { get; set; }
         public AudioCaptureSettings AudioCapture { get; set; }
+        public AirborneSettings     Airborne     { get; set; }
 
         public bool IsEmpty =>
             EnginePulse == null && RoadBumps == null && TractionLoss == null &&
             GearShift   == null && AbsClick  == null && AudioCapture == null &&
             PitLimiter  == null && Drs       == null && Collision    == null &&
-            RevLimiter  == null;
+            RevLimiter  == null && Airborne  == null;
     }
 }
