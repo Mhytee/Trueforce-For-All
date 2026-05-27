@@ -3837,6 +3837,167 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // ===================================================================
+        // Dev tooling: built-in folder maintenance (behind the DEV access
+        // code / Settings.DevModeUnlocked). These write to / re-sync the
+        // built-in source folder so defaults can be maintained as data files
+        // without a recompile. See BuiltinPresets / BuiltinPresetWriter.
+        // ===================================================================
+
+        /// <summary>Top-level effect sections a complete game built-in should
+        /// carry. Drives the Validate "missing section" check.</summary>
+        private static readonly string[] BuiltinGameSections =
+        {
+            "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
+            "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
+        };
+
+        public string BuiltinFolderPath => BuiltinPresets.CurrentFolder;
+
+        /// <summary>Export one library game preset into the built-in folder as
+        /// a data file (+ manifest entry), then reload the store.</summary>
+        public bool ExportGamePresetAsBuiltin(string presetName, out string error)
+        {
+            error = null;
+            try
+            {
+                if (Settings?.Presets == null
+                    || !Settings.Presets.TryGetValue(presetName, out var snap) || snap == null)
+                { error = "preset not found in library"; return false; }
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                    snap, Newtonsoft.Json.Formatting.Indented);
+                string rel = BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
+                BuiltinPresets.Reload();
+                SimHub.Logging.Current.Info($"[Trueforce] Exported game preset '{presetName}' -> built-in '{rel}'.");
+                return true;
+            }
+            catch (Exception ex) { error = ex.Message; return false; }
+        }
+
+        /// <summary>Export one library car preset into the built-in folder as a
+        /// CarPresetFile (IsBuiltin=true, PresetName "&lt;carId&gt; (default)").</summary>
+        public bool ExportCarPresetAsBuiltin(string carId, string presetName, out string error)
+        {
+            error = null;
+            try
+            {
+                var all = GetAllCarPresets();
+                if (all == null || !all.TryGetValue(carId, out var perCar)
+                    || !perCar.TryGetValue(presetName, out var entry) || entry == null)
+                { error = "car preset not found"; return false; }
+
+                var file = new CarPresetFile
+                {
+                    Type       = CarPresetFile.FileType,
+                    Version    = 2,
+                    GameName   = entry.GameName ?? "",
+                    CarId      = carId,
+                    PresetName = carId + " (default)",
+                    IsBuiltin  = true,
+                    Override   = entry.Override,
+                };
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                    file, Newtonsoft.Json.Formatting.Indented);
+                string rel = BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, carId, json);
+                BuiltinPresets.Reload();
+                SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{presetName}' -> built-in '{rel}'.");
+                return true;
+            }
+            catch (Exception ex) { error = ex.Message; return false; }
+        }
+
+        /// <summary>Write every built-in-marked game + car preset currently in
+        /// the library back out to the folder. Regenerates the folder from the
+        /// loaded library. Returns counts via out params.</summary>
+        public bool ExportAllBuiltinsToFolder(out int games, out int cars, out string error)
+        {
+            games = 0; cars = 0; error = null;
+            try
+            {
+                if (Settings?.Presets != null)
+                    foreach (var kv in Settings.Presets)
+                        if (IsBuiltinPreset(kv.Key) && kv.Value != null)
+                        {
+                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                                kv.Value, Newtonsoft.Json.Formatting.Indented);
+                            BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, kv.Key, json);
+                            games++;
+                        }
+
+                var all = GetAllCarPresets();
+                if (all != null)
+                    foreach (var carKv in all)
+                        foreach (var pk in carKv.Value)
+                        {
+                            var e = pk.Value;
+                            if (e == null || !e.IsBuiltin) continue;
+                            var file = new CarPresetFile
+                            {
+                                Type = CarPresetFile.FileType, Version = 2,
+                                GameName = e.GameName ?? "", CarId = carKv.Key,
+                                PresetName = e.PresetName, IsBuiltin = true, Override = e.Override,
+                            };
+                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                                file, Newtonsoft.Json.Formatting.Indented);
+                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, carKv.Key, json);
+                            cars++;
+                        }
+                BuiltinPresets.Reload();
+                SimHub.Logging.Current.Info($"[Trueforce] Exported all built-ins to folder: {games} game, {cars} car.");
+                return true;
+            }
+            catch (Exception ex) { error = ex.Message; return false; }
+        }
+
+        /// <summary>Reload the folder and (re)install its built-ins into the
+        /// library: game presets overwrite by name, car factory files refresh.
+        /// Additive, never removes. Returns a summary line.</summary>
+        public string ImportBuiltinsFromFolder()
+        {
+            BuiltinPresets.Reload();
+            InstallBuiltinPresetsIfMissing();
+            LoadAndMigrateCarPresets();
+            string msg = $"Imported from folder: {BuiltinPresets.BuiltinPresetJsons.Count} game + {BuiltinPresets.CarPresetJsons.Count} car built-in(s).";
+            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            return msg;
+        }
+
+        /// <summary>Make the library's built-ins match the folder exactly:
+        /// drop game built-ins the folder no longer has (and any GameDefaults
+        /// pointing at them), then re-import. Car factory files refresh via
+        /// LoadAndMigrateCarPresets.</summary>
+        public string ReseedBuiltinsFromFolder()
+        {
+            var oldGameBuiltins = new List<string>(BuiltinPresets.BuiltinPresetJsons.Keys);
+            BuiltinPresets.Reload();
+            var newSet = new HashSet<string>(BuiltinPresets.BuiltinPresetJsons.Keys, StringComparer.Ordinal);
+            int removed = 0;
+            if (Settings?.Presets != null)
+                foreach (var name in oldGameBuiltins)
+                    if (!newSet.Contains(name) && Settings.Presets.Remove(name))
+                    {
+                        removed++;
+                        if (Settings.GameDefaults != null)
+                        {
+                            var orphans = new List<string>();
+                            foreach (var kv in Settings.GameDefaults)
+                                if (kv.Value == name) orphans.Add(kv.Key);
+                            foreach (var k in orphans) Settings.GameDefaults.Remove(k);
+                        }
+                    }
+            InstallBuiltinPresetsIfMissing();
+            LoadAndMigrateCarPresets();
+            this.SaveCommonSettings("GeneralSettings", Settings);
+            string msg = $"Reseeded from folder: {newSet.Count} game built-in(s) (removed {removed} stale), {BuiltinPresets.CarPresetJsons.Count} car built-in(s).";
+            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            return msg;
+        }
+
+        /// <summary>Validate the built-in folder (parse + missing-section
+        /// flag). Returns human-readable lines for the dev panel.</summary>
+        public List<string> ValidateBuiltins()
+            => BuiltinPresets.Validate(BuiltinGameSections);
+
         /// <summary>Give an unmapped game its own preset seeded from the
         /// Assetto Corsa baseline (which ships as the user's AC tuning) and
         /// bind it as that game's default, then apply it live. No-op if the

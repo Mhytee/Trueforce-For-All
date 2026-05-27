@@ -171,7 +171,10 @@ namespace TrueforceForAll.Plugin
             _presetManager.LibraryChanged += OnPresetLibraryChanged;
             _presetManager.EditPresetRequested += name => EnterOfflineEditMode(name);
             _presetManager.EditCarPresetRequested += (carId, name) => EnterOfflineEditModeForCar(carId, name);
+            _presetManager.ExportGameAsBuiltinRequested += ExportGamePresetAsBuiltin;
+            _presetManager.ExportCarAsBuiltinRequested += ExportCarPresetAsBuiltin;
             PresetManagerHost.Children.Add(_presetManager);
+            ApplyDevModeVisibility();
 
             // Header version readout. Read once at construction; doesn't change
             // at runtime within a session. ToString(3) drops the build/revision
@@ -4527,6 +4530,7 @@ namespace TrueforceForAll.Plugin
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
             "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
+            "DEV            Unlock the Developer panel (Settings tab) + per-row 'Export as built-in' buttons: maintain the file-based built-in folder (export/import/reseed/validate/open). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
         private void CommitAccessCode()
@@ -4635,6 +4639,22 @@ namespace TrueforceForAll.Plugin
                             ? "Built-ins-only view ON: the Presets tab now shows only the shipped factory presets (your own are hidden, not deleted). Type FRESH again to restore."
                             : "Built-ins-only view OFF: your full preset library is back.";
                 }
+                return;
+            }
+
+            // Dev-only: unlock the Developer panel (built-in folder
+            // maintenance: export/import/reseed/validate/open). Persisted so it
+            // stays on across restarts on a dev machine. Toggle.
+            if (code.Equals("DEV", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.DevModeUnlocked = !_plugin.Settings.DevModeUnlocked;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                ApplyDevModeVisibility();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = _plugin.Settings.DevModeUnlocked
+                        ? "Developer mode ON: the Developer panel (Settings tab) and per-row 'Export as built-in' buttons are now visible. Type DEV again to hide."
+                        : "Developer mode OFF.";
                 return;
             }
 
@@ -4821,6 +4841,111 @@ namespace TrueforceForAll.Plugin
                 RpmLedSection.Visibility = showNow
                     ? System.Windows.Visibility.Visible
                     : System.Windows.Visibility.Collapsed;
+        }
+
+        // ---------- Developer panel (built-in folder maintenance) ----------
+
+        // Show/hide the Developer panel + the preset-tab export buttons to match
+        // Settings.DevModeUnlocked. Safe to call before/after the panel exists.
+        private void ApplyDevModeVisibility()
+        {
+            bool on = _plugin?.Settings?.DevModeUnlocked == true;
+            if (DeveloperExpander != null)
+                DeveloperExpander.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            if (DevFolderPathText != null)
+                DevFolderPathText.Text = _plugin?.BuiltinFolderPath ?? "";
+            if (_presetManager != null)
+                _presetManager.DevMode = on;
+        }
+
+        private void DevOpenFolder_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string folder = _plugin?.BuiltinFolderPath;
+                if (string.IsNullOrEmpty(folder)) return;
+                System.IO.Directory.CreateDirectory(folder);
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + folder + "\"");
+            }
+            catch (Exception ex)
+            {
+                if (DevStatusText != null) DevStatusText.Text = "Open folder failed: " + ex.Message;
+            }
+        }
+
+        private void DevValidate_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var lines = _plugin.ValidateBuiltins();
+            int issues = lines.Count(l => !l.StartsWith("OK"));
+            string body = lines.Count == 0 ? "No built-ins loaded." : string.Join("\n", lines);
+            MessageBox.Show(Window.GetWindow(this), body,
+                $"Validate built-ins ({issues} issue{(issues == 1 ? "" : "s")})",
+                MessageBoxButton.OK, issues > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            if (DevStatusText != null)
+                DevStatusText.Text = issues == 0
+                    ? $"Validated {lines.Count} built-in(s): all OK."
+                    : $"Validated {lines.Count} built-in(s): {issues} flagged (see dialog).";
+        }
+
+        private void DevImport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string msg = _plugin.ImportBuiltinsFromFolder();
+            _presetManager?.RefreshLists();
+            OnPresetLibraryChanged();
+            ApplyDevModeVisibility();
+            if (DevStatusText != null) DevStatusText.Text = msg;
+        }
+
+        private void DevReseed_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (MessageBox.Show(Window.GetWindow(this),
+                    "Reseed makes the library's built-ins match the folder exactly: built-ins the folder no longer has are removed (your own presets are untouched). Continue?",
+                    "Reseed built-ins from folder", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+                return;
+            string msg = _plugin.ReseedBuiltinsFromFolder();
+            _presetManager?.RefreshLists();
+            OnPresetLibraryChanged();
+            ApplyDevModeVisibility();
+            if (DevStatusText != null) DevStatusText.Text = msg;
+        }
+
+        private void DevExportAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (_plugin.ExportAllBuiltinsToFolder(out int games, out int cars, out string err))
+            {
+                if (DevStatusText != null)
+                    DevStatusText.Text = $"Exported {games} game + {cars} car built-in(s) to the folder.";
+            }
+            else if (DevStatusText != null)
+                DevStatusText.Text = "Export all failed: " + err;
+        }
+
+        // "Export as built-in" on a game-preset row (raised by PresetManagerControl).
+        private void ExportGamePresetAsBuiltin(string presetName)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(presetName)) return;
+            bool ok = _plugin.ExportGamePresetAsBuiltin(presetName, out string err);
+            _presetManager?.RefreshLists();
+            if (DevStatusText != null)
+                DevStatusText.Text = ok
+                    ? $"Exported '{presetName}' into the built-in folder."
+                    : $"Export failed: {err}";
+        }
+
+        // "Export as built-in" on a car-preset row.
+        private void ExportCarPresetAsBuiltin(string carId, string presetName)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(carId)) return;
+            bool ok = _plugin.ExportCarPresetAsBuiltin(carId, presetName, out string err);
+            _presetManager?.RefreshLists();
+            if (DevStatusText != null)
+                DevStatusText.Text = ok
+                    ? $"Exported car '{carId}' into the built-in folder."
+                    : $"Export failed: {err}";
         }
 
         // ---------- Rim rev/shift LEDs (iRacing) ----------

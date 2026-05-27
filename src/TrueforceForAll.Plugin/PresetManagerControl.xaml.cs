@@ -67,6 +67,49 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Dev mode: reveal the per-row "Export as built-in" toolbar buttons
+        // (games + cars). Set by the host from Settings.DevModeUnlocked.
+        private bool _devMode;
+        public bool DevMode
+        {
+            get => _devMode;
+            set
+            {
+                _devMode = value;
+                if (GameExportBuiltinBtn != null)
+                    GameExportBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+                if (CarExportBuiltinBtn != null)
+                    CarExportBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+                RefreshGameButtons();
+                RefreshCarButtons();
+            }
+        }
+
+        // Raised when the user clicks "Export as built-in" on a row (DEV mode).
+        public event Action<string> ExportGameAsBuiltinRequested;
+        public event Action<string, string> ExportCarAsBuiltinRequested;
+
+        /// <summary>Host hook to re-pull the lists after an external library
+        /// change (dev import / reseed / export).</summary>
+        public void RefreshLists()
+        {
+            ReloadGames();
+            ReloadCars();
+            ReloadCustoms();
+        }
+
+        private void GameExportBuiltin_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedGame;
+            if (sel != null) ExportGameAsBuiltinRequested?.Invoke(sel.Name);
+        }
+
+        private void CarExportBuiltin_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCar;
+            if (sel != null) ExportCarAsBuiltinRequested?.Invoke(sel.CarId, sel.PresetName);
+        }
+
         // IsChecked on every row model backs the checkbox column. Plain bool
         // is enough: WPF writes UI → model via the TwoWay binding, and the
         // checkbox's own visual state handles its display. Re-adding rows on
@@ -582,6 +625,8 @@ namespace TrueforceForAll.Plugin
             GameDeleteBtn.IsEnabled       = checkedNonBuiltin > 0 || selUserPreset;
             GameSetDefaultBtn.IsEnabled   = anySelected   && checkedCount <= 1;
             GameClearDefaultBtn.IsEnabled = anySelected   && checkedCount <= 1 && sel.Defaults.Count > 0;
+            if (GameExportBuiltinBtn != null)
+                GameExportBuiltinBtn.IsEnabled = _devMode && anySelected && checkedCount <= 1;
 
             GameCheckedLabel.Text = checkedCount > 0
                 ? $"{checkedCount} checked"
@@ -604,6 +649,8 @@ namespace TrueforceForAll.Plugin
             CarDuplicateBtn.IsEnabled = anySelected   && checkedCount <= 1;
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || selUserPreset;
             CarSetActiveBtn.IsEnabled = anySelected   && checkedCount <= 1 && !sel.Active;
+            if (CarExportBuiltinBtn != null)
+                CarExportBuiltinBtn.IsEnabled = _devMode && anySelected && checkedCount <= 1;
 
             CarCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
             CarDeleteBtn.Content = checkedNonBuiltin > 0 ? $"Delete ({checkedNonBuiltin})" : "Delete";

@@ -143,6 +143,8 @@
                                     ToolTip="Bind this preset as the auto-load default for a game you've seen before."/>
                             <Button x:Name="GameClearDefaultBtn" Content="Clear default…" Style="{StaticResource RowButton}" Width="120" Click="GameClearDefault_Click" IsEnabled="False"
                                     ToolTip="Remove a game's auto-load binding to this preset."/>
+                            <Button x:Name="GameExportBuiltinBtn" Content="Export as built-in" Style="{StaticResource RowButton}" Width="140" Click="GameExportBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
+                                    ToolTip="DEV: write this preset into the built-in folder as a shipped default (data file + manifest)."/>
                         </StackPanel>
                         <TextBlock x:Name="GameCheckedLabel" VerticalAlignment="Center"
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
@@ -188,6 +190,8 @@
                             <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource RowButton}" Click="CarDelete_Click"    IsEnabled="False"/>
                             <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource RowButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
                                     ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten."/>
+                            <Button x:Name="CarExportBuiltinBtn" Content="Export as built-in" Style="{StaticResource RowButton}" Width="140" Click="CarExportBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
+                                    ToolTip="DEV: write this car preset into the built-in folder as a shipped default (data file + manifest)."/>
                         </StackPanel>
                         <TextBlock x:Name="CarCheckedLabel" VerticalAlignment="Center"
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
