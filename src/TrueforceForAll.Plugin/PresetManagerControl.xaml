@@ -238,11 +238,36 @@
             </Grid>
         </DockPanel>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
-            <Button Content="Export…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogExport_Click"
-                    ToolTip="Pick which presets and car tunings to bundle into a shareable file. Same flow as the Export button on the main panel."/>
-            <Button Content="Import…" Width="100" Height="28" Click="DialogImport_Click"
-                    ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
+        <StackPanel Grid.Row="1" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Export…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogExport_Click"
+                        ToolTip="Pick which presets and car tunings to bundle into a shareable file. Same flow as the Export button on the main panel."/>
+                <Button Content="Import…" Width="100" Height="28" Click="DialogImport_Click"
+                        ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
+            </StackPanel>
+
+            <!-- Developer tools (built-in folder maintenance). Hidden unless the
+                 DEV access code is entered (Settings.DevModeUnlocked). -->
+            <Border x:Name="DevBar" Visibility="Collapsed" Margin="0,12,0,0" Padding="0,10,0,0"
+                    BorderBrush="#3A3A3A" BorderThickness="0,1,0,0">
+                <StackPanel>
+                    <TextBlock Text="Developer: built-in preset folder" FontWeight="SemiBold" FontSize="12" Foreground="#CFCFCF"/>
+                    <TextBlock x:Name="DevFolderPathText" Margin="0,2,0,8" FontSize="11" Foreground="#FFB0B0B0" TextWrapping="Wrap"/>
+                    <WrapPanel>
+                        <Button Content="Open folder"          Height="26" Width="110" Margin="0,0,8,8" Click="DevOpenFolder_Click"
+                                ToolTip="Open the built-in preset folder in Explorer."/>
+                        <Button Content="Validate"             Height="26" Width="90"  Margin="0,0,8,8" Click="DevValidate_Click"
+                                ToolTip="Parse every built-in and flag any that fail to load or are missing a newer effect section."/>
+                        <Button Content="Import from folder"   Height="26" Width="140" Margin="0,0,8,8" Click="DevImport_Click"
+                                ToolTip="Reload the folder and (re)install its built-ins into the library. Additive; never removes."/>
+                        <Button Content="Reseed (replace)"     Height="26" Width="120" Margin="0,0,8,8" Click="DevReseed_Click"
+                                ToolTip="Make the library's built-ins match the folder exactly, dropping built-ins the folder no longer has."/>
+                        <Button Content="Export all built-ins" Height="26" Width="150" Margin="0,0,8,8" Click="DevExportAll_Click"
+                                ToolTip="Write every built-in-marked preset in the library back out to the folder."/>
+                    </WrapPanel>
+                    <TextBlock x:Name="DevStatusText" Margin="0,2,0,0" FontSize="11" Foreground="#FFC8C8C8" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </Grid>
 </UserControl>

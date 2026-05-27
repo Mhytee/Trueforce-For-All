@@ -2499,33 +2499,6 @@
             </StackPanel>
 
 
-                    <!-- Developer panel. Hidden unless the DEV access code is
-                     entered (Settings.DevModeUnlocked). Maintains the
-                     file-based built-in preset folder. -->
-                <Expander x:Name="DeveloperExpander" Header="Developer" IsExpanded="False"
-                          Visibility="Collapsed" Margin="0,18,0,0">
-                    <StackPanel Margin="6,8,0,0">
-                        <TextBlock Text="Built-in preset folder (source of the shipped defaults):"
-                                   Style="{StaticResource LabelText}"/>
-                        <TextBlock x:Name="DevFolderPathText" Margin="0,2,0,8" FontSize="11"
-                                   Foreground="#FFB0B0B0" TextWrapping="Wrap"/>
-                        <WrapPanel>
-                            <Button x:Name="DevOpenFolderBtn"  Content="Open folder"            Height="26" Margin="0,0,8,8" Padding="10,0" Click="DevOpenFolder_Click"
-                                    ToolTip="Open the built-in preset folder in Explorer."/>
-                            <Button x:Name="DevValidateBtn"    Content="Validate / flag stale"  Height="26" Margin="0,0,8,8" Padding="10,0" Click="DevValidate_Click"
-                                    ToolTip="Parse every built-in and flag any that fail to load or are missing a newer effect section."/>
-                            <Button x:Name="DevImportBtn"      Content="Import from folder"     Height="26" Margin="0,0,8,8" Padding="10,0" Click="DevImport_Click"
-                                    ToolTip="Reload the folder and (re)install its built-ins into the library. Additive; never removes."/>
-                            <Button x:Name="DevReseedBtn"      Content="Reseed (replace)"       Height="26" Margin="0,0,8,8" Padding="10,0" Click="DevReseed_Click"
-                                    ToolTip="Make the library's built-ins match the folder exactly, dropping built-ins the folder no longer has."/>
-                            <Button x:Name="DevExportAllBtn"   Content="Export all built-ins"   Height="26" Margin="0,0,8,8" Padding="10,0" Click="DevExportAll_Click"
-                                    ToolTip="Write every built-in-marked preset in the library back out to the folder."/>
-                        </WrapPanel>
-                        <TextBlock x:Name="DevStatusText" Margin="0,2,0,0" FontSize="11"
-                                   Foreground="#FFC8C8C8" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Expander>
-
                     <!-- Tester access code. Unhides the rim-LED / MAIRA
                      passthrough section (MAIRA side still in PR, RS50/G923
                      unvalidated, so it stays out of the public UI). Type

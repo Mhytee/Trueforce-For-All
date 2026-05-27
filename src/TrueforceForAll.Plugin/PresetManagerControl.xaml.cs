@@ -80,17 +80,80 @@ namespace TrueforceForAll.Plugin
                     GameExportBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
                 if (CarExportBuiltinBtn != null)
                     CarExportBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+                if (DevBar != null)
+                    DevBar.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+                if (DevFolderPathText != null)
+                    DevFolderPathText.Text = _plugin?.BuiltinFolderPath ?? "";
                 RefreshGameButtons();
                 RefreshCarButtons();
             }
         }
 
-        // Raised when the user clicks "Export as built-in" on a row (DEV mode).
-        public event Action<string> ExportGameAsBuiltinRequested;
-        public event Action<string, string> ExportCarAsBuiltinRequested;
+        // ---- Developer tools (built-in folder maintenance) ----
+
+        private void DevOpenFolder_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string folder = _plugin?.BuiltinFolderPath;
+                if (string.IsNullOrEmpty(folder)) return;
+                System.IO.Directory.CreateDirectory(folder);
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + folder + "\"");
+            }
+            catch (Exception ex) { SetDevStatus("Open folder failed: " + ex.Message); }
+        }
+
+        private void DevValidate_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var lines = _plugin.ValidateBuiltins();
+            int issues = lines.Count(l => !l.StartsWith("OK"));
+            string body = lines.Count == 0 ? "No built-ins loaded." : string.Join("\n", lines);
+            MessageBox.Show(Window.GetWindow(this), body,
+                $"Validate built-ins ({issues} issue{(issues == 1 ? "" : "s")})",
+                MessageBoxButton.OK, issues > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            SetDevStatus(issues == 0
+                ? $"Validated {lines.Count} built-in(s): all OK."
+                : $"Validated {lines.Count} built-in(s): {issues} flagged (see dialog).");
+        }
+
+        private void DevImport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string msg = _plugin.ImportBuiltinsFromFolder();
+            RefreshLists();
+            SetDevStatus(msg);
+        }
+
+        private void DevReseed_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (MessageBox.Show(Window.GetWindow(this),
+                    "Reseed makes the library's built-ins match the folder exactly: built-ins the folder no longer has are removed (your own presets are untouched). Continue?",
+                    "Reseed built-ins from folder", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+                return;
+            string msg = _plugin.ReseedBuiltinsFromFolder();
+            RefreshLists();
+            SetDevStatus(msg);
+        }
+
+        private void DevExportAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (_plugin.ExportAllBuiltinsToFolder(out int games, out int cars, out string err))
+                SetDevStatus($"Exported {games} game + {cars} car built-in(s) to the folder.");
+            else
+                SetDevStatus("Export all failed: " + err);
+        }
+
+        private void SetDevStatus(string text)
+        {
+            if (DevStatusText != null) DevStatusText.Text = text;
+        }
 
         /// <summary>Host hook to re-pull the lists after an external library
-        /// change (dev import / reseed / export).</summary>
+        /// change (dev import / reseed / export). Reload* raise LibraryChanged
+        /// so the host refreshes its effects UI / live engine too.</summary>
         public void RefreshLists()
         {
             ReloadGames();
@@ -101,13 +164,19 @@ namespace TrueforceForAll.Plugin
         private void GameExportBuiltin_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedGame;
-            if (sel != null) ExportGameAsBuiltinRequested?.Invoke(sel.Name);
+            if (sel == null || _plugin == null) return;
+            bool ok = _plugin.ExportGamePresetAsBuiltin(sel.Name, out string err);
+            RefreshLists();
+            SetDevStatus(ok ? $"Exported '{sel.Name}' into the built-in folder." : "Export failed: " + err);
         }
 
         private void CarExportBuiltin_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedCar;
-            if (sel != null) ExportCarAsBuiltinRequested?.Invoke(sel.CarId, sel.PresetName);
+            if (sel == null || _plugin == null) return;
+            bool ok = _plugin.ExportCarPresetAsBuiltin(sel.CarId, sel.PresetName, out string err);
+            RefreshLists();
+            SetDevStatus(ok ? $"Exported car '{sel.CarId}' into the built-in folder." : "Export failed: " + err);
         }
 
         // IsChecked on every row model backs the checkbox column. Plain bool
