@@ -1,0 +1,20 @@
+{
+  "Type": "trueforce-car-preset",
+  "Version": 2,
+  "GameName": "FH6",
+  "CarId": "Car_378",
+  "PresetName": "Car_378 (default)",
+  "IsBuiltin": true,
+  "Override": {
+    "RevLimiter": {
+      "Enabled": true,
+      "Gain": 0.11,
+      "Freq": 53.79011,
+      "PulseFreq": 18.1786652,
+      "DutyCycle": 0.5,
+      "ActiveAmp": 0.35,
+      "Threshold": 0.8634156,
+      "Waveform": "Square"
+    }
+  }
+}

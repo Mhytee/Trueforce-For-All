@@ -1,0 +1,23 @@
+{
+  "Type": "trueforce-car-preset",
+  "Version": 2,
+  "GameName": "AssettoCorsa",
+  "CarId": "bdc_streetspec_ae86_v4",
+  "PresetName": "bdc_streetspec_ae86_v4 (default)",
+  "IsBuiltin": true,
+  "Override": {
+    "EnginePulse": {
+      "Enabled": true,
+      "Gain": 0.0755927339,
+      "Cylinders": 4,
+      "Pitch": 1.00160933,
+      "LowpassHz": 513.3297310777666,
+      "Waveform": "Sine"
+    },
+    "RoadBumps": null,
+    "TractionLoss": null,
+    "GearShift": null,
+    "AbsClick": null,
+    "AudioCapture": null
+  }
+}

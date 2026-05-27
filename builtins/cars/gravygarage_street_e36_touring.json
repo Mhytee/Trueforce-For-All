@@ -1,0 +1,36 @@
+{
+  "Type": "trueforce-car-preset",
+  "Version": 2,
+  "GameName": "AssettoCorsa",
+  "CarId": "gravygarage_street_e36_touring",
+  "PresetName": "gravygarage_street_e36_touring (default)",
+  "IsBuiltin": true,
+  "Override": {
+    "EnginePulse": {
+      "Enabled": true,
+      "Gain": 0.06518083,
+      "Cylinders": 8,
+      "Pitch": 1.00160933,
+      "LowpassHz": 775.6868531526661,
+      "Waveform": "Triangle"
+    },
+    "RoadBumps": null,
+    "TractionLoss": {
+      "Enabled": true,
+      "Gain": 0.06434366,
+      "Sensitivity": 0.1,
+      "Freq": 133.901657,
+      "NoiseLowpassHz": 250.0,
+      "NoiseHighpassHz": 40.932499272621456,
+      "Waveform": "Noise"
+    },
+    "GearShift": null,
+    "AbsClick": null,
+    "AudioCapture": {
+      "Enabled": true,
+      "Gain": 0.0517140329,
+      "LowpassCutoffHz": 567.0933954029683,
+      "HighpassCutoffHz": 35.20595203458165
+    }
+  }
+}

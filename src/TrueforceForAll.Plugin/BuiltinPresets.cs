@@ -80,6 +80,10 @@ namespace TrueforceForAll.Plugin
         /// JSON, deserialized the same way as user presets.</summary>
         public static IReadOnlyDictionary<string, string> BuiltinPresetJsons => Store.PresetJsons;
 
+        /// <summary>Car preset key -> serialized CarPresetFile JSON. Fed to
+        /// CarPresetStore.InstallOrUpdateBuiltinCarPresets. See BuiltinCarPresets.</summary>
+        public static IReadOnlyDictionary<string, string> CarPresetJsons => Store.CarPresetJsons;
+
         public static bool IsBuiltin(string presetName)
             => !string.IsNullOrEmpty(presetName) && Store.PresetJsons.ContainsKey(presetName);
 
