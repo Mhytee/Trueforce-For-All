@@ -27,18 +27,17 @@ namespace TrueforceForAll.Plugin
                 { "Wreckfest2",      "Wreckfest 2 (default)"       },
                 // Forza Horizon variants share the Data Out wire format
                 // (FH4/FH5/FH6) so one preset covers them all. Forza
-                // Motorsport ships native Trueforce on PC and the plugin
-                // auto-disables for it (see IsNativeTrueforceGame), so no
-                // mapping or built-in preset for that title.
+                // Motorsport and the F1 22-25 line ship native Trueforce
+                // on PC and the plugin auto-disables for them (see
+                // IsNativeTrueforceGame), so no mappings or built-in
+                // presets for those titles. Older F1 titles (F1 2021 and
+                // earlier) lack native Trueforce and are in scope, but they
+                // feed telemetry through SimHub's Codemasters reader and
+                // auto-seed an Assetto Corsa baseline preset when they run,
+                // so they need no dedicated built-in here either.
                 { "FH4",             "Forza Horizon (default)"     },
                 { "FH5",             "Forza Horizon (default)"     },
                 { "FH6",             "Forza Horizon (default)"     },
-                // F1 25 ships native Trueforce on PC (auto-disabled), but the
-                // built-in preset exists for the UDP path, where someone runs
-                // F1 telemetry over UDP to a wheel that isn't getting native
-                // Trueforce. The binding seeds it as the F1 25 default if the
-                // user opts in by enabling the plugin for the title.
-                { "F12025",          "F1 25 (default)"             },
                 // iRacing is in scope only via MAIRA passthrough. Its
                 // baseline is the Assetto Corsa values with FFB spike
                 // reduction OFF (iRacing's own softener and MAIRA already
@@ -57,7 +56,6 @@ namespace TrueforceForAll.Plugin
                 ["Wreckfest 2 (default)"]      = Wreckfest2Json,
                 ["Forza Horizon (default)"]    = ForzaHorizonJson,
                 ["iRacing (default)"]          = IRacingJson,
-                ["F1 25 (default)"]            = F125Json,
             };
 
         public static bool IsBuiltin(string presetName)
@@ -191,37 +189,6 @@ namespace TrueforceForAll.Plugin
             ""Drs"":{""Enabled"":true,""Gain"":0.280409724,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0481434,""Waveform"":""Square"",""SustainedWaveform"":""Sine""},
             ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.85,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""},
             ""RevLimiter"":{""Enabled"":true,""Gain"":0.1,""Freq"":90.0,""PulseFreq"":20.0,""DutyCycle"":0.5,""ActiveAmp"":0.35,""Threshold"":0.97,""Waveform"":""Square""},
-            ""Airborne"":{""Enabled"":true,""Reduction"":1,""DuckEngine"":false,""DuckAudio"":true,""DuckRoadBumps"":true,""DuckTractionLoss"":true,""DuckRevLimiter"":true,""DuckGearShift"":false,""DuckAbs"":false,""DuckPitLimiter"":false,""DuckDrs"":false,""DuckCollision"":false}
-        }";
-
-        // F1 25 baseline. Modeled on the Assetto Corsa default (a sensible
-        // cross-game GPRO starting point) with ABS enabled, since the F1 25
-        // UDP wire format does surface ABS pump activity (unlike Forza's Data
-        // Out). Aimed at the UDP path: a Logitech wheel running F1 telemetry
-        // over UDP where native Trueforce isn't reaching the wheel.
-        private const string F125Json = @"{
-            ""MasterGain"":0.9995428,
-            ""FfbScale"":0.8008723,
-            ""FfbInvertSign"":true,
-            ""FfbSmoothTimeConstantMs"":0.0,
-            ""FfbSpikeTamingEnabled"":true,
-            ""FfbSpikeUseSlewLimiter"":true,
-            ""FfbSpikeMaxLsbPerMs"":386.473816,
-            ""FfbPeakSoftLimitLsb"":2061.90381,
-            ""SkipFfbPassthrough"":false,
-            ""DuckDepth"":0.5953513,
-            ""DuckAttackMs"":5.0,
-            ""DuckReleaseMs"":80.0,
-            ""AudioCapture"":{""Enabled"":true,""Gain"":0.05952296,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595},
-            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Sine"",""ElectricMode"":""MutedHum"",""Layout"":""Auto"",""CustomEngineId"":"""",""CustomFiringPattern"":"""",""CustomFiringPatternName"":"""",""LoadLayerEnabled"":true,""LoadLayerGain"":0.429667532,""HighRpmBoostEnabled"":true,""HighRpmBoostAmount"":0.0,""Cylinders"":0,""EngineConfig"":""Auto"",""FiringOrderEnabled"":true},
-            ""RoadBumps"":{""Enabled"":true,""Gain"":0.448169053,""Freq"":61.45767,""Waveform"":""Triangle"",""SurfaceEnabled"":true,""SurfaceGain"":0.69514066,""SurfaceFreq"":120.0,""SurfaceRumbleScale"":1.0,""SurfaceLowpassHz"":800.0,""SurfaceHighpassHz"":60.0,""SurfaceWaveform"":""Noise"",""RumbleStripPulseAmp"":0.0172855314,""RumbleStripPulseMs"":120},
-            ""TractionLoss"":{""Enabled"":true,""Gain"":0.0387813151,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},
-            ""GearShift"":{""Enabled"":true,""Gain"":0.245671645,""Freq"":34.6132431,""Waveform"":""Sine""},
-            ""AbsClick"":{""Enabled"":true,""Gain"":0.140768245,""Freq"":150.0,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""},
-            ""PitLimiter"":{""Enabled"":true,""Gain"":0.0832266361,""Freq"":50.49936,""PulseFreq"":4.340589,""DutyCycle"":0.483226657,""ActiveAmp"":0.3,""Waveform"":""Square""},
-            ""Drs"":{""Enabled"":true,""Gain"":0.254834265,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0604196154,""Waveform"":""Square"",""SustainedWaveform"":""Triangle""},
-            ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.602429748,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""},
-            ""RevLimiter"":{""Enabled"":true,""Gain"":0.110324606,""Freq"":96.62285,""PulseFreq"":18.1786652,""DutyCycle"":0.5,""ActiveAmp"":0.35,""Threshold"":0.8320989,""Waveform"":""Square""},
             ""Airborne"":{""Enabled"":true,""Reduction"":1,""DuckEngine"":false,""DuckAudio"":true,""DuckRoadBumps"":true,""DuckTractionLoss"":true,""DuckRevLimiter"":true,""DuckGearShift"":false,""DuckAbs"":false,""DuckPitLimiter"":false,""DuckDrs"":false,""DuckCollision"":false}
         }";
     }
