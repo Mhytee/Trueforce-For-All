@@ -4379,7 +4379,9 @@ namespace TrueforceForAll.Plugin
         public bool DeleteCarPreset(string carId, string presetName)
         {
             if (_carStore == null || string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
-            if (IsCarPresetBuiltin(carId, presetName)) return false;
+            bool wasBuiltin = IsCarPresetBuiltin(carId, presetName);
+            if (wasBuiltin && !DevMode) return false;   // DEV authoring may delete built-ins
+            string game = GetCarPresetGame(carId, presetName); // capture before delete
             _carStore.Delete(carId, presetName);
             if (Settings?.CarDefaults != null
                 && Settings.CarDefaults.TryGetValue(carId, out var active)
@@ -4388,6 +4390,11 @@ namespace TrueforceForAll.Plugin
                 Settings.CarDefaults.Remove(carId);
                 if (carId == _activeCarId)
                     ReloadActiveCarOverrideFromStore();
+            }
+            if (wasBuiltin && DevMode)
+            {
+                try { BuiltinPresetWriter.DeleteCar(BuiltinPresets.CurrentFolder, game ?? "", carId); BuiltinPresets.Reload(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV delete car folder file failed: {ex.Message}"); }
             }
             return true;
         }
@@ -5612,7 +5619,10 @@ namespace TrueforceForAll.Plugin
         public bool DeletePreset(string presetName)
         {
             if (Settings?.Presets == null || string.IsNullOrEmpty(presetName)) return false;
-            if (IsBuiltinPreset(presetName))
+            bool wasBuiltin = IsBuiltinPreset(presetName);
+            // Non-dev: built-ins are protected. DEV authoring may delete them
+            // (also removes the folder file + its default bindings below).
+            if (wasBuiltin && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[Trueforce] Refusing to delete built-in preset '{presetName}'.");
                 return false;
@@ -5630,6 +5640,12 @@ namespace TrueforceForAll.Plugin
 
             if (_activePresetName == presetName) _activePresetName = null;
             this.SaveCommonSettings("GeneralSettings", Settings);
+
+            if (wasBuiltin && DevMode)
+            {
+                try { BuiltinPresetWriter.DeleteGame(BuiltinPresets.CurrentFolder, presetName); BuiltinPresets.Reload(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV delete folder file failed: {ex.Message}"); }
+            }
             SimHub.Logging.Current.Info($"[Trueforce] Deleted preset '{presetName}'.");
             return true;
         }
@@ -5667,7 +5683,10 @@ namespace TrueforceForAll.Plugin
             if (Settings?.Presets == null) return false;
             if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) return false;
             if (string.Equals(oldName, newName, StringComparison.Ordinal)) return true;
-            if (IsBuiltinPreset(oldName))
+            bool wasBuiltin = IsBuiltinPreset(oldName);
+            // Non-dev: built-in names are part of the brand. DEV authoring may
+            // rename them (renames the folder file + repoints defaults below).
+            if (wasBuiltin && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[Trueforce] Refusing to rename built-in preset '{oldName}'.");
                 return false;
@@ -5688,6 +5707,12 @@ namespace TrueforceForAll.Plugin
 
             if (_activePresetName == oldName) _activePresetName = newName;
             this.SaveCommonSettings("GeneralSettings", Settings);
+
+            if (wasBuiltin && DevMode)
+            {
+                try { BuiltinPresetWriter.RenameGame(BuiltinPresets.CurrentFolder, oldName, newName); BuiltinPresets.Reload(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV rename folder file failed: {ex.Message}"); }
+            }
             SimHub.Logging.Current.Info($"[Trueforce] Renamed preset '{oldName}' to '{newName}'.");
             return true;
         }
@@ -5722,6 +5747,13 @@ namespace TrueforceForAll.Plugin
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             Settings.GameDefaults[gameName] = presetName;
             this.SaveCommonSettings("GeneralSettings", Settings);
+            // DEV authoring: the default map is built from the plugin, not
+            // hand-edited, so write it through to game-defaults.json.
+            if (DevMode)
+            {
+                try { BuiltinPresetWriter.SetGameDefault(BuiltinPresets.CurrentFolder, gameName, presetName); BuiltinPresets.Reload(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV write game-default failed: {ex.Message}"); }
+            }
             SimHub.Logging.Current.Info($"[Trueforce] '{presetName}' set as default for '{gameName}'.");
             return true;
         }
@@ -5732,6 +5764,11 @@ namespace TrueforceForAll.Plugin
             if (Settings?.GameDefaults == null || string.IsNullOrEmpty(gameName)) return false;
             if (!Settings.GameDefaults.Remove(gameName)) return false;
             this.SaveCommonSettings("GeneralSettings", Settings);
+            if (DevMode)
+            {
+                try { BuiltinPresetWriter.RemoveGameDefault(BuiltinPresets.CurrentFolder, gameName); BuiltinPresets.Reload(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV remove game-default failed: {ex.Message}"); }
+            }
             SimHub.Logging.Current.Info($"[Trueforce] Cleared default preset for '{gameName}'.");
             return true;
         }

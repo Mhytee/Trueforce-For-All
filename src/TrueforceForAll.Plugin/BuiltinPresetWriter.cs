@@ -45,6 +45,47 @@ namespace TrueforceForAll.Plugin
             return rel;
         }
 
+        /// <summary>Delete a game preset file (games/&lt;name&gt;.json).</summary>
+        public static void DeleteGame(string folder, string name)
+        {
+            string path = Path.Combine(folder, "games", SafeFile(name) + ".json");
+            if (File.Exists(path)) File.Delete(path);
+        }
+
+        /// <summary>Delete a car preset file (cars/&lt;game&gt;/&lt;carId&gt;.json).</summary>
+        public static void DeleteCar(string folder, string gameName, string carId)
+        {
+            string g = SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName);
+            string path = Path.Combine(folder, "cars", g, SafeFile(carId) + ".json");
+            if (File.Exists(path)) File.Delete(path);
+        }
+
+        /// <summary>Rename a game preset file and repoint any game-defaults
+        /// entries from the old name to the new one.</summary>
+        public static void RenameGame(string folder, string oldName, string newName)
+        {
+            string oldPath = Path.Combine(folder, "games", SafeFile(oldName) + ".json");
+            string newPath = Path.Combine(folder, "games", SafeFile(newName) + ".json");
+            if (File.Exists(oldPath))
+            {
+                Directory.CreateDirectory(Path.Combine(folder, "games"));
+                if (File.Exists(newPath)) File.Delete(newPath);
+                File.Move(oldPath, newPath);
+            }
+            // Repoint defaults old -> new.
+            string dpath = Path.Combine(folder, BuiltinPresetStore.GameDefaultsFileName);
+            if (!File.Exists(dpath)) return;
+            try
+            {
+                var o = JObject.Parse(File.ReadAllText(dpath));
+                bool changed = false;
+                foreach (var p in o.Properties())
+                    if ((string)p.Value == oldName) { p.Value = newName; changed = true; }
+                if (changed) File.WriteAllText(dpath, o.ToString(Formatting.Indented));
+            }
+            catch { /* leave defaults as-is on parse trouble */ }
+        }
+
         /// <summary>Set a game-default binding (GameName -> built-in preset
         /// name) in game-defaults.json. No-op-safe.</summary>
         public static void SetGameDefault(string folder, string gameName, string presetName)
@@ -57,6 +98,20 @@ namespace TrueforceForAll.Plugin
             catch { o = new JObject(); }
             o[gameName] = presetName;
             File.WriteAllText(path, o.ToString(Formatting.Indented));
+        }
+
+        /// <summary>Remove a game's binding from game-defaults.json. No-op-safe.</summary>
+        public static void RemoveGameDefault(string folder, string gameName)
+        {
+            if (string.IsNullOrEmpty(gameName)) return;
+            string path = Path.Combine(folder, BuiltinPresetStore.GameDefaultsFileName);
+            if (!File.Exists(path)) return;
+            try
+            {
+                var o = JObject.Parse(File.ReadAllText(path));
+                if (o.Remove(gameName)) File.WriteAllText(path, o.ToString(Formatting.Indented));
+            }
+            catch { /* ignore */ }
         }
     }
 }

@@ -619,10 +619,12 @@ namespace TrueforceForAll.Plugin
             bool  anySelected         = sel != null;
             bool  selUserPreset       = anySelected && !sel.Builtin;
 
+            // DEV authoring lets the owner act on built-ins too (rename / delete).
+            bool selEditable = selUserPreset || (_devMode && anySelected);
             GameEditBtn.IsEnabled         = anySelected   && checkedCount <= 1;
-            GameRenameBtn.IsEnabled       = selUserPreset && checkedCount <= 1;
+            GameRenameBtn.IsEnabled       = selEditable   && checkedCount <= 1;
             GameDuplicateBtn.IsEnabled    = anySelected   && checkedCount <= 1;
-            GameDeleteBtn.IsEnabled       = checkedNonBuiltin > 0 || selUserPreset;
+            GameDeleteBtn.IsEnabled       = checkedNonBuiltin > 0 || selEditable;
             GameSetDefaultBtn.IsEnabled   = anySelected   && checkedCount <= 1;
             GameClearDefaultBtn.IsEnabled = anySelected   && checkedCount <= 1 && sel.Defaults.Count > 0;
             if (GameExportBuiltinBtn != null)
@@ -644,10 +646,13 @@ namespace TrueforceForAll.Plugin
             bool  anySelected       = sel != null;
             bool  selUserPreset     = anySelected && !sel.Builtin;
 
+            // DEV authoring lets the owner delete built-in car presets too
+            // (rename stays user-only: car built-ins are keyed by carId).
+            bool carSelDeletable = selUserPreset || (_devMode && anySelected);
             CarEditBtn.IsEnabled      = anySelected   && checkedCount <= 1;
             CarRenameBtn.IsEnabled    = selUserPreset && checkedCount <= 1;
             CarDuplicateBtn.IsEnabled = anySelected   && checkedCount <= 1;
-            CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || selUserPreset;
+            CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelDeletable;
             CarSetActiveBtn.IsEnabled = anySelected   && checkedCount <= 1 && !sel.Active;
             if (CarExportBuiltinBtn != null)
                 CarExportBuiltinBtn.IsEnabled = _devMode && anySelected && checkedCount <= 1;
@@ -673,7 +678,7 @@ namespace TrueforceForAll.Plugin
         private void GameRename_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedGame;
-            if (sel == null || sel.Builtin) return;
+            if (sel == null || (sel.Builtin && !_devMode)) return;   // DEV may rename built-ins
             string newName = PromptForName("Rename preset", "New name:", sel.Name);
             if (string.IsNullOrWhiteSpace(newName)) return;
             newName = newName.Trim();
@@ -737,7 +742,7 @@ namespace TrueforceForAll.Plugin
             }
 
             var sel = SelectedGame;
-            if (sel == null || sel.Builtin) return;
+            if (sel == null || (sel.Builtin && !_devMode)) return;   // DEV may delete built-ins
             string warning = sel.Defaults.Count > 0
                 ? $"Delete preset '{sel.Name}'?\n\nIt's currently the default for: {string.Join(", ", sel.Defaults)}. Those games will lose their auto-load binding."
                 : $"Delete preset '{sel.Name}'?";
@@ -896,7 +901,7 @@ namespace TrueforceForAll.Plugin
             }
 
             var sel = SelectedCar;
-            if (sel == null || sel.Builtin) return;
+            if (sel == null || (sel.Builtin && !_devMode)) return;   // DEV may delete built-in car presets
             string warning = sel.Active
                 ? $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?\n\nIt's currently the default for this car; the car will fall back to its built-in default (or globals)."
                 : $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?";
