@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "presets": [
+    {
+      "name": "Assetto Corsa (default)",
+      "file": "Assetto Corsa (default).json"
+    },
+    {
+      "name": "Wreckfest 2 (default)",
+      "file": "Wreckfest 2 (default).json"
+    },
+    {
+      "name": "Forza Horizon (default)",
+      "file": "Forza Horizon (default).json"
+    },
+    {
+      "name": "iRacing (default)",
+      "file": "iRacing (default).json"
+    }
+  ],
+  "gameDefaults": {
+    "AssettoCorsa": "Assetto Corsa (default)",
+    "Wreckfest2": "Wreckfest 2 (default)",
+    "FH4": "Forza Horizon (default)",
+    "FH5": "Forza Horizon (default)",
+    "FH6": "Forza Horizon (default)",
+    "IRacing": "iRacing (default)"
+  }
+}

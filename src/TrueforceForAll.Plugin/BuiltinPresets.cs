@@ -1,195 +1,91 @@
-// Built-in preset library, shipped with the plugin, installed into the
-// user's preset library on first run if not already present.
+// Built-in preset library facade. The presets themselves are data now: plain
+// JSON files in a folder (see BuiltinPresetStore), not C# string consts. This
+// type just resolves which folder to load and exposes the loaded set under the
+// same API the rest of the plugin already uses (BuiltinPresetJsons /
+// GameDefaultBindings / IsBuiltin), so callers didn't change when the storage
+// moved out of code.
 //
-// Built-in preset names are the key into BuiltinPresetJsons. Names ending
-// in " (default)" are treated as factory defaults: refuse delete, refuse
-// in-place overwrite (the Save flow forks to a user-named preset instead).
+// Folder resolution:
+//   1. Settings.BuiltinPresetsFolder, if set and it exists (lets a user point
+//      at a moved folder or a shared "preset pack").
+//   2. Otherwise the shipped default next to the plugin DLL: <dll>\TrueforceBuiltins.
 //
-// Why JSON strings instead of object literals: snapshots are derived from
-// real tunings exported as JSON; pasting the JSON here keeps them
-// round-trippable with the existing serializer (StringEnumConverter for
-// Waveform / AbsMode), and updating a baseline is just paste-replace.
+// The plugin calls Initialize(...) early in Init (after settings load) so the
+// folder override is honoured. Anything that touches the API before that
+// triggers a lazy load from the default folder.
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 
 namespace TrueforceForAll.Plugin
 {
     internal static class BuiltinPresets
     {
+        public const string DefaultFolderName = "TrueforceBuiltins";
+
+        private static BuiltinPresetStore _store;
+
+        private static BuiltinPresetStore Store
+        {
+            get
+            {
+                if (_store == null) _store = BuiltinPresetStore.LoadFromFolder(DefaultFolder);
+                return _store;
+            }
+        }
+
+        /// <summary>Folder shipped beside the plugin DLL.</summary>
+        public static string DefaultFolder
+        {
+            get
+            {
+                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
+                return Path.Combine(dir, DefaultFolderName);
+            }
+        }
+
+        /// <summary>The folder actually loaded (after Initialize). Surfaced so
+        /// the UI can show / open / repair it.</summary>
+        public static string CurrentFolder => Store.FolderPath;
+
+        public static bool Loaded => Store.Loaded;
+
+        /// <summary>Resolve and load the built-in folder. <paramref
+        /// name="folderOverride"/> wins when non-empty and present, else the
+        /// shipped default is used. Idempotent; call again after the user
+        /// changes the folder.</summary>
+        public static void Initialize(string folderOverride)
+        {
+            string folder = (!string.IsNullOrWhiteSpace(folderOverride) && Directory.Exists(folderOverride))
+                ? folderOverride
+                : DefaultFolder;
+            _store = BuiltinPresetStore.LoadFromFolder(folder);
+        }
+
+        /// <summary>Reload the current folder from disk (after an export /
+        /// import that changed the files).</summary>
+        public static void Reload()
+        {
+            _store = BuiltinPresetStore.LoadFromFolder(_store?.FolderPath ?? DefaultFolder);
+        }
+
         /// <summary>Per-game default preset name, bound automatically as the
         /// game's default if no user-chosen default exists yet. SimHub
-        /// GameName → built-in preset name (must be a key in
-        /// <see cref="BuiltinPresetJsons"/>).</summary>
-        public static readonly IReadOnlyDictionary<string, string> GameDefaultBindings =
-            new Dictionary<string, string>
-            {
-                { "AssettoCorsa",    "Assetto Corsa (default)"     },
-                { "Wreckfest2",      "Wreckfest 2 (default)"       },
-                // Forza Horizon variants share the Data Out wire format
-                // (FH4/FH5/FH6) so one preset covers them all. Forza
-                // Motorsport and the F1 22-25 line ship native Trueforce
-                // on PC and the plugin auto-disables for them (see
-                // IsNativeTrueforceGame), so no mappings or built-in
-                // presets for those titles. Older F1 titles (F1 2021 and
-                // earlier) lack native Trueforce and are in scope, but they
-                // feed telemetry through SimHub's Codemasters reader and
-                // auto-seed an Assetto Corsa baseline preset when they run,
-                // so they need no dedicated built-in here either.
-                { "FH4",             "Forza Horizon (default)"     },
-                { "FH5",             "Forza Horizon (default)"     },
-                { "FH6",             "Forza Horizon (default)"     },
-                // iRacing is in scope only via MAIRA passthrough. Its
-                // baseline is the Assetto Corsa values with FFB spike
-                // reduction OFF (iRacing's own softener and MAIRA already
-                // handle spikes, so a second pass just dulls the signal).
-                { "IRacing",         "iRacing (default)"           },
-            };
+        /// GameName -> built-in preset name.</summary>
+        public static IReadOnlyDictionary<string, string> GameDefaultBindings => Store.GameDefaults;
 
-        /// <summary>Built-in preset name → serialized GameSettingsSnapshot
-        /// JSON. Deserialized via Newtonsoft.Json into the same shape as
-        /// user presets. Each entry is the user-tested baseline that
-        /// shipped with the plugin.</summary>
-        public static readonly IReadOnlyDictionary<string, string> BuiltinPresetJsons =
-            new Dictionary<string, string>
-            {
-                ["Assetto Corsa (default)"]    = AssettoCorsaJson,
-                ["Wreckfest 2 (default)"]      = Wreckfest2Json,
-                ["Forza Horizon (default)"]    = ForzaHorizonJson,
-                ["iRacing (default)"]          = IRacingJson,
-            };
+        /// <summary>Built-in preset name -> serialized GameSettingsSnapshot
+        /// JSON, deserialized the same way as user presets.</summary>
+        public static IReadOnlyDictionary<string, string> BuiltinPresetJsons => Store.PresetJsons;
 
         public static bool IsBuiltin(string presetName)
-            => !string.IsNullOrEmpty(presetName) && BuiltinPresetJsons.ContainsKey(presetName);
+            => !string.IsNullOrEmpty(presetName) && Store.PresetJsons.ContainsKey(presetName);
 
-        // ----- Snapshots -----
-        // These are GameSettingsSnapshot shapes (no top-level wrapper). Source:
-        // exported from a real tuning session, then minified.
-
-        // Refreshed in 0.1.3 from a recent live "Assetto Corsa" preset
-        // export. Earlier baseline (May 2026) predated PitLimiter / DRS /
-        // Collision as effects and the RoadBumps surface channel / engine
-        // load-layer + high-RPM boost fields. The values here are also the
-        // basis for the C# class defaults in TrueforceSettings.cs.
-        private const string AssettoCorsaJson = @"{
-            ""MasterGain"":0.9995428,
-            ""FfbScale"":0.8008723,
-            ""FfbInvertSign"":true,
-            ""FfbSmoothTimeConstantMs"":0.0,
-            ""FfbSpikeTamingEnabled"":true,
-            ""FfbSpikeUseSlewLimiter"":true,
-            ""FfbSpikeMaxLsbPerMs"":386.473816,
-            ""FfbPeakSoftLimitLsb"":2061.90381,
-            ""SkipFfbPassthrough"":false,
-            ""DuckDepth"":0.5953513,
-            ""DuckAttackMs"":5.0,
-            ""DuckReleaseMs"":80.0,
-            ""AudioCapture"":{""Enabled"":true,""Gain"":0.05952296,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595},
-            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Sine"",""ElectricMode"":""MutedHum"",""Layout"":""Auto"",""CustomEngineId"":"""",""CustomFiringPattern"":"""",""CustomFiringPatternName"":"""",""LoadLayerEnabled"":true,""LoadLayerGain"":0.429667532,""HighRpmBoostEnabled"":true,""HighRpmBoostAmount"":0.0,""Cylinders"":0,""EngineConfig"":""Auto"",""FiringOrderEnabled"":true},
-            ""RoadBumps"":{""Enabled"":true,""Gain"":0.448169053,""Freq"":61.45767,""Waveform"":""Triangle"",""SurfaceEnabled"":true,""SurfaceGain"":0.69514066,""SurfaceFreq"":120.0,""SurfaceRumbleScale"":1.0,""SurfaceLowpassHz"":800.0,""SurfaceHighpassHz"":60.0,""SurfaceWaveform"":""Noise"",""RumbleStripPulseAmp"":0.0172855314,""RumbleStripPulseMs"":120},
-            ""TractionLoss"":{""Enabled"":true,""Gain"":0.0387813151,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},
-            ""GearShift"":{""Enabled"":true,""Gain"":0.245671645,""Freq"":34.6132431,""Waveform"":""Sine""},
-            ""AbsClick"":{""Enabled"":true,""Gain"":0.140768245,""Freq"":150.0,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""},
-            ""PitLimiter"":{""Enabled"":true,""Gain"":0.0832266361,""Freq"":50.49936,""PulseFreq"":4.340589,""DutyCycle"":0.483226657,""ActiveAmp"":0.3,""Waveform"":""Square""},
-            ""Drs"":{""Enabled"":true,""Gain"":0.254834265,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0604196154,""Waveform"":""Square"",""SustainedWaveform"":""Triangle""},
-            ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.602429748,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""},
-            ""RevLimiter"":{""Enabled"":true,""Gain"":0.110324606,""Freq"":96.62285,""PulseFreq"":18.1786652,""DutyCycle"":0.5,""ActiveAmp"":0.35,""Threshold"":0.8320989,""Waveform"":""Square""},
-            ""Airborne"":{""Enabled"":true,""Reduction"":1,""DuckEngine"":false,""DuckAudio"":true,""DuckRoadBumps"":true,""DuckTractionLoss"":true,""DuckRevLimiter"":true,""DuckGearShift"":false,""DuckAbs"":false,""DuckPitLimiter"":false,""DuckDrs"":false,""DuckCollision"":false}
-        }";
-
-        // iRacing default: the Assetto Corsa baseline verbatim, with FFB
-        // spike reduction turned OFF. iRacing only runs through MAIRA
-        // passthrough here; iRacing's own FFB softener and MAIRA already
-        // tame spikes, so a second taming pass our side just dulls the
-        // signal. Mirrors the AC preset otherwise until a dedicated iRacing
-        // tuning pass replaces it.
-        private const string IRacingJson = @"{
-            ""MasterGain"":0.9995428,
-            ""FfbScale"":0.8008723,
-            ""FfbInvertSign"":true,
-            ""FfbSmoothTimeConstantMs"":0.0,
-            ""FfbSpikeTamingEnabled"":false,
-            ""FfbSpikeMaxLsbPerMs"":2508.35864,
-            ""FfbPeakSoftLimitLsb"":2061.90381,
-            ""SkipFfbPassthrough"":false,
-            ""DuckDepth"":0.5953513,
-            ""DuckAttackMs"":5.0,
-            ""DuckReleaseMs"":80.0,
-            ""AudioCapture"":{""Enabled"":true,""Gain"":0.05952296,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595},
-            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Sine"",""ElectricMode"":""MutedHum"",""Layout"":""Auto"",""CustomEngineId"":"""",""CustomFiringPattern"":"""",""CustomFiringPatternName"":"""",""LoadLayerEnabled"":true,""LoadLayerGain"":0.8,""HighRpmBoostEnabled"":true,""HighRpmBoostAmount"":0.7,""Cylinders"":0,""EngineConfig"":""Auto"",""FiringOrderEnabled"":true},
-            ""RoadBumps"":{""Enabled"":true,""Gain"":0.448169053,""Freq"":61.45767,""Waveform"":""Triangle"",""SurfaceEnabled"":true,""SurfaceGain"":0.69514066,""SurfaceFreq"":120.0,""SurfaceRumbleScale"":1.0,""SurfaceLowpassHz"":800.0,""SurfaceHighpassHz"":60.0,""SurfaceWaveform"":""Noise"",""RumbleStripPulseAmp"":0.0172855314,""RumbleStripPulseMs"":120},
-            ""TractionLoss"":{""Enabled"":true,""Gain"":0.0387813151,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},
-            ""GearShift"":{""Enabled"":true,""Gain"":0.396566778,""Freq"":34.6132431,""Waveform"":""Square""},
-            ""AbsClick"":{""Enabled"":true,""Gain"":0.140768245,""Freq"":150.0,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""},
-            ""PitLimiter"":{""Enabled"":true,""Gain"":0.0832266361,""Freq"":50.49936,""PulseFreq"":4.340589,""DutyCycle"":0.483226657,""ActiveAmp"":0.3,""Waveform"":""Square""},
-            ""Drs"":{""Enabled"":true,""Gain"":0.280409724,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0481434,""Waveform"":""Square"",""SustainedWaveform"":""Sine""},
-            ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.85,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""},
-            ""RevLimiter"":{""Enabled"":true,""Gain"":0.1,""Freq"":90.0,""PulseFreq"":20.0,""DutyCycle"":0.5,""ActiveAmp"":0.35,""Threshold"":0.97,""Waveform"":""Square""},
-            ""Airborne"":{""Enabled"":true,""Reduction"":1,""DuckEngine"":false,""DuckAudio"":true,""DuckRoadBumps"":true,""DuckTractionLoss"":true,""DuckRevLimiter"":true,""DuckGearShift"":false,""DuckAbs"":false,""DuckPitLimiter"":false,""DuckDrs"":false,""DuckCollision"":false}
-        }";
-
-        // Forza Horizon baseline. Tuned for arcade-leaning physics where
-        // tire slip saturates harder than ACC; Sensitivity is bumped up to
-        // ~0.4 so light slides actually trigger before the fully-saturated
-        // hard drift state. Cylinders=4 is just the slider-default fallback;
-        // EnginePulse.AutoCylinders takes over from Forza's NumCylinders the
-        // moment the user enters any car. SkipFfbPassthrough=false because
-        // FH does not ship native Trueforce, its FFB rides on ep0 like any
-        // standard DirectInput game, so we mirror the captured target into
-        // ep3 cur ourselves. (Forza Motorsport ships native Trueforce and
-        // would want this true, but FM is in the auto-disable list.)
-        private const string ForzaHorizonJson = @"{
-            ""MasterGain"":1.0,
-            ""FfbScale"":1.0,
-            ""FfbInvertSign"":true,
-            ""FfbSmoothTimeConstantMs"":0.0,
-            ""FfbSpikeTamingEnabled"":false,
-            ""FfbSpikeMaxLsbPerMs"":2060.923,
-            ""FfbPeakSoftLimitLsb"":1561.78564,
-            ""SkipFfbPassthrough"":false,
-            ""DuckDepth"":0.6952232,
-            ""DuckAttackMs"":5.0,
-            ""DuckReleaseMs"":80.0,
-            ""AudioCapture"":{""Enabled"":true,""Gain"":0.05,""LowpassCutoffHz"":350.0,""HighpassCutoffHz"":30.0},
-            ""EnginePulse"":{""Enabled"":true,""Gain"":0.05,""Pitch"":1.0,""LowpassHz"":450.0,""Waveform"":""Triangle"",""ElectricMode"":""MutedHum"",""Layout"":""Auto"",""CustomEngineId"":"""",""CustomFiringPattern"":"""",""CustomFiringPatternName"":"""",""LoadLayerEnabled"":true,""LoadLayerGain"":0.8,""HighRpmBoostEnabled"":true,""HighRpmBoostAmount"":0.7,""Cylinders"":0,""EngineConfig"":""Auto"",""FiringOrderEnabled"":true},
-            ""RoadBumps"":{""Enabled"":true,""Gain"":0.2173913,""Freq"":60.0,""Waveform"":""Noise"",""SurfaceEnabled"":true,""SurfaceGain"":0.19590795,""SurfaceFreq"":122.199486,""SurfaceRumbleScale"":1.00345278,""SurfaceLowpassHz"":900.0,""SurfaceHighpassHz"":70.0,""SurfaceWaveform"":""Noise"",""RumbleStripPulseAmp"":0.0,""RumbleStripPulseMs"":120},
-            ""TractionLoss"":{""Enabled"":true,""Gain"":0.08,""Sensitivity"":0.270204633,""Freq"":133.9,""NoiseLowpassHz"":307.09718670076728,""NoiseHighpassHz"":30.281329923273656,""Waveform"":""Noise""},
-            ""GearShift"":{""Enabled"":true,""Gain"":0.4,""Freq"":40.0,""Waveform"":""Sine""},
-            ""AbsClick"":{""Enabled"":false,""Gain"":0.15,""Freq"":150.0,""PulseFreq"":9.8,""DutyCycle"":0.33,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""},
-            ""PitLimiter"":{""Enabled"":true,""Gain"":0.0832266361,""Freq"":50.49936,""PulseFreq"":4.340589,""DutyCycle"":0.483226657,""ActiveAmp"":0.3,""Waveform"":""Square""},
-            ""Drs"":{""Enabled"":true,""Gain"":0.280409724,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0481434,""Waveform"":""Square"",""SustainedWaveform"":""Sine""},
-            ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.85,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""},
-            ""RevLimiter"":{""Enabled"":true,""Gain"":0.11,""Freq"":53.79011,""PulseFreq"":18.1786652,""DutyCycle"":0.5,""ActiveAmp"":0.35,""Threshold"":0.8320989,""Waveform"":""Square""},
-            ""Airborne"":{""Enabled"":true,""Reduction"":1,""DuckEngine"":false,""DuckAudio"":true,""DuckRoadBumps"":true,""DuckTractionLoss"":true,""DuckRevLimiter"":true,""DuckGearShift"":false,""DuckAbs"":false,""DuckPitLimiter"":false,""DuckDrs"":false,""DuckCollision"":false}
-        }";
-
-        // Wreckfest 2 baseline. Per project owner: use the same effect
-        // settings as the AC default since they're a reasonable
-        // cross-game starting point on a GPRO; only the CarOverrides
-        // differ (Wreckfest has its own car-id namespace, so the AC
-        // overrides don't transfer).
-        private const string Wreckfest2Json = @"{
-            ""MasterGain"":0.9995428,
-            ""FfbScale"":0.8008723,
-            ""FfbInvertSign"":true,
-            ""FfbSmoothTimeConstantMs"":0.0,
-            ""FfbSpikeTamingEnabled"":true,
-            ""FfbSpikeMaxLsbPerMs"":2508.35864,
-            ""FfbPeakSoftLimitLsb"":2061.90381,
-            ""SkipFfbPassthrough"":false,
-            ""DuckDepth"":0.5953513,
-            ""DuckAttackMs"":5.0,
-            ""DuckReleaseMs"":80.0,
-            ""AudioCapture"":{""Enabled"":true,""Gain"":0.05952296,""LowpassCutoffHz"":567.0934,""HighpassCutoffHz"":35.20595},
-            ""EnginePulse"":{""Enabled"":true,""Gain"":0.06518083,""Pitch"":1.00160933,""LowpassHz"":510.1833,""Waveform"":""Sine"",""ElectricMode"":""MutedHum"",""Layout"":""Auto"",""CustomEngineId"":"""",""CustomFiringPattern"":"""",""CustomFiringPatternName"":"""",""LoadLayerEnabled"":true,""LoadLayerGain"":0.8,""HighRpmBoostEnabled"":true,""HighRpmBoostAmount"":0.7,""Cylinders"":0,""EngineConfig"":""Auto"",""FiringOrderEnabled"":true},
-            ""RoadBumps"":{""Enabled"":true,""Gain"":0.448169053,""Freq"":61.45767,""Waveform"":""Triangle"",""SurfaceEnabled"":true,""SurfaceGain"":0.69514066,""SurfaceFreq"":120.0,""SurfaceRumbleScale"":1.0,""SurfaceLowpassHz"":800.0,""SurfaceHighpassHz"":60.0,""SurfaceWaveform"":""Noise"",""RumbleStripPulseAmp"":0.0172855314,""RumbleStripPulseMs"":120},
-            ""TractionLoss"":{""Enabled"":true,""Gain"":0.0387813151,""Sensitivity"":0.178701326,""Freq"":133.901657,""NoiseLowpassHz"":250.0,""NoiseHighpassHz"":40.9325,""Waveform"":""Noise""},
-            ""GearShift"":{""Enabled"":true,""Gain"":0.396566778,""Freq"":34.6132431,""Waveform"":""Square""},
-            ""AbsClick"":{""Enabled"":true,""Gain"":0.140768245,""Freq"":150.0,""PulseFreq"":9.821309,""DutyCycle"":0.331281453,""TickDurationMs"":35.0,""Mode"":""Pulse"",""Waveform"":""Square""},
-            ""PitLimiter"":{""Enabled"":true,""Gain"":0.0832266361,""Freq"":50.49936,""PulseFreq"":4.340589,""DutyCycle"":0.483226657,""ActiveAmp"":0.3,""Waveform"":""Square""},
-            ""Drs"":{""Enabled"":true,""Gain"":0.280409724,""ActivationFreq"":60.3841171,""ActivationMs"":80,""ActivationAmp"":0.5016645,""SustainedFreq"":120.371323,""SustainedAmp"":0.0481434,""Waveform"":""Square"",""SustainedWaveform"":""Sine""},
-            ""Collision"":{""Enabled"":true,""Gain"":0.208867252,""Freq"":50.0,""EnvelopeMs"":120,""MinThreshold"":0.139180541,""MinAmp"":0.2,""MaxAmp"":0.85,""NormalizationScale"":2.0,""RefractoryMs"":250,""Waveform"":""Square""},
-            ""RevLimiter"":{""Enabled"":true,""Gain"":0.1,""Freq"":90.0,""PulseFreq"":20.0,""DutyCycle"":0.5,""ActiveAmp"":0.35,""Threshold"":0.97,""Waveform"":""Square""},
-            ""Airborne"":{""Enabled"":true,""Reduction"":1,""DuckEngine"":false,""DuckAudio"":true,""DuckRoadBumps"":true,""DuckTractionLoss"":true,""DuckRevLimiter"":true,""DuckGearShift"":false,""DuckAbs"":false,""DuckPitLimiter"":false,""DuckDrs"":false,""DuckCollision"":false}
-        }";
+        /// <summary>Validate the loaded built-ins (parse + missing-section
+        /// check) against the given top-level section names. For the dev panel.</summary>
+        public static List<string> Validate(IEnumerable<string> expectedSections)
+            => Store.Validate(expectedSections);
     }
 }

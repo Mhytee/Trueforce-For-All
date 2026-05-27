@@ -1260,6 +1260,9 @@ namespace TrueforceForAll.Plugin
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
+            // Load the file-based built-in presets (folder override -> shipped
+            // default) before anything seeds or queries them below.
+            BuiltinPresets.Initialize(Settings.BuiltinPresetsFolder);
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
             if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
             if (Settings.SeenEffects  == null) Settings.SeenEffects  = new List<string>();

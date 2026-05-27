@@ -3,7 +3,7 @@
 ; What it does:
 ;   1. Detects SimHub via its Inno-Setup registry key, with fallbacks.
 ;      No SimHub -> error dialog with download link, abort.
-;   2. Drops 5 plugin files into SimHub's install folder.
+;   2. Drops the plugin files + the built-in preset folder into SimHub's install folder.
 ;   3. If USBPcap isn't installed, runs the bundled USBPcapSetup silently,
 ;      then registers NonStandardHWIDs so the kernel filter sees USB 3.0
 ;      ports too (matters because users plug wheels into anything).
@@ -24,6 +24,8 @@
 #define PluginBin      "..\src\TrueforceForAll.Plugin\bin\Release\net48"
 #define HelperPublish  "..\src\TrueforceForAll.LoopbackHelper\bin\Release\net8.0\win-x64\publish"
 #define UsbPcapSetup   "vendor\USBPcapSetup.exe"
+; Shipped built-in presets (data files; loaded at runtime by BuiltinPresets).
+#define BuiltinsDir    "..\builtins"
 
 [Setup]
 ; AppId is what registers our uninstall entry. Don't change once published.
@@ -80,6 +82,12 @@ Type: files; Name: "{app}\SimHubTrueforce.LoopbackHelper.exe"
 Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+; Built-in preset data files -> {app}\TrueforceBuiltins. These are now the
+; source of truth for the shipped presets (no longer C# consts). Overwritten
+; on upgrade so updated built-ins land; users who want a persistent / custom
+; set point Settings.BuiltinPresetsFolder at their own folder instead.
+Source: "{#BuiltinsDir}\*"; DestDir: "{app}\TrueforceBuiltins"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; NOTE: We deliberately do NOT ship our own HidSharp.dll. SimHub ships
 ; HidSharp 2.6.x in its install root and loads it process-wide; our plugin
