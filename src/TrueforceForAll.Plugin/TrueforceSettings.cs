@@ -264,7 +264,7 @@ namespace TrueforceForAll.Plugin
         public F1Settings F1 { get; set; } = new F1Settings();
 
         // Built-in preset source folder. Blank = use the shipped default next
-        // to the plugin DLL (<dll>\TrueforceBuiltins). A user can point this at
+        // to the plugin DLL (<dll>\TrueforceForAll-Presets). A user can point this at
         // a moved folder (repair) or a shared "preset pack" to swap the seed
         // set. Machine-local, survives preset switches. See BuiltinPresets.
         public string BuiltinPresetsFolder { get; set; } = "";

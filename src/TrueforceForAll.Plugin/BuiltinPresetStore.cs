@@ -1,5 +1,5 @@
 // File-based built-in preset store. Built-in presets ship as plain JSON
-// files in a folder (default: <plugin dll dir>\TrueforceBuiltins) plus a
+// files in a folder (default: <plugin dll dir>\TrueforceForAll-Presets) plus a
 // manifest.json describing the set and the per-game default bindings. This
 // replaces the old C# string consts: presets are now data, not code, so they
 // can be exported / imported / reseeded / repaired without a recompile.

@@ -8,7 +8,7 @@
 // Folder resolution:
 //   1. Settings.BuiltinPresetsFolder, if set and it exists (lets a user point
 //      at a moved folder or a shared "preset pack").
-//   2. Otherwise the shipped default next to the plugin DLL: <dll>\TrueforceBuiltins.
+//   2. Otherwise the shipped default next to the plugin DLL: <dll>\TrueforceForAll-Presets.
 //
 // The plugin calls Initialize(...) early in Init (after settings load) so the
 // folder override is honoured. Anything that touches the API before that
@@ -23,7 +23,7 @@ namespace TrueforceForAll.Plugin
 {
     internal static class BuiltinPresets
     {
-        public const string DefaultFolderName = "TrueforceBuiltins";
+        public const string DefaultFolderName = "TrueforceForAll-Presets";
 
         private static BuiltinPresetStore _store;
 
