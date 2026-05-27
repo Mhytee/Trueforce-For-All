@@ -3860,12 +3860,15 @@ namespace TrueforceForAll.Plugin
         /// users keep the protective fork-on-built-in behaviour.</summary>
         public bool DevMode => Settings?.DevModeUnlocked == true;
 
-        // In DEV mode, write a just-saved library game preset through to the
-        // built-in folder so the edit persists (the folder re-seeds the library
-        // on load) and the preset counts as a built-in. No-op otherwise.
+        // In DEV mode, write an edit to an EXISTING built-in through to its
+        // folder file so the edit persists (the folder re-seeds the library on
+        // load). Only fires for presets that are already built-ins: a brand-new
+        // preset stays a normal user preset until the owner explicitly promotes
+        // it via "Export as built-in". No-op otherwise.
         private void WriteGamePresetThroughIfDev(string presetName)
         {
             if (!DevMode || Settings?.Presets == null || string.IsNullOrEmpty(presetName)) return;
+            if (!IsBuiltinPreset(presetName)) return;   // new/user presets aren't auto-promoted
             if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) return;
             try
             {
@@ -5959,13 +5962,16 @@ namespace TrueforceForAll.Plugin
         public bool ExitOfflineEditCarSave()
         {
             if (!IsOfflineEditingCar) return true;
-            if (DevMode)
+            // DEV editing an existing built-in car: write the edit through to
+            // its folder file. A new/user car preset stays a user preset
+            // (promote later via Export as built-in).
+            if (DevMode && IsActiveCarPresetBuiltin())
             {
                 WriteCarBuiltinThroughDev(_offlineEditCarId, _offlineEditCarPresetName);
                 RestorePreEditCarState();
                 return true;
             }
-            if (IsActiveCarPresetBuiltin()) return false;
+            if (IsActiveCarPresetBuiltin()) return false;   // non-dev: fork
             PersistActiveCarOverride();
             RestorePreEditCarState();
             return true;
