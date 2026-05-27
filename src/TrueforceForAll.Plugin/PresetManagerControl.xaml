@@ -259,9 +259,7 @@
                         <Button Content="Validate"             Height="26" Width="90"  Margin="0,0,8,8" Click="DevValidate_Click"
                                 ToolTip="Parse every built-in and flag any that fail to load or are missing a newer effect section."/>
                         <Button Content="Import from folder"   Height="26" Width="140" Margin="0,0,8,8" Click="DevImport_Click"
-                                ToolTip="Reload the folder and (re)install its built-ins into the library. Additive; never removes."/>
-                        <Button Content="Reseed (replace)"     Height="26" Width="120" Margin="0,0,8,8" Click="DevReseed_Click"
-                                ToolTip="Make the library's built-ins match the folder exactly, dropping built-ins the folder no longer has."/>
+                                ToolTip="Reload the folder and (re)install its built-ins into the library (e.g. after editing files in Explorer). Additive; never removes."/>
                         <Button Content="Export all built-ins" Height="26" Width="150" Margin="0,0,8,8" Click="DevExportAll_Click"
                                 ToolTip="Write every built-in-marked preset in the library back out to the folder."/>
                     </WrapPanel>

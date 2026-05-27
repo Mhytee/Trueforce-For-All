@@ -125,18 +125,6 @@ namespace TrueforceForAll.Plugin
             SetDevStatus(msg);
         }
 
-        private void DevReseed_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            if (MessageBox.Show(Window.GetWindow(this),
-                    "Reseed makes the library's built-ins match the folder exactly: built-ins the folder no longer has are removed (your own presets are untouched). Continue?",
-                    "Reseed built-ins from folder", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
-                return;
-            string msg = _plugin.ReseedBuiltinsFromFolder();
-            RefreshLists();
-            SetDevStatus(msg);
-        }
-
         private void DevExportAll_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;

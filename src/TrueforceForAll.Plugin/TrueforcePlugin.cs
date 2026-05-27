@@ -4017,7 +4017,9 @@ namespace TrueforceForAll.Plugin
         /// <summary>Make the library's built-ins match the folder exactly:
         /// drop game built-ins the folder no longer has (and any GameDefaults
         /// pointing at them), then re-import. Car factory files refresh via
-        /// LoadAndMigrateCarPresets.</summary>
+        /// LoadAndMigrateCarPresets. No standalone UI button (the in-app delete
+        /// already prunes); reserved for the Phase 3 change-folder / GitHub
+        /// repair flows, which should run a full replace after switching.</summary>
         public string ReseedBuiltinsFromFolder()
         {
             var oldGameBuiltins = new List<string>(BuiltinPresets.BuiltinPresetJsons.Keys);
