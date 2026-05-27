@@ -52,6 +52,25 @@ namespace TrueforceForAll.Plugin
         public const string GameDefaultsFileName = "game-defaults.json";
         public const string CarDefaultsFileName  = "car-defaults.json";
 
+        // Filenames at the folder root that are metadata, not presets, so the
+        // flat-folder game scan must skip them. Their stem (without .json) is
+        // also a reserved preset name that should never appear in the library.
+        private static readonly string[] ReservedMetadataFiles =
+            { GameDefaultsFileName, CarDefaultsFileName, "manifest.json" };
+
+        public static bool IsReservedMetadataFile(string fileName)
+        {
+            foreach (var r in ReservedMetadataFiles)
+                if (string.Equals(fileName, r, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        /// <summary>Stems (no extension) of the reserved metadata files. A
+        /// library preset with one of these names is a stray that leaked from a
+        /// folder scan and should be pruned.</summary>
+        public static IReadOnlyList<string> ReservedPresetNames { get; } =
+            new[] { "game-defaults", "car-defaults", "manifest" };
+
         /// <summary>Load every built-in from <paramref name="folder"/> by
         /// directory scan. Never throws: a missing folder or unreadable file
         /// just yields an emptier store and a logged warning.</summary>
@@ -106,7 +125,7 @@ namespace TrueforceForAll.Plugin
                 foreach (var path in Directory.GetFiles(dir, "*.json"))
                 {
                     string file = Path.GetFileName(path);
-                    if (string.Equals(file, GameDefaultsFileName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (IsReservedMetadataFile(file)) continue;   // skip game-defaults / car-defaults / etc.
                     string name = Path.GetFileNameWithoutExtension(path);
                     if (!string.IsNullOrEmpty(name) && !PresetJsons.ContainsKey(name))
                         PresetJsons[name] = File.ReadAllText(path);

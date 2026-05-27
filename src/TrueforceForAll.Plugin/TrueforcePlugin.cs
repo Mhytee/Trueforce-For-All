@@ -3804,6 +3804,24 @@ namespace TrueforceForAll.Plugin
             if (Settings == null) return;
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
+
+            // Self-heal: drop any stray library preset whose name collides with
+            // a reserved metadata file (e.g. an early build's folder scan loaded
+            // car-defaults.json as a "car-defaults" game preset, which then got
+            // seeded into the library). These are never real presets.
+            foreach (var reserved in BuiltinPresetStore.ReservedPresetNames)
+            {
+                if (Settings.Presets.Remove(reserved))
+                    SimHub.Logging.Current.Info($"[Trueforce] Removed stray reserved preset '{reserved}' from the library.");
+                if (Settings.GameDefaults != null)
+                {
+                    var orphans = new List<string>();
+                    foreach (var kv in Settings.GameDefaults)
+                        if (kv.Value == reserved) orphans.Add(kv.Key);
+                    foreach (var k in orphans) Settings.GameDefaults.Remove(k);
+                }
+            }
+
             int refreshed = 0;
             foreach (var kv in BuiltinPresets.BuiltinPresetJsons)
             {
