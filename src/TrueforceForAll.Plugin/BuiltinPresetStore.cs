@@ -35,15 +35,22 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, string> GameDefaults { get; } =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // Car preset key ("<game>/<carId>", informational) -> raw JSON text
-        // (a CarPresetFile). Fed verbatim into CarPresetStore.InstallOrUpdate.
+        // Car preset key ("<carId>/<presetName>", informational) -> raw JSON
+        // text (a CarPresetFile). Fed verbatim into CarPresetStore.InstallOrUpdate.
+        // Multiple presets per car are supported (distinct keys).
         public Dictionary<string, string> CarPresetJsons { get; } =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
+        // carId -> built-in default preset name (from car-defaults.json).
+        // Seeds Settings.CarDefaults when the user hasn't chosen one.
+        public Dictionary<string, string> CarDefaults { get; } =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
         public string FolderPath { get; private set; }
         public bool Loaded => PresetJsons.Count > 0 || CarPresetJsons.Count > 0;
 
         public const string GameDefaultsFileName = "game-defaults.json";
+        public const string CarDefaultsFileName  = "car-defaults.json";
 
         /// <summary>Load every built-in from <paramref name="folder"/> by
         /// directory scan. Never throws: a missing folder or unreadable file
@@ -62,6 +69,7 @@ namespace TrueforceForAll.Plugin
                 store.LoadGameDefaults(folder);
                 store.LoadGamePresets(folder);
                 store.LoadCarPresets(folder);
+                store.LoadCarDefaults(folder);
 
                 SimHub.Logging.Current.Info($"[Trueforce] Loaded {store.PresetJsons.Count} game + {store.CarPresetJsons.Count} car built-in preset(s) from '{folder}'.");
             }
@@ -106,17 +114,43 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Car presets: cars/<GameName>/<carId>.json (recursive under cars/).
+        // Car presets: cars/<GameName>/<carId>/<PresetName>.json (recursive).
+        // Multiple presets per car. carId/presetName come from the file content
+        // (authoritative), so the key is robust to folder/file naming.
         private void LoadCarPresets(string folder)
         {
             string carsRoot = Path.Combine(folder, "cars");
             if (!Directory.Exists(carsRoot)) return;
             foreach (var path in Directory.GetFiles(carsRoot, "*.json", SearchOption.AllDirectories))
             {
-                string game = Path.GetFileName(Path.GetDirectoryName(path)) ?? "";
-                string carId = Path.GetFileNameWithoutExtension(path);
-                string key = string.IsNullOrEmpty(game) ? carId : game + "/" + carId;
-                CarPresetJsons[key] = File.ReadAllText(path);
+                string text = File.ReadAllText(path);
+                string carId, preset;
+                try
+                {
+                    var o = JObject.Parse(text);
+                    carId  = (string)o["CarId"];
+                    preset = (string)o["PresetName"];
+                }
+                catch { continue; }   // skip a malformed car file
+                if (string.IsNullOrEmpty(carId)) continue;
+                string key = carId + "/" + (preset ?? Path.GetFileNameWithoutExtension(path));
+                CarPresetJsons[key] = text;
+            }
+        }
+
+        private void LoadCarDefaults(string folder)
+        {
+            string path = Path.Combine(folder, CarDefaultsFileName);
+            if (!File.Exists(path)) return;
+            try
+            {
+                var o = JObject.Parse(File.ReadAllText(path));
+                foreach (var kv in o)
+                    if (kv.Value != null) CarDefaults[kv.Key] = (string)kv.Value;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Bad {CarDefaultsFileName}: {ex.Message}");
             }
         }
 

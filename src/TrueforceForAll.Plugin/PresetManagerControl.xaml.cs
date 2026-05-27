@@ -915,7 +915,7 @@ namespace TrueforceForAll.Plugin
         {
             var sel = SelectedCar;
             if (sel == null || sel.Active) return;
-            _plugin.SwitchActiveCarPreset(sel.CarId, sel.PresetName);
+            _plugin.SetCarDefaultPreset(sel.CarId, sel.PresetName);  // DEV: also writes car-defaults.json
             ReloadCars();
             SelectCarRow(sel.CarId, sel.PresetName);
         }

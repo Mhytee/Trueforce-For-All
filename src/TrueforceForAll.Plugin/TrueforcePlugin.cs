@@ -3922,13 +3922,17 @@ namespace TrueforceForAll.Plugin
                     Version    = 2,
                     GameName   = entry.GameName ?? "",
                     CarId      = carId,
-                    PresetName = carId + " (default)",
+                    PresetName = presetName,   // keep its own name (multiple built-ins per car)
                     IsBuiltin  = true,
                     Override   = entry.Override,
                 };
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     file, Newtonsoft.Json.Formatting.Indented);
-                string rel = BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carId, json);
+                string rel = BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carId, presetName, json);
+                // First built-in for this car becomes its default; otherwise
+                // leave the existing default (owner picks via Set as default).
+                if (!BuiltinPresets.CarDefaultBindings.ContainsKey(carId))
+                    BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, presetName);
                 BuiltinPresets.Reload();
                 SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{presetName}' -> built-in '{rel}'.");
                 return true;
@@ -3969,7 +3973,7 @@ namespace TrueforceForAll.Plugin
                             };
                             string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                                 file, Newtonsoft.Json.Formatting.Indented);
-                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carKv.Key, json);
+                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carKv.Key, e.PresetName, json);
                             cars++;
                         }
                 BuiltinPresets.Reload();
@@ -4147,6 +4151,15 @@ namespace TrueforceForAll.Plugin
             //    if a future release updates a default tuning the new content
             //    lands; user-saved files are untouched (different filenames).
             int builtinsWritten = _carStore.InstallOrUpdateBuiltinCarPresets(BuiltinCarPresets.PresetJsons);
+
+            // 4.5) Seed per-car built-in defaults from car-defaults.json when
+            //      the user hasn't chosen a preset for that car yet (mirrors
+            //      the game-defaults seeding). Lets a car ship multiple
+            //      built-ins with one marked default.
+            if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
+            foreach (var kv in BuiltinPresets.CarDefaultBindings)
+                if (!Settings.CarDefaults.ContainsKey(kv.Key))
+                    Settings.CarDefaults[kv.Key] = kv.Value;
 
             // 5) Load every preset back into memory and resolve the active
             //    preset per car into Settings.CarOverrides. Active selection:
@@ -4396,7 +4409,15 @@ namespace TrueforceForAll.Plugin
             }
             if (wasBuiltin && DevMode)
             {
-                try { BuiltinPresetWriter.DeleteCar(BuiltinPresets.CurrentFolder, game ?? "", carId); BuiltinPresets.Reload(); }
+                try
+                {
+                    BuiltinPresetWriter.DeleteCar(BuiltinPresets.CurrentFolder, game ?? "", carId, presetName);
+                    // If that was the car's built-in default, drop the binding.
+                    if (BuiltinPresets.CarDefaultBindings.TryGetValue(carId, out var def)
+                        && string.Equals(def, presetName, StringComparison.Ordinal))
+                        BuiltinPresetWriter.RemoveCarDefault(BuiltinPresets.CurrentFolder, carId);
+                    BuiltinPresets.Reload();
+                }
                 catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV delete car folder file failed: {ex.Message}"); }
             }
             return true;
@@ -4494,6 +4515,22 @@ namespace TrueforceForAll.Plugin
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             Settings.CarDefaults[carId] = presetName;
             if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
+            return true;
+        }
+
+        /// <summary>Set a car's default preset (the Presets-tab "Set as default"
+        /// action). Same as SwitchActiveCarPreset, but in DEV authoring mode it
+        /// also writes car-defaults.json so the built-in default is recorded in
+        /// the folder. (SwitchActiveCarPreset itself stays folder-free since
+        /// it's also used while just selecting a car to edit.)</summary>
+        public bool SetCarDefaultPreset(string carId, string presetName)
+        {
+            if (!SwitchActiveCarPreset(carId, presetName)) return false;
+            if (DevMode)
+            {
+                try { BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, presetName); BuiltinPresets.Reload(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV write car-default failed: {ex.Message}"); }
+            }
             return true;
         }
 
@@ -5940,11 +5977,11 @@ namespace TrueforceForAll.Plugin
                 {
                     Type = CarPresetFile.FileType, Version = 2,
                     GameName = game, CarId = carId,
-                    PresetName = carId + " (default)", IsBuiltin = true, Override = ov,
+                    PresetName = presetName, IsBuiltin = true, Override = ov,
                 };
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     file, Newtonsoft.Json.Formatting.Indented);
-                BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, json);
+                BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, presetName, json);
                 BuiltinPresets.Reload();
                 LoadAndMigrateCarPresets();   // push folder built-ins into the live store
                 SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote car '{carId}' through to the built-in folder.");

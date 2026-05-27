@@ -84,6 +84,10 @@ namespace TrueforceForAll.Plugin
         /// CarPresetStore.InstallOrUpdateBuiltinCarPresets. See BuiltinCarPresets.</summary>
         public static IReadOnlyDictionary<string, string> CarPresetJsons => Store.CarPresetJsons;
 
+        /// <summary>carId -> built-in default preset name (car-defaults.json).
+        /// Seeds Settings.CarDefaults when the user hasn't chosen one.</summary>
+        public static IReadOnlyDictionary<string, string> CarDefaultBindings => Store.CarDefaults;
+
         public static bool IsBuiltin(string presetName)
             => !string.IsNullOrEmpty(presetName) && Store.PresetJsons.ContainsKey(presetName);
 

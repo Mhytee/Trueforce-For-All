@@ -35,12 +35,14 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Write a car preset (CarPresetFile JSON) to
-        /// cars/&lt;GameName&gt;/&lt;carId&gt;.json. Returns the relative path.</summary>
-        public static string WriteCar(string folder, string gameName, string carId, string carPresetJson)
+        /// cars/&lt;GameName&gt;/&lt;carId&gt;/&lt;PresetName&gt;.json. Multiple
+        /// presets per car. Returns the relative path.</summary>
+        public static string WriteCar(string folder, string gameName, string carId, string presetName, string carPresetJson)
         {
-            string dir = Path.Combine(folder, "cars", SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName));
+            string g = SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName);
+            string dir = Path.Combine(folder, "cars", g, SafeFile(carId));
             Directory.CreateDirectory(dir);
-            string rel = "cars/" + SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName) + "/" + SafeFile(carId) + ".json";
+            string rel = "cars/" + g + "/" + SafeFile(carId) + "/" + SafeFile(presetName) + ".json";
             File.WriteAllText(Path.Combine(folder, rel), carPresetJson);
             return rel;
         }
@@ -52,12 +54,17 @@ namespace TrueforceForAll.Plugin
             if (File.Exists(path)) File.Delete(path);
         }
 
-        /// <summary>Delete a car preset file (cars/&lt;game&gt;/&lt;carId&gt;.json).</summary>
-        public static void DeleteCar(string folder, string gameName, string carId)
+        /// <summary>Delete a car preset file
+        /// (cars/&lt;game&gt;/&lt;carId&gt;/&lt;PresetName&gt;.json) and prune the
+        /// car's folder if it's now empty.</summary>
+        public static void DeleteCar(string folder, string gameName, string carId, string presetName)
         {
             string g = SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName);
-            string path = Path.Combine(folder, "cars", g, SafeFile(carId) + ".json");
+            string carDir = Path.Combine(folder, "cars", g, SafeFile(carId));
+            string path = Path.Combine(carDir, SafeFile(presetName) + ".json");
             if (File.Exists(path)) File.Delete(path);
+            try { if (Directory.Exists(carDir) && Directory.GetFileSystemEntries(carDir).Length == 0) Directory.Delete(carDir); }
+            catch { /* leave the dir if it won't delete */ }
         }
 
         /// <summary>Rename a game preset file and repoint any game-defaults
@@ -110,6 +117,34 @@ namespace TrueforceForAll.Plugin
             {
                 var o = JObject.Parse(File.ReadAllText(path));
                 if (o.Remove(gameName)) File.WriteAllText(path, o.ToString(Formatting.Indented));
+            }
+            catch { /* ignore */ }
+        }
+
+        /// <summary>Set a car's built-in default (carId -> preset name) in
+        /// car-defaults.json. No-op-safe.</summary>
+        public static void SetCarDefault(string folder, string carId, string presetName)
+        {
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
+            Directory.CreateDirectory(folder);
+            string path = Path.Combine(folder, BuiltinPresetStore.CarDefaultsFileName);
+            JObject o;
+            try { o = File.Exists(path) ? JObject.Parse(File.ReadAllText(path)) : new JObject(); }
+            catch { o = new JObject(); }
+            o[carId] = presetName;
+            File.WriteAllText(path, o.ToString(Formatting.Indented));
+        }
+
+        /// <summary>Remove a car's binding from car-defaults.json. No-op-safe.</summary>
+        public static void RemoveCarDefault(string folder, string carId)
+        {
+            if (string.IsNullOrEmpty(carId)) return;
+            string path = Path.Combine(folder, BuiltinPresetStore.CarDefaultsFileName);
+            if (!File.Exists(path)) return;
+            try
+            {
+                var o = JObject.Parse(File.ReadAllText(path));
+                if (o.Remove(carId)) File.WriteAllText(path, o.ToString(Formatting.Indented));
             }
             catch { /* ignore */ }
         }
