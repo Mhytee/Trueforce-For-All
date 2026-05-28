@@ -1338,6 +1338,13 @@ namespace TrueforceForAll.Plugin
             LoadAndMigrateCarPresets();
             MigrateEngineHighRpmHelpersDefaults();
 
+            // Make sure both folders exist with their READMEs, then auto-import
+            // anything the user dropped into the imports folder. Both are
+            // best-effort: folder access errors degrade gracefully.
+            WriteReadmeIfMissing(BuiltinPresets.CurrentFolder, BuiltinReadmeText);
+            WriteReadmeIfMissing(UserImportsFolderPath, ImportsReadmeText);
+            ImportFromUserImportsFolder();
+
             _mixer.MasterGain = Settings.MasterGain;
 
             // Start the GitHub update poller BEFORE the wheel-discovery early
@@ -3871,6 +3878,163 @@ namespace TrueforceForAll.Plugin
         };
 
         public string BuiltinFolderPath => BuiltinPresets.CurrentFolder;
+
+        // ----- User imports folder (drop-in community packs) -----
+
+        public const string UserImportsFolderName = "TrueforceForAll-Imports";
+        public const string UserImportsArchiveSubfolder = "imported";
+
+        /// <summary>Folder to drop community / shared preset files into. Files
+        /// here are auto-imported as USER presets (not built-ins) on plugin
+        /// start, then moved into the <c>imported/</c> archive subfolder.
+        /// Lives under SimHub's <c>PluginsData/Common</c> so it's writable
+        /// without admin (the built-in folder sits in the SimHub root and
+        /// needs elevation to write to). Honours <c>Settings.UserImportsFolder</c>
+        /// if set, so a user can point it anywhere they like.</summary>
+        public string UserImportsFolderPath
+        {
+            get
+            {
+                var s = Settings?.UserImportsFolder;
+                if (!string.IsNullOrWhiteSpace(s)) return s;
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
+                return Path.Combine(baseDir, "PluginsData", "Common", UserImportsFolderName);
+            }
+        }
+
+        // README written into each folder on first run so users see the
+        // intent without opening the docs. Only written if absent (preserves
+        // any custom edits).
+        private static void WriteReadmeIfMissing(string folder, string text)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(folder)) return;
+                Directory.CreateDirectory(folder);
+                string path = Path.Combine(folder, "README.txt");
+                if (!File.Exists(path)) File.WriteAllText(path, text);
+            }
+            catch { /* best-effort */ }
+        }
+
+        private const string BuiltinReadmeText =
+            "Trueforce For All - Built-in (factory) preset folder\r\n" +
+            "\r\n" +
+            "This folder ships with the plugin. Files here become FACTORY presets\r\n" +
+            "in your library: they are marked 'built-in', cannot be deleted or\r\n" +
+            "overwritten through the normal UI, and define the default tuning that\r\n" +
+            "loads when you run a supported game.\r\n" +
+            "\r\n" +
+            "Layout:\r\n" +
+            "  game-defaults.json            (game -> default preset name)\r\n" +
+            "  games/<Preset Name>.json      (one GameSettingsSnapshot per built-in)\r\n" +
+            "  cars/<GameName>/<carId>/<PresetName>.json  (multiple per car)\r\n" +
+            "  car-defaults.json             (carId -> default car preset name)\r\n" +
+            "\r\n" +
+            "DO NOT drop community / shared presets here. They belong in the\r\n" +
+            "'TrueforceForAll-Imports' folder under SimHub's PluginsData/Common,\r\n" +
+            "which auto-imports them as normal (non-builtin) user presets on the\r\n" +
+            "next SimHub start.\r\n";
+
+        private const string ImportsReadmeText =
+            "Trueforce For All - User imports folder\r\n" +
+            "\r\n" +
+            "Drop shared preset files into this folder:\r\n" +
+            "  - Game preset JSON   (Type 'trueforce-preset')\r\n" +
+            "  - Car preset JSON    (Type 'trueforce-car-preset')\r\n" +
+            "  - Pack file          (Type 'trueforce-pack')\r\n" +
+            "\r\n" +
+            "On the next SimHub start, they are auto-imported into your library as\r\n" +
+            "normal (non-builtin) user presets, then moved into an 'imported/<date>'\r\n" +
+            "archive subfolder so they don't import twice.\r\n" +
+            "\r\n" +
+            "You can also use the Import button in the Presets tab.\r\n";
+
+        /// <summary>Scan the user-imports folder for *.json files and import
+        /// each by content type. Imported files move into
+        /// <c>imported/&lt;timestamp&gt;/</c> so they don't re-import. Quiet:
+        /// logs only, no UI. Safe to call once per plugin start.</summary>
+        public string ImportFromUserImportsFolder()
+        {
+            string folder = UserImportsFolderPath;
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder)) return null;
+            int gameOk = 0, carOk = 0, packGameOk = 0, packCarOk = 0, failed = 0;
+            var imported = new List<string>();
+            string archiveRoot = Path.Combine(folder, UserImportsArchiveSubfolder);
+            // Recurse so a dropped-in folder (e.g. an unzipped pack) also imports.
+            // Skip anything already inside the archive subfolder.
+            foreach (var path in Directory.GetFiles(folder, "*.json", SearchOption.AllDirectories))
+            {
+                if (path.StartsWith(archiveRoot, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    string type = ReadFileTypeField(path);
+                    if (string.Equals(type, PresetFile.FileType, StringComparison.Ordinal))
+                    {
+                        ImportPreset(path);
+                        gameOk++; imported.Add(path);
+                    }
+                    else if (string.Equals(type, CarPresetFile.FileType, StringComparison.Ordinal))
+                    {
+                        ImportCarPreset(path);
+                        carOk++; imported.Add(path);
+                    }
+                    else if (string.Equals(type, PresetPackManifest.FileType, StringComparison.Ordinal))
+                    {
+                        var r = ImportPack(path);
+                        packGameOk += r.PresetsImported;
+                        packCarOk  += r.CarsImported;
+                        imported.Add(path);
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] Skipping unknown file in imports folder: {Path.GetFileName(path)} (Type='{type}').");
+                        failed++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to import '{Path.GetFileName(path)}': {ex.Message}");
+                    failed++;
+                }
+            }
+
+            if (imported.Count > 0)
+            {
+                try
+                {
+                    string archive = Path.Combine(folder, UserImportsArchiveSubfolder,
+                        DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+                    Directory.CreateDirectory(archive);
+                    foreach (var p in imported)
+                    {
+                        try { File.Move(p, Path.Combine(archive, Path.GetFileName(p))); }
+                        catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] Couldn't archive imported file '{p}': {ex.Message}"); }
+                    }
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] Couldn't create imports archive: {ex.Message}"); }
+            }
+
+            int total = gameOk + carOk + packGameOk + packCarOk;
+            if (total == 0 && failed == 0) return null;
+            string msg = $"Imports folder scan: {gameOk} game, {carOk} car";
+            if (packGameOk + packCarOk > 0) msg += $", pack ({packGameOk} game + {packCarOk} car)";
+            if (failed > 0) msg += $", {failed} skipped/failed";
+            msg += ".";
+            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            return msg;
+        }
+
+        // Read just the top-level Type field from a JSON file, fast and tolerant.
+        private static string ReadFileTypeField(string path)
+        {
+            try
+            {
+                var o = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(path));
+                return (string)o["Type"] ?? "";
+            }
+            catch { return ""; }
+        }
 
         /// <summary>DEV authoring mode (the app owner). When on, saving a
         /// preset writes it through to the built-in folder: editing a built-in

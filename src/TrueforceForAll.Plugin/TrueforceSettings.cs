@@ -269,6 +269,12 @@ namespace TrueforceForAll.Plugin
         // set. Machine-local, survives preset switches. See BuiltinPresets.
         public string BuiltinPresetsFolder { get; set; } = "";
 
+        // User-imports folder. Drop community / shared preset files here and
+        // they get auto-imported into the library as USER presets on next
+        // plugin start, then moved to an 'imported' archive subfolder. Blank =
+        // default beside the plugin DLL (<dll>\TrueforceForAll-Imports).
+        public string UserImportsFolder { get; set; } = "";
+
         // Developer mode unlock. Set by the DEV access code; reveals the
         // Developer panel + built-in export/import/reseed/validate buttons.
         // Persisted so it stays on across restarts on a dev machine.
