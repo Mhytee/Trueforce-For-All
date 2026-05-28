@@ -3958,49 +3958,6 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { error = ex.Message; return false; }
         }
 
-        /// <summary>Write every built-in-marked game + car preset currently in
-        /// the library back out to the folder. Regenerates the folder from the
-        /// loaded library. Returns counts via out params.</summary>
-        public bool ExportAllBuiltinsToFolder(out int games, out int cars, out string error)
-        {
-            games = 0; cars = 0; error = null;
-            try
-            {
-                if (Settings?.Presets != null)
-                    foreach (var kv in Settings.Presets)
-                        if (IsBuiltinPreset(kv.Key) && kv.Value != null)
-                        {
-                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
-                                kv.Value, Newtonsoft.Json.Formatting.Indented);
-                            BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, kv.Key, json);
-                            games++;
-                        }
-
-                var all = GetAllCarPresets();
-                if (all != null)
-                    foreach (var carKv in all)
-                        foreach (var pk in carKv.Value)
-                        {
-                            var e = pk.Value;
-                            if (e == null || !e.IsBuiltin) continue;
-                            var file = new CarPresetFile
-                            {
-                                Type = CarPresetFile.FileType, Version = 2,
-                                GameName = e.GameName ?? "", CarId = carKv.Key,
-                                PresetName = e.PresetName, IsBuiltin = true, Override = e.Override,
-                            };
-                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
-                                file, Newtonsoft.Json.Formatting.Indented);
-                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carKv.Key, e.PresetName, json);
-                            cars++;
-                        }
-                BuiltinPresets.Reload();
-                SimHub.Logging.Current.Info($"[Trueforce] Exported all built-ins to folder: {games} game, {cars} car.");
-                return true;
-            }
-            catch (Exception ex) { error = ex.Message; return false; }
-        }
-
         /// <summary>Reload the folder and (re)install its built-ins into the
         /// library: game presets overwrite by name, car factory files refresh.
         /// Additive, never removes. Returns a summary line.</summary>

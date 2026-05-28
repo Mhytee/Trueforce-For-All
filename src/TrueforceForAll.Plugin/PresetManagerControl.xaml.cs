@@ -125,15 +125,6 @@ namespace TrueforceForAll.Plugin
             SetDevStatus(msg);
         }
 
-        private void DevExportAll_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            if (_plugin.ExportAllBuiltinsToFolder(out int games, out int cars, out string err))
-                SetDevStatus($"Exported {games} game + {cars} car built-in(s) to the folder.");
-            else
-                SetDevStatus("Export all failed: " + err);
-        }
-
         private void SetDevStatus(string text)
         {
             if (DevStatusText != null) DevStatusText.Text = text;
