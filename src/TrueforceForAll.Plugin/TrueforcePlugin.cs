@@ -3960,7 +3960,9 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Reload the folder and (re)install its built-ins into the
         /// library: game presets overwrite by name, car factory files refresh.
-        /// Additive, never removes. Returns a summary line.</summary>
+        /// Additive, never removes. No standalone UI button (DEV authoring
+        /// already reloads after each write; restart picks up external edits);
+        /// reserved for Phase 3 folder-switch / GitHub-repair to call.</summary>
         public string ImportBuiltinsFromFolder()
         {
             BuiltinPresets.Reload();

@@ -4528,7 +4528,7 @@ namespace TrueforceForAll.Plugin
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
             "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
-            "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Export as built-in' buttons: maintain the file-based built-in folder (export/import/validate/open). Persists. Toggle.\n" +
+            "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Export as built-in' buttons: maintain the file-based built-in folder (validate / open / per-row export). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
         private void CommitAccessCode()

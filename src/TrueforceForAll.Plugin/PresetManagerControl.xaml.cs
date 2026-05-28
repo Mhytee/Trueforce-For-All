@@ -117,14 +117,6 @@ namespace TrueforceForAll.Plugin
                 : $"Validated {lines.Count} built-in(s): {issues} flagged (see dialog).");
         }
 
-        private void DevImport_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string msg = _plugin.ImportBuiltinsFromFolder();
-            RefreshLists();
-            SetDevStatus(msg);
-        }
-
         private void SetDevStatus(string text)
         {
             if (DevStatusText != null) DevStatusText.Text = text;
