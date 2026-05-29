@@ -31,5 +31,12 @@ __*
 /RELEASING.md
 /CHANGELOG_UNRELEASED.md
 
+# Maintainer-only marketing copy + design drafts + private docs. Working
+# notes for outreach posts and feature planning; not part of the public
+# product docs (docs/iracing-maira-trueforce.md remains tracked).
+/docs/marketing/
+/docs/preset-sharing-design.md
+/docs/troubleshooting-ffb.md
+
 # Claude Code personal settings (do not commit)
 .claude/settings.local.json
