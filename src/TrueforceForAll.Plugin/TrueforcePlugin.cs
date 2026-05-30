@@ -261,6 +261,48 @@ namespace TrueforceForAll.Plugin
         private const string GHubAgentProcessName = "lghub_agent";
         private static readonly long GHubCheckIntervalTicks = Stopwatch.Frequency * 5;
 
+        // Snapshot every Logitech-related process running right now (G HUB,
+        // its agent + updater, older Gaming Software, etc.) as a single log
+        // line. Lets a support bundle answer "what was running when the user
+        // hit this state" without us guessing from a partial diag. Matches
+        // are case-insensitive substring on ProcessName (no .exe), so we
+        // catch lghub, lghub_agent, lghub_updater, lghub_system_tray, LCore,
+        // LGS, Logi*, etc. Cheap: one Process.GetProcesses() + a string
+        // contains per process. Returns "(none)" when nothing matches.
+        private static string SnapshotLogitechProcesses()
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                bool any = false;
+                foreach (var p in System.Diagnostics.Process.GetProcesses())
+                {
+                    try
+                    {
+                        string name = p.ProcessName;
+                        if (string.IsNullOrEmpty(name)) continue;
+                        string lower = name.ToLowerInvariant();
+                        if (lower.IndexOf("lghub", StringComparison.Ordinal) >= 0
+                         || lower.IndexOf("ghub",  StringComparison.Ordinal) >= 0
+                         || lower.IndexOf("logi",  StringComparison.Ordinal) >= 0
+                         || lower.IndexOf("lgs",   StringComparison.Ordinal) >= 0)
+                        {
+                            if (any) sb.Append(", ");
+                            sb.Append(name).Append(".exe (pid ").Append(p.Id).Append(")");
+                            any = true;
+                        }
+                    }
+                    catch { /* per-process access can fail; skip silently */ }
+                    finally { try { p.Dispose(); } catch { } }
+                }
+                return any ? sb.ToString() : "(none)";
+            }
+            catch (Exception ex)
+            {
+                return $"(enumeration failed: {ex.GetType().Name})";
+            }
+        }
+
         /// <summary>True when Logitech G HUB (or its agent) is detected
         /// running. UI binds to this to show a warning banner. Updated on a
         /// 5-second poll from DataUpdate; first-detection logs to SimHub log.</summary>
@@ -1142,6 +1184,8 @@ namespace TrueforceForAll.Plugin
         public void Init(PluginManager pluginManager)
         {
             SimHub.Logging.Current.Info("[Trueforce] Init: loading settings...");
+            SimHub.Logging.Current.Info(
+                "[Trueforce] Logitech processes at startup: " + SnapshotLogitechProcesses());
             // wasFreshInstall flips iff the factory ran, which only happens
             // when SimHub had no prior settings file for us, the cleanest
             // signal for "this is a first-run install" that the SimHub
@@ -2080,6 +2124,8 @@ namespace TrueforceForAll.Plugin
                             running
                                 ? "[Trueforce] Logitech G HUB detected. It claims the wheel's HID interface and blocks Trueforce. Close G HUB and restart SimHub."
                                 : "[Trueforce] Logitech G HUB no longer detected. Wheel access should be available again.");
+                        SimHub.Logging.Current.Info(
+                            "[Trueforce] Logitech processes running: " + SnapshotLogitechProcesses());
                     }
                     _isGHubRunning = running;
                 }
