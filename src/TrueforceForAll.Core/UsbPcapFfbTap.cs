@@ -938,6 +938,20 @@ namespace TrueforceForAll.Core
                     if (!_manualOverride) { _usbPcapInterface = null; _deviceAddress = 0; }
                     _forceRevalidate = true;
                     consecutiveFailures = 0;
+                    // On some composite devices (e.g. G923) the per-device
+                    // --devices filter crashes USBPcapCMD (0 packets, then
+                    // EndOfStreamException) while the whole-bus -A capture
+                    // works fine. If device-specific keeps failing, escalate
+                    // to -A immediately rather than waiting for the
+                    // GameFfbExpected timer (which needs 8 s of active
+                    // driving - the crash cycle resets every 5 s so it
+                    // never fires on affected systems).
+                    if (!_useBroadCapture)
+                    {
+                        _useBroadCapture = true;
+                        Log("FFB tap: device-specific capture failed 3 consecutive sessions with 0 packets; " +
+                            "escalating to whole-bus (-A) capture (composite device / --devices filter issue).");
+                    }
                 }
 
                 // Fix 2: backoff so a fast-failing capture can't respawn
@@ -1319,7 +1333,18 @@ namespace TrueforceForAll.Core
             // secondCount==0 and this still admits the seed->real first switch,
             // exactly as the clean RS50 path needs; the re-entrancy is what
             // makes a subsequent wrong-first-winner recoverable.)
-            if (bestCount >= secondCount * 4)
+            //
+            // Exception: if the current seed index has ZERO func-0x20 samples
+            // it is provably wrong — no FFB has ever arrived on it. In that
+            // case the 4x gate is too strict: the runner-up count comes from
+            // unrelated HID++ writes (e.g. LED feature 0x12 keepalives) that
+            // will never be outraced 4:1 because the seed never moves at all.
+            // Dropping to the sample-floor check alone is safe here because
+            // "pull us off a good index" requires the current index to actually
+            // have samples — a silent seed cannot be good.
+            perIndex.TryGetValue(_ffbFeatureIndex, out long seedSamples);
+            bool seedIsDeadSilent = seedSamples == 0;
+            if (bestCount >= secondCount * 4 || seedIsDeadSilent)
             {
                 byte old = _ffbFeatureIndex;
                 _ffbFeatureIndex = bestIdx;
