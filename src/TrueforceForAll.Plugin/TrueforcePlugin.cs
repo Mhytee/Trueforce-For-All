@@ -1274,6 +1274,10 @@ namespace TrueforceForAll.Plugin
                 MigrateLegacyUserPresetsToFolder();
                 Settings.PresetsMigratedV2 = true;
             }
+            // Always-run sweep: drop any user-library copy of an ever-shipped
+            // built-in. Catches earlier migrations that wrote those out before
+            // the skip-ever-shipped rule existed. Idempotent.
+            CleanUpSupersededUserBuiltins();
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
             if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
             if (Settings.SeenEffects  == null) Settings.SeenEffects  = new List<string>();
@@ -3919,7 +3923,13 @@ namespace TrueforceForAll.Plugin
                 foreach (var kv in Settings.Presets)
                 {
                     if (string.IsNullOrEmpty(kv.Key) || kv.Value == null) continue;
-                    if (BuiltinPresets.IsBuiltin(kv.Key)) { skippedBuiltins++; continue; }
+                    // Skip names that ARE or WERE built-ins. Currently-shipped
+                    // names re-seed from the built-in folder on the rebuild;
+                    // historically-shipped but removed names get dropped (they
+                    // were factory leftovers, not user content).
+                    if (BuiltinPresets.IsBuiltin(kv.Key)
+                        || BuiltinPresetStore.IsEverShippedBuiltinName(kv.Key))
+                    { skippedBuiltins++; continue; }
                     try
                     {
                         string json = Newtonsoft.Json.JsonConvert.SerializeObject(
@@ -3962,6 +3972,46 @@ namespace TrueforceForAll.Plugin
 
             SimHub.Logging.Current.Info(
                 $"[Trueforce] User-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s); {failedPresets} failed).");
+        }
+
+        /// <summary>Drop any user-library file whose name matches an
+        /// ever-shipped built-in. Catches users who ran the earlier migration
+        /// before the "skip ever-shipped names" rule landed: their library
+        /// ended up with leftover "(default)"-suffixed entries for built-ins
+        /// the new folder either still ships (factory copy is the real one)
+        /// or has retired. Idempotent and cheap; runs on every Init.</summary>
+        private void CleanUpSupersededUserBuiltins()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(UserPresets.CurrentFolder)) return;
+                int removedFiles = 0, removedDefaults = 0;
+                foreach (var name in BuiltinPresetStore.EverShippedBuiltinGameNames)
+                {
+                    if (!UserPresets.HasGamePreset(name)) continue;
+                    BuiltinPresetWriter.DeleteGame(UserPresets.CurrentFolder, name);
+                    removedFiles++;
+                    // Drop any user game-default entries pointing at it.
+                    var hits = new List<string>();
+                    foreach (var kv in UserPresets.GameDefaults)
+                        if (kv.Value == name) hits.Add(kv.Key);
+                    foreach (var k in hits)
+                    {
+                        BuiltinPresetWriter.RemoveGameDefault(UserPresets.CurrentFolder, k);
+                        removedDefaults++;
+                    }
+                }
+                if (removedFiles > 0 || removedDefaults > 0)
+                {
+                    UserPresets.Reload();
+                    SimHub.Logging.Current.Info(
+                        $"[Trueforce] Cleaned up {removedFiles} superseded built-in copy/copies and {removedDefaults} orphan default(s) from the user library.");
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] User-library cleanup failed: {ex.Message}");
+            }
         }
 
         /// <summary>Make a timestamped sibling backup of the plugin's
