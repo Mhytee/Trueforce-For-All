@@ -3945,12 +3945,22 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            int migratedDefaults = 0;
+            int migratedDefaults = 0, skippedOrphanDefaults = 0;
             if (Settings.GameDefaults != null)
             {
                 foreach (var kv in Settings.GameDefaults)
                 {
                     if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
+                    // Orphan: default points at an ever-shipped name that's no
+                    // longer in the current built-in folder (e.g. a leftover
+                    // F12025 -> "F1 25 (default)" binding). Target preset is
+                    // gone, so the binding would dangle.
+                    if (BuiltinPresetStore.IsEverShippedBuiltinName(kv.Value)
+                        && !BuiltinPresets.IsBuiltin(kv.Value))
+                    {
+                        skippedOrphanDefaults++;
+                        continue;
+                    }
                     try
                     {
                         BuiltinPresetWriter.SetGameDefault(UserPresets.CurrentFolder, kv.Key, kv.Value);
@@ -3971,7 +3981,7 @@ namespace TrueforceForAll.Plugin
             Settings.GameDefaults.Clear();
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] User-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s); {failedPresets} failed).");
+                $"[Trueforce] User-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s) + {skippedOrphanDefaults} orphan default(s); {failedPresets} failed).");
         }
 
         /// <summary>Drop any user-library file whose name matches an
@@ -3988,17 +3998,28 @@ namespace TrueforceForAll.Plugin
                 int removedFiles = 0, removedDefaults = 0;
                 foreach (var name in BuiltinPresetStore.EverShippedBuiltinGameNames)
                 {
-                    if (!UserPresets.HasGamePreset(name)) continue;
-                    BuiltinPresetWriter.DeleteGame(UserPresets.CurrentFolder, name);
-                    removedFiles++;
-                    // Drop any user game-default entries pointing at it.
-                    var hits = new List<string>();
-                    foreach (var kv in UserPresets.GameDefaults)
-                        if (kv.Value == name) hits.Add(kv.Key);
-                    foreach (var k in hits)
+                    // Drop any user-library copy of this name. Currently-shipped
+                    // names are owned by the built-in folder; removed names are
+                    // stale orphans. Either way the user-library file goes.
+                    if (UserPresets.HasGamePreset(name))
                     {
-                        BuiltinPresetWriter.RemoveGameDefault(UserPresets.CurrentFolder, k);
-                        removedDefaults++;
+                        BuiltinPresetWriter.DeleteGame(UserPresets.CurrentFolder, name);
+                        removedFiles++;
+                    }
+                    // Drop orphan user-defaults pointing at this name IF the
+                    // name is no longer in the current built-in folder. If it
+                    // is still shipped, the binding is fine (points at the
+                    // factory copy, which is the user's intent).
+                    if (!BuiltinPresets.IsBuiltin(name))
+                    {
+                        var hits = new List<string>();
+                        foreach (var kv in UserPresets.GameDefaults)
+                            if (kv.Value == name) hits.Add(kv.Key);
+                        foreach (var k in hits)
+                        {
+                            BuiltinPresetWriter.RemoveGameDefault(UserPresets.CurrentFolder, k);
+                            removedDefaults++;
+                        }
                     }
                 }
                 if (removedFiles > 0 || removedDefaults > 0)
