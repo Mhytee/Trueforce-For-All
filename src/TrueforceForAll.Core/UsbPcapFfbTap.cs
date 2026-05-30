@@ -1042,6 +1042,20 @@ namespace TrueforceForAll.Core
                 int dev      = BitConverter.ToUInt16(payload, 19);
                 byte ep      = payload[21];
                 byte xfer    = payload[22];
+
+                // Byte logging runs ahead of the per-device filter so that a
+                // pcap captured in whole-bus mode contains writes to OTHER
+                // devices on the same root hub as well, not just our pinned
+                // wheel. That's the diagnostic value when we suspect the
+                // wheel's FFB is going to a different USB address than the
+                // one we pinned (composite-device cases like the G923 Xbox's
+                // XInput child). In --devices mode the upstream USBPcapCMD
+                // filter already restricts the stream to our address, so
+                // running the call early is a no-op there. MaybeLogPcap is
+                // itself a cheap null-check when the toggle is off.
+                bool isOut = (ep & 0x80) == 0;
+                if (isOut) MaybeLogPcap(rh, payload, caplen);
+
                 if (dev != _deviceAddress) continue;
                 PacketsForOurDevice++;
 
@@ -1049,13 +1063,11 @@ namespace TrueforceForAll.Core
                 // OUT direction is the host writing to the wheel (FFB and our
                 // Trueforce stream live here). The bit 7 of the endpoint byte
                 // is direction (0=OUT, 1=IN); low 4 bits are endpoint number.
-                bool isOut = (ep & 0x80) == 0;
                 int epNum  = ep & 0x0f;
                 if (isOut)
                 {
                     if (xfer < _outTransferTypeCounts.Length) _outTransferTypeCounts[xfer]++;
                     _outEndpointCounts[epNum]++;
-                    MaybeLogPcap(rh, payload, caplen);
                 }
 
                 // DirectInput-style FFB path: a non-Trueforce game writes the
