@@ -284,11 +284,18 @@ namespace TrueforceForAll.Plugin
         public string UserLibraryFolder { get; set; } = "";
 
         // Flips to true after the one-time migration moves the legacy in-dict
-        // user presets (Settings.Presets / GameDefaults / CarDefaults entries
-        // that weren't built-ins) into files in the user-library folder. Once
-        // true, the dicts are treated as a transient runtime cache rebuilt
-        // from disk on each Init.
+        // user game presets (Settings.Presets / GameDefaults entries that
+        // weren't built-ins) into files in the user-library folder. Once true,
+        // the dicts are treated as a transient runtime cache rebuilt from disk
+        // on each Init.
         public bool PresetsMigratedV2 { get; set; } = false;
+
+        // Flips to true after the one-time car migration moves legacy
+        // TrueforceCars/*.tfcar.json files into the user library cars/
+        // tree and Settings.CarDefaults into car-defaults.json. Separate from
+        // PresetsMigratedV2 because game migration shipped first; users who
+        // already migrated games still need to migrate cars when this lands.
+        public bool CarsMigratedV2 { get; set; } = false;
 
         // Cumulative set of every preset name that has been a built-in on this
         // install. Persisted at the end of Init by appending the current

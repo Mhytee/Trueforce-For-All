@@ -1278,6 +1278,15 @@ namespace TrueforceForAll.Plugin
                 MigrateLegacyUserPresetsToFolder();
                 Settings.PresetsMigratedV2 = true;
             }
+            // One-time car migration: legacy TrueforceCars/*.tfcar.json ->
+            // user library cars/ tree + Settings.CarDefaults -> car-defaults.json.
+            // Separate flag from the game migration because it shipped later;
+            // users who already migrated games still need this on first run.
+            if (!Settings.CarsMigratedV2)
+            {
+                MigrateLegacyUserCarsToFolder();
+                Settings.CarsMigratedV2 = true;
+            }
             // One-shot sweep: drop any user-library copy of an ever-built-in
             // name (catches earlier migrations that wrote those out before the
             // skip-ever-built-in rule existed). Runs once, then stops; after
@@ -1363,7 +1372,12 @@ namespace TrueforceForAll.Plugin
             // Settings.CarOverrides / preset.CarOverrides into files for
             // cars that don't already have one. Files become the canonical
             // store; Settings.CarOverrides is now an in-memory cache only.
-            _carStore = new CarPresetStore(msg => SimHub.Logging.Current.Info(msg));
+            // Car preset store points at the user library folder (the cars/
+            // subfolder under TrueforceForAll-Library). Built-in cars live in
+            // BuiltinPresets and merge in via LoadAndMigrateCarPresets.
+            _carStore = new CarPresetStore(
+                () => UserPresets.CurrentFolder,
+                msg => SimHub.Logging.Current.Info(msg));
             LoadAndMigrateCarPresets();
             MigrateEngineHighRpmHelpersDefaults();
 
@@ -3991,8 +4005,98 @@ namespace TrueforceForAll.Plugin
             Settings.Presets.Clear();
             Settings.GameDefaults.Clear();
 
+            UserPresets.Reload();
+
             SimHub.Logging.Current.Info(
-                $"[Trueforce] User-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s) + {skippedOrphanDefaults} orphan default(s); {failedPresets} failed).");
+                $"[Trueforce] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s) + {skippedOrphanDefaults} orphan default(s); {failedPresets} failed).");
+        }
+
+        /// <summary>One-time car migration: move legacy TrueforceCars/*.tfcar.json
+        /// user files into the user library cars/<game>/<carId>/<preset>.json
+        /// layout, and Settings.CarDefaults into car-defaults.json. Backs up
+        /// the legacy folder. Skipped after the first run.</summary>
+        private void MigrateLegacyUserCarsToFolder()
+        {
+            int migratedCarFiles = 0, skippedBuiltinCars = 0, failedCars = 0;
+            int migratedCarDefaults = 0;
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
+                string legacyCarsFolder = Path.Combine(baseDir, "PluginsData", "Common", "TrueforceCars");
+                if (Directory.Exists(legacyCarsFolder))
+                {
+                    foreach (var path in Directory.GetFiles(legacyCarsFolder, "*.tfcar.json"))
+                    {
+                        try
+                        {
+                            var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path));
+                            if (f == null || string.IsNullOrEmpty(f.CarId) || f.Override == null) { failedCars++; continue; }
+                            // Built-in car files re-seed from the built-in folder; skip them here.
+                            if (f.IsBuiltin) { skippedBuiltinCars++; continue; }
+                            string presetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
+                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                                new CarPresetFile
+                                {
+                                    Type       = CarPresetFile.FileType,
+                                    Version    = 2,
+                                    GameName   = f.GameName ?? "",
+                                    CarId      = f.CarId,
+                                    PresetName = presetName,
+                                    IsBuiltin  = false,
+                                    Override   = f.Override,
+                                },
+                                Newtonsoft.Json.Formatting.Indented);
+                            BuiltinPresetWriter.WriteCar(UserPresets.CurrentFolder, f.GameName ?? "", f.CarId, presetName, json);
+                            migratedCarFiles++;
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate car file '{Path.GetFileName(path)}': {ex.Message}");
+                            failedCars++;
+                        }
+                    }
+                    // Rename the legacy folder so it isn't re-migrated and the
+                    // user can see the original copy if anything looks off.
+                    try
+                    {
+                        string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                        Directory.Move(legacyCarsFolder, legacyCarsFolder + $".bak-user-car-migration-{ts}");
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] Couldn't rename legacy TrueforceCars folder: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Car-file migration failed: {ex.Message}");
+            }
+
+            // Car defaults: move Settings.CarDefaults into the user library
+            // car-defaults.json (the user's per-car choices).
+            if (Settings.CarDefaults != null)
+            {
+                foreach (var kv in Settings.CarDefaults)
+                {
+                    if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
+                    try
+                    {
+                        BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, kv.Key, kv.Value);
+                        migratedCarDefaults++;
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate car-default for '{kv.Key}': {ex.Message}");
+                    }
+                }
+                Settings.CarDefaults.Clear();
+            }
+
+            UserPresets.Reload();
+
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car(s); {failedCars} failed).");
         }
 
         // Names that were factory built-ins in pre-v0.1.21 versions, used to
@@ -4580,71 +4684,24 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // 3) Migrate v1 single-preset files to v2 multi-preset naming
-            //    (<carId>.tfcar.json → <carId>~<carId>.tfcar.json with
-            //    PresetName=CarId, IsBuiltin=false). For each carId migrated
-            //    that doesn't yet have a CarDefaults entry, point CarDefaults
-            //    at the migrated user preset so the user's existing tunings
-            //    stay active.
-            var legacyMigrated = _carStore.MigrateLegacyFiles();
-            foreach (var carId in legacyMigrated)
-            {
-                if (!Settings.CarDefaults.ContainsKey(carId))
-                    Settings.CarDefaults[carId] = carId;
-                migrated++;
-            }
-
-            // 4) Install / refresh built-in factory car presets. Always runs:
-            //    if a future release updates a default tuning the new content
-            //    lands; user-saved files are untouched (different filenames).
-            int builtinsWritten = _carStore.InstallOrUpdateBuiltinCarPresets(BuiltinCarPresets.PresetJsons);
-
-            // 4.5) Seed per-car built-in defaults from car-defaults.json when
-            //      the user hasn't chosen a preset for that car yet (mirrors
-            //      the game-defaults seeding). Lets a car ship multiple
-            //      built-ins with one marked default.
+            // 3) Rebuild Settings.CarDefaults from the folders. It's a runtime
+            //    cache now; user library wins on collision (their explicit
+            //    choice overrides the factory seed). Any stale persisted dict
+            //    value is dropped (the user library file is the truth).
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
+            Settings.CarDefaults.Clear();
             foreach (var kv in BuiltinPresets.CarDefaultBindings)
-                if (!Settings.CarDefaults.ContainsKey(kv.Key))
-                    Settings.CarDefaults[kv.Key] = kv.Value;
+                Settings.CarDefaults[kv.Key] = kv.Value;
+            foreach (var kv in UserPresets.CarDefaults)
+                Settings.CarDefaults[kv.Key] = kv.Value;
 
-            // 5) Load every preset back into memory and resolve the active
-            //    preset per car into Settings.CarOverrides. Active selection:
-            //    Settings.CarDefaults[carId] → that preset; else the first
-            //    builtin "(default)" found; else nothing.
+            // 4) Load every preset back into memory: USER files from the
+            //    library + BUILT-IN cars from the built-in folder. Built-in
+            //    wins on a (carId, presetName) collision (factory IS the
+            //    truth for those). Resolve the active preset per car into
+            //    Settings.CarOverrides.
             var loaded = _carStore.LoadAll();
-
-            // 5.5) Propagate GameName from any built-in entry to sibling user
-            //      entries for the same carId that still have an empty
-            //      GameName. Catches: legacy v1 → v2 migration files; the
-            //      Settings.CarOverrides → file migration (which ran with
-            //      _activeGame=null at Init); and pre-fix builtins (which
-            //      shipped with GameName=""). Without this, those sibling
-            //      user files land under "Other" in the export modal even
-            //      though we already know what game they belong to via the
-            //      built-in alongside them.
-            int propagated = 0;
-            foreach (var carKv in loaded)
-            {
-                string knownGame = null;
-                foreach (var entry in carKv.Value.Values)
-                {
-                    if (entry.IsBuiltin && !string.IsNullOrEmpty(entry.GameName))
-                    {
-                        knownGame = entry.GameName;
-                        break;
-                    }
-                }
-                if (knownGame == null) continue;
-                foreach (var entry in carKv.Value.Values)
-                {
-                    if (entry.IsBuiltin) continue;
-                    if (!string.IsNullOrEmpty(entry.GameName)) continue;
-                    _carStore.Save(entry.CarId, entry.PresetName, knownGame, entry.Override, isBuiltin: false);
-                    entry.GameName = knownGame;
-                    propagated++;
-                }
-            }
+            MergeBuiltinCarPresetsInto(loaded);
 
             foreach (var carKv in loaded)
             {
@@ -4660,9 +4717,44 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            if (migrated > 0 || builtinsWritten > 0 || propagated > 0)
+            if (migrated > 0)
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Car presets: migrated {migrated} legacy entries, wrote {builtinsWritten} builtin preset(s), propagated GameName to {propagated} sibling user preset(s).");
+                    $"[Trueforce] Car presets: migrated {migrated} legacy entries.");
+        }
+
+        // Add the built-in car presets (loaded from the built-in folder via
+        // BuiltinPresets.CarPresetJsons) into the in-memory map alongside the
+        // user files. Built-in entries overwrite same-named user entries
+        // (factory wins; user can't normally save with a built-in name).
+        private void MergeBuiltinCarPresetsInto(Dictionary<string, Dictionary<string, CarPresetEntry>> map)
+        {
+            foreach (var kv in BuiltinPresets.CarPresetJsons)
+            {
+                try
+                {
+                    var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(kv.Value);
+                    if (f == null || string.IsNullOrEmpty(f.CarId) || f.Override == null) continue;
+                    string presetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
+                    var entry = new CarPresetEntry
+                    {
+                        CarId      = f.CarId,
+                        PresetName = presetName,
+                        GameName   = f.GameName ?? "",
+                        IsBuiltin  = true,
+                        Override   = f.Override,
+                    };
+                    if (!map.TryGetValue(f.CarId, out var perCar))
+                    {
+                        perCar = new Dictionary<string, CarPresetEntry>(StringComparer.Ordinal);
+                        map[f.CarId] = perCar;
+                    }
+                    perCar[presetName] = entry;
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Skipping malformed built-in car preset '{kv.Key}': {ex.Message}");
+                }
+            }
         }
 
         /// <summary>Rewrite every on-disk car-preset file for the active car
@@ -4961,6 +5053,18 @@ namespace TrueforceForAll.Plugin
             if (Settings == null) return false;
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             Settings.CarDefaults[carId] = presetName;
+            // Persist the user choice to the user library's car-defaults.json
+            // (the persistent storage; Settings.CarDefaults is a runtime cache
+            // rebuilt from disk on every Init).
+            try
+            {
+                BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, carId, presetName);
+                UserPresets.Reload();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Persist car-default for '{carId}' failed: {ex.Message}");
+            }
             if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
             return true;
         }
