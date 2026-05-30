@@ -1263,6 +1263,17 @@ namespace TrueforceForAll.Plugin
             // Load the file-based built-in presets (folder override -> shipped
             // default) before anything seeds or queries them below.
             BuiltinPresets.Initialize(Settings.BuiltinPresetsFolder);
+            // Load the user-library folder (where user-saved presets live as
+            // files; mirrors the built-in folder layout). Defaults under
+            // PluginsData/Common, user-writable.
+            UserPresets.Initialize(Settings.UserLibraryFolder);
+            // One-time migration: legacy in-dict user presets -> user-library
+            // files. Backs the settings file up first. Skipped once stamped.
+            if (!Settings.PresetsMigratedV2)
+            {
+                MigrateLegacyUserPresetsToFolder();
+                Settings.PresetsMigratedV2 = true;
+            }
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
             if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
             if (Settings.SeenEffects  == null) Settings.SeenEffects  = new List<string>();
@@ -1338,10 +1349,11 @@ namespace TrueforceForAll.Plugin
             LoadAndMigrateCarPresets();
             MigrateEngineHighRpmHelpersDefaults();
 
-            // Make sure both folders exist with their READMEs, then auto-import
-            // anything the user dropped into the imports folder. Both are
+            // Make sure all three folders exist with their READMEs, then auto-
+            // import anything the user dropped into the imports folder. All
             // best-effort: folder access errors degrade gracefully.
             WriteReadmeIfMissing(BuiltinPresets.CurrentFolder, BuiltinReadmeText);
+            WriteReadmeIfMissing(UserPresets.CurrentFolder, UserLibraryReadmeText);
             WriteReadmeIfMissing(UserImportsFolderPath, ImportsReadmeText);
             ImportFromUserImportsFolder();
 
@@ -3806,47 +3818,61 @@ namespace TrueforceForAll.Plugin
         /// Also auto-binds <see cref="BuiltinPresets.GameDefaultBindings"/>
         /// as each game's default IF the user has no default for that game
         /// yet (we don't override their custom choice).</summary>
+        /// <summary>Compatibility shim: previous Init flow + the dev import /
+        /// reseed actions called this. New model rebuilds the runtime cache
+        /// from both folders (built-in + user library), so just delegate.</summary>
         private void InstallBuiltinPresetsIfMissing()
+            => RebuildPresetCacheFromFolders();
+
+        /// <summary>Rebuild the runtime Settings.Presets / GameDefaults cache
+        /// from the file folders: user library first (mark as user), then
+        /// built-ins overwrite same-named entries (mark as built-in, factory
+        /// content wins on collision). Built-in game defaults are seeded for
+        /// any game the user hasn't chosen yet. Settings.Presets and
+        /// Settings.GameDefaults are runtime caches now, the persistent
+        /// storage lives in the folders.</summary>
+        private void RebuildPresetCacheFromFolders()
         {
             if (Settings == null) return;
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
 
-            // Self-heal: drop any stray library preset whose name collides with
-            // a reserved metadata file (e.g. an early build's folder scan loaded
-            // car-defaults.json as a "car-defaults" game preset, which then got
-            // seeded into the library). These are never real presets.
-            foreach (var reserved in BuiltinPresetStore.ReservedPresetNames)
+            Settings.Presets.Clear();
+            Settings.GameDefaults.Clear();
+
+            // 1) User library: the user's own (non-builtin) presets.
+            foreach (var kv in UserPresets.PresetJsons)
             {
-                if (Settings.Presets.Remove(reserved))
-                    SimHub.Logging.Current.Info($"[Trueforce] Removed stray reserved preset '{reserved}' from the library.");
-                if (Settings.GameDefaults != null)
+                try
                 {
-                    var orphans = new List<string>();
-                    foreach (var kv in Settings.GameDefaults)
-                        if (kv.Value == reserved) orphans.Add(kv.Key);
-                    foreach (var k in orphans) Settings.GameDefaults.Remove(k);
+                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value);
+                    if (snap != null) Settings.Presets[kv.Key] = snap;
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to load user preset '{kv.Key}': {ex.Message}");
                 }
             }
+            foreach (var kv in UserPresets.GameDefaults)
+                Settings.GameDefaults[kv.Key] = kv.Value;
 
-            int refreshed = 0;
+            // 2) Built-ins: overwrite same-named entries (factory wins). The
+            //    shipped JSON is the source of truth for built-ins, so this
+            //    also catches the "built-in shipped before a later-added
+            //    section" case (the section deserializes as null otherwise).
             foreach (var kv in BuiltinPresets.BuiltinPresetJsons)
             {
                 try
                 {
                     var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value);
-                    if (snap != null)
-                    {
-                        Settings.Presets[kv.Key] = snap;
-                        refreshed++;
-                    }
+                    if (snap != null) Settings.Presets[kv.Key] = snap;
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to install built-in preset '{kv.Key}': {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to load built-in preset '{kv.Key}': {ex.Message}");
                 }
             }
-            // Bind game defaults if user hasn't chosen one for that game.
+            // Seed built-in game defaults only for games the user hasn't chosen.
             foreach (var kv in BuiltinPresets.GameDefaultBindings)
             {
                 if (!Settings.GameDefaults.ContainsKey(kv.Key)
@@ -3855,10 +3881,106 @@ namespace TrueforceForAll.Plugin
                     Settings.GameDefaults[kv.Key] = kv.Value;
                 }
             }
-            if (refreshed > 0)
+
+            // Self-heal: strip any stray cache entries whose name collides with
+            // a reserved metadata file (e.g. a folder-scan that briefly treated
+            // car-defaults.json as a "car-defaults" preset).
+            foreach (var reserved in BuiltinPresetStore.ReservedPresetNames)
             {
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info($"[Trueforce] Refreshed {refreshed} built-in preset(s).");
+                if (Settings.Presets.Remove(reserved))
+                    SimHub.Logging.Current.Info($"[Trueforce] Removed stray reserved preset '{reserved}' from the cache.");
+                var orphans = new List<string>();
+                foreach (var kv in Settings.GameDefaults)
+                    if (kv.Value == reserved) orphans.Add(kv.Key);
+                foreach (var k in orphans) Settings.GameDefaults.Remove(k);
+            }
+        }
+
+        /// <summary>One-time migration: move the legacy in-dict user presets +
+        /// game defaults out of Settings.Presets / Settings.GameDefaults into
+        /// files in the user-library folder, then clear the dicts. Built-in
+        /// entries are skipped (they re-seed from the built-in folder).
+        /// Backs the GeneralSettings.json file up first.</summary>
+        private void MigrateLegacyUserPresetsToFolder()
+        {
+            int presetsCount = Settings.Presets?.Count ?? 0;
+            int defaultsCount = Settings.GameDefaults?.Count ?? 0;
+            if (presetsCount == 0 && defaultsCount == 0)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] User-preset migration: nothing in the legacy dicts to move.");
+                return;
+            }
+
+            BackupSettingsFile("user-preset-migration");
+
+            int migratedPresets = 0, skippedBuiltins = 0, failedPresets = 0;
+            if (Settings.Presets != null)
+            {
+                foreach (var kv in Settings.Presets)
+                {
+                    if (string.IsNullOrEmpty(kv.Key) || kv.Value == null) continue;
+                    if (BuiltinPresets.IsBuiltin(kv.Key)) { skippedBuiltins++; continue; }
+                    try
+                    {
+                        string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                            kv.Value, Newtonsoft.Json.Formatting.Indented);
+                        BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, kv.Key, json);
+                        migratedPresets++;
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate user preset '{kv.Key}': {ex.Message}");
+                        failedPresets++;
+                    }
+                }
+            }
+
+            int migratedDefaults = 0;
+            if (Settings.GameDefaults != null)
+            {
+                foreach (var kv in Settings.GameDefaults)
+                {
+                    if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
+                    try
+                    {
+                        BuiltinPresetWriter.SetGameDefault(UserPresets.CurrentFolder, kv.Key, kv.Value);
+                        migratedDefaults++;
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate game default for '{kv.Key}': {ex.Message}");
+                    }
+                }
+            }
+
+            UserPresets.Reload();
+
+            // Clear the legacy dicts; they're a runtime cache now and will be
+            // repopulated by RebuildPresetCacheFromFolders.
+            Settings.Presets.Clear();
+            Settings.GameDefaults.Clear();
+
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] User-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s); {failedPresets} failed).");
+        }
+
+        /// <summary>Make a timestamped sibling backup of the plugin's
+        /// GeneralSettings.json. Used before destructive migrations.</summary>
+        private void BackupSettingsFile(string tag)
+        {
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
+                string src = Path.Combine(baseDir, "PluginsData", "Common", "TrueforcePlugin.GeneralSettings.json");
+                if (!File.Exists(src)) return;
+                string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                string dst = src + $".bak-{tag}-{ts}";
+                File.Copy(src, dst, overwrite: false);
+                SimHub.Logging.Current.Info($"[Trueforce] Backed up settings to '{Path.GetFileName(dst)}'.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Settings backup ({tag}) failed: {ex.Message}");
             }
         }
 
@@ -3936,6 +4058,22 @@ namespace TrueforceForAll.Plugin
             "which auto-imports them as normal (non-builtin) user presets on the\r\n" +
             "next SimHub start.\r\n";
 
+        private const string UserLibraryReadmeText =
+            "Trueforce For All - User library (your saved presets)\r\n" +
+            "\r\n" +
+            "This folder holds the presets you have saved through the plugin UI.\r\n" +
+            "It mirrors the built-in folder's layout exactly:\r\n" +
+            "  game-defaults.json            (per-game default preset map)\r\n" +
+            "  games/<Preset Name>.json      (one GameSettingsSnapshot per preset)\r\n" +
+            "  car-defaults.json             (per-car default preset map)\r\n" +
+            "  cars/<GameName>/<carId>/<PresetName>.json\r\n" +
+            "\r\n" +
+            "The plugin reads + writes these files automatically. Edits here take\r\n" +
+            "effect on the next SimHub start (or after the plugin reloads the folder).\r\n" +
+            "\r\n" +
+            "Drop community / shared presets in the sibling 'TrueforceForAll-Imports'\r\n" +
+            "folder, not here.\r\n";
+
         private const string ImportsReadmeText =
             "Trueforce For All - User imports folder\r\n" +
             "\r\n" +
@@ -3944,9 +4082,10 @@ namespace TrueforceForAll.Plugin
             "  - Car preset JSON    (Type 'trueforce-car-preset')\r\n" +
             "  - Pack file          (Type 'trueforce-pack')\r\n" +
             "\r\n" +
-            "On the next SimHub start, they are auto-imported into your library as\r\n" +
-            "normal (non-builtin) user presets, then moved into an 'imported/<date>'\r\n" +
-            "archive subfolder so they don't import twice.\r\n" +
+            "On the next SimHub start, they are auto-imported into your USER library\r\n" +
+            "(<SimHub>\\PluginsData\\Common\\TrueforceForAll-Library) as normal\r\n" +
+            "(non-builtin) presets, then moved into an 'imported/<date>' archive\r\n" +
+            "subfolder so they don't import twice.\r\n" +
             "\r\n" +
             "You can also use the Import button in the Presets tab.\r\n";
 
@@ -4042,27 +4181,38 @@ namespace TrueforceForAll.Plugin
         /// users keep the protective fork-on-built-in behaviour.</summary>
         public bool DevMode => Settings?.DevModeUnlocked == true;
 
-        // In DEV mode, write an edit to an EXISTING built-in through to its
-        // folder file so the edit persists (the folder re-seeds the library on
-        // load). Only fires for presets that are already built-ins: a brand-new
-        // preset stays a normal user preset until the owner explicitly promotes
-        // it via "Export as built-in". No-op otherwise.
-        private void WriteGamePresetThroughIfDev(string presetName)
+        // Persist a game preset snapshot to its file. Picks the right folder:
+        //   - EXISTING built-in AND DevMode  -> built-in folder (DEV authoring).
+        //   - Everything else                -> user library folder.
+        //   - Built-in name in non-DEV       -> caller refuses; we just no-op.
+        // After writing, reloads the touched store and rebuilds the runtime
+        // cache so Settings.Presets reflects the new file content.
+        private void PersistGamePresetToFolder(string presetName, GameSettingsSnapshot snap)
         {
-            if (!DevMode || Settings?.Presets == null || string.IsNullOrEmpty(presetName)) return;
-            if (!IsBuiltinPreset(presetName)) return;   // new/user presets aren't auto-promoted
-            if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) return;
+            if (string.IsNullOrEmpty(presetName) || snap == null) return;
+            bool isBuiltin = IsBuiltinPreset(presetName);
+            if (isBuiltin && !DevMode) return; // protective; caller already refused
             try
             {
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     snap, Newtonsoft.Json.Formatting.Indented);
-                BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
-                BuiltinPresets.Reload();
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote '{presetName}' through to the built-in folder.");
+                if (isBuiltin)
+                {
+                    BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
+                    BuiltinPresets.Reload();
+                    SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote '{presetName}' to the built-in folder.");
+                }
+                else
+                {
+                    BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, presetName, json);
+                    UserPresets.Reload();
+                    SimHub.Logging.Current.Info($"[Trueforce] Wrote user preset '{presetName}' to the library folder.");
+                }
+                RebuildPresetCacheFromFolders();
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] DEV write-through failed for '{presetName}': {ex.Message}");
+                SimHub.Logging.Current.Warn($"[Trueforce] Persist '{presetName}' failed: {ex.Message}");
             }
         }
 
@@ -4193,12 +4343,28 @@ namespace TrueforceForAll.Plugin
 
             string presetName = gameName;
             if (!Settings.Presets.ContainsKey(presetName))
-                Settings.Presets[presetName] = CloneSnapshot(seed);
+            {
+                // Write the seeded copy as a user-library file (it's a fresh,
+                // user-mutable preset for this newly-seen game).
+                try
+                {
+                    var clone = CloneSnapshot(seed);
+                    string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                        clone, Newtonsoft.Json.Formatting.Indented);
+                    BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, presetName, json);
+                    UserPresets.Reload();
+                    RebuildPresetCacheFromFolders();
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Seeded preset write for '{presetName}' failed: {ex.Message}");
+                }
+            }
 
-            Settings.GameDefaults[gameName] = presetName;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            SetDefaultPresetForGame(gameName, presetName);
 
-            ApplyGamePreset(Settings.Presets[presetName]);
+            if (Settings.Presets.TryGetValue(presetName, out var applied))
+                ApplyGamePreset(applied);
             _activePresetName = presetName;
             SimHub.Logging.Current.Info(
                 $"[Trueforce] No default for '{gameName}'; created preset '{presetName}' seeded from the Assetto Corsa baseline.");
@@ -5676,17 +5842,15 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null || string.IsNullOrEmpty(presetName)) return;
             // Non-dev: built-ins are read-only (caller forks). DEV authoring
-            // mode may overwrite a built-in in place (write-through below).
+            // mode may overwrite a built-in in place; user presets always save.
             if (IsBuiltinPreset(presetName) && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[Trueforce] Refusing to overwrite built-in preset '{presetName}'.");
                 return;
             }
-            if (Settings.Presets == null) Settings.Presets = new Dictionary<string, GameSettingsSnapshot>();
-            Settings.Presets[presetName] = SnapshotCurrentAsPreset();
+            PersistGamePresetToFolder(presetName, SnapshotCurrentAsPreset());
             _activePresetName = presetName;
             this.SaveCommonSettings("GeneralSettings", Settings);
-            WriteGamePresetThroughIfDev(presetName);
             SimHub.Logging.Current.Info($"[Trueforce] Saved preset '{presetName}'.");
         }
 
@@ -5739,8 +5903,12 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Audio:      snap.AudioCapture = CloneOrNull(Settings.AudioCapture); break;
                 default: return false;
             }
+            // Persist the whole preset to its file (user library or, for DEV
+            // editing a built-in, the built-in folder). Then save plugin
+            // settings (the legacy Presets dict ends up empty after rebuild,
+            // which is the new normal).
+            PersistGamePresetToFolder(_activePresetName, snap);
             this.SaveCommonSettings("GeneralSettings", Settings);
-            WriteGamePresetThroughIfDev(_activePresetName);
             SimHub.Logging.Current.Info($"[Trueforce] Saved {kind} into preset '{_activePresetName}' (scoped).");
             return true;
         }
@@ -5810,25 +5978,36 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[Trueforce] Refusing to delete built-in preset '{presetName}'.");
                 return false;
             }
-            if (!Settings.Presets.Remove(presetName)) return false;
 
-            // Drop any game defaults that pointed to this preset.
-            if (Settings.GameDefaults != null)
+            // Delete the preset file from its source folder + drop any defaults
+            // (in that folder) that pointed at the now-deleted preset.
+            try
             {
-                var orphans = new List<string>();
-                foreach (var kv in Settings.GameDefaults)
-                    if (kv.Value == presetName) orphans.Add(kv.Key);
-                foreach (var k in orphans) Settings.GameDefaults.Remove(k);
+                string folder = wasBuiltin ? BuiltinPresets.CurrentFolder : UserPresets.CurrentFolder;
+                BuiltinPresetWriter.DeleteGame(folder, presetName);
+                // Remove default bindings that referenced this preset in the
+                // folder. Defaults live in user library by default; if the
+                // built-in folder has a default to this name, drop that too.
+                foreach (var src in new[] { UserPresets.GameDefaults, wasBuiltin ? BuiltinPresets.GameDefaultBindings : null })
+                {
+                    if (src == null) continue;
+                    var hits = new List<string>();
+                    foreach (var kv in src)
+                        if (kv.Value == presetName) hits.Add(kv.Key);
+                    string defFolder = src == UserPresets.GameDefaults ? UserPresets.CurrentFolder : BuiltinPresets.CurrentFolder;
+                    foreach (var k in hits) BuiltinPresetWriter.RemoveGameDefault(defFolder, k);
+                }
+                if (wasBuiltin) BuiltinPresets.Reload(); else UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Delete '{presetName}' failed: {ex.Message}");
+                return false;
             }
 
             if (_activePresetName == presetName) _activePresetName = null;
             this.SaveCommonSettings("GeneralSettings", Settings);
-
-            if (wasBuiltin && DevMode)
-            {
-                try { BuiltinPresetWriter.DeleteGame(BuiltinPresets.CurrentFolder, presetName); BuiltinPresets.Reload(); }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV delete folder file failed: {ex.Message}"); }
-            }
             SimHub.Logging.Current.Info($"[Trueforce] Deleted preset '{presetName}'.");
             return true;
         }
@@ -5837,23 +6016,15 @@ namespace TrueforceForAll.Plugin
         /// Subsequent game changes into this game will apply the preset.</summary>
         public void SetDefaultPresetForActiveGame(string presetName)
         {
-            if (Settings == null || string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(presetName)) return;
-            if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
-            if (Settings.Presets == null || !Settings.Presets.ContainsKey(presetName)) return;
-            Settings.GameDefaults[_activeGame] = presetName;
-            this.SaveCommonSettings("GeneralSettings", Settings);
-            SimHub.Logging.Current.Info($"[Trueforce] '{presetName}' set as default for '{_activeGame}'.");
+            if (string.IsNullOrEmpty(_activeGame)) return;
+            SetDefaultPresetForGame(_activeGame, presetName);
         }
 
         /// <summary>Remove the auto-load binding for the active game.</summary>
         public void ClearDefaultPresetForActiveGame()
         {
-            if (Settings?.GameDefaults == null || string.IsNullOrEmpty(_activeGame)) return;
-            if (Settings.GameDefaults.Remove(_activeGame))
-            {
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info($"[Trueforce] Cleared default preset for '{_activeGame}'.");
-            }
+            if (string.IsNullOrEmpty(_activeGame)) return;
+            ClearDefaultPresetForGame(_activeGame);
         }
 
         /// <summary>Rename a game preset in the library. Updates any
@@ -5877,25 +6048,23 @@ namespace TrueforceForAll.Plugin
             if (!Settings.Presets.TryGetValue(oldName, out var snap) || snap == null) return false;
             if (Settings.Presets.ContainsKey(newName)) return false;
 
-            Settings.Presets.Remove(oldName);
-            Settings.Presets[newName] = snap;
-
-            if (Settings.GameDefaults != null)
+            // Rename the file in the right folder; RenameGame also repoints any
+            // game-defaults entries in that folder from old -> new.
+            try
             {
-                var keys = new List<string>();
-                foreach (var kv in Settings.GameDefaults)
-                    if (kv.Value == oldName) keys.Add(kv.Key);
-                foreach (var k in keys) Settings.GameDefaults[k] = newName;
+                string folder = wasBuiltin ? BuiltinPresets.CurrentFolder : UserPresets.CurrentFolder;
+                BuiltinPresetWriter.RenameGame(folder, oldName, newName);
+                if (wasBuiltin) BuiltinPresets.Reload(); else UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Rename '{oldName}' -> '{newName}' failed: {ex.Message}");
+                return false;
             }
 
             if (_activePresetName == oldName) _activePresetName = newName;
             this.SaveCommonSettings("GeneralSettings", Settings);
-
-            if (wasBuiltin && DevMode)
-            {
-                try { BuiltinPresetWriter.RenameGame(BuiltinPresets.CurrentFolder, oldName, newName); BuiltinPresets.Reload(); }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV rename folder file failed: {ex.Message}"); }
-            }
             SimHub.Logging.Current.Info($"[Trueforce] Renamed preset '{oldName}' to '{newName}'.");
             return true;
         }
@@ -5910,9 +6079,21 @@ namespace TrueforceForAll.Plugin
             if (!Settings.Presets.TryGetValue(sourceName, out var snap) || snap == null) return false;
             if (Settings.Presets.ContainsKey(newName)) return false;
 
-            var json = Newtonsoft.Json.JsonConvert.SerializeObject(snap);
-            var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(json);
-            Settings.Presets[newName] = clone;
+            // The duplicate always lands in the USER library (a copy of a
+            // built-in becomes a normal user preset; the owner uses DEV +
+            // Export-as-built-in to promote one).
+            var json = Newtonsoft.Json.JsonConvert.SerializeObject(snap, Newtonsoft.Json.Formatting.Indented);
+            try
+            {
+                BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, newName, json);
+                UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Duplicate '{sourceName}' -> '{newName}' failed: {ex.Message}");
+                return false;
+            }
             this.SaveCommonSettings("GeneralSettings", Settings);
             SimHub.Logging.Current.Info($"[Trueforce] Duplicated preset '{sourceName}' as '{newName}'.");
             return true;
@@ -5927,16 +6108,22 @@ namespace TrueforceForAll.Plugin
             if (Settings == null) return false;
             if (string.IsNullOrEmpty(gameName) || string.IsNullOrEmpty(presetName)) return false;
             if (Settings.Presets == null || !Settings.Presets.ContainsKey(presetName)) return false;
-            if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
-            Settings.GameDefaults[gameName] = presetName;
-            this.SaveCommonSettings("GeneralSettings", Settings);
-            // DEV authoring: the default map is built from the plugin, not
-            // hand-edited, so write it through to game-defaults.json.
-            if (DevMode)
+            try
             {
-                try { BuiltinPresetWriter.SetGameDefault(BuiltinPresets.CurrentFolder, gameName, presetName); BuiltinPresets.Reload(); }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV write game-default failed: {ex.Message}"); }
+                // DEV authoring writes the BUILT-IN folder's defaults map (the
+                // factory baseline); regular users write the USER library's
+                // (their personal choice that overrides the built-in seed).
+                string folder = DevMode ? BuiltinPresets.CurrentFolder : UserPresets.CurrentFolder;
+                BuiltinPresetWriter.SetGameDefault(folder, gameName, presetName);
+                if (DevMode) BuiltinPresets.Reload(); else UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
             }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Set game default for '{gameName}' failed: {ex.Message}");
+                return false;
+            }
+            this.SaveCommonSettings("GeneralSettings", Settings);
             SimHub.Logging.Current.Info($"[Trueforce] '{presetName}' set as default for '{gameName}'.");
             return true;
         }
@@ -5945,13 +6132,19 @@ namespace TrueforceForAll.Plugin
         public bool ClearDefaultPresetForGame(string gameName)
         {
             if (Settings?.GameDefaults == null || string.IsNullOrEmpty(gameName)) return false;
-            if (!Settings.GameDefaults.Remove(gameName)) return false;
-            this.SaveCommonSettings("GeneralSettings", Settings);
-            if (DevMode)
+            try
             {
-                try { BuiltinPresetWriter.RemoveGameDefault(BuiltinPresets.CurrentFolder, gameName); BuiltinPresets.Reload(); }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV remove game-default failed: {ex.Message}"); }
+                string folder = DevMode ? BuiltinPresets.CurrentFolder : UserPresets.CurrentFolder;
+                BuiltinPresetWriter.RemoveGameDefault(folder, gameName);
+                if (DevMode) BuiltinPresets.Reload(); else UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
             }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Clear game default for '{gameName}' failed: {ex.Message}");
+                return false;
+            }
+            this.SaveCommonSettings("GeneralSettings", Settings);
             SimHub.Logging.Current.Info($"[Trueforce] Cleared default preset for '{gameName}'.");
             return true;
         }
@@ -6351,11 +6544,18 @@ namespace TrueforceForAll.Plugin
             if (file.Type != PresetFile.FileType)
                 throw new System.IO.InvalidDataException($"Wrong file type '{file.Type}'. Expected '{PresetFile.FileType}'.");
 
-            if (Settings.Presets == null) Settings.Presets = new Dictionary<string, GameSettingsSnapshot>();
-            Settings.Presets[file.PresetName] = file.Snapshot;
+            // Imports always land in the USER library as user presets, even
+            // if the file's name happens to collide with a built-in (the
+            // BuiltinPresetWriter is name-keyed; user library writes are
+            // independent of the built-in folder).
+            string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+                file.Snapshot, Newtonsoft.Json.Formatting.Indented);
+            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, file.PresetName, snapJson);
+            UserPresets.Reload();
+            RebuildPresetCacheFromFolders();
             this.SaveCommonSettings("GeneralSettings", Settings);
 
-            SimHub.Logging.Current.Info($"[Trueforce] Imported preset '{file.PresetName}' from {path}.");
+            SimHub.Logging.Current.Info($"[Trueforce] Imported preset '{file.PresetName}' from {path} into the user library.");
             return new ImportPresetResult
             {
                 PresetName    = file.PresetName,
@@ -6717,8 +6917,19 @@ namespace TrueforceForAll.Plugin
                         var pf = ReadJsonZipEntry<PresetFile>(entry);
                         if (pf == null || pf.Snapshot == null || string.IsNullOrEmpty(pf.PresetName)) continue;
                         if (pf.Type != PresetFile.FileType) continue;
-                        Settings.Presets[pf.PresetName] = pf.Snapshot;
-                        presetsImported++;
+                        // Write to the user library folder (imported pack
+                        // entries are user presets, not factory built-ins).
+                        try
+                        {
+                            string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+                                pf.Snapshot, Newtonsoft.Json.Formatting.Indented);
+                            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, pf.PresetName, snapJson);
+                            presetsImported++;
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Pack import of preset '{pf.PresetName}' failed: {ex.Message}");
+                        }
                     }
                     else if (entry.FullName.StartsWith("cars/", StringComparison.OrdinalIgnoreCase)
                         && entry.FullName.EndsWith(".tfcar.json", StringComparison.OrdinalIgnoreCase))
@@ -6735,6 +6946,13 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            // Game presets just landed in the user library folder; reload +
+            // rebuild the cache so they show up in the library immediately.
+            if (presetsImported > 0)
+            {
+                UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+            }
             this.SaveCommonSettings("GeneralSettings", Settings);
             if (!string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
 
@@ -6818,6 +7036,16 @@ namespace TrueforceForAll.Plugin
                 _audio.LowpassCutoffHz  = Settings.AudioCapture.LowpassCutoffHz;
                 _audio.HighpassCutoffHz = Settings.AudioCapture.HighpassCutoffHz;
             }
+            // A legacy backup may include the old dict-based Presets / GameDefaults.
+            // Force the one-time migration to run again so they move into files.
+            if (!Settings.PresetsMigratedV2
+                && ((Settings.Presets?.Count ?? 0) > 0 || (Settings.GameDefaults?.Count ?? 0) > 0))
+            {
+                MigrateLegacyUserPresetsToFolder();
+                Settings.PresetsMigratedV2 = true;
+            }
+            // Rebuild the runtime cache from the (potentially updated) folders.
+            RebuildPresetCacheFromFolders();
             ApplyActiveCarOverride();
             SimHub.Logging.Current.Info($"[Trueforce] Settings imported from {path}.");
         }

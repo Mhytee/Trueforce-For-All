@@ -275,6 +275,21 @@ namespace TrueforceForAll.Plugin
         // default beside the plugin DLL (<dll>\TrueforceForAll-Imports).
         public string UserImportsFolder { get; set; } = "";
 
+        // User-library folder. Holds the user's own (non-builtin) presets as
+        // files, mirroring the built-in folder layout (games/, cars/<game>/,
+        // game-defaults.json, car-defaults.json). Blank = default at
+        // <SimHub>\PluginsData\Common\TrueforceForAll-Library. The previous
+        // model kept user presets inside the Presets dict below; this folder
+        // replaces that, with a one-time migration on first launch.
+        public string UserLibraryFolder { get; set; } = "";
+
+        // Flips to true after the one-time migration moves the legacy in-dict
+        // user presets (Settings.Presets / GameDefaults / CarDefaults entries
+        // that weren't built-ins) into files in the user-library folder. Once
+        // true, the dicts are treated as a transient runtime cache rebuilt
+        // from disk on each Init.
+        public bool PresetsMigratedV2 { get; set; } = false;
+
         // Developer mode unlock. Set by the DEV access code; reveals the
         // Developer panel + built-in export/import/reseed/validate buttons.
         // Persisted so it stays on across restarts on a dev machine.
