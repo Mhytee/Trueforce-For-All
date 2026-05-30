@@ -1267,6 +1267,10 @@ namespace TrueforceForAll.Plugin
             // files; mirrors the built-in folder layout). Defaults under
             // PluginsData/Common, user-writable.
             UserPresets.Initialize(Settings.UserLibraryFolder);
+            // Seed the cumulative "ever a built-in here" set with the
+            // pre-v0.1.21 factory names so the initial migration recognises
+            // them even though they predate the auto-tracking field. Idempotent.
+            SeedKnownBuiltinNamesIfEmpty();
             // One-time migration: legacy in-dict user presets -> user-library
             // files. Backs the settings file up first. Skipped once stamped.
             if (!Settings.PresetsMigratedV2)
@@ -1274,10 +1278,20 @@ namespace TrueforceForAll.Plugin
                 MigrateLegacyUserPresetsToFolder();
                 Settings.PresetsMigratedV2 = true;
             }
-            // Always-run sweep: drop any user-library copy of an ever-shipped
-            // built-in. Catches earlier migrations that wrote those out before
-            // the skip-ever-shipped rule existed. Idempotent.
-            CleanUpSupersededUserBuiltins();
+            // One-shot sweep: drop any user-library copy of an ever-built-in
+            // name (catches earlier migrations that wrote those out before the
+            // skip-ever-built-in rule existed). Runs once, then stops; after
+            // it's done, user-named files are sacred even if their name was
+            // once a built-in (a user can deliberately reuse a retired name).
+            if (!Settings.BuiltinCleanupV1Done)
+            {
+                CleanUpSupersededUserBuiltins();
+                Settings.BuiltinCleanupV1Done = true;
+            }
+            // Auto-track: fold the current built-in set into LastKnownBuiltinNames
+            // so the next launch's migration / cleanup recognises any later
+            // retirements without a manual list edit.
+            PersistCurrentKnownBuiltinNames();
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
             if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
             if (Settings.SeenEffects  == null) Settings.SeenEffects  = new List<string>();
@@ -3923,13 +3937,11 @@ namespace TrueforceForAll.Plugin
                 foreach (var kv in Settings.Presets)
                 {
                     if (string.IsNullOrEmpty(kv.Key) || kv.Value == null) continue;
-                    // Skip names that ARE or WERE built-ins. Currently-shipped
-                    // names re-seed from the built-in folder on the rebuild;
-                    // historically-shipped but removed names get dropped (they
-                    // were factory leftovers, not user content).
-                    if (BuiltinPresets.IsBuiltin(kv.Key)
-                        || BuiltinPresetStore.IsEverShippedBuiltinName(kv.Key))
-                    { skippedBuiltins++; continue; }
+                    // Skip names that ARE or WERE built-ins on this install
+                    // (current set + LastKnownBuiltinNames, freshly seeded
+                    // above). Currently-shipped names re-seed from the built-in
+                    // folder on the rebuild; retired names get dropped.
+                    if (WasEverBuiltinName(kv.Key)) { skippedBuiltins++; continue; }
                     try
                     {
                         string json = Newtonsoft.Json.JsonConvert.SerializeObject(
@@ -3951,12 +3963,11 @@ namespace TrueforceForAll.Plugin
                 foreach (var kv in Settings.GameDefaults)
                 {
                     if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
-                    // Orphan: default points at an ever-shipped name that's no
+                    // Orphan: default points at an ever-built-in name that's no
                     // longer in the current built-in folder (e.g. a leftover
                     // F12025 -> "F1 25 (default)" binding). Target preset is
                     // gone, so the binding would dangle.
-                    if (BuiltinPresetStore.IsEverShippedBuiltinName(kv.Value)
-                        && !BuiltinPresets.IsBuiltin(kv.Value))
+                    if (WasEverBuiltinName(kv.Value) && !BuiltinPresets.IsBuiltin(kv.Value))
                     {
                         skippedOrphanDefaults++;
                         continue;
@@ -3984,23 +3995,79 @@ namespace TrueforceForAll.Plugin
                 $"[Trueforce] User-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s) + {skippedOrphanDefaults} orphan default(s); {failedPresets} failed).");
         }
 
-        /// <summary>Drop any user-library file whose name matches an
-        /// ever-shipped built-in. Catches users who ran the earlier migration
-        /// before the "skip ever-shipped names" rule landed: their library
-        /// ended up with leftover "(default)"-suffixed entries for built-ins
-        /// the new folder either still ships (factory copy is the real one)
-        /// or has retired. Idempotent and cheap; runs on every Init.</summary>
+        // Names that were factory built-ins in pre-v0.1.21 versions, used to
+        // seed Settings.LastKnownBuiltinNames the first time the new code
+        // runs. After this single seed the set is self-maintaining; new
+        // additions / retirements are tracked automatically.
+        private static readonly string[] InitialKnownBuiltinNamesSeed =
+        {
+            "Assetto Corsa (default)",
+            "Wreckfest 2 (default)",
+            "Forza Horizon (default)",
+            "iRacing (default)",
+            "F1 25 (default)",
+        };
+
+        private void SeedKnownBuiltinNamesIfEmpty()
+        {
+            if (Settings.LastKnownBuiltinNames == null) Settings.LastKnownBuiltinNames = new List<string>();
+            if (Settings.LastKnownBuiltinNames.Count > 0) return;
+            Settings.LastKnownBuiltinNames.AddRange(InitialKnownBuiltinNamesSeed);
+        }
+
+        /// <summary>Append any names currently in the built-in folder to
+        /// Settings.LastKnownBuiltinNames. Never shrinks the set: a retired
+        /// built-in stays known so a future migration / cleanup recognises it.</summary>
+        private void PersistCurrentKnownBuiltinNames()
+        {
+            if (Settings.LastKnownBuiltinNames == null) Settings.LastKnownBuiltinNames = new List<string>();
+            var seen = new HashSet<string>(Settings.LastKnownBuiltinNames, StringComparer.Ordinal);
+            bool changed = false;
+            foreach (var n in BuiltinPresets.BuiltinPresetJsons.Keys)
+            {
+                if (string.IsNullOrEmpty(n)) continue;
+                if (seen.Add(n)) { Settings.LastKnownBuiltinNames.Add(n); changed = true; }
+            }
+            if (changed) this.SaveCommonSettings("GeneralSettings", Settings);
+        }
+
+        /// <summary>True if the name is currently a built-in OR was a built-in
+        /// on this install at some point (per Settings.LastKnownBuiltinNames).
+        /// The migration / cleanup uses this to recognise old factory entries
+        /// that the new build has retired.</summary>
+        private bool WasEverBuiltinName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            if (BuiltinPresets.IsBuiltin(name)) return true;
+            var list = Settings?.LastKnownBuiltinNames;
+            if (list == null) return false;
+            foreach (var n in list)
+                if (string.Equals(name, n, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        /// <summary>Drop any user-library file whose name is in the
+        /// ever-built-in set (currently-shipped names live in the built-in
+        /// folder; retired names just go away). Also drops user-default
+        /// bindings pointing at names that were once built-in but the current
+        /// folder no longer has. Idempotent.</summary>
         private void CleanUpSupersededUserBuiltins()
         {
             try
             {
                 if (string.IsNullOrEmpty(UserPresets.CurrentFolder)) return;
                 int removedFiles = 0, removedDefaults = 0;
-                foreach (var name in BuiltinPresetStore.EverShippedBuiltinGameNames)
+                var everBuiltin = new List<string>(Settings.LastKnownBuiltinNames ?? new List<string>());
+                // Include any current built-in names not yet in the persisted
+                // list (covers the very first run after the seed).
+                foreach (var n in BuiltinPresets.BuiltinPresetJsons.Keys)
+                    if (!everBuiltin.Contains(n)) everBuiltin.Add(n);
+
+                foreach (var name in everBuiltin)
                 {
-                    // Drop any user-library copy of this name. Currently-shipped
-                    // names are owned by the built-in folder; removed names are
-                    // stale orphans. Either way the user-library file goes.
+                    // Drop any user-library copy of this name (currently-shipped
+                    // names are owned by the built-in folder; retired names are
+                    // stale orphans).
                     if (UserPresets.HasGamePreset(name))
                     {
                         BuiltinPresetWriter.DeleteGame(UserPresets.CurrentFolder, name);

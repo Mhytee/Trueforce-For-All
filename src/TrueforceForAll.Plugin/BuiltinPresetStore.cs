@@ -71,31 +71,6 @@ namespace TrueforceForAll.Plugin
         public static IReadOnlyList<string> ReservedPresetNames { get; } =
             new[] { "game-defaults", "car-defaults", "manifest" };
 
-        /// <summary>Every game-preset name we have EVER shipped as a factory
-        /// built-in (currently shipped + historically shipped then removed).
-        /// Used by the user-preset migration / cleanup to recognise that an
-        /// entry with one of these names was factory content even if the
-        /// current folder no longer ships it, so the migration won't strand
-        /// the entry as a "user preset". A removed-name entry just goes away;
-        /// a still-shipped name is replaced by the current factory copy on
-        /// the cache rebuild.</summary>
-        public static IReadOnlyList<string> EverShippedBuiltinGameNames { get; } =
-            new[]
-            {
-                "Assetto Corsa (default)",
-                "Wreckfest 2 (default)",
-                "Forza Horizon (default)",
-                "iRacing (default)",
-                "F1 25 (default)",        // briefly shipped, then removed
-            };
-
-        public static bool IsEverShippedBuiltinName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return false;
-            foreach (var n in EverShippedBuiltinGameNames)
-                if (string.Equals(name, n, System.StringComparison.Ordinal)) return true;
-            return false;
-        }
 
         /// <summary>Load every built-in from <paramref name="folder"/> by
         /// directory scan. Never throws: a missing folder or unreadable file
