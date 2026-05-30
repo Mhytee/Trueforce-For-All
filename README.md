@@ -9,7 +9,7 @@ protocol reverse-engineered by the [mescon Linux driver project][mescon].
 > **Status:** Actively in development. The plugin is functional today; the
 > default presets are still being tuned. Feedback welcome.
 >
-> Note: My Reddit account was immediately banned after sharing this and all of my posts have been removed across several subreddits. If you find this useful, sharing it outside Reddit (Discord servers, sim-racing forums, YouTube) helps other drivers find it. I've appealed the ban and have yet to hear back.
+> Note: My Reddit account was immediately banned after sharing this and all of my posts have been removed across several subreddits. If you find this useful, sharing it on social media (Reddit, Discord, Sim-Racing forums, YouTube, etc) helps other drivers find it. I've appealed the ban and have yet to hear back.
 
 For the record on what this project is: Original Windows code built on top of a wire protocol reverse-engineered by the [mescon Linux driver project][mescon] from USB traffic. No Logitech source, firmware, or proprietary assets are used or redistributed. GPL-2.0, same as mescon's work. Logitech trademarks are acknowledged in the section below; this project is unaffiliated.
 
@@ -47,7 +47,15 @@ G PRO and RS50, so if it feels light, raise master or Trueforce gain.
 ## What it does
 
 The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
-in real time, mixing several signal sources:
+in real time. Everything rides on top of your real force feedback, which it
+preserves via FFB pass-through. It mixes:
+
+- **FFB pass-through (the foundation).** Driving the Trueforce motor would
+  otherwise silence the game's own force feedback, so the plugin taps that
+  signal off the USB bus and folds it back into the Trueforce stream. Your
+  real cornering load, weight transfer and kerb forces keep coming through
+  underneath every effect below, in any game whose force feedback uses
+  standard HID++ (effectively all of them on these wheels).
 
 - **Telemetry-derived effects** synthesized from live game data.
 
@@ -91,11 +99,6 @@ in real time, mixing several signal sources:
   doesn't expose, and works even for games which do not output telemetry data
   since capture targets the game process directly.
 
-- **FFB pass-through.** When a game already drives the wheel via standard
-  HID++ force feedback (Assetto Corsa does), the plugin transparently taps
-  that signal off the USB bus and mirrors it into the Trueforce stream so
-  cornering load coexists with the haptic effects above.
-
 All of it is configurable per-game, per-car, via SimHub's settings UI:
 master gain, individual effect tuning, sidechain ducking between
 continuous and transient effects, and savable preset library.
@@ -109,11 +112,8 @@ real wrist strain over a session. iRacing has a built-in softener; most
 other games don't. The plugin taps the game's outgoing FFB on the USB
 bus and attenuates spikes only, so curbs land as confident pushes
 instead of yanks while sustained cornering load and weight transfer
-pass through untouched. Works in any game whose FFB goes through
-standard HID++. Requires one of the supported Trueforce wheels above
-(the attenuated signal reaches the wheel through the Trueforce
-endpoint). Useful on its own, even with all our other effects turned
-off.
+pass through untouched. Useful on its own, even with all our other
+effects turned off.
 
 ## Install
 
@@ -144,16 +144,31 @@ plugins that share those keep working.
 
 ## Per-game enhancements
 
-By default the plugin runs on SimHub's universal 60 Hz telemetry feed, which carries the standard fields all the core effects need.
-SimHub is free but the 60 Hz feed requires a licensed copy of SimHub, which carries a small one-time payment. 
+A few titles are read directly from the game's own telemetry, at a much
+higher rate than SimHub's 60 Hz cap. That makes their effects sharper and
+more responsive, and it needs no SimHub license:
 
-Some titles read directly from the game's telemetry, bypassing SimHub's limitations and the need for a licensed copy (Assetto Corsa, Forza Horizon 4, 5, and 6).
+**Assetto Corsa** has a dedicated path: shared memory is read directly at
+AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within
+1 ms of being written). The higher rate makes curb collisions, road-bumps,
+traction-loss and other haptic effects noticeably sharper and more
+responsive than SimHub's 60 Hz feed can deliver.
 
-**Assetto Corsa** has a dedicated path: shared memory is read directly at AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within 1 ms of being written). The higher rate makes curb collisions, road-bumps, traction-loss and other haptic effects noticeably sharper and more responsive than SimHub's 60 Hz feed can deliver.
+**Forza Horizon 4, 5 and 6** also have a direct UDP Data Out reader that
+picks up per-tire fields for the surface-texture, rumble strips, and curb
+collision effects. These games send this telemetry once per rendered frame,
+so it tracks your frame rate (often well above 60 Hz), giving more depth in
+surface detail effects than some other titles offer. All three are
+auto-detected from SimHub's game profile, so the only setup is pointing
+Forza's DATA OUT at the listener's IP and port.
 
-**Forza Horizon 4, 5 and 6** also have a direct UDP Data Out reader that picks up per-tire fields for the surface-texture, rumble strips, and curb collision effects. These games send this telemetry once per rendered frame, so it tracks your frame rate (often well above 60 Hz), giving more depth in surface detail effects than some other titles offer. All three are auto-detected from SimHub's game profile, so the only setup is pointing Forza's DATA OUT at the listener's IP and port.
+Additional direct-read titles will be added over time.
 
-Additional per-title enhancements/bypasses will be added over time.
+Every other SimHub-supported game runs through SimHub's universal telemetry
+feed instead. The plugin works there without a SimHub license, but
+unlicensed that feed is capped at 10 Hz, which makes the effects feel coarse.
+A licensed copy of SimHub (a small one-time payment) lifts it to 60 Hz, a
+big step up in feel.
 
 ### Using a UDP game alongside SimHub (dashboards, bass shakers, Buttkicker)
 
@@ -204,8 +219,6 @@ live even at 0, so the plugin fights a channel the game is still driving and
 the wheel whines. Only a real on/off switch or a config-file setting fully
 releases the wheel.
 
-<br>
-
 | Game | How to disable native Trueforce | Plugin takes over? |
 |---|---|---|
 | iRacing | `app.ini` `loadTrueForceAPI=0` (see iRacing + MAIRA above) | Yes |
@@ -216,8 +229,6 @@ releases the wheel.
 | Assetto Corsa EVO | Slider only, no off switch found | No, stays live |
 | Assetto Corsa Rally | Slider only, no off switch found | No, stays live |
 
-<br>
-
 **AMS2 is a special case:** per Reiza's devs it loads the Logitech SDK but
 never actually implements Trueforce, so it behaves like a non-Trueforce
 game with the channel left live. The `disableTF`
@@ -225,7 +236,7 @@ launch option falls back to legacy mode and should let the plugin take
 over, but I haven't confirmed it on hardware. (Steam launch options: right-
 click the game, Properties, General, Launch Options.)
 
-I don't own some of these titles, so this table grows from user reports. If
+>I don't own some of these titles, so this table grows from user reports. If
 you find an off switch or config setting for one of the ones still marked
 "no", or get the plugin working on a native-Trueforce game that isn't listed
 here at all, please open an issue and let me know.
@@ -257,12 +268,74 @@ gracefully
   Use the in-plugin Master Gain and per-effect Gain controls to set
   intensity instead.
 - **Validated on G PRO and RS50 + AC + Wreckfest 2 + FH5 + FH6 +
-  iRacing with MAIRA** so far. Other SimHub-supported games should work
+  iRacing with MAIRA** so far. Other games should work
   but haven't been tested by us yet. Feedback welcome.
+
+## FAQ
+
+**Which games does it work with?**
+The audio-derived effects work in any game at all, since the plugin captures
+the game's audio directly with no SimHub support needed. Games that SimHub
+supports additionally get the telemetry-derived effects (engine pulse, gear
+shifts, ABS, and so on). Assetto Corsa and Forza Horizon 4/5/6 go further
+with a higher-fidelity direct path (see Per-game enhancements).
+
+**Do I need to pay for SimHub?**
+SimHub itself is free, and the plugin works without a SimHub license. The
+difference is the telemetry rate: unlicensed, games the plugin doesn't read
+directly run at only 10 Hz, which makes the effects feel coarse. A licensed
+copy lifts that to 60 Hz, which is a big step up in feel. SimHub is cheap and
+well worth it. (Assetto Corsa and Forza Horizon 4/5/6 are read directly from
+the game, so they run at their full rate regardless of license.)
+
+**Is this anti-cheat safe?**
+Yes. The plugin operates entirely outside the game. It never injects code,
+reads or modifies game memory, or hooks the game in any way. It only talks
+to the wheel over USB (via USBPcap), reads telemetry the game already
+broadcasts (SimHub, shared memory, or UDP), and captures game audio through
+Windows' own loopback. Switching off a game's native Trueforce is done by
+editing a config file or flipping an in-game setting before launch, never by
+touching the running game.
+
+**Will it change or replace my normal force feedback?**
+No. The plugin preserves your existing force feedback and layers haptic
+effects on top of it. Your wheelbase's own FFB still comes through, with all
+your usual settings intact.
+
+**Why does it need USBPcap, and is that safe?**
+USBPcap is an open-source USB capture driver. The plugin uses it to read the
+wheel's own force-feedback traffic off the USB bus so it can mirror that into
+the Trueforce stream (this is the FFB pass-through that keeps your normal
+force feedback alive). It only looks at the wheel's traffic, it's widely used
+and bundled with our installer, and you can uninstall it separately at any
+time.
+
+**Do I need Logitech G HUB?**
+Some wheels need G HUB launched once to switch into PC mode and expose their
+full HID interfaces. If the wheel isn't detected, open G HUB once, let it
+recognize the wheel, then close it completely before launching SimHub. G HUB
+claims the wheel's HID interface, so it must stay closed while you play. The
+wheel can drop out of PC mode after a PC restart or when you unplug it, so
+you may need to repeat the open-once-then-close step after each reboot.
+
+**The effects feel weak or light.**
+Raise Master Gain and the per-effect Gain in the plugin settings. The
+Trueforce dial on the wheel itself does nothing while the plugin is running,
+so all intensity is set in the plugin. The G923 is a quieter gear-driven
+wheel and usually needs more gain than the G PRO or RS50.
+
+**Can I use this in games that already support Trueforce?**
+By default the plugin stays off for native-Trueforce titles, since the game
+already provides it. But you can switch off the game's native Trueforce and
+run the plugin instead, which lets you tune the feel yourself. See
+[Games with native Trueforce](#games-with-native-trueforce) for which titles
+allow this and how.
 
 ## Community coverage
 
+- **Overtake.gg**, [Logitech's Trueforce Arrives Early in Forza Horizon 6 Thanks to Community-Made SimHub Plugin](https://www.overtake.gg/news/logitechs-trueforce-arrives-early-in-forza-horizon-6-thanks-to-community-made-simhub-plugin.4520/): Detailed news writeup of the plugin bringing Trueforce to Forza Horizon 6 at launch, ahead of any native support from the game.
 - **Armando Ramirez**, [Does Logitech TRUEFORCE Actually Matter in Forza Horizon 6?](https://www.youtube.com/watch?v=p5P_Ww14CNg): The first video walkthrough of the plugin in Forza Horizon 6, including custom presets the creator tuned.
+- **Revasio**, [French installation tutorial on TikTok](https://www.tiktok.com/@revasio/video/7641185174306180384): A walkthrough of installing and setting up the plugin, narrated in French.
 
 ## How it works
 
@@ -302,6 +375,8 @@ The wire protocol and init sequence are derived from the
   and not affiliated with the SimHub project.
 - **Armando Ramirez**: produced a [video walkthrough][armando] of the
   plugin in Forza Horizon 6 and tuned his own presets for it.
+- **Revasio**: produced a [French-language installation tutorial][revasio]
+  on TikTok, helping French-speaking drivers get set up.
 - **Caleb Pearson**: reported that the plugin was not working on the
   RS50, exported the TF4ALL logs that helped pinpoint the cause, and
   validated the fix on his hardware. Without his report the RS50 issue
@@ -324,3 +399,4 @@ This project is not affiliated with, endorsed by, or sponsored by Logitech.
 [simhub]: https://www.simhubdash.com/
 [releases]: https://github.com/Mhytee/Trueforce-For-All/releases
 [armando]: https://www.youtube.com/watch?v=p5P_Ww14CNg
+[revasio]: https://www.tiktok.com/@revasio/video/7641185174306180384

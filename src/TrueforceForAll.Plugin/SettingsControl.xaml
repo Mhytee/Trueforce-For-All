@@ -800,11 +800,16 @@
                         <TextBlock Text="Stationary spring" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
-                        <CheckBox x:Name="StationarySpringCheck"
-                                  Content="Stationary spring (adds parked-car wheel weight)"
-                                  Margin="0,0,0,6" VerticalAlignment="Center"
-                                  Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                  ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (MAIRA already weights the wheel)."/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <CheckBox x:Name="StationarySpringCheck"
+                                      Content="Stationary spring (adds parked-car wheel weight)"
+                                      VerticalAlignment="Center"
+                                      Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (MAIRA already weights the wheel)."/>
+                            <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
+                                       Text="not used in Forza"
+                                       ToolTip="The spring conflicted with Forza's force feedback across pause and matchmaking transitions and could pull the wheel to its rotational stop. It is bypassed for Forza so the wheel stays free across those transitions; your tuning still applies to other games."/>
+                        </StackPanel>
                         <StackPanel x:Name="StationarySpringSliders">
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1355,10 +1360,10 @@
                                 <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="AbsOverrideBadge" Style="{StaticResource OverrideBadge}"/>
+                            <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="AbsTest_Click"/>
                             <TextBlock x:Name="AbsUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not exposed by Forza UDP"
                                        ToolTip="Forza Horizon's Data Out telemetry doesn't include ABS pump activity, so this effect will stay silent in FH4/FH5/FH6 regardless of the values you set here."/>
-                            <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="AbsTest_Click"/>
                             <Button x:Name="AbsRevertBtn" Content="↶" Tag="Abs" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="AbsSaveBtn"   Content="Save…" Tag="Abs" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>

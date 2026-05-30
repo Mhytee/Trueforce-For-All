@@ -1014,6 +1014,19 @@ namespace TrueforceForAll.Plugin
             if (!gameTarget.HasValue) return gameTarget;
             if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
                 return gameTarget;
+            // Forza exclusion. The spring conflicted with Forza's force
+            // feedback during the matchmaking-found transition and could
+            // pull the wheel to the rotational stop, sometimes with violent
+            // back-and-forth FFB against the stop. The precise interaction
+            // wasn't isolated (direction is correct in normal use, and
+            // several narrower gates were tried without reliably catching
+            // the case), so the spring is bypassed at the source-type level
+            // (user's call, 2026-05-28). The source-type check is more
+            // robust than _activeGame string-matching: ForzaUdpTelemetry
+            // Source is what feeds the lambda regardless of which Forza
+            // title resolved the game id. Other sources unchanged.
+            if (_telemetrySource is ForzaUdpTelemetrySource)
+                return gameTarget;
 
             // Steering source. While the game is reporting steering, use ITS
             // value: it shares the game's own FFB reference frame, so the spring
@@ -1633,20 +1646,30 @@ namespace TrueforceForAll.Plugin
                     if (src != null && !src.IsSessionActive
                         && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
                     {
-                        // Paused / menu / pre-race countdown. Don't force the
-                        // wheel to zero: games like Forza keep sending a gentle
-                        // centering FFB in menus and through the 3-2-1, and
-                        // zeroing it leaves the wheel dead. Pass the game's FFB
-                        // through, but with a SHORT freshness window: the tap
-                        // only re-timestamps on a freshly captured report, so a
-                        // force frozen by a real mid-race pause (game stops
-                        // sending) goes stale within this window and the wheel
-                        // releases (the #13 anti-yank), while live menu/countdown
-                        // centering stays fresh and passes. The stationary spring
-                        // still layers on top.
-                        const int PausedFfbMaxAgeMs = 300;
-                        short? freshPaused = _ffbTap?.TryGetFreshFfbTarget(PausedFfbMaxAgeMs);
-                        return ApplyStationarySpringIfActive(freshPaused ?? (short?)0);
+                        // Paused / menu / pre-race countdown / race-end results.
+                        // Earlier versions tried a SHORT-freshness pass-through
+                        // here on the theory that paused games either stop
+                        // sending FFB (so the tap goes stale and we release) or
+                        // send a gentle centering force we should preserve. FH6
+                        // does neither: it keeps re-emitting FFB packets during
+                        // pause / results / pre-race transitions that often
+                        // carry the frozen pre-pause force (the wheel position
+                        // at the moment the pause hit, which during cornering
+                        // is a hard force pegged to one side). The tap
+                        // re-timestamps on every captured packet regardless of
+                        // value, so the freshness check never expired and we
+                        // streamed that force as cur on ep3, and the wheel
+                        // snapped to or sat on full lock until the user resumed.
+                        //
+                        // We also intentionally SKIP the stationary-spring
+                        // layer here. The spring is designed for a STATIONARY
+                        // car during an ACTIVE driving session (e.g. AC's
+                        // pre-race grid). It conflicts with Forza's FFB across
+                        // pause-state transitions; we addressed that with a
+                        // source-type exclusion in ApplyStationarySpring, and
+                        // bypassing it here keeps the wheel truly free during
+                        // pause-release for every other source as well.
+                        return (short?)0;
                     }
 
                     // SkipFfbPassthrough: return Some(0) so the device sends
@@ -2852,6 +2875,18 @@ namespace TrueforceForAll.Plugin
                     return true;
             return false;
         }
+
+        /// <summary>True when the stationary spring is supported on the
+        /// active source. The spring conflicted with Forza's force feedback
+        /// across pause and matchmaking transitions and could pull the wheel
+        /// to its rotational stop; the precise mechanism wasn't isolated and
+        /// several narrower gates were tried without reliably catching every
+        /// case, so it is bypassed outright for the Forza UDP source. Drives
+        /// a "not used in Forza" badge next to the Stationary spring
+        /// checkbox so users don't tune the section expecting a behavior
+        /// that won't apply. Other sources unchanged.</summary>
+        public bool ActiveSourceSupportsStationarySpring =>
+            !(_telemetrySource is ForzaUdpTelemetrySource);
 
         /// <summary>True if SimHub's GameName looks like an EA / Codemasters
         /// F1 title we target. Currently F1 25 is the only validated wire

@@ -599,6 +599,8 @@ namespace TrueforceForAll.Plugin
                 AbsOverrideBadge.Visibility      = (_plugin.IsAbsOverridden      && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (AbsUnsupportedBadge != null)
                     AbsUnsupportedBadge.Visibility = _plugin.ShowAbsUnsupportedBadge ? Visibility.Visible : Visibility.Collapsed;
+                if (StationarySpringUnsupportedBadge != null)
+                    StationarySpringUnsupportedBadge.Visibility = _plugin.ActiveSourceSupportsStationarySpring ? Visibility.Collapsed : Visibility.Visible;
                 if (PitLimiterOverrideBadge != null)
                     PitLimiterOverrideBadge.Visibility = (_plugin.IsPitLimiterOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (DrsOverrideBadge != null)
