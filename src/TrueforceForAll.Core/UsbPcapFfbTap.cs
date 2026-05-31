@@ -1335,13 +1335,13 @@ namespace TrueforceForAll.Core
             // makes a subsequent wrong-first-winner recoverable.)
             //
             // Exception: if the current seed index has ZERO func-0x20 samples
-            // it is provably wrong — no FFB has ever arrived on it. In that
+            // it is provably wrong (no FFB has ever arrived on it). In that
             // case the 4x gate is too strict: the runner-up count comes from
             // unrelated HID++ writes (e.g. LED feature 0x12 keepalives) that
             // will never be outraced 4:1 because the seed never moves at all.
             // Dropping to the sample-floor check alone is safe here because
             // "pull us off a good index" requires the current index to actually
-            // have samples — a silent seed cannot be good.
+            // have samples; a silent seed cannot be good.
             perIndex.TryGetValue(_ffbFeatureIndex, out long seedSamples);
             bool seedIsDeadSilent = seedSamples == 0;
             if (bestCount >= secondCount * 4 || seedIsDeadSilent)

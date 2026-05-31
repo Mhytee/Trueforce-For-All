@@ -1396,6 +1396,35 @@ namespace TrueforceForAll.Plugin
                 try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
             }
 
+            // One-shot v0.1.21 -> v0.1.22 migration: clear any saved manual
+            // USBPcap override. Stale pins (the wheel later moved to a
+            // different address / USBPcap interface) caused users to report
+            // FFB stopped working after an update when in fact the override
+            // was pointing at thin air (issue #17). Auto-discovery +
+            // identity-based self-heal handle the realistic failure modes
+            // for almost every user, so we lean on those by default. A user
+            // who genuinely needs to pin can flip the UI back with the
+            // MANUALPIN access code and re-pick. The latch prevents this
+            // from re-clearing a deliberate post-migration pin.
+            if (!Settings.ManualOverrideClearedV0_1_22)
+            {
+                bool hadOverride = !string.IsNullOrEmpty(Settings.ManualUsbPcapInterface)
+                                || Settings.ManualUsbPcapDeviceAddress > 0;
+                if (hadOverride)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[Trueforce] Migration: cleared saved manual USBPcap override " +
+                        $"({Settings.ManualUsbPcapInterface} dev {Settings.ManualUsbPcapDeviceAddress}); " +
+                        "auto-discovery now picks the wheel. Re-enable manual pinning with the MANUALPIN access code if needed.");
+                    Settings.ManualUsbPcapInterface = "";
+                    Settings.ManualUsbPcapDeviceAddress = 0;
+                    Settings.ManualUsbPcapVid = 0;
+                    Settings.ManualUsbPcapPid = 0;
+                }
+                Settings.ManualOverrideClearedV0_1_22 = true;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+
             // Fresh install (factory ran) or first run on a settings file
             // written before the badge feature existed (LastSeenVersion never
             // stamped): pre-seed every known effect as already-seen and

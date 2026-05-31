@@ -856,6 +856,23 @@ namespace TrueforceForAll.Plugin
                     if (RpmLedSection.Visibility != want) RpmLedSection.Visibility = want;
                 }
 
+                // "Pick device manually..." buttons (Diagnostics + the
+                // contextual one in the FfbTapPicker banner). Hidden by
+                // default (auto-discovery + identity-based self-heal cover
+                // realistic failure modes); revealed by the MANUALPIN access
+                // code for power users who genuinely need to pin.
+                {
+                    var want = (_plugin.Settings?.ShowManualOverrideUi == true)
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                    if (UsbPcapPickDeviceButton != null
+                        && UsbPcapPickDeviceButton.Visibility != want)
+                        UsbPcapPickDeviceButton.Visibility = want;
+                    if (FfbTapPickerBannerButton != null
+                        && FfbTapPickerBannerButton.Visibility != want)
+                        FfbTapPickerBannerButton.Visibility = want;
+                }
+
                 // Header update controls. When an update is available, the
                 // "Check for updates" link + transient status hide and a
                 // prominent "Update to vX.Y.Z" button takes their place inline
@@ -4531,6 +4548,7 @@ namespace TrueforceForAll.Plugin
             "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Export as built-in' buttons: maintain the file-based built-in folder (validate / open / per-row export). Persists. Toggle.\n" +
+            "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
         private void CommitAccessCode()
@@ -4815,6 +4833,31 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Success banner forced on (test). Click 'Yes, it's working' to see the prefilled report, or 'No' for the troubleshooter. The x or either button clears it.";
+                return;
+            }
+
+            // Reveal (or hide) the Diagnostics "Pick device manually..."
+            // control. Off by default since auto-discovery + identity-based
+            // self-heal cover the realistic failure modes and a forgotten
+            // pin silently breaks FFB after the wheel changes USB address
+            // (issue #17). Power users with a real need (multi-wheel
+            // disambiguation, or a USBPcap interface mismatch they want to
+            // override) flip it on here; persists across restarts.
+            if (code.Equals("MANUALPIN", StringComparison.OrdinalIgnoreCase))
+            {
+                bool on = !(_plugin.Settings.ShowManualOverrideUi);
+                _plugin.Settings.ShowManualOverrideUi = on;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                var pickerVis = on
+                    ? System.Windows.Visibility.Visible
+                    : System.Windows.Visibility.Collapsed;
+                if (UsbPcapPickDeviceButton    != null) UsbPcapPickDeviceButton.Visibility    = pickerVis;
+                if (FfbTapPickerBannerButton   != null) FfbTapPickerBannerButton.Visibility   = pickerVis;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "Manual device picker revealed (Diagnostics + the contextual banner). Persists. Type MANUALPIN again to hide it."
+                        : "Manual device picker hidden (persists).";
                 return;
             }
 

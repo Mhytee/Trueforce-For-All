@@ -195,6 +195,23 @@ namespace TrueforceForAll.Plugin
         public int    ManualUsbPcapVid           { get; set; } = 0;
         public int    ManualUsbPcapPid           { get; set; } = 0;
 
+        // Reveals the "Pick device manually..." control in Diagnostics. Off by
+        // default because auto-discovery + identity-based self-heal handle the
+        // realistic failure modes for almost every user, and the override is
+        // a foot-gun when set and forgotten (the pinned address goes stale
+        // after a replug or a different USB port and the plugin loses sight
+        // of the wheel). Power users who genuinely need it (multi-wheel
+        // disambiguation, or a USBPcap interface mismatch they want to
+        // override) can flip this on with the MANUALPIN access code.
+        public bool   ShowManualOverrideUi       { get; set; } = false;
+
+        // One-shot migration latch: on v0.1.21 -> v0.1.22 upgrade, clear any
+        // saved manual override (stale pins from earlier sessions caused
+        // false-positive "FFB stopped working" reports; see issue #17). Set
+        // true after the migration runs once so it doesn't re-clear a pin
+        // the user has since deliberately re-set via MANUALPIN.
+        public bool   ManualOverrideClearedV0_1_22 { get; set; } = false;
+
         // Opt-in raw USB packet logging. When true, the FFB tap writes every
         // Set_Report observed on the wheel's USB address to a usb-trace.bin
         // file alongside SimHub's logs, for support to analyze offline. Off
