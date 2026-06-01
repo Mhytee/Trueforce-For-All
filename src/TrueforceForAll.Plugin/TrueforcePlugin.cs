@@ -4789,12 +4789,11 @@ namespace TrueforceForAll.Plugin
             foreach (var kv in UserPresets.CarDefaults)
                 Settings.CarDefaults[kv.Key] = kv.Value;
 
-            // 4) Load every preset back into memory: USER files from the
-            //    library + BUILT-IN cars from the built-in folder. Built-in
+            // 4) Merge BUILT-IN cars from the built-in folder on top of the
+            //    user-file map we loaded at the top of this method. Built-in
             //    wins on a (carId, presetName) collision (factory IS the
             //    truth for those). Resolve the active preset per car into
             //    Settings.CarOverrides.
-            var loaded = _carStore.LoadAll();
             MergeBuiltinCarPresetsInto(loaded);
 
             foreach (var carKv in loaded)
