@@ -2209,13 +2209,16 @@ namespace TrueforceForAll.Plugin
             // is live and our UDP source IS reading packets. Our source parses
             // CarOrdinal direct from the UDP stream so we can still detect
             // per-car switches and apply per-car overrides without depending
-            // on SimHub's profile being wired up. Formatted Forza_<ordinal>
-            // so it's a stable key the per-car settings can persist against.
+            // on SimHub's profile being wired up. Prefix Car_<ordinal> to
+            // match SimHub's NewData.CarModel format for Forza, so the
+            // SimHub-supplied path and this fallback converge on one key for
+            // the same physical car. (Was Forza_<ordinal> historically;
+            // legacy entries are migrated by the NORMALIZEFORZA access code.)
             if (string.IsNullOrEmpty(carId) && IsForzaGameName(_activeGame))
             {
                 var fzForCarId = _telemetrySource as ForzaUdpTelemetrySource;
                 int? ordinal = fzForCarId?.CurrentCarOrdinal;
-                if (ordinal.HasValue) carId = "Forza_" + ordinal.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (ordinal.HasValue) carId = "Car_" + ordinal.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
             // Forza un-sets the active car whenever the game loses focus
             // (alt-tab, screensaver, etc.), then re-sets it the moment focus
