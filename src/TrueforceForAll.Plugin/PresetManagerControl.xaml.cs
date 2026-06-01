@@ -767,7 +767,11 @@ namespace TrueforceForAll.Plugin
         {
             if (GameDetailsText == null) return;
             var sel = SelectedGame;
-            if (sel == null || _plugin?.Settings?.Presets == null
+            // Multi-select mode: only show details when exactly one row is
+            // selected. Browsing details with one row, bulk-acting with many,
+            // are distinct modes; mixing them is noisy.
+            int selCount = GameList?.SelectedItems?.Count ?? 0;
+            if (sel == null || selCount != 1 || _plugin?.Settings?.Presets == null
                 || !_plugin.Settings.Presets.TryGetValue(sel.Name, out var snap) || snap == null)
             {
                 if (GameDetailsPanel != null) GameDetailsPanel.Visibility = Visibility.Collapsed;
@@ -820,7 +824,8 @@ namespace TrueforceForAll.Plugin
         {
             if (CarDetailsText == null) return;
             var sel = SelectedCar;
-            if (sel == null || _plugin == null)
+            int selCount = CarList?.SelectedItems?.Count ?? 0;
+            if (sel == null || selCount != 1 || _plugin == null)
             {
                 if (CarDetailsPanel != null) CarDetailsPanel.Visibility = Visibility.Collapsed;
                 return;
@@ -854,38 +859,11 @@ namespace TrueforceForAll.Plugin
             CarDetailsText.Text = sb.ToString().TrimEnd();
         }
 
-        // Click the already-selected row to deselect it (and collapse the
-        // details panel). Standard ListView keeps the row selected on
-        // re-click, so we intercept the mouse-down: walk up the visual tree
-        // from the original source to the row container; if it's the current
-        // selection, clear it and swallow the event so ListView doesn't
-        // re-select it on its own.
-        private void GameList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-            => TryToggleSelectionFromClick(GameList, e);
-
-        private void CarList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-            => TryToggleSelectionFromClick(CarList, e);
-
-        private static void TryToggleSelectionFromClick(ListView list, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (list == null) return;
-            // Don't intercept clicks on cells we want to be interactive
-            // (checkbox column). The DependencyObject walk catches whatever
-            // element the click started on.
-            for (var d = e.OriginalSource as DependencyObject; d != null; d = System.Windows.Media.VisualTreeHelper.GetParent(d))
-            {
-                if (d is CheckBox) return;
-                if (d is ListViewItem item)
-                {
-                    if (item.IsSelected)
-                    {
-                        list.SelectedItem = null;
-                        e.Handled = true;
-                    }
-                    return;
-                }
-            }
-        }
+        // No PreviewMouseLeftButtonDown toggle-deselect handler anymore:
+        // SelectionMode="Multiple" makes plain click already toggle, and the
+        // ItemContainerStyle binds IsSelected to row.IsChecked TwoWay so a
+        // click also flips the checkbox. Clicking the already-selected row
+        // deselects (and unchecks) it natively.
 
         private void CustomList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
