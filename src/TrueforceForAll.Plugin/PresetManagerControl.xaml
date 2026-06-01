@@ -77,15 +77,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Wire ListViewItem.IsSelected to the row's IsChecked (TwoWay). With
-             SelectionMode="Multiple" on the ListView, clicking a row toggles
-             its IsSelected, which flips IsChecked, which checks the box. The
-             checkbox column itself stays the explicit multi-select control.
-             Result: every checked row gets the default theme's selected
-             styling, not just the most recently clicked one. -->
-        <Style x:Key="PresetRowStyle" TargetType="ListViewItem">
-            <Setter Property="IsSelected" Value="{Binding IsChecked, Mode=TwoWay}"/>
-        </Style>
         <Style x:Key="RowButton" TargetType="Button">
             <Setter Property="Width" Value="92"/>
             <Setter Property="Height" Value="26"/>
@@ -179,9 +170,9 @@
                     </Border>
                     <!-- LastChildFill: ListView takes whatever space the docked
                          help / search / details / buttons leave. -->
-                    <ListView x:Name="GameList" SelectionMode="Multiple"
-                              ItemContainerStyle="{StaticResource PresetRowStyle}"
-                              SelectionChanged="GameList_SelectionChanged">
+                    <ListView x:Name="GameList" SelectionMode="Single"
+                              SelectionChanged="GameList_SelectionChanged"
+                              PreviewMouseLeftButtonDown="GameList_PreviewMouseLeftButtonDown">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
@@ -242,9 +233,9 @@
                             <TextBlock x:Name="CarDetailsText" TextWrapping="Wrap" FontSize="12"/>
                         </ScrollViewer>
                     </Border>
-                    <ListView x:Name="CarList" SelectionMode="Multiple"
-                              ItemContainerStyle="{StaticResource PresetRowStyle}"
-                              SelectionChanged="CarList_SelectionChanged">
+                    <ListView x:Name="CarList" SelectionMode="Single"
+                              SelectionChanged="CarList_SelectionChanged"
+                              PreviewMouseLeftButtonDown="CarList_PreviewMouseLeftButtonDown">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
@@ -285,8 +276,7 @@
                         <TextBlock x:Name="CustomCheckedLabel" VerticalAlignment="Center"
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
-                    <ListView x:Name="CustomList" SelectionMode="Multiple"
-                              ItemContainerStyle="{StaticResource PresetRowStyle}"
+                    <ListView x:Name="CustomList" SelectionMode="Single"
                               SelectionChanged="CustomList_SelectionChanged">
                         <ListView.View>
                             <GridView>
