@@ -314,6 +314,15 @@ namespace TrueforceForAll.Plugin
         // already migrated games still need to migrate cars when this lands.
         public bool CarsMigratedV2 { get; set; } = false;
 
+        // Flips to true after the one-time folder restructure moves
+        //   <SimHub>\TrueforceForAll-Presets             -> PluginsData\Common\TrueforceForAll\factory
+        //   <SimHub>\PluginsData\Common\TrueforceForAll-Library -> .../TrueforceForAll\user
+        //   <SimHub>\PluginsData\Common\TrueforceForAll-Imports -> .../TrueforceForAll\user\drop
+        // and stamps so it doesn't run again. The new layout collapses three
+        // sibling folders into one root with the two real roles (factory, user)
+        // and the drop-in inbox as a subfolder of user.
+        public bool FoldersRestructuredV3 { get; set; } = false;
+
         // ---- Serialization gates for the now-runtime-cache dicts ----
         //
         // Settings.Presets / GameDefaults / CarDefaults / CarOverrides are

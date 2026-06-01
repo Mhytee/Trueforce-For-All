@@ -23,7 +23,13 @@ namespace TrueforceForAll.Plugin
 {
     internal static class BuiltinPresets
     {
-        public const string DefaultFolderName = "TrueforceForAll-Presets";
+        /// <summary>Root folder under SimHub's PluginsData/Common that holds
+        /// every Trueforce For All file (factory built-ins, user content,
+        /// drop-in inbox). One on-disk root, two role subfolders.</summary>
+        public const string RootFolderName     = "TrueforceForAll";
+        /// <summary>Subfolder under the root that holds the factory built-ins
+        /// shipped by the installer.</summary>
+        public const string FactorySubfolderName = "factory";
 
         private static BuiltinPresetStore _store;
 
@@ -36,13 +42,16 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Folder shipped beside the plugin DLL.</summary>
+        /// <summary>Factory built-in folder: SimHub's PluginsData/Common is
+        /// user-writable (works for DEV authoring without admin) but the
+        /// installer drops the factory set there at install time. Same
+        /// subfolder layout as the user folder.</summary>
         public static string DefaultFolder
         {
             get
             {
-                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
-                return Path.Combine(dir, DefaultFolderName);
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
+                return Path.Combine(baseDir, "PluginsData", "Common", RootFolderName, FactorySubfolderName);
             }
         }
 

@@ -83,11 +83,13 @@ Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignore
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; Built-in preset data files -> {app}\TrueforceForAll-Presets. These are now the
-; source of truth for the shipped presets (no longer C# consts). Overwritten
-; on upgrade so updated built-ins land; users who want a persistent / custom
-; set point Settings.BuiltinPresetsFolder at their own folder instead.
-Source: "{#BuiltinsDir}\*"; DestDir: "{app}\TrueforceForAll-Presets"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Factory preset data files -> {app}\PluginsData\Common\TrueforceForAll\factory.
+; That's the source of truth for shipped built-ins (no longer C# consts);
+; under PluginsData/Common so it sits alongside the 'user' folder in the
+; same TrueforceForAll root. Overwritten on upgrade so updated built-ins land.
+; Users who want a custom factory set point Settings.BuiltinPresetsFolder at
+; their own folder instead.
+Source: "{#BuiltinsDir}\*"; DestDir: "{app}\PluginsData\Common\TrueforceForAll\factory"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; NOTE: We deliberately do NOT ship our own HidSharp.dll. SimHub ships
 ; HidSharp 2.6.x in its install root and loads it process-wide; our plugin

@@ -1317,6 +1317,16 @@ namespace TrueforceForAll.Plugin
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
+            // One-time folder restructure: move the three legacy sibling
+            // folders (TrueforceForAll-Presets / -Library / -Imports) into the
+            // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\drop}
+            // layout. Idempotent; skipped once stamped. Runs BEFORE the stores
+            // load so they read from the new location on the first new launch.
+            if (!Settings.FoldersRestructuredV3)
+            {
+                RestructureFoldersIfNeeded();
+                Settings.FoldersRestructuredV3 = true;
+            }
             // Load the file-based built-in presets (folder override -> shipped
             // default) before anything seeds or queries them below.
             BuiltinPresets.Initialize(Settings.BuiltinPresetsFolder);
@@ -4157,6 +4167,60 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>One-time folder restructure: collapse the three legacy
+        /// sibling folders into the single TrueforceForAll root with factory /
+        /// user subfolders. Conservative: if the destination already exists,
+        /// the legacy folder is renamed with a timestamped .legacy- suffix so
+        /// nothing is silently merged and the user can see the leftover. Gated
+        /// by Settings.FoldersRestructuredV3 in the caller.</summary>
+        private void RestructureFoldersIfNeeded()
+        {
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
+                string commonDir = Path.Combine(baseDir, "PluginsData", "Common");
+                // Three legacy sources -> new homes (already wired into the
+                // default-folder getters; see BuiltinPresets / UserPresets /
+                // UserImportsFolderPath).
+                MoveLegacyFolder(Path.Combine(baseDir,   "TrueforceForAll-Presets"), BuiltinPresets.DefaultFolder, "factory");
+                MoveLegacyFolder(Path.Combine(commonDir, "TrueforceForAll-Library"), UserPresets.DefaultFolder,    "user");
+                MoveLegacyFolder(Path.Combine(commonDir, "TrueforceForAll-Imports"), UserImportsFolderPath,        "user-drop");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Folder restructure failed: {ex.Message}");
+            }
+        }
+
+        // Move a single legacy folder to its new home. If the destination
+        // already exists (a fresh installer run already wrote it), the source
+        // is renamed to <source>.legacy-<ts> so the user can see what was left
+        // behind and decide whether to drop it.
+        private static void MoveLegacyFolder(string from, string to, string role)
+        {
+            try
+            {
+                if (!Directory.Exists(from)) return;
+                if (Directory.Exists(to))
+                {
+                    string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                    string parked = from + $".legacy-{ts}";
+                    Directory.Move(from, parked);
+                    SimHub.Logging.Current.Info(
+                        $"[Trueforce] Folder restructure ({role}): destination already present at '{to}', parked the legacy source as '{Path.GetFileName(parked)}'.");
+                    return;
+                }
+                string parent = Path.GetDirectoryName(to);
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                Directory.Move(from, to);
+                SimHub.Logging.Current.Info($"[Trueforce] Folder restructure ({role}): moved '{from}' -> '{to}'.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Folder restructure ({role}) failed for '{from}': {ex.Message}");
+            }
+        }
+
         /// <summary>One-time car migration: move legacy TrueforceCars/*.tfcar.json
         /// user files into the user library cars/<game>/<carId>/<preset>.json
         /// layout, and Settings.CarDefaults into car-defaults.json. Backs up
@@ -4325,24 +4389,23 @@ namespace TrueforceForAll.Plugin
 
         // ----- User imports folder (drop-in community packs) -----
 
-        public const string UserImportsFolderName = "TrueforceForAll-Imports";
+        public const string UserImportsFolderName = "drop";
         public const string UserImportsArchiveSubfolder = "imported";
 
-        /// <summary>Folder to drop community / shared preset files into. Files
-        /// here are auto-imported as USER presets (not built-ins) on plugin
-        /// start, then moved into the <c>imported/</c> archive subfolder.
-        /// Lives under SimHub's <c>PluginsData/Common</c> so it's writable
-        /// without admin (the built-in folder sits in the SimHub root and
-        /// needs elevation to write to). Honours <c>Settings.UserImportsFolder</c>
-        /// if set, so a user can point it anywhere they like.</summary>
+        /// <summary>Drop-in inbox for community / shared preset files. Lives
+        /// inside the user folder (<c>...\TrueforceForAll\user\drop</c>) so
+        /// it's writable without admin. Auto-imported on plugin start into the
+        /// user library and the originals are moved into the
+        /// <c>imported/&lt;timestamp&gt;/</c> archive subfolder. Honours
+        /// <c>Settings.UserImportsFolder</c> if set, so a user can point it
+        /// anywhere they like.</summary>
         public string UserImportsFolderPath
         {
             get
             {
                 var s = Settings?.UserImportsFolder;
                 if (!string.IsNullOrWhiteSpace(s)) return s;
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
-                return Path.Combine(baseDir, "PluginsData", "Common", UserImportsFolderName);
+                return Path.Combine(UserPresets.DefaultFolder, UserImportsFolderName);
             }
         }
 
@@ -4362,52 +4425,48 @@ namespace TrueforceForAll.Plugin
         }
 
         private const string BuiltinReadmeText =
-            "Trueforce For All - Built-in (factory) preset folder\r\n" +
+            "Trueforce For All - factory folder\r\n" +
             "\r\n" +
-            "This folder ships with the plugin. Files here become FACTORY presets\r\n" +
-            "in your library: they are marked 'built-in', cannot be deleted or\r\n" +
-            "overwritten through the normal UI, and define the default tuning that\r\n" +
-            "loads when you run a supported game.\r\n" +
+            "This folder ships with the plugin. Files here are FACTORY presets:\r\n" +
+            "they show with a 'Built-in' badge in the UI, cannot be deleted or\r\n" +
+            "overwritten through the normal Save/Rename/Delete flow, and define\r\n" +
+            "the default tuning that loads when you run a supported game.\r\n" +
             "\r\n" +
-            "Layout:\r\n" +
+            "Layout (same as the sibling 'user' folder):\r\n" +
             "  game-defaults.json            (game -> default preset name)\r\n" +
-            "  games/<Preset Name>.json      (one GameSettingsSnapshot per built-in)\r\n" +
-            "  cars/<GameName>/<carId>/<PresetName>.json  (multiple per car)\r\n" +
-            "  car-defaults.json             (carId -> default car preset name)\r\n" +
-            "\r\n" +
-            "DO NOT drop community / shared presets here. They belong in the\r\n" +
-            "'TrueforceForAll-Imports' folder under SimHub's PluginsData/Common,\r\n" +
-            "which auto-imports them as normal (non-builtin) user presets on the\r\n" +
-            "next SimHub start.\r\n";
-
-        private const string UserLibraryReadmeText =
-            "Trueforce For All - User library (your saved presets)\r\n" +
-            "\r\n" +
-            "This folder holds the presets you have saved through the plugin UI.\r\n" +
-            "It mirrors the built-in folder's layout exactly:\r\n" +
-            "  game-defaults.json            (per-game default preset map)\r\n" +
             "  games/<Preset Name>.json      (one GameSettingsSnapshot per preset)\r\n" +
-            "  car-defaults.json             (per-car default preset map)\r\n" +
+            "  car-defaults.json             (carId -> default car preset name)\r\n" +
             "  cars/<GameName>/<carId>/<PresetName>.json\r\n" +
             "\r\n" +
-            "The plugin reads + writes these files automatically. Edits here take\r\n" +
-            "effect on the next SimHub start (or after the plugin reloads the folder).\r\n" +
+            "Do NOT drop community / shared presets here. Use the sibling\r\n" +
+            "'user\\drop\\' inbox instead; the plugin auto-imports those into the\r\n" +
+            "'user' folder on the next start.\r\n";
+
+        private const string UserLibraryReadmeText =
+            "Trueforce For All - user folder\r\n" +
             "\r\n" +
-            "Drop community / shared presets in the sibling 'TrueforceForAll-Imports'\r\n" +
-            "folder, not here.\r\n";
+            "This folder holds your own presets, defaults, and the drop-in inbox.\r\n" +
+            "It mirrors the sibling 'factory' folder's layout:\r\n" +
+            "  game-defaults.json            (your per-game default preset map)\r\n" +
+            "  games/<Preset Name>.json      (one GameSettingsSnapshot per preset)\r\n" +
+            "  car-defaults.json             (your per-car default preset map)\r\n" +
+            "  cars/<GameName>/<carId>/<PresetName>.json\r\n" +
+            "  drop/                         (drop-in inbox for shared files)\r\n" +
+            "\r\n" +
+            "The plugin reads + writes these files automatically; edits here take\r\n" +
+            "effect on the next SimHub start (or after the plugin reloads the folder).\r\n";
 
         private const string ImportsReadmeText =
-            "Trueforce For All - User imports folder\r\n" +
+            "Trueforce For All - drop-in inbox\r\n" +
             "\r\n" +
-            "Drop shared preset files into this folder:\r\n" +
+            "Drop shared preset files in this folder:\r\n" +
             "  - Game preset JSON   (Type 'trueforce-preset')\r\n" +
             "  - Car preset JSON    (Type 'trueforce-car-preset')\r\n" +
             "  - Pack file          (Type 'trueforce-pack')\r\n" +
             "\r\n" +
-            "On the next SimHub start, they are auto-imported into your USER library\r\n" +
-            "(<SimHub>\\PluginsData\\Common\\TrueforceForAll-Library) as normal\r\n" +
-            "(non-builtin) presets, then moved into an 'imported/<date>' archive\r\n" +
-            "subfolder so they don't import twice.\r\n" +
+            "On the next SimHub start, they are auto-imported into the parent\r\n" +
+            "'user' folder as normal (non-builtin) presets, then moved into an\r\n" +
+            "'imported/<date>/' archive subfolder so they don't import twice.\r\n" +
             "\r\n" +
             "You can also use the Import button in the Presets tab.\r\n";
 

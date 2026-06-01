@@ -26,7 +26,9 @@ namespace TrueforceForAll.Plugin
 {
     internal static class UserPresets
     {
-        public const string DefaultFolderName = "TrueforceForAll-Library";
+        /// <summary>Subfolder under the shared TrueforceForAll root that
+        /// holds the user's own content (presets, defaults, drop-in inbox).</summary>
+        public const string UserSubfolderName = "user";
 
         private static BuiltinPresetStore _store;
 
@@ -39,15 +41,16 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Default user-library folder, under SimHub's
-        /// PluginsData/Common (writable without admin, sibling of TrueforceCars
-        /// and TrueforceForAll-Imports).</summary>
+        /// <summary>Default user folder, under SimHub's PluginsData/Common
+        /// alongside the factory folder (same TrueforceForAll root). Writable
+        /// without admin so save / delete / rename always work.</summary>
         public static string DefaultFolder
         {
             get
             {
                 string baseDir = System.AppDomain.CurrentDomain.BaseDirectory ?? "";
-                return Path.Combine(baseDir, "PluginsData", "Common", DefaultFolderName);
+                return Path.Combine(baseDir, "PluginsData", "Common",
+                    BuiltinPresets.RootFolderName, UserSubfolderName);
             }
         }
 
