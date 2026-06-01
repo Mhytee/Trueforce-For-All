@@ -4722,9 +4722,18 @@ namespace TrueforceForAll.Plugin
             if (Settings.CarOverrides == null) Settings.CarOverrides = new Dictionary<string, CarOverride>();
             if (Settings.CarDefaults  == null) Settings.CarDefaults  = new Dictionary<string, string>();
 
-            // 1) Migrate Settings.CarOverrides → files (only if no file yet).
-            //    Use carId as the preset name so the migrated entry has a
-            //    stable identity in the new multi-preset model.
+            // Load the user-side car files once. Reused for the existence check
+            // in steps 1 + 2 AND for the cache rebuild in step 4. The check is
+            // "does this carId have ANY preset file yet?", not "is there a file
+            // specifically named <carId>/<carId>.json", a v0.1.20 user whose
+            // car preset was renamed (file at <carId>/<Custom name>.json) would
+            // otherwise get a duplicate written by step 1.
+            var loaded = _carStore.LoadAll();
+            var carIdsWithUserFiles = new HashSet<string>(loaded.Keys, StringComparer.Ordinal);
+
+            // 1) Migrate Settings.CarOverrides → files (only if no file yet for
+            //    that carId). Use carId as the preset name so the migrated
+            //    entry has a stable identity in the new multi-preset model.
             //
             //    CarDefaults.ContainsKey gates this: once a car has any
             //    binding (its own user file OR a built-in default), the
@@ -4737,8 +4746,9 @@ namespace TrueforceForAll.Plugin
             {
                 if (kv.Value == null || kv.Value.IsEmpty) continue;
                 if (Settings.CarDefaults.ContainsKey(kv.Key)) continue;
-                if (_carStore.Exists(kv.Key, kv.Key)) continue;
+                if (carIdsWithUserFiles.Contains(kv.Key)) continue;
                 _carStore.Save(kv.Key, kv.Key, _activeGame ?? "", kv.Value, isBuiltin: false);
+                carIdsWithUserFiles.Add(kv.Key);
                 if (!Settings.CarDefaults.ContainsKey(kv.Key))
                     Settings.CarDefaults[kv.Key] = kv.Key;
                 migrated++;
@@ -4755,14 +4765,18 @@ namespace TrueforceForAll.Plugin
                     foreach (var carKv in snap.CarOverrides)
                     {
                         if (carKv.Value == null || carKv.Value.IsEmpty) continue;
-                        if (_carStore.Exists(carKv.Key, carKv.Key)) continue;
+                        if (carIdsWithUserFiles.Contains(carKv.Key)) continue;
                         _carStore.Save(carKv.Key, carKv.Key, "", carKv.Value, isBuiltin: false);
+                        carIdsWithUserFiles.Add(carKv.Key);
                         if (!Settings.CarDefaults.ContainsKey(carKv.Key))
                             Settings.CarDefaults[carKv.Key] = carKv.Key;
                         migrated++;
                     }
                 }
             }
+            // If steps 1 or 2 actually wrote any new files, refresh the loaded
+            // map so step 4's resolution sees them.
+            if (migrated > 0) loaded = _carStore.LoadAll();
 
             // 3) Rebuild Settings.CarDefaults from the folders. It's a runtime
             //    cache now; user library wins on collision (their explicit
