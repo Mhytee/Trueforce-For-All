@@ -1299,6 +1299,16 @@ namespace TrueforceForAll.Plugin
             _carStore = new CarPresetStore(msg => SimHub.Logging.Current.Info(msg));
             LoadAndMigrateCarPresets();
             MigrateEngineHighRpmHelpersDefaults();
+            // One-shot: bump rev-limiter engage threshold 0.97 -> 0.85 for
+            // presets still on the old default (issue #8). Runs after the car
+            // store loads so .tfcar.json files are migrated too. Latched so a
+            // user who later re-picks 0.97 keeps it.
+            if (!Settings.RevLimiterThresholdDefaultMigrated)
+            {
+                MigrateRevLimiterThresholdDefault();
+                Settings.RevLimiterThresholdDefaultMigrated = true;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
 
             _mixer.MasterGain = Settings.MasterGain;
 
@@ -4617,6 +4627,88 @@ namespace TrueforceForAll.Plugin
                 changed = true;
             }
             return changed;
+        }
+
+        // One-shot: bump the rev-limiter engage threshold from the old 0.97
+        // default to the new 0.85 default everywhere a RevLimiterSettings is
+        // persisted (active settings, game-preset snapshots, car overrides, and
+        // .tfcar.json files). Only rewrites a value still at the exact old
+        // default; any threshold the user moved off 0.97 is left alone. Mirrors
+        // MigrateEngineHighRpmHelpersDefaults so it follows the same proven path.
+        private void MigrateRevLimiterThresholdDefault()
+        {
+            if (Settings == null) return;
+            bool changed = false;
+
+            if (MigrateRevLimiterThresholdField(Settings.RevLimiter)) changed = true;
+
+            if (Settings.Presets != null)
+            {
+                foreach (var snap in Settings.Presets.Values)
+                {
+                    if (snap?.RevLimiter == null) continue;
+                    if (MigrateRevLimiterThresholdField(snap.RevLimiter)) changed = true;
+                }
+            }
+
+            if (Settings.CarOverrides != null)
+            {
+                foreach (var ovr in Settings.CarOverrides.Values)
+                {
+                    if (ovr?.RevLimiter == null) continue;
+                    if (MigrateRevLimiterThresholdField(ovr.RevLimiter)) changed = true;
+                }
+                // Resync _lastPersistedCarOverrides so the dirty check against
+                // the live cache matches the just-migrated values (otherwise
+                // every touched car would read as dirty on first load).
+                if (changed)
+                {
+                    foreach (var kv in Settings.CarOverrides)
+                    {
+                        if (kv.Value == null) continue;
+                        _lastPersistedCarOverrides[kv.Key] = CloneCarOverride(kv.Value);
+                    }
+                }
+            }
+
+            // Rewrite .tfcar.json files for any car preset still at the old
+            // default so the new value persists across launches.
+            if (_carStore != null)
+            {
+                var loaded = _carStore.LoadAll();
+                foreach (var carKv in loaded)
+                {
+                    foreach (var entry in carKv.Value.Values)
+                    {
+                        if (entry?.Override?.RevLimiter == null) continue;
+                        if (MigrateRevLimiterThresholdField(entry.Override.RevLimiter))
+                        {
+                            _carStore.Save(entry.CarId, entry.PresetName, entry.GameName,
+                                           entry.Override, entry.IsBuiltin);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                this.SaveCommonSettings("GeneralSettings", Settings);
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Migrated RevLimiter engage threshold default "
+                    + "(0.97 -> 0.85) for presets at the old default.");
+            }
+        }
+
+        private static bool MigrateRevLimiterThresholdField(RevLimiterSettings s)
+        {
+            if (s == null) return false;
+            if (System.Math.Abs(s.Threshold - 0.97f) < 0.001f)
+            {
+                s.Threshold = 0.85f;
+                return true;
+            }
+            return false;
         }
 
         // ---------- per-section dirty check (vs active preset) ----------

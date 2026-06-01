@@ -336,6 +336,13 @@ namespace TrueforceForAll.Plugin
         // from MaxRpm and over-learned every game). One-time migration in Init.
         public bool GamesWithRedlineRevalidated { get; set; } = false;
 
+        // Set true once presets still on the old rev-limiter engage default
+        // (0.97) have been bumped to the new default (0.85). On the Forza
+        // percentage path 0.97 only fired when bouncing off the limiter, so the
+        // buzz was effectively dead for most drivers (issue #8). One-time
+        // migration in Init; only touches presets still at the exact old default.
+        public bool RevLimiterThresholdDefaultMigrated { get; set; } = false;
+
         // Per-car active preset assignment. Maps CarId to a preset name in
         // the on-disk car-preset library (TrueforceCars/). When a car is
         // detected, the assigned preset's CarOverride loads into the live
@@ -802,7 +809,12 @@ namespace TrueforceForAll.Plugin
         public float PulseFreq  { get; set; } = 20.0f;
         public float DutyCycle  { get; set; } = 0.5f;
         public float ActiveAmp  { get; set; } = 0.35f;
-        public float Threshold  { get; set; } = 0.97f;   // fraction of MaxRpm
+        // Fraction of MaxRpm on the percentage path (Forza and other no-redline
+        // sources). MaxRpm there is the absolute limiter, which sits above where
+        // you actually upshift, so 0.97 only fired when bouncing off the limiter
+        // and most drivers never felt it (issue #8). 0.85 lands it as a usable
+        // shift cue. Owner's call, 2026-06-01.
+        public float Threshold  { get; set; } = 0.85f;   // fraction of MaxRpm
 
         // RPM offset applied on the real-redline path only (ignored on the
         // percentage path). Negative = fire before the redline, positive =

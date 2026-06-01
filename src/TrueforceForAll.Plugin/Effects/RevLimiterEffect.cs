@@ -62,11 +62,14 @@ namespace TrueforceForAll.Plugin.Effects
         public float ActiveAmp { get; set; } = 0.35f;
 
         /// <summary>Fraction of the reference RPM (the car's redline when the
-        /// game exposes one, else MaxRpm) at which the buzz engages. 0.97 sits
-        /// right at the shift point / on the limiter for most cars; lower it for
-        /// an earlier shift cue. Clamped to [0.50, 1.00] at use so a stray value
-        /// can't fire the buzz off idle or never fire.</summary>
-        public float Threshold { get; set; } = 0.97f;
+        /// game exposes one, else MaxRpm) at which the buzz engages. On the
+        /// percentage path (Forza and other no-redline sources) MaxRpm is the
+        /// absolute limiter, which sits above where you actually upshift, so
+        /// 0.85 fires as a usable shift cue instead of only when you bounce off
+        /// the limiter; raise it toward 1.00 to fire later / right on the limiter.
+        /// Clamped to [0.50, 1.00] at use so a stray value can't fire the buzz
+        /// off idle or never fire.</summary>
+        public float Threshold { get; set; } = 0.85f;
 
         /// <summary>Offset in RPM applied to the engage point ONLY on the
         /// real-redline path (ignored on the percentage path). Negative fires
