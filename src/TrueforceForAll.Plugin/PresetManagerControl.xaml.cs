@@ -196,21 +196,38 @@ namespace TrueforceForAll.Plugin
                 : $"Promoted {ok}, {failed} failed (last error: {lastErr}).");
         }
 
-        // IsChecked on every row model backs the checkbox column. Plain bool
-        // is enough: WPF writes UI → model via the TwoWay binding, and the
-        // checkbox's own visual state handles its display. Re-adding rows on
-        // Reload resets IsChecked to false implicitly (fresh instances).
-        private sealed class GameRow
+        // Row base: IsChecked needs to notify so the ItemContainerStyle's
+        // DataTrigger(IsChecked=True) re-evaluates when the user clicks the
+        // checkbox (a plain auto-property wouldn't fire change notifications,
+        // so the row tint would stay stale).
+        private abstract class PresetRowBase : INotifyPropertyChanged
+        {
+            public event PropertyChangedEventHandler PropertyChanged;
+            private bool _isChecked;
+            public bool IsChecked
+            {
+                get => _isChecked;
+                set
+                {
+                    if (_isChecked == value) return;
+                    _isChecked = value;
+                    PropertyChanged?.Invoke(this, _isCheckedArgs);
+                }
+            }
+            private static readonly PropertyChangedEventArgs _isCheckedArgs
+                = new PropertyChangedEventArgs(nameof(IsChecked));
+        }
+
+        private sealed class GameRow : PresetRowBase
         {
             public string Name { get; set; }
             public bool   Builtin { get; set; }
             public string BuiltinLabel => Builtin ? "Built-in" : "";
             public List<string> Defaults { get; set; } = new List<string>();
             public string DefaultForLabel => Defaults.Count == 0 ? "" : string.Join(", ", Defaults);
-            public bool   IsChecked { get; set; }
         }
 
-        private sealed class CarRow
+        private sealed class CarRow : PresetRowBase
         {
             public string CarId { get; set; }
             public string PresetName { get; set; }
@@ -220,10 +237,9 @@ namespace TrueforceForAll.Plugin
             public string BuiltinLabel => Builtin ? "Built-in" : "";
             public bool   Active { get; set; }
             public string ActiveLabel => Active ? "★" : "";
-            public bool   IsChecked { get; set; }
         }
 
-        private sealed class CustomRow
+        private sealed class CustomRow : PresetRowBase
         {
             public CustomEngineDef Def { get; set; }
             public string Name => Def?.Name ?? "";
@@ -244,7 +260,6 @@ namespace TrueforceForAll.Plugin
                     return pulses > 0 ? $"{pulses} pulses" : "(empty)";
                 }
             }
-            public bool   IsChecked { get; set; }
         }
 
         private readonly ObservableCollection<GameRow>   _gameRows   = new ObservableCollection<GameRow>();
