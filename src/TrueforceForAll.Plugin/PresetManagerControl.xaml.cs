@@ -417,7 +417,12 @@ namespace TrueforceForAll.Plugin
             foreach (var column in gv.Columns)
             {
                 string text = column.Header as string;
-                double min = string.IsNullOrEmpty(text) ? 28 : MeasureHeaderText(lv, text) + 26;
+                // Always include the sort-arrow glyph (" ▼") in the minimum so
+                // a click on a narrow column doesn't clip the arrow. Use the
+                // wider of ▼ / ▲ measured at the column's own header font.
+                double min = string.IsNullOrEmpty(text)
+                    ? 28
+                    : MeasureHeaderText(lv, text + " ▼") + 26;
                 var col = column; // capture per iteration
                 dpd.AddValueChanged(col, (s, e) =>
                 {
