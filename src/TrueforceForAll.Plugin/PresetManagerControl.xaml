@@ -77,26 +77,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Shared ListViewItem style for all three preset tabs. Lets the
-             default SimHub theme handle hover + click-select; we only add
-             two additional cues via DataTriggers:
-               - IsChecked=True: a tinted Background so every row the user
-                 has marked for a bulk action reads as selected, not just
-                 the single click-selected row.
-               - Active=True (only meaningful on CarRow): a left-edge accent
-                 bar so the default-for-this-car preset is scannable. No
-                 background, so it doesn't clash with hover / click-select. -->
-        <Style x:Key="PresetRowStyle" TargetType="ListViewItem">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsChecked}" Value="True">
-                    <Setter Property="Background" Value="#3A3A6BBE"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Active}" Value="True">
-                    <Setter Property="BorderBrush"     Value="#3A6BBE"/>
-                    <Setter Property="BorderThickness" Value="3,0,0,0"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
         <Style x:Key="RowButton" TargetType="Button">
             <Setter Property="Width" Value="92"/>
             <Setter Property="Height" Value="26"/>
@@ -191,7 +171,6 @@
                     <!-- LastChildFill: ListView takes whatever space the docked
                          help / search / details / buttons leave. -->
                     <ListView x:Name="GameList" SelectionMode="Single"
-                              ItemContainerStyle="{StaticResource PresetRowStyle}"
                               SelectionChanged="GameList_SelectionChanged"
                               PreviewMouseLeftButtonDown="GameList_PreviewMouseLeftButtonDown">
                         <ListView.View>
@@ -255,7 +234,6 @@
                         </ScrollViewer>
                     </Border>
                     <ListView x:Name="CarList" SelectionMode="Single"
-                              ItemContainerStyle="{StaticResource PresetRowStyle}"
                               SelectionChanged="CarList_SelectionChanged"
                               PreviewMouseLeftButtonDown="CarList_PreviewMouseLeftButtonDown">
                         <ListView.View>
@@ -299,7 +277,6 @@
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
                     <ListView x:Name="CustomList" SelectionMode="Single"
-                              ItemContainerStyle="{StaticResource PresetRowStyle}"
                               SelectionChanged="CustomList_SelectionChanged">
                         <ListView.View>
                             <GridView>
