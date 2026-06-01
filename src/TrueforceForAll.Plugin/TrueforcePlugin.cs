@@ -256,6 +256,11 @@ namespace TrueforceForAll.Plugin
         private volatile bool _recoveryInProgress;
         private long _lastRecoveryAttemptTicks;
         private static readonly long RecoveryIntervalTicks = Stopwatch.Frequency * 3; // 3 s
+        // Throttle for the verbose "wheel not found" discovery diagnostic: the
+        // recovery watchdog retries discovery every few seconds, so without this
+        // a persistent not-detected state would log the full HID landscape on
+        // every tick. Logs at most once per minute (and always on the first miss).
+        private long _lastDiscoveryDiagTicks;
         private bool _gHubLastLoggedState;
         // Only the G HUB *UI* process (lghub.exe) gates wheel access. We
         // intentionally do NOT gate on lghub_agent.exe (Logitech's always-on
@@ -1352,6 +1357,7 @@ namespace TrueforceForAll.Plugin
                     "(G PRO / RS50 / G923) is plugged in. If it is, open G HUB once and let it " +
                     "finish detecting the wheel, then close G HUB (it must stay closed while this " +
                     "plugin runs) and restart SimHub.");
+                LogDiscoveryDiagnostic();
                 return false;
             }
 
@@ -1564,6 +1570,54 @@ namespace TrueforceForAll.Plugin
                 return false;
             }
             return true;
+        }
+
+        // Verbose diagnostic for the "wheel not detected" state: dumps what HidSharp
+        // currently sees on the Logitech VID so a recurrence in the field tells us
+        // whether the wheel is genuinely absent, present without its MI_02 Trueforce
+        // interface (G HUB holding it / a partial enumeration), or in console mode
+        // (wheel-like name, unsupported PID). Throttled to once per minute by
+        // _lastDiscoveryDiagTicks; the recovery watchdog retries every few seconds.
+        private void LogDiscoveryDiagnostic()
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_lastDiscoveryDiagTicks != 0
+                && now - _lastDiscoveryDiagTicks < Stopwatch.Frequency * 60)
+                return;
+            _lastDiscoveryDiagTicks = now;
+
+            try
+            {
+                int total = 0, mi02 = 0;
+                var sb = new System.Text.StringBuilder();
+                foreach (var dev in HidSharp.DeviceList.Local.GetHidDevices(WheelDiscovery.LogitechVid))
+                {
+                    total++;
+                    int pid; try { pid = dev.ProductID; } catch { pid = 0; }
+                    string path; try { path = dev.DevicePath ?? ""; } catch { path = ""; }
+                    bool isMi02 = path.IndexOf("mi_02", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (isMi02) mi02++;
+                    if (sb.Length > 0) sb.Append(", ");
+                    sb.Append($"0x{pid:X4}").Append(isMi02 ? " [MI_02]" : "");
+                }
+                string hids = total == 0 ? "none"
+                    : $"{total} interface(s) [MI_02 present: {mi02 > 0}] PIDs {sb}";
+
+                int consoleMode = 0;
+                try { consoleMode = WheelDiscovery.FindUnsupportedWheelLike().Count; } catch { }
+                int noTfIface = 0;
+                try { noTfIface = WheelDiscovery.FindSupportedWithoutTrueforceInterface().Count; } catch { }
+
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Discovery diagnostic (wheel not found): "
+                    + $"Logitech HID = {hids}; supported-wheel-without-MI_02 = {noTfIface}; "
+                    + $"wheel-like-unsupported-PID (console mode?) = {consoleMode}; "
+                    + $"G HUB UI running = {_isGHubRunning}.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[Trueforce] Discovery diagnostic failed: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         // One-time pipeline setup: loopback helper, audio capture, telemetry
