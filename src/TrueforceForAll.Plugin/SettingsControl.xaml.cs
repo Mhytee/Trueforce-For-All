@@ -4548,6 +4548,7 @@ namespace TrueforceForAll.Plugin
             "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
+            "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
@@ -4673,6 +4674,25 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = _plugin.Settings.DevModeUnlocked
                         ? "Developer mode ON: the Presets tab now shows the Developer tools bar + per-row 'Set as built-in' promote buttons. Type DEV again to hide."
                         : "Developer mode OFF.";
+                return;
+            }
+
+            // Dev-only one-shot: for every car whose default points at a USER
+            // preset, promote that user preset to a factory built-in (replacing
+            // existing built-in(s) for that car), repoint the factory car-default,
+            // and delete the user preset. Other user presets for the same car
+            // stay put. Idempotent.
+            if (code.Equals("FOLDDEFAULTS", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (_plugin != null)
+                {
+                    int n = _plugin.DevConsolidateUserCarDefaults(out var details);
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
+                    if (n > 0)
+                        MessageBox.Show(Window.GetWindow(this), details,
+                            "Trueforce For All: consolidated car defaults", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
                 return;
             }
 

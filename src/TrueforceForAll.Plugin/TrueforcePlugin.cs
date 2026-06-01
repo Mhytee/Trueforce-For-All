@@ -3518,17 +3518,25 @@ namespace TrueforceForAll.Plugin
             if (_carStore == null || string.IsNullOrEmpty(_activeCarId)) return false;
             string presetName = GetActiveCarPresetName(_activeCarId);
             if (string.IsNullOrEmpty(presetName)) return false;
-            if (IsCarPresetBuiltin(_activeCarId, presetName)) return false;
+            bool isBuiltin = IsCarPresetBuiltin(_activeCarId, presetName);
+            if (isBuiltin && !DevMode) return false;
             if (!_lastPersistedCarOverrides.TryGetValue(_activeCarId, out var prev) || prev == null)
                 return true;   // nothing persisted -> already follows the default
 
             var patched = CloneCarOverride(prev);
             ClearOverrideSection(patched, kind);
-            _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false);
-            if (patched.IsEmpty)
-                _lastPersistedCarOverrides.Remove(_activeCarId);
+            if (isBuiltin)
+            {
+                WriteCarBuiltinThroughDev(_activeCarId, presetName, patched);
+            }
             else
-                _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
+            {
+                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false);
+                if (patched.IsEmpty)
+                    _lastPersistedCarOverrides.Remove(_activeCarId);
+                else
+                    _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
+            }
             SimHub.Logging.Current.Info($"[Trueforce] Cleared {kind} override for '{_activeCarId}' (follows game default).");
             return true;
         }
@@ -4742,6 +4750,98 @@ namespace TrueforceForAll.Plugin
         public List<string> ValidateBuiltins()
             => BuiltinPresets.Validate(BuiltinGameSections);
 
+        /// <summary>DEV-only one-shot car-default consolidation. For each car
+        /// whose active default is a USER preset, promote that user preset to a
+        /// factory built-in (replacing any existing factory built-in(s) for the
+        /// same car), bind the factory car-default to it, and delete the user
+        /// preset + user-side car-default binding. Cars whose default is
+        /// already a built-in are skipped. Other user presets for the same car
+        /// stay put. Returns a summary line + per-car log for the status box.</summary>
+        public int DevConsolidateUserCarDefaults(out string summary)
+        {
+            summary = "";
+            var lines = new List<string>();
+            int promoted = 0, skipped = 0;
+            if (_carStore == null || Settings?.CarDefaults == null)
+            { summary = "No car defaults to consolidate."; return 0; }
+
+            var userLoaded = _carStore.LoadAll();
+            // Iterate a copy: we mutate Settings.CarDefaults inside the loop.
+            foreach (var kv in new Dictionary<string, string>(Settings.CarDefaults))
+            {
+                string carId = kv.Key, defaultName = kv.Value;
+                if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(defaultName)) continue;
+
+                // Default already points at a built-in for this car? Nothing to do.
+                if (BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + defaultName))
+                    continue;
+
+                if (!userLoaded.TryGetValue(carId, out var perCar)
+                    || !perCar.TryGetValue(defaultName, out var entry)
+                    || entry == null)
+                { lines.Add($"{carId}: skipped (user preset '{defaultName}' not found)"); skipped++; continue; }
+
+                string game = entry.GameName ?? "";
+
+                // Find every existing factory built-in for this car and delete
+                // them. The new default takes their place.
+                var factoryHits = new List<string>();   // preset names
+                foreach (var bkv in BuiltinPresets.CarPresetJsons)
+                {
+                    int slash = bkv.Key.IndexOf('/');
+                    if (slash < 0) continue;
+                    if (bkv.Key.Substring(0, slash) != carId) continue;
+                    factoryHits.Add(bkv.Key.Substring(slash + 1));
+                }
+                foreach (var name in factoryHits)
+                {
+                    string g = game;
+                    try
+                    {
+                        var bf = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(
+                            BuiltinPresets.CarPresetJsons[carId + "/" + name]);
+                        if (bf != null && !string.IsNullOrEmpty(bf.GameName)) g = bf.GameName;
+                    }
+                    catch { /* fall back to entry's game */ }
+                    BuiltinPresetWriter.DeleteCar(BuiltinPresets.CurrentFolder, g, carId, name);
+                }
+
+                // Write the user preset into factory (IsBuiltin=true), bind the
+                // factory car-default to it, then drop the user-side file and
+                // any user-side binding for this car.
+                var newFile = new CarPresetFile
+                {
+                    Type = CarPresetFile.FileType, Version = 2,
+                    GameName = game, CarId = carId,
+                    PresetName = defaultName, IsBuiltin = true, Override = entry.Override,
+                };
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(newFile, Newtonsoft.Json.Formatting.Indented);
+                BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, defaultName, json);
+                BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, defaultName);
+
+                _carStore.Delete(carId, defaultName);
+                BuiltinPresetWriter.RemoveCarDefault(UserPresets.CurrentFolder, carId);
+
+                lines.Add($"{carId}: promoted '{defaultName}' (replaced {factoryHits.Count} existing built-in(s))");
+                promoted++;
+            }
+
+            if (promoted > 0)
+            {
+                BuiltinPresets.Reload();
+                UserPresets.Reload();
+                LoadAndMigrateCarPresets();
+                this.SaveCommonSettings("GeneralSettings", Settings);
+                SimHub.Logging.Current.Info($"[Trueforce] DEV: consolidated {promoted} car default(s) into factory built-ins.");
+            }
+
+            summary = promoted == 0
+                ? "Nothing to consolidate (every car default already points at a built-in)."
+                : $"Promoted {promoted} car default(s) to built-ins (skipped {skipped}).";
+            if (lines.Count > 0) summary += "\n" + string.Join("\n", lines);
+            return promoted;
+        }
+
         /// <summary>Give an unmapped game its own preset seeded from the
         /// Assetto Corsa baseline (which ships as the user's AC tuning) and
         /// bind it as that game's default, then apply it live. No-op if the
@@ -5085,7 +5185,14 @@ namespace TrueforceForAll.Plugin
             if (_carStore == null || string.IsNullOrEmpty(_activeCarId) || Settings?.CarOverrides == null) return false;
             string presetName = GetActiveCarPresetName(_activeCarId);
             if (string.IsNullOrEmpty(presetName)) return false;
-            if (IsCarPresetBuiltin(_activeCarId, presetName)) return false;
+            // DEV authoring: built-in cars get written through to the factory
+            // folder, mirroring the SavePresetAs DEV bypass for games.
+            if (IsCarPresetBuiltin(_activeCarId, presetName))
+            {
+                if (!DevMode) return false;   // non-dev: caller forks via SaveActiveCarPresetAs
+                WriteCarBuiltinThroughDev(_activeCarId, presetName);
+                return true;
+            }
 
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
             _carStore.Save(_activeCarId, presetName, _activeGame ?? "", ovr, isBuiltin: false);
@@ -5159,12 +5266,46 @@ namespace TrueforceForAll.Plugin
             if (_carStore == null || Settings == null) return false;
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) return false;
             if (string.Equals(oldName, newName, StringComparison.Ordinal)) return true;
-            if (IsCarPresetBuiltin(carId, oldName))
+            bool wasBuiltin = IsCarPresetBuiltin(carId, oldName);
+            if (wasBuiltin && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[Trueforce] Refusing to rename built-in car preset '{carId}/{oldName}'.");
                 return false;
             }
+            // Collision check needs to consider built-ins too in DEV (otherwise
+            // we'd silently overwrite a sibling built-in for the same car).
             if (_carStore.Exists(carId, newName)) return false;
+            if (BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + newName)) return false;
+
+            if (wasBuiltin)
+            {
+                // DEV: rename the factory file + rewrite its inner PresetName so
+                // the load key (carId + "/" + PresetName) matches the new filename.
+                string game = GetCarPresetGame(carId, oldName) ?? "";
+                BuiltinPresetWriter.RenameCar(BuiltinPresets.CurrentFolder, game, carId, oldName, newName);
+                try
+                {
+                    // Rewrite the inner PresetName field. Read the just-renamed
+                    // file and overwrite with PresetName=newName.
+                    if (BuiltinPresets.CarPresetJsons.TryGetValue(carId + "/" + oldName, out var staleJson))
+                    {
+                        var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(staleJson);
+                        if (f != null)
+                        {
+                            f.PresetName = newName;
+                            f.IsBuiltin = true;
+                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(f, Newtonsoft.Json.Formatting.Indented);
+                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, f.GameName ?? game, carId, newName, json);
+                        }
+                    }
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV rename PresetName rewrite failed: {ex.Message}"); }
+                BuiltinPresets.Reload();
+                LoadAndMigrateCarPresets();
+                if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
+                SimHub.Logging.Current.Info($"[Trueforce] DEV: renamed built-in car preset '{carId}/{oldName}' to '{newName}'.");
+                return true;
+            }
 
             var loaded = _carStore.LoadAll();
             if (!loaded.TryGetValue(carId, out var perCar) || !perCar.TryGetValue(oldName, out var entry)) return false;
@@ -6359,7 +6500,8 @@ namespace TrueforceForAll.Plugin
             if (_carStore == null || string.IsNullOrEmpty(_activeCarId)) return false;
             string presetName = GetActiveCarPresetName(_activeCarId);
             if (string.IsNullOrEmpty(presetName)) return false;
-            if (IsCarPresetBuiltin(_activeCarId, presetName)) return false;
+            bool isBuiltin = IsCarPresetBuiltin(_activeCarId, presetName);
+            if (isBuiltin && !DevMode) return false;   // non-dev: caller forks
             if (Settings?.CarOverrides == null) return false;
             if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var live) || live == null) return false;
 
@@ -6388,11 +6530,20 @@ namespace TrueforceForAll.Plugin
                 default: return false;
             }
 
-            _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false);
-            if (patched.IsEmpty)
-                _lastPersistedCarOverrides.Remove(_activeCarId);
+            if (isBuiltin)
+            {
+                // DEV: write through to the factory folder. LoadAndMigrateCarPresets
+                // (called inside the helper) refreshes the live + persisted caches.
+                WriteCarBuiltinThroughDev(_activeCarId, presetName, patched);
+            }
             else
-                _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
+            {
+                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false);
+                if (patched.IsEmpty)
+                    _lastPersistedCarOverrides.Remove(_activeCarId);
+                else
+                    _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
+            }
             SimHub.Logging.Current.Info($"[Trueforce] Saved {kind} into car preset '{presetName}' for '{_activeCarId}' (scoped).");
             return true;
         }
@@ -6738,10 +6889,20 @@ namespace TrueforceForAll.Plugin
         // active. Source of truth stays the folder.
         private void WriteCarBuiltinThroughDev(string carId, string presetName)
         {
+            if (Settings?.CarOverrides == null
+                || !Settings.CarOverrides.TryGetValue(carId, out var ov) || ov == null) return;
+            WriteCarBuiltinThroughDev(carId, presetName, ov);
+        }
+
+        // DEV authoring overload: write an explicit override through to the
+        // built-in folder. Used by section-scoped saves where the value being
+        // persisted is patched (live override + one section replacement), not
+        // the live override as-is.
+        private void WriteCarBuiltinThroughDev(string carId, string presetName, CarOverride ov)
+        {
             try
             {
-                if (Settings?.CarOverrides == null
-                    || !Settings.CarOverrides.TryGetValue(carId, out var ov) || ov == null) return;
+                if (ov == null) return;
                 string game = GetCarPresetGame(carId, presetName) ?? _activeGame ?? "";
                 var file = new CarPresetFile
                 {

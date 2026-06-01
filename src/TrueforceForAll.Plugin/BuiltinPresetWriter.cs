@@ -67,6 +67,37 @@ namespace TrueforceForAll.Plugin
             catch { /* leave the dir if it won't delete */ }
         }
 
+        /// <summary>Rename a car preset file (cars/&lt;game&gt;/&lt;carId&gt;/&lt;old&gt;.json -&gt;
+        /// &lt;new&gt;.json) and repoint car-defaults.json from old -&gt; new for
+        /// that carId if it matched. The file's inner PresetName needs updating
+        /// separately by the caller (this just moves the file).</summary>
+        public static void RenameCar(string folder, string gameName, string carId, string oldName, string newName)
+        {
+            string g = SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName);
+            string carDir = Path.Combine(folder, "cars", g, SafeFile(carId));
+            string oldPath = Path.Combine(carDir, SafeFile(oldName) + ".json");
+            string newPath = Path.Combine(carDir, SafeFile(newName) + ".json");
+            if (File.Exists(oldPath))
+            {
+                Directory.CreateDirectory(carDir);
+                if (File.Exists(newPath)) File.Delete(newPath);
+                File.Move(oldPath, newPath);
+            }
+            // Repoint car-defaults if it pointed at the old name.
+            string dpath = Path.Combine(folder, BuiltinPresetStore.CarDefaultsFileName);
+            if (!File.Exists(dpath)) return;
+            try
+            {
+                var o = JObject.Parse(File.ReadAllText(dpath));
+                if (o[carId] != null && (string)o[carId] == oldName)
+                {
+                    o[carId] = newName;
+                    File.WriteAllText(dpath, o.ToString(Formatting.Indented));
+                }
+            }
+            catch { /* leave defaults as-is on parse trouble */ }
+        }
+
         /// <summary>Rename a game preset file and repoint any game-defaults
         /// entries from the old name to the new one.</summary>
         public static void RenameGame(string folder, string oldName, string newName)
