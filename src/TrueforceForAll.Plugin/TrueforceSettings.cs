@@ -314,6 +314,23 @@ namespace TrueforceForAll.Plugin
         // already migrated games still need to migrate cars when this lands.
         public bool CarsMigratedV2 { get; set; } = false;
 
+        // ---- Serialization gates for the now-runtime-cache dicts ----
+        //
+        // Settings.Presets / GameDefaults / CarDefaults / CarOverrides are
+        // rebuilt on every Init from the file-based folders (BuiltinPresets,
+        // UserPresets, _carStore), so post-migration they no longer need to
+        // persist to GeneralSettings.json. We can't [JsonIgnore] them outright
+        // because the one-time legacy migrations read those dicts on Init for
+        // upgrading users; the gate has to be 'serialize until the matching
+        // migration latch is set, then drop'. Newtonsoft only consults
+        // ShouldSerialize on WRITE, so reads still populate the dicts for the
+        // migration to find. After the migration clears the dicts and flips the
+        // latch, subsequent saves omit them and the file stays clean.
+        public bool ShouldSerializePresets()       => !PresetsMigratedV2;
+        public bool ShouldSerializeGameDefaults()  => !PresetsMigratedV2;
+        public bool ShouldSerializeCarDefaults()   => !CarsMigratedV2;
+        public bool ShouldSerializeCarOverrides()  => !CarsMigratedV2;
+
         // Cumulative set of every preset name that has been a built-in on this
         // install. Persisted at the end of Init by appending the current
         // BuiltinPresets folder set. Never shrinks: a name that drops out of
