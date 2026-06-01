@@ -1,4 +1,6 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using TrueforceForAll.Core;
 using Xunit;
@@ -166,6 +168,59 @@ namespace TrueforceForAll.Core.Tests
             var src = NewSource();
             src.ParsePacket(DashPacket(carOrdinal: 0), HorizonDashLength);
             Assert.Null(src.CurrentCarOrdinal);
+        }
+
+        // Pick a currently-free UDP port. UDP has no TIME_WAIT, so the port is
+        // reusable the instant the probe socket closes.
+        private static int FreeUdpPort()
+        {
+            using (var probe = new UdpClient(0))
+                return ((IPEndPoint)probe.Client.LocalEndPoint).Port;
+        }
+
+        [Fact]
+        public void Start_BindsToAnyAddress_ReceivesLoopbackPacket()
+        {
+            // Proves the 0.0.0.0 (IPAddress.Any) bind actually receives traffic
+            // sent to 127.0.0.1 through OUR socket loop, not just in theory. This
+            // is the default BindAddress and the config we tell users to keep, so
+            // it gets real end-to-end coverage (bind -> receive -> ParsePacket ->
+            // EmitFrame), guarding against a regression that would silently kill
+            // telemetry for every default-configured Forza user.
+            int port = FreeUdpPort();
+            var src = new ForzaUdpTelemetrySource(port, IPAddress.Any);
+            var got = new ManualResetEventSlim(false);
+            TelemetryFrame frame = default;   // TelemetryFrame is a struct; got.IsSet signals receipt
+            src.OnFrame = f => { frame = f; got.Set(); };
+
+            try
+            {
+                src.Start();
+                Assert.True(src.IsRunning);
+
+                using (var sender = new UdpClient())
+                {
+                    var dest = new IPEndPoint(IPAddress.Loopback, port);
+                    var packet = DashPacket(rpm: 4200f, maxRpm: 8000f);
+                    // Resend a few times: the first datagram can land in the split
+                    // second between bind and the receive loop entering ReceiveFrom.
+                    // The OS buffers it either way, but resending makes the test
+                    // robust on a slow CI box without a long single wait.
+                    for (int i = 0; i < 10 && !got.IsSet; i++)
+                    {
+                        sender.Send(packet, packet.Length, dest);
+                        got.Wait(200);
+                    }
+                }
+
+                Assert.True(got.IsSet, "no frame emitted from a loopback packet on an Any-bound source");
+                Assert.Equal(4200.0, frame.Rpms, 3);     // engine RPM flows even during the spawn settle window
+                Assert.True(src.PacketsReceived >= 1);
+            }
+            finally
+            {
+                src.Stop();
+            }
         }
 
         [Fact]
