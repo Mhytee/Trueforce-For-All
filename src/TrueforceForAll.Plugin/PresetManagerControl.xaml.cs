@@ -375,15 +375,17 @@ namespace TrueforceForAll.Plugin
             double others = 0;
             for (int i = 0; i < gv.Columns.Count; i++)
                 if (i != flexIndex) others += gv.Columns[i].ActualWidth;
-            // Reserve scrollbar width ONLY when one is actually showing; a
-            // fixed 32px buffer left a visible trailing gap after the last
-            // column when the list was short enough to fit without a bar.
-            // A small inset still covers the ListView's border + padding.
-            double inset = 4;
+            // ScrollViewer.ViewportWidth measures exactly the visible content
+            // area: border + padding + visible scrollbar already excluded.
+            // That avoids the "guess the inset" approach (which left a few
+            // pixels of dead space after the last column that looked like a
+            // shrunken extra column). Fall back to ActualWidth - small inset
+            // before the layout pass has run.
             var sv = FindVisualDescendant<ScrollViewer>(lv);
-            if (sv != null && sv.ComputedVerticalScrollBarVisibility == Visibility.Visible)
-                inset += SystemParameters.VerticalScrollBarWidth;
-            double avail = lv.ActualWidth - others - inset;
+            double availableWidth = (sv != null && sv.ViewportWidth > 0)
+                ? sv.ViewportWidth
+                : Math.Max(0, lv.ActualWidth - 4);
+            double avail = availableWidth - others;
             if (avail < 120) avail = 120;
             gv.Columns[flexIndex].Width = avail;
         }
