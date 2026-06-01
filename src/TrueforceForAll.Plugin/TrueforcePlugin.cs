@@ -1344,6 +1344,11 @@ namespace TrueforceForAll.Plugin
                 MigrateLegacyUserCarsToFolder();
                 Settings.CarsMigratedV2 = true;
             }
+            // Housekeeping: an earlier build of the car migration named its
+            // backup folder "TrueforceCars.bak-...". Rename any leftover to the
+            // on-brand name so users don't see a bare "Trueforce" folder. Idem-
+            // potent; runs every Init and no-ops once everything's renamed.
+            RebrandLegacyCarsBackup();
             // One-shot sweep: drop any user-library copy of an ever-built-in
             // name (catches earlier migrations that wrote those out before the
             // skip-ever-built-in rule existed). Runs once, then stops; after
@@ -4121,6 +4126,46 @@ namespace TrueforceForAll.Plugin
                 $"[Trueforce] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s) + {skippedOrphanDefaults} orphan default(s); {failedPresets} failed).");
         }
 
+        /// <summary>Rename any leftover bare-"Trueforce" car backup folders to
+        /// the on-brand "TrueforceForAll-LegacyCars.bak-*" form. Runs every
+        /// Init; idempotent (no-op once the directory listing is clean).
+        /// "Trueforce" is Logitech's mark, so a folder reading "TrueforceCars"
+        /// on disk after our migration was a branding leak. Pure rename, no
+        /// content change. Failures are logged and non-fatal.</summary>
+        private void RebrandLegacyCarsBackup()
+        {
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
+                string parent = Path.Combine(baseDir, "PluginsData", "Common");
+                if (!Directory.Exists(parent)) return;
+                foreach (var path in Directory.GetDirectories(parent, "TrueforceCars.bak*"))
+                {
+                    try
+                    {
+                        string name = Path.GetFileName(path);
+                        // Strip the "TrueforceCars" prefix and preserve whatever
+                        // came after it (`.bak-user-car-migration-<ts>` etc.)
+                        // so the timestamp / tag survives.
+                        string tail = name.Substring("TrueforceCars".Length);
+                        string newName = "TrueforceForAll-LegacyCars" + tail;
+                        string dst = Path.Combine(parent, newName);
+                        if (Directory.Exists(dst)) continue; // collision: leave the old one alone
+                        Directory.Move(path, dst);
+                        SimHub.Logging.Current.Info($"[Trueforce] Renamed legacy backup '{name}' -> '{newName}' (on-brand).");
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] Couldn't rename legacy backup '{Path.GetFileName(path)}': {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] RebrandLegacyCarsBackup failed: {ex.Message}");
+            }
+        }
+
         /// <summary>One-time car migration: move legacy TrueforceCars/*.tfcar.json
         /// user files into the user library cars/<game>/<carId>/<preset>.json
         /// layout, and Settings.CarDefaults into car-defaults.json. Backs up
@@ -4167,10 +4212,14 @@ namespace TrueforceForAll.Plugin
                     }
                     // Rename the legacy folder so it isn't re-migrated and the
                     // user can see the original copy if anything looks off.
+                    // Use the on-brand name so the leftover folder on disk reads
+                    // as ours and not as "Trueforce" (which is Logitech's mark).
                     try
                     {
                         string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                        Directory.Move(legacyCarsFolder, legacyCarsFolder + $".bak-user-car-migration-{ts}");
+                        string bakRoot = Path.Combine(baseDir, "PluginsData", "Common",
+                            $"TrueforceForAll-LegacyCars.bak-{ts}");
+                        Directory.Move(legacyCarsFolder, bakRoot);
                     }
                     catch (Exception ex)
                     {
