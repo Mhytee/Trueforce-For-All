@@ -343,19 +343,16 @@ namespace TrueforceForAll.Plugin
         private void MakeFlexColumn(ListView lv, int flexIndex)
         {
             if (lv == null) return;
-            var gv = lv.View as GridView;
-            int lastIndex = (gv != null && gv.Columns.Count > 0) ? gv.Columns.Count - 1 : -1;
-
             lv.SizeChanged += (s, e) => { if (e.WidthChanged) ResizeFlexColumn(lv, flexIndex); };
             lv.Loaded      += (s, e) => ResizeFlexColumn(lv, flexIndex);
             // ScrollChanged catches the vertical-scrollbar visibility flip
-            // (rows added / removed by filter / reload) so the MAIN flex
-            // column re-fits the new ViewportWidth. The same event ALSO
-            // fires when the user drags a column -- the horizontal extent
-            // changes. Re-flexing on every such fire undoes the user's drag
-            // every frame and the divider appears stuck. Gate on a real
-            // ViewportWidth delta: column drags don't change the viewport;
-            // bar-visibility flips do.
+            // (rows added / removed by filter / reload) so the flex column
+            // re-fits the new ViewportWidth. The same event ALSO fires when
+            // the user drags a column -- the horizontal extent changes,
+            // which counts as a scroll change. Re-flexing on every such fire
+            // undoes the user's drag of the flex column every frame and the
+            // divider appears stuck. Gate on a real ViewportWidth delta:
+            // column drags don't change the viewport, bar-visibility flips do.
             double lastViewport = -1;
             lv.AddHandler(ScrollViewer.ScrollChangedEvent,
                 new ScrollChangedEventHandler((s, e) =>
@@ -367,33 +364,15 @@ namespace TrueforceForAll.Plugin
                     lastViewport = vw;
                     ResizeFlexColumn(lv, flexIndex);
                 }));
-
-            // Two-tier flex. MAIN (flexIndex above) absorbs ListView resize +
-            // scrollbar-visibility changes so the visually primary column
-            // (Car ID / Preset name) grows on viewport widen. LAST absorbs
-            // user gripper drags so the right edge stays pinned to
-            // ViewportWidth: any non-LAST column width change re-runs
-            // ResizeFlexColumn against the LAST column. The dragged divider
-            // follows the cursor because the absorber sits to the RIGHT of
-            // the drag (which keeps the dragged column's own right edge
-            // moving as the user expects). LAST is skipped from the watcher
-            // to avoid a feedback loop on its own write; dragging LAST is
-            // then plain WPF (total may exceed ViewportWidth -> horizontal
-            // scroll appears, which is the correct answer for that case).
-            if (gv != null && lastIndex >= 0 && lastIndex != flexIndex)
-            {
-                var dpd = System.ComponentModel.DependencyPropertyDescriptor
-                    .FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn));
-                if (dpd != null)
-                {
-                    for (int i = 0; i < gv.Columns.Count; i++)
-                    {
-                        if (i == lastIndex) continue;
-                        var col = gv.Columns[i];
-                        dpd.AddValueChanged(col, (s, e) => ResizeFlexColumn(lv, lastIndex));
-                    }
-                }
-            }
+            // NOTE: we don't watch non-flex columns' Width changes. The
+            // intent was to keep totals == ViewportWidth when the user drags
+            // a non-flex column, but the side effect (silently shrinking the
+            // flex column while the user dragged another) made drags feel
+            // inverted and eventually pushed columns past the right edge
+            // once the flex hit its minimum. Plain WPF drag behaviour is in
+            // effect now: drag a divider right and the column to its left
+            // widens; if the total exceeds ViewportWidth the horizontal
+            // scrollbar appears.
         }
 
         private static void ResizeFlexColumn(ListView lv, int flexIndex)
