@@ -4750,6 +4750,23 @@ namespace TrueforceForAll.Plugin
         public List<string> ValidateBuiltins()
             => BuiltinPresets.Validate(BuiltinGameSections);
 
+        /// <summary>Re-scan factory + user folders from disk and rebuild every
+        /// runtime cache (game preset map, car defaults, car store). Use after
+        /// external edits to the folders (drop-in files, manual edits) so the
+        /// in-memory state catches up without a SimHub restart. The caller
+        /// still needs to call PresetManagerControl.RefreshLists() to redraw
+        /// the UI rows.</summary>
+        public string ReloadLibraryFromFolders()
+        {
+            BuiltinPresets.Reload();
+            UserPresets.Reload();
+            RebuildPresetCacheFromFolders();
+            LoadAndMigrateCarPresets();
+            string msg = $"Reloaded library from folders: {BuiltinPresets.BuiltinPresetJsons.Count} game + {BuiltinPresets.CarPresetJsons.Count} car built-in(s), {UserPresets.PresetJsons.Count} user game preset(s), {UserPresets.CarPresetJsons.Count} user car preset(s).";
+            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            return msg;
+        }
+
         /// <summary>DEV-only one-shot car-default consolidation. For each car
         /// whose active default is a USER preset, promote that user preset to a
         /// factory built-in (replacing any existing factory built-in(s) for the

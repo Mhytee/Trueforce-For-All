@@ -258,6 +258,8 @@
                                 ToolTip="Open the built-in preset folder in Explorer."/>
                         <Button Content="Validate"             Height="26" Width="90"  Margin="0,0,8,8" Click="DevValidate_Click"
                                 ToolTip="Parse every built-in and flag any that fail to load or are missing a newer effect section."/>
+                        <Button Content="Refresh library"      Height="26" Width="120" Margin="0,0,8,8" Click="DevRefreshLibrary_Click"
+                                ToolTip="Re-scan the factory + user folders and rebuild every runtime cache. Use after editing files in the folders outside the app (drop-ins, manual edits)."/>
                     </WrapPanel>
                     <TextBlock x:Name="DevStatusText" Margin="0,2,0,0" FontSize="11" Foreground="#FFC8C8C8" TextWrapping="Wrap"/>
                 </StackPanel>

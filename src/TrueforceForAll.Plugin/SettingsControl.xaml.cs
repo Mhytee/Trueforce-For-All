@@ -4688,6 +4688,10 @@ namespace TrueforceForAll.Plugin
                 if (_plugin != null)
                 {
                     int n = _plugin.DevConsolidateUserCarDefaults(out var details);
+                    // The plugin reloads its own caches; the preset manager
+                    // caches its row collections separately and needs an
+                    // explicit refresh.
+                    if (n > 0) _presetManager?.RefreshLists();
                     if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
                     if (n > 0)
                         MessageBox.Show(Window.GetWindow(this), details,

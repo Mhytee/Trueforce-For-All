@@ -117,6 +117,18 @@ namespace TrueforceForAll.Plugin
                 : $"Validated {lines.Count} built-in(s): {issues} flagged (see dialog).");
         }
 
+        private void DevRefreshLibrary_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            try
+            {
+                string msg = _plugin.ReloadLibraryFromFolders();
+                RefreshLists();
+                SetDevStatus(msg);
+            }
+            catch (Exception ex) { SetDevStatus("Refresh failed: " + ex.Message); }
+        }
+
         private void SetDevStatus(string text)
         {
             if (DevStatusText != null) DevStatusText.Text = text;
