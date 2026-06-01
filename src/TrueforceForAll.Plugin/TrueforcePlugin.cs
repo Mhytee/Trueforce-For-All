@@ -4689,25 +4689,29 @@ namespace TrueforceForAll.Plugin
                     || !perCar.TryGetValue(presetName, out var entry) || entry == null)
                 { error = "car preset not found"; return false; }
 
+                // Promote always writes to the factory folder; presetName from
+                // UI (typically a user row, but harmless on a factory row) may
+                // carry the display suffix -- strip to the on-disk form.
+                string diskName = ToDiskName(presetName);
                 var file = new CarPresetFile
                 {
                     Type       = CarPresetFile.FileType,
                     Version    = 2,
                     GameName   = entry.GameName ?? "",
                     CarId      = carId,
-                    PresetName = presetName,   // keep its own name (multiple built-ins per car)
+                    PresetName = diskName,
                     IsBuiltin  = true,
                     Override   = entry.Override,
                 };
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     file, Newtonsoft.Json.Formatting.Indented);
-                string rel = BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carId, presetName, json);
+                string rel = BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, file.GameName, carId, diskName, json);
                 // First built-in for this car becomes its default; otherwise
                 // leave the existing default (owner picks via Set as default).
                 if (!BuiltinPresets.CarDefaultBindings.ContainsKey(carId))
-                    BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, presetName);
+                    BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, diskName);
                 BuiltinPresets.Reload();
-                SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{presetName}' -> built-in '{rel}'.");
+                SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{diskName}' -> built-in '{rel}'.");
                 return true;
             }
             catch (Exception ex) { error = ex.Message; return false; }
@@ -5183,8 +5187,16 @@ namespace TrueforceForAll.Plugin
             //    value is dropped (the user library file is the truth).
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             Settings.CarDefaults.Clear();
+            // Factory car-defaults.json values are on-disk names (no suffix);
+            // the merged car-preset map keys factory entries with the
+            // " (Built-In)" suffix to keep them separate from any same-named
+            // user file. Stamp the suffix when copying factory bindings so
+            // ResolveActiveCarPresetName can find the factory entry by key.
+            // User bindings are written by SwitchActiveCarPreset already in
+            // the right form (suffixed when the user picked a factory row),
+            // so they pass through unchanged and override factory on collision.
             foreach (var kv in BuiltinPresets.CarDefaultBindings)
-                Settings.CarDefaults[kv.Key] = kv.Value;
+                Settings.CarDefaults[kv.Key] = kv.Value + BuiltinNameSuffix;
             foreach (var kv in UserPresets.CarDefaults)
                 Settings.CarDefaults[kv.Key] = kv.Value;
 
@@ -5240,15 +5252,17 @@ namespace TrueforceForAll.Plugin
                         perCar = new Dictionary<string, CarPresetEntry>(StringComparer.Ordinal);
                         map[f.CarId] = perCar;
                     }
-                    // User wins on (carId, presetName) collision: a non-null
-                    // user entry at this key is the user's local edit of the
-                    // factory default (e.g. left over after a FOLDDEFAULTS
-                    // promote), and we must not silently overwrite it or the
-                    // user's row vanishes from the preset manager. Factory
-                    // still loads on disk; the user can delete their file to
-                    // re-expose it.
-                    if (!perCar.ContainsKey(presetName))
-                        perCar[presetName] = entry;
+                    // Stamp every factory entry with a " (Built-In)" suffix in
+                    // both the entry's PresetName AND the perCar dict key.
+                    // This is purely a display-layer rename: the disk file
+                    // stays at the original name; the suffix is added here so
+                    // (1) the Preset Manager row shows it's a built-in and
+                    // (2) user vs factory entries with the same on-disk name
+                    // never collide in the merged map. Plugin methods strip
+                    // the suffix at disk-op boundaries via ToDiskName.
+                    string displayName = presetName + BuiltinNameSuffix;
+                    entry.PresetName = displayName;
+                    perCar[displayName] = entry;
                 }
                 catch (Exception ex)
                 {
@@ -5423,10 +5437,14 @@ namespace TrueforceForAll.Plugin
         {
             if (_carStore == null || Settings == null || string.IsNullOrEmpty(_activeCarId)) return false;
             if (string.IsNullOrEmpty(newPresetName)) return false;
+            // User-typed name might inadvertently carry the display-only
+            // " (Built-In)" suffix (e.g. forked from a built-in's auto-suggest);
+            // strip so the on-disk filename and CarDefaults binding are clean.
+            string newDisk = ToDiskName(newPresetName);
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
-            _carStore.Save(_activeCarId, newPresetName, _activeGame ?? "", ovr, isBuiltin: false);
+            _carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false);
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
-            Settings.CarDefaults[_activeCarId] = newPresetName;
+            Settings.CarDefaults[_activeCarId] = newDisk;
             if (ovr == null || ovr.IsEmpty)
                 _lastPersistedCarOverrides.Remove(_activeCarId);
             else
@@ -5443,8 +5461,12 @@ namespace TrueforceForAll.Plugin
             if (_carStore == null || string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
             bool wasBuiltin = IsCarPresetBuiltin(carId, presetName);
             if (wasBuiltin && !DevMode) return false;   // DEV authoring may delete built-ins
-            string game = GetCarPresetGame(carId, presetName); // capture before delete
-            _carStore.Delete(carId, presetName);
+            // presetName from UI carries the " (Built-In)" suffix for factory
+            // entries; disk file names never do. Strip to the on-disk form for
+            // any file/dict lookup.
+            string diskName = ToDiskName(presetName);
+            string game = GetCarPresetGame(carId, presetName);
+            _carStore.Delete(carId, diskName);
             if (Settings?.CarDefaults != null
                 && Settings.CarDefaults.TryGetValue(carId, out var active)
                 && string.Equals(active, presetName, StringComparison.Ordinal))
@@ -5457,10 +5479,12 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
-                    BuiltinPresetWriter.DeleteCar(BuiltinPresets.CurrentFolder, game ?? "", carId, presetName);
+                    BuiltinPresetWriter.DeleteCar(BuiltinPresets.CurrentFolder, game ?? "", carId, diskName);
                     // If that was the car's built-in default, drop the binding.
+                    // CarDefaultBindings values come from car-defaults.json (disk
+                    // form, never suffixed), so compare against diskName.
                     if (BuiltinPresets.CarDefaultBindings.TryGetValue(carId, out var def)
-                        && string.Equals(def, presetName, StringComparison.Ordinal))
+                        && string.Equals(def, diskName, StringComparison.Ordinal))
                         BuiltinPresetWriter.RemoveCarDefault(BuiltinPresets.CurrentFolder, carId);
                     BuiltinPresets.Reload();
                 }
@@ -5484,30 +5508,34 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[Trueforce] Refusing to rename built-in car preset '{carId}/{oldName}'.");
                 return false;
             }
+            // The names from UI may carry the " (Built-In)" suffix (factory
+            // rows) -- strip to the disk form for file/dict ops. Don't allow
+            // the suffix in user-typed newName either (that's display sugar,
+            // not a real name).
+            string oldDisk = ToDiskName(oldName);
+            string newDisk = ToDiskName(newName);
             // Collision check needs to consider built-ins too in DEV (otherwise
             // we'd silently overwrite a sibling built-in for the same car).
-            if (_carStore.Exists(carId, newName)) return false;
-            if (BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + newName)) return false;
+            if (_carStore.Exists(carId, newDisk)) return false;
+            if (BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + newDisk)) return false;
 
             if (wasBuiltin)
             {
                 // DEV: rename the factory file + rewrite its inner PresetName so
                 // the load key (carId + "/" + PresetName) matches the new filename.
                 string game = GetCarPresetGame(carId, oldName) ?? "";
-                BuiltinPresetWriter.RenameCar(BuiltinPresets.CurrentFolder, game, carId, oldName, newName);
+                BuiltinPresetWriter.RenameCar(BuiltinPresets.CurrentFolder, game, carId, oldDisk, newDisk);
                 try
                 {
-                    // Rewrite the inner PresetName field. Read the just-renamed
-                    // file and overwrite with PresetName=newName.
-                    if (BuiltinPresets.CarPresetJsons.TryGetValue(carId + "/" + oldName, out var staleJson))
+                    if (BuiltinPresets.CarPresetJsons.TryGetValue(carId + "/" + oldDisk, out var staleJson))
                     {
                         var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(staleJson);
                         if (f != null)
                         {
-                            f.PresetName = newName;
+                            f.PresetName = newDisk;
                             f.IsBuiltin = true;
                             string json = Newtonsoft.Json.JsonConvert.SerializeObject(f, Newtonsoft.Json.Formatting.Indented);
-                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, f.GameName ?? game, carId, newName, json);
+                            BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, f.GameName ?? game, carId, newDisk, json);
                         }
                     }
                 }
@@ -5515,21 +5543,21 @@ namespace TrueforceForAll.Plugin
                 BuiltinPresets.Reload();
                 LoadAndMigrateCarPresets();
                 if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: renamed built-in car preset '{carId}/{oldName}' to '{newName}'.");
+                SimHub.Logging.Current.Info($"[Trueforce] DEV: renamed built-in car preset '{carId}/{oldDisk}' to '{newDisk}'.");
                 return true;
             }
 
             var loaded = _carStore.LoadAll();
-            if (!loaded.TryGetValue(carId, out var perCar) || !perCar.TryGetValue(oldName, out var entry)) return false;
+            if (!loaded.TryGetValue(carId, out var perCar) || !perCar.TryGetValue(oldDisk, out var entry)) return false;
 
-            _carStore.Save(carId, newName, entry.GameName ?? "", entry.Override, isBuiltin: false);
-            _carStore.Delete(carId, oldName);
+            _carStore.Save(carId, newDisk, entry.GameName ?? "", entry.Override, isBuiltin: false);
+            _carStore.Delete(carId, oldDisk);
 
             if (Settings.CarDefaults != null
                 && Settings.CarDefaults.TryGetValue(carId, out var active)
                 && string.Equals(active, oldName, StringComparison.Ordinal))
             {
-                Settings.CarDefaults[carId] = newName;
+                Settings.CarDefaults[carId] = newDisk;
                 this.SaveCommonSettings("GeneralSettings", Settings);
             }
             if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
@@ -5544,15 +5572,23 @@ namespace TrueforceForAll.Plugin
         {
             if (_carStore == null) return false;
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(sourceName) || string.IsNullOrEmpty(newName)) return false;
-            if (_carStore.Exists(carId, newName)) return false;
+            // sourceName may be a factory display name (suffixed); pull from
+            // the merged map (which has both user + suffixed factory entries)
+            // and persist the clone as a user file under the on-disk newName.
+            string sourceDisk = ToDiskName(sourceName);
+            string newDisk    = ToDiskName(newName);
+            if (_carStore.Exists(carId, newDisk)) return false;
 
-            var loaded = _carStore.LoadAll();
-            if (!loaded.TryGetValue(carId, out var perCar) || !perCar.TryGetValue(sourceName, out var entry)) return false;
+            CarPresetEntry entry = null;
+            var all = GetAllCarPresets();
+            if (all != null && all.TryGetValue(carId, out var perCarAll))
+                perCarAll.TryGetValue(sourceName, out entry);
 
+            if (entry == null) return false;
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(entry.Override);
             var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CarOverride>(json);
-            _carStore.Save(carId, newName, entry.GameName ?? "", clone, isBuiltin: false);
-            SimHub.Logging.Current.Info($"[Trueforce] Duplicated car preset '{carId}/{sourceName}' as '{newName}'.");
+            _carStore.Save(carId, newDisk, entry.GameName ?? "", clone, isBuiltin: false);
+            SimHub.Logging.Current.Info($"[Trueforce] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
             return true;
         }
 
@@ -5620,7 +5656,10 @@ namespace TrueforceForAll.Plugin
             if (!SwitchActiveCarPreset(carId, presetName)) return false;
             if (DevMode)
             {
-                try { BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, presetName); BuiltinPresets.Reload(); }
+                // Factory car-defaults.json references on-disk filenames -- strip
+                // the display suffix before writing or future loads of the file
+                // would point at "<name> (Built-In)" which doesn't exist on disk.
+                try { BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, ToDiskName(presetName)); BuiltinPresets.Reload(); }
                 catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV write car-default failed: {ex.Message}"); }
             }
             return true;
@@ -5700,16 +5739,40 @@ namespace TrueforceForAll.Plugin
             return wrapped;
         }
 
+        /// <summary>Display-layer suffix that MergeBuiltinCarPresetsInto stamps
+        /// on every factory car preset's PresetName, so user vs factory entries
+        /// with the same on-disk name don't collide in the merged map and so the
+        /// UI row clearly reads as a built-in. Disk filenames never include the
+        /// suffix; ToDiskName strips it back off at disk-op boundaries.</summary>
+        public const string BuiltinNameSuffix = " (Built-In)";
+
+        /// <summary>True iff <paramref name="name"/> ends with the built-in
+        /// display suffix (i.e. was stamped by MergeBuiltinCarPresetsInto).</summary>
+        internal static bool HasBuiltinSuffix(string name)
+            => !string.IsNullOrEmpty(name)
+            && name.EndsWith(BuiltinNameSuffix, StringComparison.Ordinal);
+
+        /// <summary>Return the on-disk PresetName by stripping the
+        /// " (Built-In)" suffix when present. Idempotent; safe to call on
+        /// names that don't have the suffix (user presets, factory names
+        /// already loaded from disk).</summary>
+        internal static string ToDiskName(string name)
+            => HasBuiltinSuffix(name)
+                ? name.Substring(0, name.Length - BuiltinNameSuffix.Length)
+                : name;
+
         /// <summary>True iff the named car preset is a factory built-in.
-        /// Built-ins refuse delete and refuse in-place save; the UI must
-        /// fork to a user-named preset.</summary>
+        /// Requires the display suffix AND a matching unsuffixed entry in
+        /// BuiltinPresets.CarPresetJsons: that way a user file literally
+        /// named "X" (with the factory also shipping "X") isn't mistaken
+        /// for the factory entry just because the names overlap.</summary>
         public bool IsCarPresetBuiltin(string carId, string presetName)
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName))
                 return false;
-            // The factory folder is the authority. The user store never
-            // contains built-in entries, so check BuiltinPresets directly.
-            return BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + presetName);
+            if (!HasBuiltinSuffix(presetName)) return false;
+            string disk = ToDiskName(presetName);
+            return BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + disk);
         }
 
         /// <summary>True iff the active preset for the active car is a
@@ -7115,16 +7178,18 @@ namespace TrueforceForAll.Plugin
             try
             {
                 if (ov == null) return;
+                // Factory file uses on-disk name (no display suffix).
+                string diskName = ToDiskName(presetName);
                 string game = GetCarPresetGame(carId, presetName) ?? _activeGame ?? "";
                 var file = new CarPresetFile
                 {
                     Type = CarPresetFile.FileType, Version = 2,
                     GameName = game, CarId = carId,
-                    PresetName = presetName, IsBuiltin = true, Override = ov,
+                    PresetName = diskName, IsBuiltin = true, Override = ov,
                 };
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     file, Newtonsoft.Json.Formatting.Indented);
-                BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, presetName, json);
+                BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, diskName, json);
                 BuiltinPresets.Reload();
                 LoadAndMigrateCarPresets();   // push folder built-ins into the live store
                 SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote car '{carId}' through to the built-in folder.");
@@ -7452,13 +7517,29 @@ namespace TrueforceForAll.Plugin
         {
             if (_carStore == null) return false;
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName) || string.IsNullOrEmpty(path)) return false;
+            // presetName from UI may be a factory display name (with the
+            // " (Built-In)" suffix). _carStore.LoadAll keys are on-disk; strip
+            // before lookup. The export file's PresetName also gets the
+            // on-disk form so re-import doesn't reproduce the suffix.
+            string diskName = ToDiskName(presetName);
             var loaded = _carStore.LoadAll();
-            if (!loaded.TryGetValue(carId, out var perCar) || !perCar.TryGetValue(presetName, out var entry)) return false;
+            CarPresetEntry entry = null;
+            if (loaded.TryGetValue(carId, out var perCar))
+                perCar.TryGetValue(diskName, out entry);
+            // Fall back to factory if the user side doesn't have it.
+            if (entry == null && BuiltinPresets.CarPresetJsons.TryGetValue(carId + "/" + diskName, out var factJson))
+            {
+                try { entry = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(factJson)
+                    is CarPresetFile fac && fac != null
+                    ? new CarPresetEntry { CarId = carId, PresetName = diskName, GameName = fac.GameName ?? "", IsBuiltin = true, Override = fac.Override } : null;
+                } catch { }
+            }
+            if (entry == null) return false;
             var file = new CarPresetFile
             {
                 GameName      = entry.GameName ?? "",
                 CarId         = carId,
-                PresetName    = StripDefaultSuffixForExport(presetName),
+                PresetName    = StripDefaultSuffixForExport(diskName),
                 IsBuiltin     = false,
                 Author        = NullIfBlank(author),
                 Description   = NullIfBlank(description),
@@ -7467,7 +7548,7 @@ namespace TrueforceForAll.Plugin
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{presetName}' to {path}.");
+            SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{diskName}' to {path}.");
             return true;
         }
 
