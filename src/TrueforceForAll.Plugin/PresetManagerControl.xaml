@@ -48,6 +48,35 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Game-filter chip in the car tab. RadioButton so the chips are
+             mutually exclusive (one game at a time, or 'All'). Compact pad
+             vs SegmentButton because there can be many of them. -->
+        <Style x:Key="ChipButton" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,4,4"/>
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#CFCFCF"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="#3A3A3A" CornerRadius="3"
+                                SnapsToDevicePixels="True" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#474747"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A6BBE"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="RowButton" TargetType="Button">
             <Setter Property="Width" Value="92"/>
             <Setter Property="Height" Value="26"/>
@@ -99,13 +128,21 @@
             <Grid x:Name="GamePanel">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,8"
                                Text="Rename, duplicate, or delete any preset, and set which games auto-load it. Select a preset to see what it contains; Edit loads it on the Effects tab to change values. Built-in presets can't be renamed or deleted (saving over one forks a copy)."/>
-                    <ListView Grid.Row="1" x:Name="GameList" SelectionMode="Single"
+                    <DockPanel Grid.Row="1" Margin="0,0,0,8">
+                        <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
+                                   Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
+                        <TextBox x:Name="GameSearchBox" Height="26" Padding="6,2"
+                                 ToolTip="Type to narrow the list by preset name. Cleared automatically when the tab reloads."
+                                 TextChanged="GameSearchBox_TextChanged"/>
+                    </DockPanel>
+                    <ListView Grid.Row="2" x:Name="GameList" SelectionMode="Single"
                               SelectionChanged="GameList_SelectionChanged">
                         <ListView.View>
                             <GridView>
@@ -126,13 +163,13 @@
                     </ListView>
                     <!-- Read-only summary of the selected preset's contents.
                          Filled from the snapshot in UpdateGameDetails. -->
-                    <Border Grid.Row="2" Background="#22000000" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                    <Border Grid.Row="3" Background="#22000000" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="150">
                             <TextBlock x:Name="GameDetailsText" TextWrapping="Wrap" FontSize="12"
                                        Text="Select a preset to see the settings it contains."/>
                         </ScrollViewer>
                     </Border>
-                    <DockPanel Grid.Row="3" Margin="0,10,0,0" LastChildFill="True">
+                    <DockPanel Grid.Row="4" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
                                     ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Tune and save the usual way; Done returns you to your previously-active preset (saving over a built-in forks a copy)."/>
@@ -155,13 +192,39 @@
             <Grid x:Name="CarPanel" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,8"
                                Text="Every car preset, grouped by game then car. A car can have several presets; the ★ in Default marks the one that loads for that car. Rename, duplicate, delete, or set a preset as the car's default."/>
-                    <ListView Grid.Row="1" x:Name="CarList" SelectionMode="Single"
+                    <!-- Per-game filter chips. Rebuilt from the loaded rows on
+                         every ReloadCars; click a chip to narrow to that game. -->
+                    <WrapPanel Grid.Row="1" x:Name="CarGameChips" Margin="0,0,0,6"/>
+                    <DockPanel Grid.Row="2" Margin="0,0,0,8">
+                        <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
+                                   Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
+                        <TextBox x:Name="CarSearchBox" Height="26" Padding="6,2"
+                                 ToolTip="Type to narrow the list by car ID or preset name. Composes with the game chips above."
+                                 TextChanged="CarSearchBox_TextChanged"/>
+                    </DockPanel>
+                    <ListView Grid.Row="3" x:Name="CarList" SelectionMode="Single"
                               SelectionChanged="CarList_SelectionChanged">
+                        <!-- Active-row visual: subtle left accent bar + background
+                             tint so the default preset for each car is scannable
+                             without reading the Default column. -->
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Active}" Value="True">
+                                        <Setter Property="Background"      Value="#1F3A6BBE"/>
+                                        <Setter Property="BorderBrush"     Value="#3A6BBE"/>
+                                        <Setter Property="BorderThickness" Value="3,0,0,0"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
@@ -181,7 +244,7 @@
                             </GridView>
                         </ListView.View>
                     </ListView>
-                    <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="True">
+                    <DockPanel Grid.Row="4" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
                                     ToolTip="Open this car preset for editing: loads it on the Effects tab with a Save / Save as new / Discard banner, and freezes this car so a live car change can't clobber the edit. Saving over a built-in forks a copy."/>
@@ -202,12 +265,20 @@
             <Grid x:Name="CustomPanel" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,8"
                                Text="Your saved custom engines. Edit or delete them here; presets that referenced a deleted engine fall back to silence until repicked. Built-in layouts (V8, Rotary, etc.) aren't listed."/>
-                    <ListView Grid.Row="1" x:Name="CustomList" SelectionMode="Single"
+                    <DockPanel Grid.Row="1" Margin="0,0,0,8">
+                        <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
+                                   Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
+                        <TextBox x:Name="CustomSearchBox" Height="26" Padding="6,2"
+                                 ToolTip="Type to narrow the list by engine name."
+                                 TextChanged="CustomSearchBox_TextChanged"/>
+                    </DockPanel>
+                    <ListView Grid.Row="2" x:Name="CustomList" SelectionMode="Single"
                               SelectionChanged="CustomList_SelectionChanged">
                         <ListView.View>
                             <GridView>
@@ -226,7 +297,7 @@
                             </GridView>
                         </ListView.View>
                     </ListView>
-                    <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="True">
+                    <DockPanel Grid.Row="3" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="CustomEditBtn"   Content="Edit…"   Style="{StaticResource RowButton}" Click="CustomEdit_Click"   IsEnabled="False"/>
                             <Button x:Name="CustomDeleteBtn" Content="Delete"  Style="{StaticResource RowButton}" Click="CustomDelete_Click" IsEnabled="False"/>

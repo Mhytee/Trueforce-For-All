@@ -270,12 +270,28 @@ namespace TrueforceForAll.Plugin
         private ListSortState _carSort;
         private ListSortState _customSort;
 
+        // Filter state. Search strings come from the per-tab TextBox; the car
+        // tab also has a per-game chip filter (null = all games). The default
+        // CollectionViews of each list expose a Filter callback that combines
+        // both. Re-applied via View.Refresh() on TextChanged / chip click.
+        private string _gameSearch   = "";
+        private string _carSearch    = "";
+        private string _customSearch = "";
+        private string _carGameFilter; // null = all
+        // The "All" chip is kept around so we can re-check it programmatically
+        // when ReloadCars rebuilds the chip set.
+        private RadioButton _carGameAllChip;
+
         public PresetManagerControl()
         {
             InitializeComponent();
             GameList.ItemsSource   = _gameRows;
             CarList.ItemsSource    = _carRows;
             CustomList.ItemsSource = _customRows;
+            // Wire the filter predicates onto each list's default view.
+            CollectionViewSource.GetDefaultView(_gameRows).Filter   = GameRowFilter;
+            CollectionViewSource.GetDefaultView(_carRows).Filter    = CarRowFilter;
+            CollectionViewSource.GetDefaultView(_customRows).Filter = CustomRowFilter;
 
             _gameSort   = BuildSortState(GameList);
             _carSort    = BuildSortState(CarList);
@@ -574,6 +590,12 @@ namespace TrueforceForAll.Plugin
                     });
                 }
             }
+            // Drop the active game filter if the chosen game is no longer
+            // present, then rebuild the chip strip from the new row set.
+            if (!string.IsNullOrEmpty(_carGameFilter)
+                && !_carRows.Any(r => string.Equals(r.GameName ?? "", _carGameFilter, StringComparison.Ordinal)))
+                _carGameFilter = null;
+            RebuildCarGameChips();
             CarList_SelectionChanged(null, null);
             MaybeNotifyChanged();
         }
@@ -589,6 +611,126 @@ namespace TrueforceForAll.Plugin
             }
             CustomList_SelectionChanged(null, null);
             MaybeNotifyChanged();
+        }
+
+        // ===================== Filter / search =====================
+
+        // Game tab search: matches preset name + any of the "Default for"
+        // game names. Empty string = pass-through.
+        private bool GameRowFilter(object item)
+        {
+            if (string.IsNullOrEmpty(_gameSearch)) return true;
+            var r = item as GameRow;
+            if (r == null) return false;
+            if (Contains(r.Name, _gameSearch)) return true;
+            if (r.Defaults != null)
+                foreach (var d in r.Defaults) if (Contains(d, _gameSearch)) return true;
+            return false;
+        }
+
+        // Car tab: search matches car ID + preset name; game chips narrow by
+        // GameName. Both compose (intersection).
+        private bool CarRowFilter(object item)
+        {
+            var r = item as CarRow;
+            if (r == null) return false;
+            if (!string.IsNullOrEmpty(_carGameFilter)
+                && !string.Equals(r.GameName ?? "", _carGameFilter, StringComparison.Ordinal))
+                return false;
+            if (string.IsNullOrEmpty(_carSearch)) return true;
+            return Contains(r.CarId, _carSearch) || Contains(r.PresetName, _carSearch);
+        }
+
+        private bool CustomRowFilter(object item)
+        {
+            if (string.IsNullOrEmpty(_customSearch)) return true;
+            var r = item as CustomRow;
+            return r != null && Contains(r.Name, _customSearch);
+        }
+
+        private static bool Contains(string haystack, string needle)
+            => !string.IsNullOrEmpty(haystack)
+            && haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+
+        private void GameSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _gameSearch = GameSearchBox?.Text?.Trim() ?? "";
+            CollectionViewSource.GetDefaultView(_gameRows).Refresh();
+        }
+
+        private void CarSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _carSearch = CarSearchBox?.Text?.Trim() ?? "";
+            CollectionViewSource.GetDefaultView(_carRows).Refresh();
+        }
+
+        private void CustomSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _customSearch = CustomSearchBox?.Text?.Trim() ?? "";
+            CollectionViewSource.GetDefaultView(_customRows).Refresh();
+        }
+
+        // Walk the loaded car rows, derive the distinct game names, and build
+        // a chip per game (+ an 'All' chip). Called from ReloadCars so the
+        // chip strip reflects whatever's currently in the list. The chips are
+        // RadioButtons in a shared GroupName so they're mutually exclusive.
+        private void RebuildCarGameChips()
+        {
+            if (CarGameChips == null) return;
+            CarGameChips.Children.Clear();
+            _carGameAllChip = null;
+
+            var games = _carRows
+                .Select(r => r.GameName ?? "")
+                .Where(g => !string.IsNullOrEmpty(g))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Hide the strip when there's nothing useful to chip on (one or
+            // zero games => 'All' is redundant).
+            if (games.Count < 2)
+            {
+                _carGameFilter = null;
+                CarGameChips.Visibility = Visibility.Collapsed;
+                return;
+            }
+            CarGameChips.Visibility = Visibility.Visible;
+
+            var all = new RadioButton
+            {
+                Content   = $"All ({_carRows.Count})",
+                GroupName = "CarGameFilter",
+                Style     = (Style)FindResource("ChipButton"),
+                IsChecked = string.IsNullOrEmpty(_carGameFilter),
+                Tag       = null,
+            };
+            all.Checked += CarGameChip_Checked;
+            CarGameChips.Children.Add(all);
+            _carGameAllChip = all;
+
+            foreach (var g in games)
+            {
+                int count = _carRows.Count(r => string.Equals(r.GameName ?? "", g, StringComparison.Ordinal));
+                var chip = new RadioButton
+                {
+                    Content   = $"{g} ({count})",
+                    GroupName = "CarGameFilter",
+                    Style     = (Style)FindResource("ChipButton"),
+                    IsChecked = string.Equals(_carGameFilter, g, StringComparison.Ordinal),
+                    Tag       = g,
+                };
+                chip.Checked += CarGameChip_Checked;
+                CarGameChips.Children.Add(chip);
+            }
+        }
+
+        private void CarGameChip_Checked(object sender, RoutedEventArgs e)
+        {
+            var rb = sender as RadioButton;
+            if (rb == null) return;
+            _carGameFilter = rb.Tag as string;   // null for All
+            CollectionViewSource.GetDefaultView(_carRows).Refresh();
         }
 
         // ===================== Selection state =====================
