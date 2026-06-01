@@ -5240,7 +5240,15 @@ namespace TrueforceForAll.Plugin
                         perCar = new Dictionary<string, CarPresetEntry>(StringComparer.Ordinal);
                         map[f.CarId] = perCar;
                     }
-                    perCar[presetName] = entry;
+                    // User wins on (carId, presetName) collision: a non-null
+                    // user entry at this key is the user's local edit of the
+                    // factory default (e.g. left over after a FOLDDEFAULTS
+                    // promote), and we must not silently overwrite it or the
+                    // user's row vanishes from the preset manager. Factory
+                    // still loads on disk; the user can delete their file to
+                    // re-expose it.
+                    if (!perCar.ContainsKey(presetName))
+                        perCar[presetName] = entry;
                 }
                 catch (Exception ex)
                 {
