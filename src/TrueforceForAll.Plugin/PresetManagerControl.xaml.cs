@@ -811,8 +811,9 @@ namespace TrueforceForAll.Plugin
             RefreshCarButtons();
         }
 
-        // Per-car-preset summary: which override sections are set vs which
-        // fall through to the game default. Built once at ReloadCars.
+        // Per-car-preset summary: only lists sections that ARE overridden.
+        // Anything null falls through to the game default and is omitted to
+        // keep the tooltip short.
         private static string BuildCarDetailsText(string carId, CarPresetEntry entry)
         {
             if (entry?.Override == null) return "";
@@ -821,19 +822,28 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine($"Game: {(string.IsNullOrEmpty(entry.GameName) ? "(none)" : entry.GameName)}");
             sb.AppendLine($"Car ID: {carId}");
             sb.AppendLine($"Source: {(entry.IsBuiltin ? "Built-in" : "User preset")}");
+            var sections = new System.Text.StringBuilder();
+            if (ov.AudioCapture != null) AppendEffectLine(sections, "Audio capture",    ov.AudioCapture);
+            if (ov.EnginePulse  != null) AppendEffectLine(sections, "Engine pulse",     ov.EnginePulse);
+            if (ov.RoadBumps    != null) AppendEffectLine(sections, "Road bumps",       ov.RoadBumps);
+            if (ov.TractionLoss != null) AppendEffectLine(sections, "Traction loss",    ov.TractionLoss);
+            if (ov.GearShift    != null) AppendEffectLine(sections, "Gear shift",       ov.GearShift);
+            if (ov.AbsClick     != null) AppendEffectLine(sections, "ABS",              ov.AbsClick);
+            if (ov.PitLimiter   != null) AppendEffectLine(sections, "Pit limiter",      ov.PitLimiter);
+            if (ov.Drs          != null) AppendEffectLine(sections, "DRS",              ov.Drs);
+            if (ov.Collision    != null) AppendEffectLine(sections, "Collision",        ov.Collision);
+            if (ov.RevLimiter   != null) AppendEffectLine(sections, "Rev limiter",      ov.RevLimiter);
+            if (ov.Airborne     != null) AppendEffectLine(sections, "Airborne ducking", ov.Airborne);
             sb.AppendLine();
-            sb.AppendLine("Override sections (unset sections follow the game default):");
-            AppendEffectLine(sb, "Audio capture",    ov.AudioCapture);
-            AppendEffectLine(sb, "Engine pulse",     ov.EnginePulse);
-            AppendEffectLine(sb, "Road bumps",       ov.RoadBumps);
-            AppendEffectLine(sb, "Traction loss",    ov.TractionLoss);
-            AppendEffectLine(sb, "Gear shift",       ov.GearShift);
-            AppendEffectLine(sb, "ABS",              ov.AbsClick);
-            AppendEffectLine(sb, "Pit limiter",      ov.PitLimiter);
-            AppendEffectLine(sb, "DRS",              ov.Drs);
-            AppendEffectLine(sb, "Collision",        ov.Collision);
-            AppendEffectLine(sb, "Rev limiter",      ov.RevLimiter);
-            AppendEffectLine(sb, "Airborne ducking", ov.Airborne);
+            if (sections.Length > 0)
+            {
+                sb.AppendLine("Overrides:");
+                sb.Append(sections);
+            }
+            else
+            {
+                sb.AppendLine("No section overrides (follows the game default).");
+            }
             return sb.ToString().TrimEnd();
         }
 

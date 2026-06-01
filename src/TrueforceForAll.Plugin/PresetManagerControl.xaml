@@ -77,14 +77,16 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Hover-tooltip row: just a ToolTip setter, no Template override.
-             The SimHub default ListViewItem style still applies (transparent
-             default, theme hover, theme selected); we only add a tooltip
-             that surfaces the row's DetailsText on mouse hover. No layout
-             impact: the tooltip floats over the UI and doesn't take space
-             from the list. -->
-        <Style x:Key="RowDetailsTip" TargetType="ListViewItem">
+        <!-- Hover-tooltip row: just a ToolTip setter + a snappier show delay,
+             no Template override. BasedOn inherits the implicit SimHub
+             ListViewItem theme so the default hover and click-select
+             coloring is preserved. Without BasedOn, setting ItemContainerStyle
+             replaces the implicit style entirely and the theme reverts to
+             plain WPF defaults. -->
+        <Style x:Key="RowDetailsTip" TargetType="ListViewItem"
+               BasedOn="{StaticResource {x:Type ListViewItem}}">
             <Setter Property="ToolTip" Value="{Binding DetailsText}"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="200"/>
         </Style>
         <Style x:Key="RowButton" TargetType="Button">
             <Setter Property="Width" Value="92"/>
