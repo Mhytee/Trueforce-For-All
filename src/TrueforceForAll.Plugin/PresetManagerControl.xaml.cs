@@ -936,7 +936,9 @@ namespace TrueforceForAll.Plugin
         private void CarRename_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedCar;
-            if (sel == null || sel.Builtin) return;
+            if (sel == null) return;
+            // Built-in rename is DEV-only; the plugin write-throughs to factory.
+            if (sel.Builtin && !_devMode) return;
             string newName = PromptForName("Rename car preset",
                 $"New name for '{sel.CarId}' preset:", sel.PresetName);
             if (string.IsNullOrWhiteSpace(newName)) return;
