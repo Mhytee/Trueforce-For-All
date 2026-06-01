@@ -345,6 +345,12 @@ namespace TrueforceForAll.Plugin
             if (lv == null) return;
             lv.SizeChanged += (s, e) => { if (e.WidthChanged) ResizeFlexColumn(lv, flexIndex); };
             lv.Loaded      += (s, e) => ResizeFlexColumn(lv, flexIndex);
+            // ScrollChanged bubbles when the inner ScrollViewer's vertical
+            // bar visibility flips (rows added / removed by filter / reload),
+            // so re-flex then too. Otherwise the saved buffer goes stale and
+            // we get an "unused column" gap on the right.
+            lv.AddHandler(ScrollViewer.ScrollChangedEvent,
+                new ScrollChangedEventHandler((s, e) => ResizeFlexColumn(lv, flexIndex)));
         }
 
         private static void ResizeFlexColumn(ListView lv, int flexIndex)
@@ -353,10 +359,31 @@ namespace TrueforceForAll.Plugin
             double others = 0;
             for (int i = 0; i < gv.Columns.Count; i++)
                 if (i != flexIndex) others += gv.Columns[i].ActualWidth;
-            // Leave room for the vertical scrollbar + content padding.
-            double avail = lv.ActualWidth - others - 32;
+            // Reserve scrollbar width ONLY when one is actually showing; a
+            // fixed 32px buffer left a visible trailing gap after the last
+            // column when the list was short enough to fit without a bar.
+            // A small inset still covers the ListView's border + padding.
+            double inset = 4;
+            var sv = FindVisualDescendant<ScrollViewer>(lv);
+            if (sv != null && sv.ComputedVerticalScrollBarVisibility == Visibility.Visible)
+                inset += SystemParameters.VerticalScrollBarWidth;
+            double avail = lv.ActualWidth - others - inset;
             if (avail < 120) avail = 120;
             gv.Columns[flexIndex].Width = avail;
+        }
+
+        private static T FindVisualDescendant<T>(DependencyObject root) where T : DependencyObject
+        {
+            if (root == null) return null;
+            int n = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < n; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                if (child is T t) return t;
+                var nested = FindVisualDescendant<T>(child);
+                if (nested != null) return nested;
+            }
+            return null;
         }
 
         // Enforce a per-column minimum width (header text + padding). The header
