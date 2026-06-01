@@ -345,21 +345,34 @@ namespace TrueforceForAll.Plugin
             if (lv == null) return;
             lv.SizeChanged += (s, e) => { if (e.WidthChanged) ResizeFlexColumn(lv, flexIndex); };
             lv.Loaded      += (s, e) => ResizeFlexColumn(lv, flexIndex);
-            // ScrollChanged bubbles when the inner ScrollViewer's vertical
-            // bar visibility flips (rows added / removed by filter / reload),
-            // so re-flex then too. Otherwise the saved buffer goes stale and
-            // we get an "unused column" gap on the right.
+            // ScrollChanged catches the vertical-scrollbar visibility flip
+            // (rows added / removed by filter / reload) so the flex column
+            // re-fits the new ViewportWidth. The same event ALSO fires when
+            // the user drags a column -- the horizontal extent changes,
+            // which counts as a scroll change. Re-flexing on every such fire
+            // undoes the user's drag of the flex column every frame and the
+            // divider appears stuck. Gate on a real ViewportWidth delta:
+            // column drags don't change the viewport, bar-visibility flips do.
+            double lastViewport = -1;
             lv.AddHandler(ScrollViewer.ScrollChangedEvent,
-                new ScrollChangedEventHandler((s, e) => ResizeFlexColumn(lv, flexIndex)));
-            // NOTE: do NOT watch non-flex columns' Width changes here. The
+                new ScrollChangedEventHandler((s, e) =>
+                {
+                    var sv = FindVisualDescendant<ScrollViewer>(lv);
+                    if (sv == null) return;
+                    double vw = sv.ViewportWidth;
+                    if (Math.Abs(vw - lastViewport) < 0.5) return;
+                    lastViewport = vw;
+                    ResizeFlexColumn(lv, flexIndex);
+                }));
+            // NOTE: we don't watch non-flex columns' Width changes. The
             // intent was to keep totals == ViewportWidth when the user drags
             // a non-flex column, but the side effect (silently shrinking the
-            // flex column while the user is dragging another) makes the drag
-            // feel inverted and eventually pushes columns past the right edge
-            // once the flex column hits its minimum. Let user drags do what
-            // they normally do (extend total width / show horizontal scroll
-            // if needed); the flex column only auto-fits on ListView size +
-            // scrollbar-visibility changes.
+            // flex column while the user dragged another) made drags feel
+            // inverted and eventually pushed columns past the right edge
+            // once the flex hit its minimum. Plain WPF drag behaviour is in
+            // effect now: drag a divider right and the column to its left
+            // widens; if the total exceeds ViewportWidth the horizontal
+            // scrollbar appears.
         }
 
         private static void ResizeFlexColumn(ListView lv, int flexIndex)
