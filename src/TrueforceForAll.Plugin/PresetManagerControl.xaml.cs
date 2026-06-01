@@ -18,7 +18,10 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 
 namespace TrueforceForAll.Plugin
@@ -589,6 +592,9 @@ namespace TrueforceForAll.Plugin
             var all = _plugin.GetAllCarPresets();
             var carDefaults = _plugin.Settings?.CarDefaults
                 ?? new Dictionary<string, string>();
+            // Cache the diff-baseline snapshot per game so we don't redo the
+            // GameDefaults / Presets dictionary chase for every car preset.
+            var baselineByGame = new Dictionary<string, GameSettingsSnapshot>(StringComparer.Ordinal);
             // Group by game, then by car, then preset name: all of a game's cars
             // sit together, and a car's presets sit together under it. A car's
             // game comes from its presets (they share one); empty games sort first.
@@ -602,6 +608,12 @@ namespace TrueforceForAll.Plugin
                 {
                     var entry = presetKv.Value;
                     if (_builtinsOnly && !entry.IsBuiltin) continue;
+                    string gameKey = entry.GameName ?? "";
+                    if (!baselineByGame.TryGetValue(gameKey, out var baseline))
+                    {
+                        baseline = ResolveGameBaseline(gameKey);
+                        baselineByGame[gameKey] = baseline;
+                    }
                     _carRows.Add(new CarRow
                     {
                         CarId       = carId,
@@ -609,7 +621,7 @@ namespace TrueforceForAll.Plugin
                         GameName    = entry.GameName,
                         Builtin     = entry.IsBuiltin,
                         Active      = string.Equals(activeName, entry.PresetName, StringComparison.Ordinal),
-                        DetailsText = BuildCarDetailsText(carId, entry),
+                        DetailsText = BuildCarDetailsText(carId, entry, baseline),
                     });
                 }
             }
@@ -811,10 +823,16 @@ namespace TrueforceForAll.Plugin
             RefreshCarButtons();
         }
 
-        // Per-car-preset summary: only lists sections that ARE overridden.
-        // Anything null falls through to the game default and is omitted to
-        // keep the tooltip short.
-        private static string BuildCarDetailsText(string carId, CarPresetEntry entry)
+        // Per-car-preset summary: per-section, lists only the fields whose
+        // override value differs from the baseline (the game's default
+        // preset, resolved by ResolveGameBaseline). The baseline lets us
+        // surface "what the user actually changed for this car" instead of
+        // every field of every non-null override.
+        //
+        // If no baseline can be resolved (no game default, missing snapshot)
+        // we fall back to dumping every field of the overridden section so
+        // information isn't lost.
+        private static string BuildCarDetailsText(string carId, CarPresetEntry entry, GameSettingsSnapshot baseline)
         {
             if (entry?.Override == null) return "";
             var ov = entry.Override;
@@ -822,22 +840,24 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine($"Game: {(string.IsNullOrEmpty(entry.GameName) ? "(none)" : entry.GameName)}");
             sb.AppendLine($"Car ID: {carId}");
             sb.AppendLine($"Source: {(entry.IsBuiltin ? "Built-in" : "User preset")}");
+
             var sections = new System.Text.StringBuilder();
-            if (ov.AudioCapture != null) AppendEffectLine(sections, "Audio capture",    ov.AudioCapture);
-            if (ov.EnginePulse  != null) AppendEffectLine(sections, "Engine pulse",     ov.EnginePulse);
-            if (ov.RoadBumps    != null) AppendEffectLine(sections, "Road bumps",       ov.RoadBumps);
-            if (ov.TractionLoss != null) AppendEffectLine(sections, "Traction loss",    ov.TractionLoss);
-            if (ov.GearShift    != null) AppendEffectLine(sections, "Gear shift",       ov.GearShift);
-            if (ov.AbsClick     != null) AppendEffectLine(sections, "ABS",              ov.AbsClick);
-            if (ov.PitLimiter   != null) AppendEffectLine(sections, "Pit limiter",      ov.PitLimiter);
-            if (ov.Drs          != null) AppendEffectLine(sections, "DRS",              ov.Drs);
-            if (ov.Collision    != null) AppendEffectLine(sections, "Collision",        ov.Collision);
-            if (ov.RevLimiter   != null) AppendEffectLine(sections, "Rev limiter",      ov.RevLimiter);
-            if (ov.Airborne     != null) AppendEffectLine(sections, "Airborne ducking", ov.Airborne);
+            AppendOverrideSection(sections, "Audio capture",    ov.AudioCapture, baseline?.AudioCapture);
+            AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  baseline?.EnginePulse);
+            AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    baseline?.RoadBumps);
+            AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, baseline?.TractionLoss);
+            AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    baseline?.GearShift);
+            AppendOverrideSection(sections, "ABS",              ov.AbsClick,     baseline?.AbsClick);
+            AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   baseline?.PitLimiter);
+            AppendOverrideSection(sections, "DRS",              ov.Drs,          baseline?.Drs);
+            AppendOverrideSection(sections, "Collision",        ov.Collision,    baseline?.Collision);
+            AppendOverrideSection(sections, "Rev limiter",      ov.RevLimiter,   baseline?.RevLimiter);
+            AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     baseline?.Airborne);
+
             sb.AppendLine();
             if (sections.Length > 0)
             {
-                sb.AppendLine("Overrides:");
+                sb.AppendLine("Overrides (changes from the game default):");
                 sb.Append(sections);
             }
             else
@@ -845,6 +865,136 @@ namespace TrueforceForAll.Plugin
                 sb.AppendLine("No section overrides (follows the game default).");
             }
             return sb.ToString().TrimEnd();
+        }
+
+        // Emit one section's worth of "field = value" lines covering only
+        // fields whose override value differs from the baseline. If baseline
+        // is null we can't diff, so list every field (better than hiding info).
+        // No output if the section is null OR if nothing differs.
+        private static void AppendOverrideSection(System.Text.StringBuilder sb, string label, object overrideSection, object baselineSection)
+        {
+            if (overrideSection == null) return;
+            var lines = new List<string>();
+            foreach (var prop in overrideSection.GetType().GetProperties(
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+            {
+                if (!prop.CanRead || !prop.CanWrite) continue;
+                var ovValue = prop.GetValue(overrideSection);
+                if (baselineSection != null)
+                {
+                    var baselineProp = baselineSection.GetType().GetProperty(prop.Name);
+                    if (baselineProp != null)
+                    {
+                        var baselineValue = baselineProp.GetValue(baselineSection);
+                        if (object.Equals(ovValue, baselineValue)) continue;
+                    }
+                }
+                lines.Add($"  {PrettyFieldName(prop.Name)} = {FormatFieldValue(ovValue)}");
+            }
+            if (lines.Count == 0) return;
+            sb.AppendLine(label + ":");
+            foreach (var line in lines) sb.AppendLine(line);
+        }
+
+        // Insert spaces before each capital letter so PropertyNames render
+        // as "Property Names". Acronyms left intact (e.g. "Rpm" -> "Rpm").
+        private static string PrettyFieldName(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s ?? "";
+            var sb = new System.Text.StringBuilder(s.Length + 6);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (i > 0 && char.IsUpper(c) && !char.IsUpper(s[i - 1])) sb.Append(' ');
+                sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        // Friendly value formatting for the tooltip. bool -> on/off, enums
+        // print their name, floating point gets 2-decimal trim, strings stay
+        // raw (quoted when empty so the absence is visible).
+        private static string FormatFieldValue(object v)
+        {
+            if (v == null) return "(unset)";
+            switch (v)
+            {
+                case bool   b: return b ? "on" : "off";
+                case float  f: return f.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                case double d: return d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                case int    i: return i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case string s: return string.IsNullOrEmpty(s) ? "\"\"" : s;
+                case Enum   e: return e.ToString();
+                default:       return v.ToString();
+            }
+        }
+
+        // Resolve the game-default snapshot for diffing per-car overrides:
+        // first the binding in Settings.GameDefaults, then the user's active
+        // preset, else null (fall through to dump-everything mode).
+        private GameSettingsSnapshot ResolveGameBaseline(string gameName)
+        {
+            if (_plugin?.Settings?.Presets == null) return null;
+            if (!string.IsNullOrEmpty(gameName)
+                && _plugin.Settings.GameDefaults != null
+                && _plugin.Settings.GameDefaults.TryGetValue(gameName, out var defName)
+                && !string.IsNullOrEmpty(defName)
+                && _plugin.Settings.Presets.TryGetValue(defName, out var snap)
+                && snap != null)
+                return snap;
+            if (!string.IsNullOrEmpty(_plugin.ActivePresetName)
+                && _plugin.Settings.Presets.TryGetValue(_plugin.ActivePresetName, out var active))
+                return active;
+            return null;
+        }
+
+        // ===================== Hover popup =====================
+
+        // Track the row whose details are currently shown so we don't
+        // rebuild + flicker the popup on every pixel of movement within
+        // the same row.
+        private object _hoveredRow;
+
+        private void List_MouseMove(object sender, MouseEventArgs e)
+        {
+            var list = sender as ListView;
+            if (list == null) { HideDetailsPopup(); return; }
+            var row = FindRowUnderCursor(list, e);
+            string text = (row as GameRow)?.DetailsText ?? (row as CarRow)?.DetailsText;
+            if (string.IsNullOrEmpty(text)) { HideDetailsPopup(); return; }
+
+            if (!object.ReferenceEquals(_hoveredRow, row))
+            {
+                _hoveredRow = row;
+                DetailsPopupText.Text = text;
+            }
+            DetailsPopup.PlacementTarget = list;
+            DetailsPopup.Placement = PlacementMode.Relative;
+            var pos = e.GetPosition(list);
+            DetailsPopup.HorizontalOffset = pos.X + 18;
+            DetailsPopup.VerticalOffset   = pos.Y + 18;
+            if (!DetailsPopup.IsOpen) DetailsPopup.IsOpen = true;
+        }
+
+        private void List_MouseLeave(object sender, MouseEventArgs e) => HideDetailsPopup();
+
+        private void HideDetailsPopup()
+        {
+            if (DetailsPopup != null && DetailsPopup.IsOpen) DetailsPopup.IsOpen = false;
+            _hoveredRow = null;
+        }
+
+        // Walk the visual tree from the click's original source up to the
+        // ListViewItem container (skipping checkbox / column cell content)
+        // and return its DataContext (a PresetRowBase). Null if the cursor
+        // is over header / scrollbar / blank list area.
+        private static object FindRowUnderCursor(ListView list, MouseEventArgs e)
+        {
+            for (var d = e.OriginalSource as DependencyObject; d != null; d = VisualTreeHelper.GetParent(d))
+            {
+                if (d is ListViewItem item) return item.DataContext;
+            }
+            return null;
         }
 
 private void CustomList_SelectionChanged(object sender, SelectionChangedEventArgs e)

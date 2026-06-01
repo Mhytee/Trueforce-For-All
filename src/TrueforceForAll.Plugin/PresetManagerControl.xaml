@@ -77,17 +77,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Hover-tooltip row: just a ToolTip setter + a snappier show delay,
-             no Template override. BasedOn inherits the implicit SimHub
-             ListViewItem theme so the default hover and click-select
-             coloring is preserved. Without BasedOn, setting ItemContainerStyle
-             replaces the implicit style entirely and the theme reverts to
-             plain WPF defaults. -->
-        <Style x:Key="RowDetailsTip" TargetType="ListViewItem"
-               BasedOn="{StaticResource {x:Type ListViewItem}}">
-            <Setter Property="ToolTip" Value="{Binding DetailsText}"/>
-            <Setter Property="ToolTipService.InitialShowDelay" Value="200"/>
-        </Style>
         <Style x:Key="RowButton" TargetType="Button">
             <Setter Property="Width" Value="92"/>
             <Setter Property="Height" Value="26"/>
@@ -124,6 +113,20 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
+        <!-- Mouse-following details popup. IsHitTestVisible=False so the
+             popup itself doesn't catch the cursor (which would stop the
+             ListView's MouseMove from firing, breaking the follow). The
+             code-behind sets PlacementTarget to whichever ListView the
+             cursor is over and updates HorizontalOffset / VerticalOffset
+             on each MouseMove so the popup tracks the cursor. -->
+        <Popup x:Name="DetailsPopup" AllowsTransparency="True"
+               Placement="Relative" StaysOpen="True" IsOpen="False" IsHitTestVisible="False">
+            <Border Background="#FF2A2A2A" CornerRadius="3"
+                    BorderBrush="#3A6BBE" BorderThickness="1" Padding="10,8" MaxWidth="500">
+                <TextBlock x:Name="DetailsPopupText" TextWrapping="Wrap"
+                           FontSize="11" Foreground="#FFE6E6E6"/>
+            </Border>
+        </Popup>
 
         <DockPanel Grid.Row="0">
             <!-- Segmented selector in place of an inner tab strip. -->
@@ -174,8 +177,8 @@
                     <!-- LastChildFill: ListView soaks up whatever space the
                          docked top + bottom items leave. -->
                     <ListView x:Name="GameList" SelectionMode="Single"
-                              ItemContainerStyle="{StaticResource RowDetailsTip}"
-                              SelectionChanged="GameList_SelectionChanged">
+                              SelectionChanged="GameList_SelectionChanged"
+                              MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
@@ -232,8 +235,8 @@
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
                     <ListView x:Name="CarList" SelectionMode="Single"
-                              ItemContainerStyle="{StaticResource RowDetailsTip}"
-                              SelectionChanged="CarList_SelectionChanged">
+                              SelectionChanged="CarList_SelectionChanged"
+                              MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
