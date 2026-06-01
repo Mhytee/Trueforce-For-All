@@ -2819,7 +2819,6 @@ namespace TrueforceForAll.Plugin
                     System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName);
                 string logsDir   = System.IO.Path.Combine(simHubRoot, "Logs");
                 string debugLog  = System.IO.Path.Combine(simHubRoot, "debug.log");
-                string settings  = System.IO.Path.Combine(simHubRoot, "Trueforce-settings.json");
 
                 string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
                 string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
@@ -2841,9 +2840,26 @@ namespace TrueforceForAll.Plugin
                         try { AddFileToZip(zip, debugLog, "debug.log"); }
                         catch (Exception ex) { TryAddNoteToZip(zip, "debug.log.error.txt", ex.Message); }
                     }
-                    if (System.IO.File.Exists(settings))
+                    // Full settings snapshot. Serialize the LIVE settings object
+                    // so every setting is captured (UDP ports / bind / forward,
+                    // per-effect config, car overrides, the lot) and any field
+                    // added later is included automatically with no extra code.
+                    // The plugin persists through SimHub's common-settings store
+                    // (not a file we can reliably locate), so we re-serialize the
+                    // in-memory object here rather than copy a guessed path.
+                    try
                     {
-                        try { AddFileToZip(zip, settings, "Trueforce-settings.json"); } catch { }
+                        var snapshot = _plugin?.Settings;
+                        if (snapshot != null)
+                        {
+                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                                snapshot, Newtonsoft.Json.Formatting.Indented);
+                            TryAddNoteToZip(zip, "Trueforce-settings.json", json);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        TryAddNoteToZip(zip, "Trueforce-settings.json.error.txt", ex.ToString());
                     }
                     // Opt-in raw USB packet trace. Only present when the user
                     // explicitly enabled the Diagnostics toggle. Real pcap
@@ -2858,6 +2874,17 @@ namespace TrueforceForAll.Plugin
                     // Mini context manifest so support knows what version
                     // generated the zip without unpacking everything.
                     string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
+                    // At-a-glance UDP config so a wrong port / non-local bind
+                    // address (the common "no telemetry" cause) is visible in the
+                    // manifest without opening the full settings JSON below.
+                    var fz = _plugin?.Settings?.Forza;
+                    var f1 = _plugin?.Settings?.F1;
+                    string forzaLine = fz == null ? "(n/a)"
+                        : $"enabled={fz.Enabled} port={fz.Port} bind={fz.BindAddress} " +
+                          $"forward={(fz.ForwardEnabled ? $"{fz.ForwardHost}:{fz.ForwardPort}" : "off")}";
+                    string f1Line = f1 == null ? "(n/a)"
+                        : $"enabled={f1.Enabled} port={f1.Port} bind={f1.BindAddress} alwaysListen={f1.AlwaysListen} " +
+                          $"forward={(f1.ForwardEnabled ? $"{f1.ForwardHost}:{f1.ForwardPort}" : "off")}";
                     string manifest =
                         $"Generated: {DateTime.Now:o}\n" +
                         $"Plugin version: {version}\n" +
@@ -2868,8 +2895,11 @@ namespace TrueforceForAll.Plugin
                         $"FFB tap status: {_plugin?.FfbTapStatus}\n" +
                         $"Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n" +
                         $"Experimental FFB capture: {(_plugin?.Settings?.ExperimentalFfbCapture ?? false ? "ON" : "OFF")}\n" +
+                        $"Forza UDP: {forzaLine}\n" +
+                        $"F1 UDP: {f1Line}\n" +
                         $"Manual USBPcap override: {(_plugin?.HasManualUsbPcapDevice ?? false ? $"{_plugin.Settings.ManualUsbPcapInterface} dev {_plugin.Settings.ManualUsbPcapDeviceAddress}" : "(none)")}\n" +
                         $"USB byte logging: {(_plugin?.Settings?.LogUsbBytesEnabled ?? false ? "enabled" : "disabled")}\n" +
+                        $"Full settings: see Trueforce-settings.json in this zip\n" +
                         $"SimHub root: {simHubRoot}\n";
                     TryAddNoteToZip(zip, "manifest.txt", manifest);
                 }
