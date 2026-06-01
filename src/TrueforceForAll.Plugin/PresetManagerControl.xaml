@@ -189,7 +189,7 @@
                             <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
                             <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource RowButton}" Click="CarDelete_Click"    IsEnabled="False"/>
                             <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource RowButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
-                                    ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten."/>
+                                    ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten. With multiple rows checked, sets each as its corresponding car's default (one default per car; the operation refuses if two rows target the same car)."/>
                             <Button x:Name="CarPromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this car preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>

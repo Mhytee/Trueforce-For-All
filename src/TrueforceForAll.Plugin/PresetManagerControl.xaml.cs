@@ -747,7 +747,16 @@ namespace TrueforceForAll.Plugin
             CarRenameBtn.IsEnabled    = carSelEditable && checkedCount <= 1;
             CarDuplicateBtn.IsEnabled = anySelected    && checkedCount <= 1;
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelEditable;
-            CarSetActiveBtn.IsEnabled = anySelected   && checkedCount <= 1 && !sel.Active;
+            // Set-as-default: bulk supported (one row per car). Enabled if any
+            // checked row isn't already its car's active default, else the
+            // single-row rule (not already active).
+            bool setDefaultable = checkedCount > 0
+                ? _carRows.Any(r => r.IsChecked && !r.Active)
+                : (anySelected && !sel.Active);
+            CarSetActiveBtn.IsEnabled = setDefaultable;
+            CarSetActiveBtn.Content   = checkedCount > 1
+                ? $"Set as default ({checkedCount})"
+                : "Set as default";
             // Same bulk-or-single rule as the game button.
             if (CarPromoteBuiltinBtn != null)
             {
@@ -1016,11 +1025,55 @@ namespace TrueforceForAll.Plugin
 
         private void CarSetActive_Click(object sender, RoutedEventArgs e)
         {
-            var sel = SelectedCar;
-            if (sel == null || sel.Active) return;
-            _plugin.SetCarDefaultPreset(sel.CarId, sel.PresetName);  // DEV: also writes car-defaults.json
+            var checkedRows = _carRows.Where(r => r.IsChecked).ToList();
+            if (checkedRows.Count == 0)
+            {
+                var sel = SelectedCar;
+                if (sel == null || sel.Active) return;
+                _plugin.SetCarDefaultPreset(sel.CarId, sel.PresetName);
+                ReloadCars();
+                SelectCarRow(sel.CarId, sel.PresetName);
+                return;
+            }
+
+            // Bulk: only one default per car. Refuse if the checked set has
+            // two rows for the same carId rather than silently picking one.
+            var collisions = checkedRows
+                .GroupBy(r => r.CarId, StringComparer.Ordinal)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+            if (collisions.Count > 0)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Each car can only have one default preset. The selection includes more than one row for:\n\n  " +
+                        string.Join(", ", collisions) +
+                        "\n\nUncheck the duplicates and try again.",
+                    "Set as default", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            int applied = 0, alreadyActive = 0;
+            foreach (var r in checkedRows)
+            {
+                if (r.Active) { alreadyActive++; continue; }
+                _plugin.SetCarDefaultPreset(r.CarId, r.PresetName);
+                applied++;
+            }
             ReloadCars();
-            SelectCarRow(sel.CarId, sel.PresetName);
+            // Keep focus on the last row we just touched (if any), for context.
+            var last = checkedRows.LastOrDefault(r => !r.Active) ?? checkedRows.Last();
+            SelectCarRow(last.CarId, last.PresetName);
+            if (applied + alreadyActive > 1)
+            {
+                string suffix = alreadyActive > 0 ? $" ({alreadyActive} were already the default)" : "";
+                Window.GetWindow(this)?.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    MessageBox.Show(Window.GetWindow(this),
+                        $"Set {applied} preset(s) as their car's default{suffix}.",
+                        "Set as default", MessageBoxButton.OK, MessageBoxImage.Information);
+                }));
+            }
         }
 
         private void CarEdit_Click(object sender, RoutedEventArgs e)
