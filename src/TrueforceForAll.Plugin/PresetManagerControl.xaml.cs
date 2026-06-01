@@ -351,6 +351,22 @@ namespace TrueforceForAll.Plugin
             // we get an "unused column" gap on the right.
             lv.AddHandler(ScrollViewer.ScrollChangedEvent,
                 new ScrollChangedEventHandler((s, e) => ResizeFlexColumn(lv, flexIndex)));
+            // Watch every non-flex column's Width: when the user drags one of
+            // them, the flex column must shrink/grow to keep the total inside
+            // the ListView, otherwise dragging pushes content off the right
+            // edge or leaves a gap. We exclude the flex column itself to
+            // avoid a feedback loop (our own write would re-trigger us).
+            var gv = lv.View as GridView;
+            if (gv == null) return;
+            var dpd = System.ComponentModel.DependencyPropertyDescriptor
+                .FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn));
+            if (dpd == null) return;
+            for (int i = 0; i < gv.Columns.Count; i++)
+            {
+                if (i == flexIndex) continue;
+                var col = gv.Columns[i];
+                dpd.AddValueChanged(col, (s, e) => ResizeFlexColumn(lv, flexIndex));
+            }
         }
 
         private static void ResizeFlexColumn(ListView lv, int flexIndex)
