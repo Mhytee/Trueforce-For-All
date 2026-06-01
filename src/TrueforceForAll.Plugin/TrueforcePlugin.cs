@@ -257,8 +257,13 @@ namespace TrueforceForAll.Plugin
         private long _lastRecoveryAttemptTicks;
         private static readonly long RecoveryIntervalTicks = Stopwatch.Frequency * 3; // 3 s
         private bool _gHubLastLoggedState;
+        // Only the G HUB *UI* process (lghub.exe) gates wheel access. We
+        // intentionally do NOT gate on lghub_agent.exe (Logitech's always-on
+        // background agent): it keeps running after the user quits G HUB and
+        // does not hold the wheel's MI_02 Trueforce interface, so gating on it
+        // latched _isGHubRunning true for the whole session and permanently
+        // blocked the recovery watchdog. See the detection block below.
         private const string GHubProcessName = "lghub";
-        private const string GHubAgentProcessName = "lghub_agent";
         private static readonly long GHubCheckIntervalTicks = Stopwatch.Frequency * 5;
 
         // Snapshot every Logitech-related process running right now (G HUB,
@@ -2127,10 +2132,10 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // G HUB presence check. Polled every ~5 s; logs on transitions.
-            // Surfaced in the UI as a warning banner because G HUB blocks our
-            // HID open call and is by far the most common "wheel doesn't
-            // respond" cause.
+            // G HUB UI presence check. Polled every ~5 s; logs on transitions.
+            // Surfaced in the UI as a warning banner because the G HUB UI can
+            // block our HID open call and is a common "wheel doesn't respond"
+            // cause. Only lghub.exe counts here (not the background agent).
             {
                 long nowG = Stopwatch.GetTimestamp();
                 if (nowG - _lastGHubCheckTicks > GHubCheckIntervalTicks)
@@ -2139,8 +2144,16 @@ namespace TrueforceForAll.Plugin
                     bool running = false;
                     try
                     {
-                        if (System.Diagnostics.Process.GetProcessesByName(GHubProcessName).Length > 0
-                         || System.Diagnostics.Process.GetProcessesByName(GHubAgentProcessName).Length > 0)
+                        // GetProcessesByName("lghub") matches ONLY lghub.exe (the
+                        // G HUB UI), not lghub_agent / lghub_updater / lghub_system_tray.
+                        // Deliberate: the background agent is essentially always
+                        // present, so counting it here made _isGHubRunning latch true
+                        // for the whole session and stopped MaybeRecoverDevice from
+                        // ever re-attaching after an idle-time stream fault. The wheel
+                        // then stayed "not detected" until SimHub restarted (which
+                        // re-runs the ungated startup bring-up). The agent does not
+                        // hold the wheel's MI_02 Trueforce interface.
+                        if (System.Diagnostics.Process.GetProcessesByName(GHubProcessName).Length > 0)
                         {
                             running = true;
                         }
