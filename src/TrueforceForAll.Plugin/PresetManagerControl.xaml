@@ -143,7 +143,8 @@
                                  TextChanged="GameSearchBox_TextChanged"/>
                     </DockPanel>
                     <ListView Grid.Row="2" x:Name="GameList" SelectionMode="Single"
-                              SelectionChanged="GameList_SelectionChanged">
+                              SelectionChanged="GameList_SelectionChanged"
+                              PreviewMouseLeftButtonDown="GameList_PreviewMouseLeftButtonDown">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
@@ -162,11 +163,11 @@
                         </ListView.View>
                     </ListView>
                     <!-- Read-only summary of the selected preset's contents.
-                         Filled from the snapshot in UpdateGameDetails. -->
-                    <Border Grid.Row="3" Background="#22000000" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                         Hidden when no row is selected (clicking the same row
+                         a second time clears the selection -> hides this). -->
+                    <Border x:Name="GameDetailsPanel" Grid.Row="3" Background="#22000000" CornerRadius="4" Padding="10,8" Margin="0,8,0,0" Visibility="Collapsed">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="150">
-                            <TextBlock x:Name="GameDetailsText" TextWrapping="Wrap" FontSize="12"
-                                       Text="Select a preset to see the settings it contains."/>
+                            <TextBlock x:Name="GameDetailsText" TextWrapping="Wrap" FontSize="12"/>
                         </ScrollViewer>
                     </Border>
                     <DockPanel Grid.Row="4" Margin="0,10,0,0" LastChildFill="True">
@@ -196,6 +197,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,8"
                                Text="Every car preset, grouped by game then car. A car can have several presets; the ★ in Default marks the one that loads for that car. Rename, duplicate, delete, or set a preset as the car's default."/>
@@ -210,7 +212,8 @@
                                  TextChanged="CarSearchBox_TextChanged"/>
                     </DockPanel>
                     <ListView Grid.Row="3" x:Name="CarList" SelectionMode="Single"
-                              SelectionChanged="CarList_SelectionChanged">
+                              SelectionChanged="CarList_SelectionChanged"
+                              PreviewMouseLeftButtonDown="CarList_PreviewMouseLeftButtonDown">
                         <!-- Active-row visual: subtle left accent bar + background
                              tint so the default preset for each car is scannable
                              without reading the Default column. -->
@@ -244,7 +247,15 @@
                             </GridView>
                         </ListView.View>
                     </ListView>
-                    <DockPanel Grid.Row="4" Margin="0,10,0,0" LastChildFill="True">
+                    <!-- Selected car preset summary. Mirrors the game-side
+                         details panel: hidden when no row is selected; shows
+                         which override sections are set on the chosen preset. -->
+                    <Border x:Name="CarDetailsPanel" Grid.Row="4" Background="#22000000" CornerRadius="4" Padding="10,8" Margin="0,8,0,0" Visibility="Collapsed">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="150">
+                            <TextBlock x:Name="CarDetailsText" TextWrapping="Wrap" FontSize="12"/>
+                        </ScrollViewer>
+                    </Border>
+                    <DockPanel Grid.Row="5" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
                                     ToolTip="Open this car preset for editing: loads it on the Effects tab with a Save / Save as new / Discard banner, and freezes this car so a live car change can't clobber the edit. Saving over a built-in forks a copy."/>

@@ -755,9 +755,10 @@ namespace TrueforceForAll.Plugin
             if (sel == null || _plugin?.Settings?.Presets == null
                 || !_plugin.Settings.Presets.TryGetValue(sel.Name, out var snap) || snap == null)
             {
-                GameDetailsText.Text = "Select a preset to see the settings it contains.";
+                if (GameDetailsPanel != null) GameDetailsPanel.Visibility = Visibility.Collapsed;
                 return;
             }
+            if (GameDetailsPanel != null) GameDetailsPanel.Visibility = Visibility.Visible;
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"Master gain: {snap.MasterGain:0.##}");
             sb.AppendLine($"FFB pass-through: scale {snap.FfbScale:0.##}, smooth {snap.FfbSmoothTimeConstantMs:0} ms, invert {(snap.FfbInvertSign ? "on" : "off")}");
@@ -794,6 +795,81 @@ namespace TrueforceForAll.Plugin
         private void CarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             RefreshCarButtons();
+            UpdateCarDetails();
+        }
+
+        // Selected car-preset summary. Lists which override sections the
+        // preset sets (vs falling through to the game default) and whether
+        // each is enabled. Hides the panel when no row is selected.
+        private void UpdateCarDetails()
+        {
+            if (CarDetailsText == null) return;
+            var sel = SelectedCar;
+            if (sel == null || _plugin == null)
+            {
+                if (CarDetailsPanel != null) CarDetailsPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+            var perCar = _plugin.GetCarPresets(sel.CarId);
+            if (perCar == null || !perCar.TryGetValue(sel.PresetName, out var entry)
+                || entry?.Override == null)
+            {
+                if (CarDetailsPanel != null) CarDetailsPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+            CarDetailsPanel.Visibility = Visibility.Visible;
+            var ov = entry.Override;
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Game: {(string.IsNullOrEmpty(entry.GameName) ? "(none)" : entry.GameName)}");
+            sb.AppendLine($"Car ID: {sel.CarId}");
+            sb.AppendLine($"Source: {(entry.IsBuiltin ? "Built-in" : "User preset")}");
+            sb.AppendLine();
+            sb.AppendLine("Override sections (unset sections follow the game default):");
+            AppendEffectLine(sb, "Audio capture",    ov.AudioCapture);
+            AppendEffectLine(sb, "Engine pulse",     ov.EnginePulse);
+            AppendEffectLine(sb, "Road bumps",       ov.RoadBumps);
+            AppendEffectLine(sb, "Traction loss",    ov.TractionLoss);
+            AppendEffectLine(sb, "Gear shift",       ov.GearShift);
+            AppendEffectLine(sb, "ABS",              ov.AbsClick);
+            AppendEffectLine(sb, "Pit limiter",      ov.PitLimiter);
+            AppendEffectLine(sb, "DRS",              ov.Drs);
+            AppendEffectLine(sb, "Collision",        ov.Collision);
+            AppendEffectLine(sb, "Rev limiter",      ov.RevLimiter);
+            AppendEffectLine(sb, "Airborne ducking", ov.Airborne);
+            CarDetailsText.Text = sb.ToString().TrimEnd();
+        }
+
+        // Click the already-selected row to deselect it (and collapse the
+        // details panel). Standard ListView keeps the row selected on
+        // re-click, so we intercept the mouse-down: walk up the visual tree
+        // from the original source to the row container; if it's the current
+        // selection, clear it and swallow the event so ListView doesn't
+        // re-select it on its own.
+        private void GameList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+            => TryToggleSelectionFromClick(GameList, e);
+
+        private void CarList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+            => TryToggleSelectionFromClick(CarList, e);
+
+        private static void TryToggleSelectionFromClick(ListView list, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (list == null) return;
+            // Don't intercept clicks on cells we want to be interactive
+            // (checkbox column). The DependencyObject walk catches whatever
+            // element the click started on.
+            for (var d = e.OriginalSource as DependencyObject; d != null; d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+            {
+                if (d is CheckBox) return;
+                if (d is ListViewItem item)
+                {
+                    if (item.IsSelected)
+                    {
+                        list.SelectedItem = null;
+                        e.Handled = true;
+                    }
+                    return;
+                }
+            }
         }
 
         private void CustomList_SelectionChanged(object sender, SelectionChangedEventArgs e)
