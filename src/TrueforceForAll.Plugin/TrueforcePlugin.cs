@@ -5319,12 +5319,14 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Returns all presets currently on disk for a car. Empty
         /// dict if the car has none. Used by the UI to populate the
-        /// per-car preset dropdown.</summary>
+        /// per-car preset dropdown. Includes factory built-ins merged on top
+        /// of user files (built-in wins on a same-name collision).</summary>
         public IReadOnlyDictionary<string, CarPresetEntry> GetCarPresets(string carId)
         {
             if (_carStore == null || string.IsNullOrEmpty(carId))
                 return new Dictionary<string, CarPresetEntry>();
             var loaded = _carStore.LoadAll();
+            MergeBuiltinCarPresetsInto(loaded);
             return loaded.TryGetValue(carId, out var perCar)
                 ? perCar
                 : new Dictionary<string, CarPresetEntry>();
@@ -5332,12 +5334,14 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Returns every car preset across every car, indexed by
         /// carId then presetName. Single LoadAll pass for the preset manager
-        /// (used when no specific car is active).</summary>
+        /// (used when no specific car is active). Includes factory built-ins
+        /// so the preset manager can tag them with the Built-in badge.</summary>
         public IReadOnlyDictionary<string, IReadOnlyDictionary<string, CarPresetEntry>> GetAllCarPresets()
         {
             if (_carStore == null)
                 return new Dictionary<string, IReadOnlyDictionary<string, CarPresetEntry>>();
             var raw = _carStore.LoadAll();
+            MergeBuiltinCarPresetsInto(raw);
             var wrapped = new Dictionary<string, IReadOnlyDictionary<string, CarPresetEntry>>(raw.Count);
             foreach (var kv in raw) wrapped[kv.Key] = kv.Value;
             return wrapped;
@@ -5348,11 +5352,11 @@ namespace TrueforceForAll.Plugin
         /// fork to a user-named preset.</summary>
         public bool IsCarPresetBuiltin(string carId, string presetName)
         {
-            if (_carStore == null || string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName))
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName))
                 return false;
-            var loaded = _carStore.LoadAll();
-            if (!loaded.TryGetValue(carId, out var perCar)) return false;
-            return perCar.TryGetValue(presetName, out var entry) && entry.IsBuiltin;
+            // The factory folder is the authority. The user store never
+            // contains built-in entries, so check BuiltinPresets directly.
+            return BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + presetName);
         }
 
         /// <summary>True iff the active preset for the active car is a
