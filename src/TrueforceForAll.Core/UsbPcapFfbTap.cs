@@ -781,9 +781,9 @@ namespace TrueforceForAll.Core
             {
                 _noFfbWarned = true;
                 string msg = "Driving, but no game force feedback is reaching the plugin, so it has nothing " +
-                    "to pass through. Most likely fixes, in order: (1) fully close G HUB, including its " +
-                    "background agent (right-click its tray icon and Quit, then end any lghub processes in " +
-                    "Task Manager) - it can intercept the wheel's force feedback; (2) make sure force " +
+                    "to pass through. Most likely fixes, in order: (1) quit G HUB from the system tray " +
+                    "(right-click its tray icon and Quit); it can intercept the wheel's force feedback; " +
+                    "(2) make sure force " +
                     "feedback is enabled and this wheel is selected in the game's own settings; (3) run " +
                     "SimHub as administrator; (4) as a last resort try a different USB port, ideally a USB " +
                     "2.0 port on the back of the motherboard (not a hub or front-panel port), in case the " +
