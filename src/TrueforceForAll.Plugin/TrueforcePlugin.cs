@@ -4185,11 +4185,25 @@ namespace TrueforceForAll.Plugin
                 MoveLegacyFolder(Path.Combine(baseDir,   "TrueforceForAll-Presets"), BuiltinPresets.DefaultFolder, "factory");
                 MoveLegacyFolder(Path.Combine(commonDir, "TrueforceForAll-Library"), UserPresets.DefaultFolder,    "user");
                 MoveLegacyFolder(Path.Combine(commonDir, "TrueforceForAll-Imports"), UserImportsFolderPath,        "user-drop");
+                // Move preserved every file, including the stale README.txt
+                // from the legacy layout (which talked about the old folder
+                // names). Drop those at the new locations so Init's
+                // WriteReadmeIfMissing fills them in with the current text.
+                // READMEs are informational only (no user data), safe to recreate.
+                TryDeleteFile(Path.Combine(BuiltinPresets.DefaultFolder, "README.txt"));
+                TryDeleteFile(Path.Combine(UserPresets.DefaultFolder,    "README.txt"));
+                TryDeleteFile(Path.Combine(UserImportsFolderPath,        "README.txt"));
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn($"[Trueforce] Folder restructure failed: {ex.Message}");
             }
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try { if (File.Exists(path)) File.Delete(path); }
+            catch { /* best effort */ }
         }
 
         // Move a single legacy folder to its new home. If the destination
@@ -4438,35 +4452,55 @@ namespace TrueforceForAll.Plugin
             "  car-defaults.json             (carId -> default car preset name)\r\n" +
             "  cars/<GameName>/<carId>/<PresetName>.json\r\n" +
             "\r\n" +
-            "Do NOT drop community / shared presets here. Use the sibling\r\n" +
-            "'user\\drop\\' inbox instead; the plugin auto-imports those into the\r\n" +
-            "'user' folder on the next start.\r\n";
+            "Do NOT drop your own presets here. They belong in the sibling\r\n" +
+            "'user' folder. Loose preset .json files go straight into the matching\r\n" +
+            "subfolder there ('user\\games\\' or 'user\\cars\\<Game>\\<carId>\\') and\r\n" +
+            "are picked up on the next SimHub start. Pack files (.tfpack zips, or\r\n" +
+            "JSON with Type 'trueforce-pack') go in 'user\\drop\\' so the plugin can\r\n" +
+            "unpack them and route each contained preset to the right subfolder.\r\n";
 
         private const string UserLibraryReadmeText =
             "Trueforce For All - user folder\r\n" +
             "\r\n" +
-            "This folder holds your own presets, defaults, and the drop-in inbox.\r\n" +
-            "It mirrors the sibling 'factory' folder's layout:\r\n" +
+            "This folder holds your own presets and defaults. Same subfolder layout\r\n" +
+            "as the sibling 'factory' folder:\r\n" +
             "  game-defaults.json            (your per-game default preset map)\r\n" +
             "  games/<Preset Name>.json      (one GameSettingsSnapshot per preset)\r\n" +
             "  car-defaults.json             (your per-car default preset map)\r\n" +
             "  cars/<GameName>/<carId>/<PresetName>.json\r\n" +
-            "  drop/                         (drop-in inbox for shared files)\r\n" +
+            "  drop/                         (inbox for packs; see below)\r\n" +
             "\r\n" +
-            "The plugin reads + writes these files automatically; edits here take\r\n" +
-            "effect on the next SimHub start (or after the plugin reloads the folder).\r\n";
+            "The plugin reads and writes these files automatically; edits here\r\n" +
+            "take effect on the next SimHub start.\r\n" +
+            "\r\n" +
+            "Sharing / community presets:\r\n" +
+            "- A LOOSE preset file someone shares with you (a single game preset .json\r\n" +
+            "  or car preset .json) can just be dropped straight into the matching\r\n" +
+            "  subfolder here, 'games\\' for game presets, 'cars\\<Game>\\<carId>\\'\r\n" +
+            "  for car presets. It loads on the next SimHub start.\r\n" +
+            "- A PACK (a .tfpack zip or a Type 'trueforce-pack' JSON containing many\r\n" +
+            "  presets at once) goes into 'drop\\' instead, so the plugin can\r\n" +
+            "  unpack it and route each contained preset into the right subfolder.\r\n";
 
         private const string ImportsReadmeText =
             "Trueforce For All - drop-in inbox\r\n" +
             "\r\n" +
-            "Drop shared preset files in this folder:\r\n" +
-            "  - Game preset JSON   (Type 'trueforce-preset')\r\n" +
-            "  - Car preset JSON    (Type 'trueforce-car-preset')\r\n" +
-            "  - Pack file          (Type 'trueforce-pack')\r\n" +
+            "This folder is for PACKS, files that contain many presets at once and\r\n" +
+            "need to be unpacked and routed:\r\n" +
+            "  - .tfpack zip files\r\n" +
+            "  - JSON files with top-level Type 'trueforce-pack'\r\n" +
             "\r\n" +
-            "On the next SimHub start, they are auto-imported into the parent\r\n" +
-            "'user' folder as normal (non-builtin) presets, then moved into an\r\n" +
-            "'imported/<date>/' archive subfolder so they don't import twice.\r\n" +
+            "On the next SimHub start, packs are unpacked and each contained preset\r\n" +
+            "is written into the matching parent-folder location\r\n" +
+            "('..\\games\\<name>.json' or '..\\cars\\<Game>\\<carId>\\<name>.json').\r\n" +
+            "The pack itself is then moved into an 'imported/<date>/' archive\r\n" +
+            "subfolder so it doesn't import twice.\r\n" +
+            "\r\n" +
+            "If you have a single LOOSE preset file (a game preset .json or car\r\n" +
+            "preset .json on its own), the simpler path is to drop it straight into\r\n" +
+            "the matching subfolder under '..\\' instead of here. The plugin reads\r\n" +
+            "those subfolders on every start and will pick it up. Dropping loose\r\n" +
+            "files here also works as a courtesy fallback.\r\n" +
             "\r\n" +
             "You can also use the Import button in the Presets tab.\r\n";
 
