@@ -837,40 +837,7 @@ namespace TrueforceForAll.Plugin
             return sb.ToString().TrimEnd();
         }
 
-        // Click the already-selected row to deselect it (and collapse the
-        // details panel). Standard ListView keeps the row selected on
-        // re-click, so we intercept the mouse-down: walk up the visual tree
-        // from the original source to the row container; if it's the current
-        // selection, clear it and swallow the event so ListView doesn't
-        // re-select it on its own.
-        private void GameList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-            => TryToggleSelectionFromClick(GameList, e);
-
-        private void CarList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-            => TryToggleSelectionFromClick(CarList, e);
-
-        private static void TryToggleSelectionFromClick(ListView list, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (list == null) return;
-            // Don't intercept clicks on cells we want to be interactive
-            // (checkbox column). The DependencyObject walk catches whatever
-            // element the click started on.
-            for (var d = e.OriginalSource as DependencyObject; d != null; d = System.Windows.Media.VisualTreeHelper.GetParent(d))
-            {
-                if (d is CheckBox) return;
-                if (d is ListViewItem item)
-                {
-                    if (item.IsSelected)
-                    {
-                        list.SelectedItem = null;
-                        e.Handled = true;
-                    }
-                    return;
-                }
-            }
-        }
-
-        private void CustomList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+private void CustomList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             RefreshCustomButtons();
         }

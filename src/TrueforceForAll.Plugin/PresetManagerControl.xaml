@@ -77,47 +77,14 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Expandable row: rendered identically to the default ListViewItem
-             theme (transparent default / subtle hover / accent-blue selected)
-             but stacks a Details Border underneath the row's columns. When the
-             user clicks a row IsSelected -> True, the details area unhides
-             INLINE under that row; the list itself stays the same size so the
-             details don't eat space from neighbouring rows. Bound to the
-             row's DetailsText (populated in ReloadGames / ReloadCars). -->
-        <Style x:Key="ExpandableRow" TargetType="ListViewItem">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListViewItem">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
-                            <StackPanel>
-                                <GridViewRowPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
-                                                      VerticalAlignment="Center"/>
-                                <Border x:Name="DetailsArea" Visibility="Collapsed"
-                                        Background="#22000000" Margin="2,2,2,4"
-                                        Padding="20,6,10,8" CornerRadius="3">
-                                    <TextBlock Text="{Binding DetailsText}"
-                                               TextWrapping="Wrap" FontSize="11"
-                                               Foreground="#FFC8C8C8"/>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1AFFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#3A6BBE"/>
-                                <Setter Property="Foreground" Value="White"/>
-                                <Setter TargetName="DetailsArea" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <!-- Hover-tooltip row: just a ToolTip setter, no Template override.
+             The SimHub default ListViewItem style still applies (transparent
+             default, theme hover, theme selected); we only add a tooltip
+             that surfaces the row's DetailsText on mouse hover. No layout
+             impact: the tooltip floats over the UI and doesn't take space
+             from the list. -->
+        <Style x:Key="RowDetailsTip" TargetType="ListViewItem">
+            <Setter Property="ToolTip" Value="{Binding DetailsText}"/>
         </Style>
         <Style x:Key="RowButton" TargetType="Button">
             <Setter Property="Width" Value="92"/>
@@ -205,9 +172,8 @@
                     <!-- LastChildFill: ListView soaks up whatever space the
                          docked top + bottom items leave. -->
                     <ListView x:Name="GameList" SelectionMode="Single"
-                              ItemContainerStyle="{StaticResource ExpandableRow}"
-                              SelectionChanged="GameList_SelectionChanged"
-                              PreviewMouseLeftButtonDown="GameList_PreviewMouseLeftButtonDown">
+                              ItemContainerStyle="{StaticResource RowDetailsTip}"
+                              SelectionChanged="GameList_SelectionChanged">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
@@ -264,9 +230,8 @@
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
                     <ListView x:Name="CarList" SelectionMode="Single"
-                              ItemContainerStyle="{StaticResource ExpandableRow}"
-                              SelectionChanged="CarList_SelectionChanged"
-                              PreviewMouseLeftButtonDown="CarList_PreviewMouseLeftButtonDown">
+                              ItemContainerStyle="{StaticResource RowDetailsTip}"
+                              SelectionChanged="CarList_SelectionChanged">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
