@@ -2677,7 +2677,6 @@ namespace TrueforceForAll.Plugin
         private bool IsEnhancedEligible(string game)
         {
             if (game == "AssettoCorsa") return true;
-            if (game == "PCars2") return true;
             if (IsForzaGameName(game)) return true;
             return false;
         }
@@ -2825,28 +2824,6 @@ namespace TrueforceForAll.Plugin
                     {
                         SimHub.Logging.Current.Info(
                             $"[Trueforce] AC enhanced source unavailable ({ex.GetType().Name}): {ex.Message}; falling back to SimHub.");
-                    }
-                }
-            }
-            else if (game == "PCars2")
-            {
-                var pc2 = new Pcars2SharedMemoryTelemetrySource
-                {
-                    Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
-                };
-                try
-                {
-                    pc2.Start();
-                    newSource = pc2;
-                }
-                catch (Exception ex)
-                {
-                    try { pc2.Dispose(); } catch { }
-                    if (!silent)
-                    {
-                        SimHub.Logging.Current.Info(
-                            $"[Trueforce] PC2 enhanced source unavailable ({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
-                            "If PC2 is running, ensure 'Use Shared Memory' is enabled in Options > Visuals.");
                     }
                 }
             }
