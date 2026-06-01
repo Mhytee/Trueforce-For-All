@@ -740,13 +740,13 @@ namespace TrueforceForAll.Plugin
             bool  anySelected       = sel != null;
             bool  selUserPreset     = anySelected && !sel.Builtin;
 
-            // DEV authoring lets the owner delete built-in car presets too
-            // (rename stays user-only: car built-ins are keyed by carId).
-            bool carSelDeletable = selUserPreset || (_devMode && anySelected);
-            CarEditBtn.IsEnabled      = anySelected   && checkedCount <= 1;
-            CarRenameBtn.IsEnabled    = selUserPreset && checkedCount <= 1;
-            CarDuplicateBtn.IsEnabled = anySelected   && checkedCount <= 1;
-            CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelDeletable;
+            // DEV authoring lets the owner rename + delete built-in car presets
+            // too (the plugin write-throughs to the factory folder).
+            bool carSelEditable = selUserPreset || (_devMode && anySelected);
+            CarEditBtn.IsEnabled      = anySelected    && checkedCount <= 1;
+            CarRenameBtn.IsEnabled    = carSelEditable && checkedCount <= 1;
+            CarDuplicateBtn.IsEnabled = anySelected    && checkedCount <= 1;
+            CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelEditable;
             CarSetActiveBtn.IsEnabled = anySelected   && checkedCount <= 1 && !sel.Active;
             // Same bulk-or-single rule as the game button.
             if (CarPromoteBuiltinBtn != null)

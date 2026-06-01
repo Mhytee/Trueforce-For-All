@@ -716,9 +716,11 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // DEV mode: save the built-in in place (the plugin write-throughs
+            // to the factory folder). Non-dev: fork into a new user preset.
             if (car)
             {
-                if (_plugin.IsActiveCarPresetBuiltin())
+                if (_plugin.IsActiveCarPresetBuiltin() && !_plugin.DevMode)
                 {
                     PromptAndSaveAsNewCar(_plugin.OfflineEditingCarPresetName);
                     return;
@@ -732,7 +734,7 @@ namespace TrueforceForAll.Plugin
             else
             {
                 string name = _plugin.OfflineEditingPresetName;
-                if (_plugin.IsBuiltinPreset(name))
+                if (_plugin.IsBuiltinPreset(name) && !_plugin.DevMode)
                 {
                     PromptAndSaveAsNew(name);
                     return;
@@ -5480,7 +5482,10 @@ namespace TrueforceForAll.Plugin
             string activeName = _plugin.GetActiveCarPresetName(carId);
             bool   onBuiltin  = !string.IsNullOrEmpty(activeName)
                                 && _plugin.IsCarPresetBuiltin(carId, activeName);
-            bool   isFork     = string.IsNullOrEmpty(activeName) || onBuiltin;
+            // DEV authoring: built-ins save in place (the plugin write-throughs
+            // to the factory folder). Non-dev: fork to a new user preset.
+            bool   isFork     = string.IsNullOrEmpty(activeName)
+                                || (onBuiltin && !_plugin.DevMode);
 
             if (isFork)
             {
@@ -5766,7 +5771,9 @@ namespace TrueforceForAll.Plugin
                                 && _plugin.IsCarPresetBuiltin(carId, activeName);
 
             bool ok;
-            if (string.IsNullOrEmpty(activeName) || onBuiltin)
+            // DEV authoring: built-ins save in place via PersistActiveCarOverride
+            // (which write-throughs to factory). Non-dev: fork.
+            if (string.IsNullOrEmpty(activeName) || (onBuiltin && !_plugin.DevMode))
             {
                 string suggestion = onBuiltin ? StripDefaultSuffix(activeName) : carId;
                 string newName = PromptForCarPresetName(
