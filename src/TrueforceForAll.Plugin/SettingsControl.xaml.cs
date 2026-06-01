@@ -4551,6 +4551,7 @@ namespace TrueforceForAll.Plugin
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
+            "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
@@ -4684,6 +4685,25 @@ namespace TrueforceForAll.Plugin
             // existing built-in(s) for that car), repoint the factory car-default,
             // and delete the user preset. Other user presets for the same car
             // stay put. Idempotent.
+            // Dev-only one-shot: legacy 'Forza_<ordinal>' car ids from the old
+            // UDP fallback get normalized to 'Car_<ordinal>' (what SimHub's
+            // data feed emits for Forza). Per-car rule: if Car_<n> already
+            // exists, drop the Forza_<n>; otherwise rename Forza_<n> to
+            // Car_<n> and rewrite the inner CarId/PresetName fields.
+            if (code.Equals("NORMALIZEFORZA", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (_plugin != null)
+                {
+                    int n = _plugin.DevNormalizeForzaCarIds(out var details);
+                    if (n > 0) _presetManager?.RefreshLists();
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
+                    MessageBox.Show(Window.GetWindow(this), details,
+                        "Trueforce For All: normalize Forza car ids", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return;
+            }
+
             if (code.Equals("FOLDDEFAULTS", StringComparison.OrdinalIgnoreCase))
             {
                 AccessCodeBox.Text = string.Empty;

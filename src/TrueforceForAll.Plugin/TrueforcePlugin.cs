@@ -4753,6 +4753,177 @@ namespace TrueforceForAll.Plugin
         public List<string> ValidateBuiltins()
             => BuiltinPresets.Validate(BuiltinGameSections);
 
+        /// <summary>DEV one-shot: normalize legacy "Forza_&lt;n&gt;" car ids
+        /// to "Car_&lt;n&gt;" so they match what SimHub's data feed reports
+        /// (Trueforce's UDP fallback used to emit Forza_&lt;n&gt;; now emits
+        /// Car_&lt;n&gt;). Per-car rules:
+        /// <list type="bullet">
+        ///   <item>Both "Car_&lt;n&gt;" and "Forza_&lt;n&gt;" exist: keep Car,
+        ///   delete the Forza directory.</item>
+        ///   <item>Only "Forza_&lt;n&gt;" exists: rename to "Car_&lt;n&gt;",
+        ///   rewriting each file's CarId field and the inner PresetName when
+        ///   it embedded the old carId (e.g. "Forza_455 (default)" -&gt;
+        ///   "Car_455 (default)").</item>
+        /// </list>
+        /// Applies to factory + user folders, both car-defaults.json files,
+        /// and the live Settings.CarDefaults + Settings.CarOverrides
+        /// dicts. Reloads stores at the end and persists settings.</summary>
+        public int DevNormalizeForzaCarIds(out string summary)
+        {
+            var lines = new List<string>();
+            int renamed = 0, deduped = 0, dictHits = 0;
+
+            NormalizeForzaInFolder(BuiltinPresets.CurrentFolder, "factory", lines, ref renamed, ref deduped);
+            NormalizeForzaInFolder(UserPresets.CurrentFolder,    "user",    lines, ref renamed, ref deduped);
+
+            NormalizeForzaInCarDefaultsFile(BuiltinPresets.CurrentFolder, "factory", lines);
+            NormalizeForzaInCarDefaultsFile(UserPresets.CurrentFolder,    "user",    lines);
+
+            if (Settings?.CarDefaults  != null) dictHits += NormalizeForzaInStringDict(Settings.CarDefaults);
+            if (Settings?.CarOverrides != null) dictHits += NormalizeForzaInOverrideDict(Settings.CarOverrides);
+            if (dictHits > 0) lines.Add($"Settings dicts: rewrote {dictHits} entry/entries");
+
+            int total = renamed + deduped + dictHits;
+            if (total > 0)
+            {
+                BuiltinPresets.Reload();
+                UserPresets.Reload();
+                LoadAndMigrateCarPresets();
+                this.SaveCommonSettings("GeneralSettings", Settings);
+                SimHub.Logging.Current.Info($"[Trueforce] DEV: normalized {renamed} carId rename(s), {deduped} dedup(s), {dictHits} settings entries.");
+            }
+            summary = total == 0
+                ? "No Forza_xxx car ids found. (Already normalized.)"
+                : $"Normalized {renamed} car directory/ies, deduped {deduped}, rewrote {dictHits} settings entries.";
+            if (lines.Count > 0) summary += "\n" + string.Join("\n", lines);
+            return total;
+        }
+
+        private static void NormalizeForzaInFolder(string root, string label, List<string> lines, ref int renamed, ref int deduped)
+        {
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
+            string carsRoot = Path.Combine(root, "cars");
+            if (!Directory.Exists(carsRoot)) return;
+
+            foreach (var gameDir in Directory.GetDirectories(carsRoot))
+            {
+                string gameName = Path.GetFileName(gameDir);
+                foreach (var carDir in Directory.GetDirectories(gameDir))
+                {
+                    string oldCarId = Path.GetFileName(carDir);
+                    if (!oldCarId.StartsWith("Forza_", StringComparison.Ordinal)) continue;
+                    string newCarId = "Car_" + oldCarId.Substring("Forza_".Length);
+                    string newCarDir = Path.Combine(gameDir, newCarId);
+                    if (Directory.Exists(newCarDir))
+                    {
+                        // Collision: Car_<n> wins; drop the Forza_<n> tree.
+                        try { Directory.Delete(carDir, recursive: true); } catch { }
+                        deduped++;
+                        lines.Add($"{label}/{gameName}/{oldCarId}: deleted (Car_<n> equivalent exists)");
+                        continue;
+                    }
+                    int fileCount = 0;
+                    foreach (var path in Directory.GetFiles(carDir, "*.json"))
+                    {
+                        try
+                        {
+                            var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path));
+                            if (f == null) continue;
+                            f.CarId = newCarId;
+                            string newPresetName = f.PresetName;
+                            if (!string.IsNullOrEmpty(newPresetName))
+                            {
+                                if (newPresetName == oldCarId)
+                                    newPresetName = newCarId;
+                                else if (newPresetName.StartsWith(oldCarId + " ", StringComparison.Ordinal)
+                                      || newPresetName.StartsWith(oldCarId + "(", StringComparison.Ordinal))
+                                    newPresetName = newCarId + newPresetName.Substring(oldCarId.Length);
+                                f.PresetName = newPresetName;
+                            }
+                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                                f, Newtonsoft.Json.Formatting.Indented);
+                            BuiltinPresetWriter.WriteCar(root, gameName, newCarId, newPresetName ?? newCarId, json);
+                            fileCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] NormalizeForza: failed to rewrite '{path}': {ex.Message}");
+                        }
+                    }
+                    // Drop the now-stale Forza_<n> directory.
+                    try { Directory.Delete(carDir, recursive: true); } catch { }
+                    renamed++;
+                    lines.Add($"{label}/{gameName}/{oldCarId} -> {newCarId} ({fileCount} file(s))");
+                }
+            }
+        }
+
+        private static int NormalizeForzaInStringDict(Dictionary<string, string> d)
+        {
+            int n = 0;
+            foreach (var key in new List<string>(d.Keys))
+            {
+                if (!key.StartsWith("Forza_", StringComparison.Ordinal)) continue;
+                string newKey = "Car_" + key.Substring("Forza_".Length);
+                string val = d[key];
+                d.Remove(key);
+                if (!d.ContainsKey(newKey)) d[newKey] = val;
+                n++;
+            }
+            return n;
+        }
+
+        private static int NormalizeForzaInOverrideDict(Dictionary<string, CarOverride> d)
+        {
+            int n = 0;
+            foreach (var key in new List<string>(d.Keys))
+            {
+                if (!key.StartsWith("Forza_", StringComparison.Ordinal)) continue;
+                string newKey = "Car_" + key.Substring("Forza_".Length);
+                var val = d[key];
+                d.Remove(key);
+                if (!d.ContainsKey(newKey)) d[newKey] = val;
+                n++;
+            }
+            return n;
+        }
+
+        private static void NormalizeForzaInCarDefaultsFile(string folder, string label, List<string> lines)
+        {
+            if (string.IsNullOrEmpty(folder)) return;
+            string path = Path.Combine(folder, BuiltinPresetStore.CarDefaultsFileName);
+            if (!File.Exists(path)) return;
+            try
+            {
+                var o = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(path));
+                var props = new List<Newtonsoft.Json.Linq.JProperty>(o.Properties());
+                bool changed = false;
+                foreach (var p in props)
+                {
+                    if (!p.Name.StartsWith("Forza_", StringComparison.Ordinal)) continue;
+                    string newKey = "Car_" + p.Name.Substring("Forza_".Length);
+                    if (o[newKey] != null)
+                    {
+                        p.Remove();
+                        changed = true;
+                        lines.Add($"{label}/car-defaults.json: dropped {p.Name} (Car_<n> exists)");
+                        continue;
+                    }
+                    var v = p.Value;
+                    string oldName = p.Name;
+                    p.Remove();
+                    o[newKey] = v;
+                    changed = true;
+                    lines.Add($"{label}/car-defaults.json: {oldName} -> {newKey}");
+                }
+                if (changed) File.WriteAllText(path, o.ToString(Newtonsoft.Json.Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] NormalizeForza car-defaults '{path}': {ex.Message}");
+            }
+        }
+
         /// <summary>Re-scan factory + user folders from disk and rebuild every
         /// runtime cache (game preset map, car defaults, car store). Use after
         /// external edits to the folders (drop-in files, manual edits) so the
