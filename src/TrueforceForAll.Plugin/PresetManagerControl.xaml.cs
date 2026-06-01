@@ -857,7 +857,7 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine();
             if (sections.Length > 0)
             {
-                sb.AppendLine("Overrides (changes from the game default):");
+                sb.AppendLine("Overrides:");
                 sb.Append(sections);
             }
             else
