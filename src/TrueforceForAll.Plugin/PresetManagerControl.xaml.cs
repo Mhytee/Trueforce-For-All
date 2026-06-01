@@ -351,22 +351,15 @@ namespace TrueforceForAll.Plugin
             // we get an "unused column" gap on the right.
             lv.AddHandler(ScrollViewer.ScrollChangedEvent,
                 new ScrollChangedEventHandler((s, e) => ResizeFlexColumn(lv, flexIndex)));
-            // Watch every non-flex column's Width: when the user drags one of
-            // them, the flex column must shrink/grow to keep the total inside
-            // the ListView, otherwise dragging pushes content off the right
-            // edge or leaves a gap. We exclude the flex column itself to
-            // avoid a feedback loop (our own write would re-trigger us).
-            var gv = lv.View as GridView;
-            if (gv == null) return;
-            var dpd = System.ComponentModel.DependencyPropertyDescriptor
-                .FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn));
-            if (dpd == null) return;
-            for (int i = 0; i < gv.Columns.Count; i++)
-            {
-                if (i == flexIndex) continue;
-                var col = gv.Columns[i];
-                dpd.AddValueChanged(col, (s, e) => ResizeFlexColumn(lv, flexIndex));
-            }
+            // NOTE: do NOT watch non-flex columns' Width changes here. The
+            // intent was to keep totals == ViewportWidth when the user drags
+            // a non-flex column, but the side effect (silently shrinking the
+            // flex column while the user is dragging another) makes the drag
+            // feel inverted and eventually pushes columns past the right edge
+            // once the flex column hits its minimum. Let user drags do what
+            // they normally do (extend total width / show horizontal scroll
+            // if needed); the flex column only auto-fits on ListView size +
+            // scrollbar-visibility changes.
         }
 
         private static void ResizeFlexColumn(ListView lv, int flexIndex)
