@@ -12,6 +12,22 @@
             <Setter Property="Opacity" Value="0.6"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
+        <!-- Hide the implicit GridViewColumnHeader WPF adds at the end of the
+             header row to soak up remaining width (Role=Padding). With the
+             two-tier flex absorbing every drag into the last data column it
+             would always be zero-width anyway, but it still renders a hairline
+             divider that looked like a phantom "extra column" to the right of
+             the rightmost real column. Collapse it. Implicit style targets
+             every GridViewColumnHeader under this UserControl; the trigger
+             keeps it scoped to the Padding role so normal headers are
+             untouched. -->
+        <Style TargetType="GridViewColumnHeader">
+            <Style.Triggers>
+                <Trigger Property="Role" Value="Padding">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
         <!-- Custom-templated row button. SimHub's stock theme greys every
              Button.Background regardless of IsEnabled, which made the dialog's
              action buttons look the same color whether they were usable or
