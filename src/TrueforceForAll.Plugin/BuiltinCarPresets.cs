@@ -10,7 +10,7 @@
 //
 // Adding / updating a default: drop a .json into the folder's cars/ subfolder
 // and add a { key, file } entry to manifest.json "cars". The dev panel's
-// Export-as-built-in does this for you.
+// The DEV-mode 'Set as built-in' promote button does this for you.
 
 using System.Collections.Generic;
 

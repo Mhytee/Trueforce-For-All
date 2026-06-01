@@ -4547,7 +4547,7 @@ namespace TrueforceForAll.Plugin
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
             "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
-            "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Export as built-in' buttons: maintain the file-based built-in folder (validate / open / per-row export). Persists. Toggle.\n" +
+            "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
 
@@ -4671,7 +4671,7 @@ namespace TrueforceForAll.Plugin
                 ApplyDevModeVisibility();
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = _plugin.Settings.DevModeUnlocked
-                        ? "Developer mode ON: the Presets tab now shows the Developer tools bar + per-row 'Export as built-in' buttons. Type DEV again to hide."
+                        ? "Developer mode ON: the Presets tab now shows the Developer tools bar + per-row 'Set as built-in' promote buttons. Type DEV again to hide."
                         : "Developer mode OFF.";
                 return;
             }

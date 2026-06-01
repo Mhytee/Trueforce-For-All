@@ -4635,7 +4635,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Export one library game preset into the built-in folder as
         /// a data file (+ manifest entry), then reload the store.</summary>
-        public bool ExportGamePresetAsBuiltin(string presetName, out string error)
+        public bool PromoteGamePresetToBuiltin(string presetName, out string error)
         {
             error = null;
             try
@@ -4655,7 +4655,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Export one library car preset into the built-in folder as a
         /// CarPresetFile (IsBuiltin=true, PresetName "&lt;carId&gt; (default)").</summary>
-        public bool ExportCarPresetAsBuiltin(string carId, string presetName, out string error)
+        public bool PromoteCarPresetToBuiltin(string carId, string presetName, out string error)
         {
             error = null;
             try
@@ -6767,7 +6767,7 @@ namespace TrueforceForAll.Plugin
             if (!IsOfflineEditingCar) return true;
             // DEV editing an existing built-in car: write the edit through to
             // its folder file. A new/user car preset stays a user preset
-            // (promote later via Export as built-in).
+            // (promote later via 'Set as built-in').
             if (DevMode && IsActiveCarPresetBuiltin())
             {
                 WriteCarBuiltinThroughDev(_offlineEditCarId, _offlineEditCarPresetName);

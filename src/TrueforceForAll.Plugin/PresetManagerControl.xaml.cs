@@ -67,8 +67,8 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Dev mode: reveal the per-row "Export as built-in" toolbar buttons
-        // (games + cars). Set by the host from Settings.DevModeUnlocked.
+        // Dev mode: reveal the per-row "Set as built-in" promote toolbar
+        // buttons (games + cars). Set by the host from Settings.DevModeUnlocked.
         private bool _devMode;
         public bool DevMode
         {
@@ -76,10 +76,10 @@ namespace TrueforceForAll.Plugin
             set
             {
                 _devMode = value;
-                if (GameExportBuiltinBtn != null)
-                    GameExportBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
-                if (CarExportBuiltinBtn != null)
-                    CarExportBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+                if (GamePromoteBuiltinBtn != null)
+                    GamePromoteBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+                if (CarPromoteBuiltinBtn != null)
+                    CarPromoteBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
                 if (DevBar != null)
                     DevBar.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
                 if (DevFolderPathText != null)
@@ -132,22 +132,56 @@ namespace TrueforceForAll.Plugin
             ReloadCustoms();
         }
 
-        private void GameExportBuiltin_Click(object sender, RoutedEventArgs e)
+        // Promote one or more game-preset rows to built-in. Checked rows take
+        // priority (bulk); fall back to the highlighted selected row when
+        // nothing is checked.
+        private void GamePromoteBuiltin_Click(object sender, RoutedEventArgs e)
         {
-            var sel = SelectedGame;
-            if (sel == null || _plugin == null) return;
-            bool ok = _plugin.ExportGamePresetAsBuiltin(sel.Name, out string err);
+            if (_plugin == null) return;
+            var targets = _gameRows.Where(r => r.IsChecked).Select(r => r.Name).ToList();
+            if (targets.Count == 0)
+            {
+                var sel = SelectedGame;
+                if (sel == null) return;
+                targets.Add(sel.Name);
+            }
+            int ok = 0, failed = 0;
+            string lastErr = null;
+            foreach (var name in targets)
+            {
+                if (_plugin.PromoteGamePresetToBuiltin(name, out string err)) ok++;
+                else { failed++; lastErr = err; }
+            }
             RefreshLists();
-            SetDevStatus(ok ? $"Exported '{sel.Name}' into the built-in folder." : "Export failed: " + err);
+            SetDevStatus(failed == 0
+                ? (ok == 1 ? $"Promoted '{targets[0]}' to built-in." : $"Promoted {ok} preset(s) to built-in.")
+                : $"Promoted {ok}, {failed} failed (last error: {lastErr}).");
         }
 
-        private void CarExportBuiltin_Click(object sender, RoutedEventArgs e)
+        // Same shape for cars: bulk-promote checked rows, else the selected one.
+        private void CarPromoteBuiltin_Click(object sender, RoutedEventArgs e)
         {
-            var sel = SelectedCar;
-            if (sel == null || _plugin == null) return;
-            bool ok = _plugin.ExportCarPresetAsBuiltin(sel.CarId, sel.PresetName, out string err);
+            if (_plugin == null) return;
+            var targets = _carRows.Where(r => r.IsChecked)
+                                  .Select(r => (r.CarId, r.PresetName))
+                                  .ToList();
+            if (targets.Count == 0)
+            {
+                var sel = SelectedCar;
+                if (sel == null) return;
+                targets.Add((sel.CarId, sel.PresetName));
+            }
+            int ok = 0, failed = 0;
+            string lastErr = null;
+            foreach (var (carId, presetName) in targets)
+            {
+                if (_plugin.PromoteCarPresetToBuiltin(carId, presetName, out string err)) ok++;
+                else { failed++; lastErr = err; }
+            }
             RefreshLists();
-            SetDevStatus(ok ? $"Exported car '{sel.CarId}' into the built-in folder." : "Export failed: " + err);
+            SetDevStatus(failed == 0
+                ? (ok == 1 ? $"Promoted car '{targets[0].CarId}' to built-in." : $"Promoted {ok} car preset(s) to built-in.")
+                : $"Promoted {ok}, {failed} failed (last error: {lastErr}).");
         }
 
         // IsChecked on every row model backs the checkbox column. Plain bool
@@ -667,8 +701,16 @@ namespace TrueforceForAll.Plugin
             GameDeleteBtn.IsEnabled       = checkedNonBuiltin > 0 || selEditable;
             GameSetDefaultBtn.IsEnabled   = anySelected   && checkedCount <= 1;
             GameClearDefaultBtn.IsEnabled = anySelected   && checkedCount <= 1 && sel.Defaults.Count > 0;
-            if (GameExportBuiltinBtn != null)
-                GameExportBuiltinBtn.IsEnabled = _devMode && anySelected && checkedCount <= 1;
+            // Promote works on the checked set when there is one (bulk), else
+            // the highlighted row, so multi-select is supported, not blocked.
+            if (GamePromoteBuiltinBtn != null)
+            {
+                bool promotable = _devMode && (checkedCount > 0 || anySelected);
+                GamePromoteBuiltinBtn.IsEnabled = promotable;
+                GamePromoteBuiltinBtn.Content   = checkedCount > 1
+                    ? $"Set as built-in ({checkedCount})"
+                    : "Set as built-in";
+            }
 
             GameCheckedLabel.Text = checkedCount > 0
                 ? $"{checkedCount} checked"
@@ -694,8 +736,15 @@ namespace TrueforceForAll.Plugin
             CarDuplicateBtn.IsEnabled = anySelected   && checkedCount <= 1;
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelDeletable;
             CarSetActiveBtn.IsEnabled = anySelected   && checkedCount <= 1 && !sel.Active;
-            if (CarExportBuiltinBtn != null)
-                CarExportBuiltinBtn.IsEnabled = _devMode && anySelected && checkedCount <= 1;
+            // Same bulk-or-single rule as the game button.
+            if (CarPromoteBuiltinBtn != null)
+            {
+                bool promotable = _devMode && (checkedCount > 0 || anySelected);
+                CarPromoteBuiltinBtn.IsEnabled = promotable;
+                CarPromoteBuiltinBtn.Content   = checkedCount > 1
+                    ? $"Set as built-in ({checkedCount})"
+                    : "Set as built-in";
+            }
 
             CarCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
             CarDeleteBtn.Content = checkedNonBuiltin > 0 ? $"Delete ({checkedNonBuiltin})" : "Delete";
