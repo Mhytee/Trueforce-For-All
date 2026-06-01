@@ -4452,55 +4452,57 @@ namespace TrueforceForAll.Plugin
             "  car-defaults.json             (carId -> default car preset name)\r\n" +
             "  cars/<GameName>/<carId>/<PresetName>.json\r\n" +
             "\r\n" +
-            "Do NOT drop your own presets here. They belong in the sibling\r\n" +
-            "'user' folder. Loose preset .json files go straight into the matching\r\n" +
-            "subfolder there ('user\\games\\' or 'user\\cars\\<Game>\\<carId>\\') and\r\n" +
-            "are picked up on the next SimHub start. Pack files (.tfpack zips, or\r\n" +
-            "JSON with Type 'trueforce-pack') go in 'user\\drop\\' so the plugin can\r\n" +
-            "unpack them and route each contained preset to the right subfolder.\r\n";
+            "Do NOT drop your own presets here. The easy way to add a shared\r\n" +
+            "preset someone sent you is to drop the file into 'user\\drop\\'; the\r\n" +
+            "plugin reads each file's content and routes it to the right place\r\n" +
+            "under the 'user' folder on the next SimHub start.\r\n";
 
         private const string UserLibraryReadmeText =
             "Trueforce For All - user folder\r\n" +
             "\r\n" +
             "This folder holds your own presets and defaults. Same subfolder layout\r\n" +
-            "as the sibling 'factory' folder:\r\n" +
+            "as the sibling 'factory' folder, the plugin manages the contents:\r\n" +
             "  game-defaults.json            (your per-game default preset map)\r\n" +
-            "  games/<Preset Name>.json      (one GameSettingsSnapshot per preset)\r\n" +
+            "  games/<Preset Name>.json      (game presets you saved)\r\n" +
             "  car-defaults.json             (your per-car default preset map)\r\n" +
-            "  cars/<GameName>/<carId>/<PresetName>.json\r\n" +
-            "  drop/                         (inbox for packs; see below)\r\n" +
+            "  cars/<GameName>/<carId>/<PresetName>.json   (car presets you saved)\r\n" +
+            "  drop/                         (inbox for shared files; see below)\r\n" +
             "\r\n" +
-            "The plugin reads and writes these files automatically; edits here\r\n" +
-            "take effect on the next SimHub start.\r\n" +
+            "Edits made here take effect on the next SimHub start.\r\n" +
             "\r\n" +
-            "Sharing / community presets:\r\n" +
-            "- A LOOSE preset file someone shares with you (a single game preset .json\r\n" +
-            "  or car preset .json) can just be dropped straight into the matching\r\n" +
-            "  subfolder here, 'games\\' for game presets, 'cars\\<Game>\\<carId>\\'\r\n" +
-            "  for car presets. It loads on the next SimHub start.\r\n" +
-            "- A PACK (a .tfpack zip or a Type 'trueforce-pack' JSON containing many\r\n" +
-            "  presets at once) goes into 'drop\\' instead, so the plugin can\r\n" +
-            "  unpack it and route each contained preset into the right subfolder.\r\n";
+            "Adding a shared / community preset:\r\n" +
+            "Drop the file into the 'drop\\' subfolder. The plugin handles all the\r\n" +
+            "routing (it reads each file's content to figure out where it belongs)\r\n" +
+            "and archives the original. Works for single preset files, multi-preset\r\n" +
+            "packs, and .tfpack zips. See drop\\README.txt for the full list.\r\n" +
+            "\r\n" +
+            "Power users can place loose files manually instead, a game preset .json\r\n" +
+            "in 'games\\' is picked up on next start. Car presets are harder to place\r\n" +
+            "by hand because the path needs the right GameName and carId, so 'drop\\'\r\n" +
+            "is the friendlier option there.\r\n";
 
         private const string ImportsReadmeText =
             "Trueforce For All - drop-in inbox\r\n" +
             "\r\n" +
-            "This folder is for PACKS, files that contain many presets at once and\r\n" +
-            "need to be unpacked and routed:\r\n" +
-            "  - .tfpack zip files\r\n" +
-            "  - JSON files with top-level Type 'trueforce-pack'\r\n" +
+            "Drop any shared / community Trueforce For All file here. On the next\r\n" +
+            "SimHub start the plugin reads each file's content, routes it to the\r\n" +
+            "matching place under the parent 'user' folder, and moves the original\r\n" +
+            "into 'imported/<date>/' so it doesn't import twice.\r\n" +
             "\r\n" +
-            "On the next SimHub start, packs are unpacked and each contained preset\r\n" +
-            "is written into the matching parent-folder location\r\n" +
-            "('..\\games\\<name>.json' or '..\\cars\\<Game>\\<carId>\\<name>.json').\r\n" +
-            "The pack itself is then moved into an 'imported/<date>/' archive\r\n" +
-            "subfolder so it doesn't import twice.\r\n" +
+            "Supported file types (auto-detected by the top-level Type field):\r\n" +
+            "  - Game preset    (Type 'trueforce-preset')      -> ..\\games\\<name>.json\r\n" +
+            "  - Car preset     (Type 'trueforce-car-preset')  -> ..\\cars\\<Game>\\<carId>\\<name>.json\r\n" +
+            "  - Pack           (Type 'trueforce-pack', or a .tfpack zip)\r\n" +
+            "                                                  -> unpacked, each entry routed as above\r\n" +
             "\r\n" +
-            "If you have a single LOOSE preset file (a game preset .json or car\r\n" +
-            "preset .json on its own), the simpler path is to drop it straight into\r\n" +
-            "the matching subfolder under '..\\' instead of here. The plugin reads\r\n" +
-            "those subfolders on every start and will pick it up. Dropping loose\r\n" +
-            "files here also works as a courtesy fallback.\r\n" +
+            "You can also subfolder anything you drop here; the scan recurses, so an\r\n" +
+            "unzipped pack folder works as-is.\r\n" +
+            "\r\n" +
+            "If you'd rather route a preset by hand, a game preset .json placed\r\n" +
+            "directly in '..\\games\\' is picked up by the regular folder scan on the\r\n" +
+            "next start (no archiving, just lives there). Car presets are usually\r\n" +
+            "easier to drop here than to place manually under the right GameName /\r\n" +
+            "carId subfolders.\r\n" +
             "\r\n" +
             "You can also use the Import button in the Presets tab.\r\n";
 
