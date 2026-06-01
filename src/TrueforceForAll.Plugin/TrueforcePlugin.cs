@@ -1324,12 +1324,12 @@ namespace TrueforceForAll.Plugin
             // files; mirrors the built-in folder layout). Defaults under
             // PluginsData/Common, user-writable.
             UserPresets.Initialize(Settings.UserLibraryFolder);
-            // Seed the cumulative "ever a built-in here" set with the
-            // pre-v0.1.21 factory names so the initial migration recognises
-            // them even though they predate the auto-tracking field. Idempotent.
-            SeedKnownBuiltinNamesIfEmpty();
             // One-time migration: legacy in-dict user presets -> user-library
-            // files. Backs the settings file up first. Skipped once stamped.
+            // files. Backs the settings file up first. The migration's
+            // skip-factory-name rule (IsFactoryBuiltinName, currently-shipped
+            // OR RetiredBuiltinNames) drops factory entries on the floor so
+            // they never land in the library; the user library carries only
+            // genuinely-user content from here on. Skipped once stamped.
             if (!Settings.PresetsMigratedV2)
             {
                 MigrateLegacyUserPresetsToFolder();
@@ -1349,20 +1349,6 @@ namespace TrueforceForAll.Plugin
             // on-brand name so users don't see a bare "Trueforce" folder. Idem-
             // potent; runs every Init and no-ops once everything's renamed.
             RebrandLegacyCarsBackup();
-            // One-shot sweep: drop any user-library copy of an ever-built-in
-            // name (catches earlier migrations that wrote those out before the
-            // skip-ever-built-in rule existed). Runs once, then stops; after
-            // it's done, user-named files are sacred even if their name was
-            // once a built-in (a user can deliberately reuse a retired name).
-            if (!Settings.BuiltinCleanupV1Done)
-            {
-                CleanUpSupersededUserBuiltins();
-                Settings.BuiltinCleanupV1Done = true;
-            }
-            // Auto-track: fold the current built-in set into LastKnownBuiltinNames
-            // so the next launch's migration / cleanup recognises any later
-            // retirements without a manual list edit.
-            PersistCurrentKnownBuiltinNames();
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
             if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
             if (Settings.SeenEffects  == null) Settings.SeenEffects  = new List<string>();
@@ -4066,11 +4052,13 @@ namespace TrueforceForAll.Plugin
                 foreach (var kv in Settings.Presets)
                 {
                     if (string.IsNullOrEmpty(kv.Key) || kv.Value == null) continue;
-                    // Skip names that ARE or WERE built-ins on this install
-                    // (current set + LastKnownBuiltinNames, freshly seeded
-                    // above). Currently-shipped names re-seed from the built-in
-                    // folder on the rebuild; retired names get dropped.
-                    if (WasEverBuiltinName(kv.Key)) { skippedBuiltins++; continue; }
+                    // Skip names that ARE or WERE shipped as factory built-ins.
+                    // Currently-shipped: the built-in folder is the source of
+                    // truth; the cache rebuild re-seeds them. Retired (in the
+                    // RetiredBuiltinNames list): drop on the floor; the user
+                    // shouldn't end up with a "(default)"-suffixed copy in
+                    // their library after this migration.
+                    if (IsFactoryBuiltinName(kv.Key)) { skippedBuiltins++; continue; }
                     try
                     {
                         string json = Newtonsoft.Json.JsonConvert.SerializeObject(
@@ -4086,19 +4074,22 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            int migratedDefaults = 0, skippedOrphanDefaults = 0;
+            int migratedDefaults = 0, skippedFactoryDefaults = 0;
             if (Settings.GameDefaults != null)
             {
                 foreach (var kv in Settings.GameDefaults)
                 {
                     if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
-                    // Orphan: default points at an ever-built-in name that's no
-                    // longer in the current built-in folder (e.g. a leftover
-                    // F12025 -> "F1 25 (default)" binding). Target preset is
-                    // gone, so the binding would dangle.
-                    if (WasEverBuiltinName(kv.Value) && !BuiltinPresets.IsBuiltin(kv.Value))
+                    // If the user's default for this game points at a factory
+                    // built-in (current OR retired) just drop the binding.
+                    //   - Currently-shipped target: the built-in folder's
+                    //     game-defaults.json already provides the same mapping.
+                    //   - Retired target: the preset doesn't exist anymore, so
+                    //     keeping the binding would dangle.
+                    // Only user-named-preset defaults need to be carried over.
+                    if (IsFactoryBuiltinName(kv.Value))
                     {
-                        skippedOrphanDefaults++;
+                        skippedFactoryDefaults++;
                         continue;
                     }
                     try
@@ -4123,7 +4114,7 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} built-in name(s) + {skippedOrphanDefaults} orphan default(s); {failedPresets} failed).");
+                $"[Trueforce] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} factory built-in name(s) + {skippedFactoryDefaults} factory-bound default(s); {failedPresets} failed).");
         }
 
         /// <summary>Rename any leftover bare-"Trueforce" car backup folders to
@@ -4232,13 +4223,26 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[Trueforce] Car-file migration failed: {ex.Message}");
             }
 
-            // Car defaults: move Settings.CarDefaults into the user library
-            // car-defaults.json (the user's per-car choices).
+            // Car defaults: carry over only user-pointing entries. A binding
+            // pointing at a factory-shipped (carId, presetName) is dropped
+            // because the built-in folder's car-defaults.json provides that
+            // mapping; a binding pointing at a name no longer in the built-in
+            // folder would dangle.
+            int skippedFactoryCarDefaults = 0;
             if (Settings.CarDefaults != null)
             {
                 foreach (var kv in Settings.CarDefaults)
                 {
                     if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
+                    // Built-in car preset key in BuiltinPresets.CarPresetJsons is
+                    // "<carId>/<presetName>". If the user's default matches a
+                    // shipped built-in car, the factory's car-defaults.json
+                    // (or LoadAndMigrateCarPresets seeding) will provide it.
+                    if (BuiltinPresets.CarPresetJsons.ContainsKey($"{kv.Key}/{kv.Value}"))
+                    {
+                        skippedFactoryCarDefaults++;
+                        continue;
+                    }
                     try
                     {
                         BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, kv.Key, kv.Value);
@@ -4255,115 +4259,32 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car(s); {failedCars} failed).");
+                $"[Trueforce] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car file(s) + {skippedFactoryCarDefaults} factory-bound default(s); {failedCars} failed).");
         }
 
-        // Names that were factory built-ins in pre-v0.1.21 versions, used to
-        // seed Settings.LastKnownBuiltinNames the first time the new code
-        // runs. After this single seed the set is self-maintaining; new
-        // additions / retirements are tracked automatically.
-        private static readonly string[] InitialKnownBuiltinNamesSeed =
+        // Game-preset names we have shipped as factory built-ins in the past
+        // and have since RETIRED (dropped the file from the shipped folder).
+        // Used only by the one-time MigrateLegacyUserPresetsToFolder to skip
+        // these entries when a v0.1.20-era user upgrades, so a retired factory
+        // name like "F1 25 (default)" doesn't get migrated into the user
+        // library as a strangely-named user preset.
+        //
+        // Currently-shipped built-ins (Assetto Corsa (default), Wreckfest 2,
+        // Forza Horizon, iRacing) DON'T go here, BuiltinPresets.IsBuiltin
+        // catches them. Add a name to this list whenever you retire a
+        // built-in. After the migration latch is set this list is dormant for
+        // that user; it only matters for someone still upgrading from v0.1.20.
+        private static readonly HashSet<string> RetiredBuiltinNames = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Assetto Corsa (default)",
-            "Wreckfest 2 (default)",
-            "Forza Horizon (default)",
-            "iRacing (default)",
             "F1 25 (default)",
         };
 
-        private void SeedKnownBuiltinNamesIfEmpty()
-        {
-            if (Settings.LastKnownBuiltinNames == null) Settings.LastKnownBuiltinNames = new List<string>();
-            if (Settings.LastKnownBuiltinNames.Count > 0) return;
-            Settings.LastKnownBuiltinNames.AddRange(InitialKnownBuiltinNamesSeed);
-        }
-
-        /// <summary>Append any names currently in the built-in folder to
-        /// Settings.LastKnownBuiltinNames. Never shrinks the set: a retired
-        /// built-in stays known so a future migration / cleanup recognises it.</summary>
-        private void PersistCurrentKnownBuiltinNames()
-        {
-            if (Settings.LastKnownBuiltinNames == null) Settings.LastKnownBuiltinNames = new List<string>();
-            var seen = new HashSet<string>(Settings.LastKnownBuiltinNames, StringComparer.Ordinal);
-            bool changed = false;
-            foreach (var n in BuiltinPresets.BuiltinPresetJsons.Keys)
-            {
-                if (string.IsNullOrEmpty(n)) continue;
-                if (seen.Add(n)) { Settings.LastKnownBuiltinNames.Add(n); changed = true; }
-            }
-            if (changed) this.SaveCommonSettings("GeneralSettings", Settings);
-        }
-
-        /// <summary>True if the name is currently a built-in OR was a built-in
-        /// on this install at some point (per Settings.LastKnownBuiltinNames).
-        /// The migration / cleanup uses this to recognise old factory entries
-        /// that the new build has retired.</summary>
-        private bool WasEverBuiltinName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return false;
-            if (BuiltinPresets.IsBuiltin(name)) return true;
-            var list = Settings?.LastKnownBuiltinNames;
-            if (list == null) return false;
-            foreach (var n in list)
-                if (string.Equals(name, n, StringComparison.Ordinal)) return true;
-            return false;
-        }
-
-        /// <summary>Drop any user-library file whose name is in the
-        /// ever-built-in set (currently-shipped names live in the built-in
-        /// folder; retired names just go away). Also drops user-default
-        /// bindings pointing at names that were once built-in but the current
-        /// folder no longer has. Idempotent.</summary>
-        private void CleanUpSupersededUserBuiltins()
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(UserPresets.CurrentFolder)) return;
-                int removedFiles = 0, removedDefaults = 0;
-                var everBuiltin = new List<string>(Settings.LastKnownBuiltinNames ?? new List<string>());
-                // Include any current built-in names not yet in the persisted
-                // list (covers the very first run after the seed).
-                foreach (var n in BuiltinPresets.BuiltinPresetJsons.Keys)
-                    if (!everBuiltin.Contains(n)) everBuiltin.Add(n);
-
-                foreach (var name in everBuiltin)
-                {
-                    // Drop any user-library copy of this name (currently-shipped
-                    // names are owned by the built-in folder; retired names are
-                    // stale orphans).
-                    if (UserPresets.HasGamePreset(name))
-                    {
-                        BuiltinPresetWriter.DeleteGame(UserPresets.CurrentFolder, name);
-                        removedFiles++;
-                    }
-                    // Drop orphan user-defaults pointing at this name IF the
-                    // name is no longer in the current built-in folder. If it
-                    // is still shipped, the binding is fine (points at the
-                    // factory copy, which is the user's intent).
-                    if (!BuiltinPresets.IsBuiltin(name))
-                    {
-                        var hits = new List<string>();
-                        foreach (var kv in UserPresets.GameDefaults)
-                            if (kv.Value == name) hits.Add(kv.Key);
-                        foreach (var k in hits)
-                        {
-                            BuiltinPresetWriter.RemoveGameDefault(UserPresets.CurrentFolder, k);
-                            removedDefaults++;
-                        }
-                    }
-                }
-                if (removedFiles > 0 || removedDefaults > 0)
-                {
-                    UserPresets.Reload();
-                    SimHub.Logging.Current.Info(
-                        $"[Trueforce] Cleaned up {removedFiles} superseded built-in copy/copies and {removedDefaults} orphan default(s) from the user library.");
-                }
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Warn($"[Trueforce] User-library cleanup failed: {ex.Message}");
-            }
-        }
+        // True if the name is either currently shipped as a built-in or was
+        // shipped and later retired. Used to recognise legacy factory entries
+        // in Settings.Presets during the one-time migration.
+        private bool IsFactoryBuiltinName(string name)
+            => !string.IsNullOrEmpty(name)
+            && (BuiltinPresets.IsBuiltin(name) || RetiredBuiltinNames.Contains(name));
 
         /// <summary>Make a timestamped sibling backup of the plugin's
         /// GeneralSettings.json. Used before destructive migrations.</summary>

@@ -331,22 +331,6 @@ namespace TrueforceForAll.Plugin
         public bool ShouldSerializeCarDefaults()   => !CarsMigratedV2;
         public bool ShouldSerializeCarOverrides()  => !CarsMigratedV2;
 
-        // Cumulative set of every preset name that has been a built-in on this
-        // install. Persisted at the end of Init by appending the current
-        // BuiltinPresets folder set. Never shrinks: a name that drops out of
-        // the folder (i.e. a retired built-in) still stays here so the next
-        // migration / cleanup pass knows it was once factory content. Replaces
-        // the hand-maintained "ever shipped" list. Seeded once with the
-        // pre-v0.1.21 names for the initial upgrade from any earlier version.
-        public List<string> LastKnownBuiltinNames { get; set; } = new List<string>();
-
-        // Flips to true after the one-shot user-library cleanup runs. The
-        // cleanup drops user-library files / orphan defaults whose names were
-        // ever a built-in, catching leftovers from earlier migrations. Gated
-        // on this flag so it only runs ONCE: after that, user-named files
-        // (even ones reusing a retired built-in name) are off-limits.
-        public bool BuiltinCleanupV1Done { get; set; } = false;
-
         // Developer mode unlock. Set by the DEV access code; reveals the
         // Developer panel + built-in export/import/reseed/validate buttons.
         // Persisted so it stays on across restarts on a dev machine.
