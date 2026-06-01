@@ -225,6 +225,10 @@ namespace TrueforceForAll.Plugin
             public string BuiltinLabel => Builtin ? "Built-in" : "";
             public List<string> Defaults { get; set; } = new List<string>();
             public string DefaultForLabel => Defaults.Count == 0 ? "" : string.Join(", ", Defaults);
+            // Bound by the expandable-row template's details area; populated
+            // at row creation in ReloadGames so each row carries its own
+            // summary string, no per-click rebuild needed.
+            public string DetailsText { get; set; }
         }
 
         private sealed class CarRow : PresetRowBase
@@ -237,6 +241,7 @@ namespace TrueforceForAll.Plugin
             public string BuiltinLabel => Builtin ? "Built-in" : "";
             public bool   Active { get; set; }
             public string ActiveLabel => Active ? "★" : "";
+            public string DetailsText { get; set; }
         }
 
         private sealed class CustomRow : PresetRowBase
@@ -564,11 +569,13 @@ namespace TrueforceForAll.Plugin
             {
                 if (_builtinsOnly && !_plugin.IsBuiltinPreset(name)) continue;
                 reverseDefaults.TryGetValue(name, out var defaults);
+                _plugin.Settings.Presets.TryGetValue(name, out var snap);
                 _gameRows.Add(new GameRow
                 {
-                    Name     = name,
-                    Builtin  = _plugin.IsBuiltinPreset(name),
-                    Defaults = defaults ?? new List<string>(),
+                    Name        = name,
+                    Builtin     = _plugin.IsBuiltinPreset(name),
+                    Defaults    = defaults ?? new List<string>(),
+                    DetailsText = BuildGameDetailsText(snap),
                 });
             }
             GameList_SelectionChanged(null, null);
@@ -597,11 +604,12 @@ namespace TrueforceForAll.Plugin
                     if (_builtinsOnly && !entry.IsBuiltin) continue;
                     _carRows.Add(new CarRow
                     {
-                        CarId      = carId,
-                        PresetName = entry.PresetName,
-                        GameName   = entry.GameName,
-                        Builtin    = entry.IsBuiltin,
-                        Active     = string.Equals(activeName, entry.PresetName, StringComparison.Ordinal),
+                        CarId       = carId,
+                        PresetName  = entry.PresetName,
+                        GameName    = entry.GameName,
+                        Builtin     = entry.IsBuiltin,
+                        Active      = string.Equals(activeName, entry.PresetName, StringComparison.Ordinal),
+                        DetailsText = BuildCarDetailsText(carId, entry),
                     });
                 }
             }
@@ -757,23 +765,14 @@ namespace TrueforceForAll.Plugin
         private void GameList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             RefreshGameButtons();
-            UpdateGameDetails();
         }
 
-        // Read-only summary of the selected game preset's contents (master gain,
-        // FFB, and each effect's on/off + gain). Reflection over the effect
-        // objects keeps this in step with new effects without per-type code.
-        private void UpdateGameDetails()
+        // Read-only summary of a game preset's contents (master gain, FFB,
+        // and each effect's on/off + gain). Built once per row at ReloadGames
+        // and bound by the expandable-row template's details area.
+        private static string BuildGameDetailsText(GameSettingsSnapshot snap)
         {
-            if (GameDetailsText == null) return;
-            var sel = SelectedGame;
-            if (sel == null || _plugin?.Settings?.Presets == null
-                || !_plugin.Settings.Presets.TryGetValue(sel.Name, out var snap) || snap == null)
-            {
-                if (GameDetailsPanel != null) GameDetailsPanel.Visibility = Visibility.Collapsed;
-                return;
-            }
-            if (GameDetailsPanel != null) GameDetailsPanel.Visibility = Visibility.Visible;
+            if (snap == null) return "";
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"Master gain: {snap.MasterGain:0.##}");
             sb.AppendLine($"FFB pass-through: scale {snap.FfbScale:0.##}, smooth {snap.FfbSmoothTimeConstantMs:0} ms, invert {(snap.FfbInvertSign ? "on" : "off")}");
@@ -789,7 +788,7 @@ namespace TrueforceForAll.Plugin
             AppendEffectLine(sb, "Collision",        snap.Collision);
             AppendEffectLine(sb, "Rev limiter",      snap.RevLimiter);
             AppendEffectLine(sb, "Airborne ducking", snap.Airborne);
-            GameDetailsText.Text = sb.ToString().TrimEnd();
+            return sb.ToString().TrimEnd();
         }
 
         private static void AppendEffectLine(System.Text.StringBuilder sb, string label, object eff)
@@ -810,33 +809,17 @@ namespace TrueforceForAll.Plugin
         private void CarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             RefreshCarButtons();
-            UpdateCarDetails();
         }
 
-        // Selected car-preset summary. Lists which override sections the
-        // preset sets (vs falling through to the game default) and whether
-        // each is enabled. Hides the panel when no row is selected.
-        private void UpdateCarDetails()
+        // Per-car-preset summary: which override sections are set vs which
+        // fall through to the game default. Built once at ReloadCars.
+        private static string BuildCarDetailsText(string carId, CarPresetEntry entry)
         {
-            if (CarDetailsText == null) return;
-            var sel = SelectedCar;
-            if (sel == null || _plugin == null)
-            {
-                if (CarDetailsPanel != null) CarDetailsPanel.Visibility = Visibility.Collapsed;
-                return;
-            }
-            var perCar = _plugin.GetCarPresets(sel.CarId);
-            if (perCar == null || !perCar.TryGetValue(sel.PresetName, out var entry)
-                || entry?.Override == null)
-            {
-                if (CarDetailsPanel != null) CarDetailsPanel.Visibility = Visibility.Collapsed;
-                return;
-            }
-            CarDetailsPanel.Visibility = Visibility.Visible;
+            if (entry?.Override == null) return "";
             var ov = entry.Override;
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"Game: {(string.IsNullOrEmpty(entry.GameName) ? "(none)" : entry.GameName)}");
-            sb.AppendLine($"Car ID: {sel.CarId}");
+            sb.AppendLine($"Car ID: {carId}");
             sb.AppendLine($"Source: {(entry.IsBuiltin ? "Built-in" : "User preset")}");
             sb.AppendLine();
             sb.AppendLine("Override sections (unset sections follow the game default):");
@@ -851,7 +834,7 @@ namespace TrueforceForAll.Plugin
             AppendEffectLine(sb, "Collision",        ov.Collision);
             AppendEffectLine(sb, "Rev limiter",      ov.RevLimiter);
             AppendEffectLine(sb, "Airborne ducking", ov.Airborne);
-            CarDetailsText.Text = sb.ToString().TrimEnd();
+            return sb.ToString().TrimEnd();
         }
 
         // Click the already-selected row to deselect it (and collapse the
