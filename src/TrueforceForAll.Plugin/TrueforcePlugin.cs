@@ -2220,6 +2220,19 @@ namespace TrueforceForAll.Plugin
                 int? ordinal = fzForCarId?.CurrentCarOrdinal;
                 if (ordinal.HasValue) carId = "Car_" + ordinal.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
+            // Runtime alias: a legacy Forza_<n> id arriving from any source
+            // (older SimHub build, third-party plugin, an older Trueforce
+            // install that wasn't normalized yet) gets rewritten to Car_<n>
+            // before any lookup. Without this, a stored Car_<n> preset would
+            // miss when telemetry happens to feed us the Forza_ shape.
+            // Forza-game scoped so a hypothetical non-Forza carId starting
+            // with "Forza_" wouldn't get clobbered.
+            if (!string.IsNullOrEmpty(carId)
+                && IsForzaGameName(_activeGame)
+                && carId.StartsWith("Forza_", System.StringComparison.Ordinal))
+            {
+                carId = "Car_" + carId.Substring("Forza_".Length);
+            }
             // Forza un-sets the active car whenever the game loses focus
             // (alt-tab, screensaver, etc.), then re-sets it the moment focus
             // returns. Treating those transient nulls as a real "car gone"
