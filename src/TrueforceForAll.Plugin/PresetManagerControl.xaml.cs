@@ -1212,6 +1212,63 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
         }
 
+        // True while a header "select all" click is iterating its rows; the
+        // per-row check handler skips re-syncing the header during that loop.
+        private bool _bulkCheckInFlight;
+
+        private void GameSelectAll_Click(object sender, RoutedEventArgs e)
+            => HandleSelectAllClick(GameSelectAllCheck, GetVisible<GameRow>(_gameRows), RefreshGameButtons);
+
+        private void CarSelectAll_Click(object sender, RoutedEventArgs e)
+            => HandleSelectAllClick(CarSelectAllCheck, GetVisible<CarRow>(_carRows), RefreshCarButtons);
+
+        private void CustomSelectAll_Click(object sender, RoutedEventArgs e)
+            => HandleSelectAllClick(CustomSelectAllCheck, GetVisible<CustomRow>(_customRows), RefreshCustomButtons);
+
+        // Iterate the filter-visible rows (so the header acts on what the
+        // user can actually see) and stamp their IsChecked to match the
+        // header. Guard rerun of UpdateSelectAllState() while doing it, then
+        // run the row-button refresh once at the end.
+        private void HandleSelectAllClick<T>(CheckBox header, IEnumerable<T> rows, Action refreshButtons)
+            where T : PresetRowBase
+        {
+            if (header == null) return;
+            bool target = header.IsChecked == true;
+            try
+            {
+                _bulkCheckInFlight = true;
+                foreach (var r in rows)
+                    if (r.IsChecked != target) r.IsChecked = target;
+            }
+            finally { _bulkCheckInFlight = false; }
+            refreshButtons?.Invoke();
+        }
+
+        // Walk the default CollectionView so the result respects the active
+        // search / filter chip (header acts on visible rows only).
+        private static IEnumerable<T> GetVisible<T>(System.Collections.IEnumerable source)
+        {
+            var view = CollectionViewSource.GetDefaultView(source);
+            foreach (var item in view) if (item is T t) yield return t;
+        }
+
+        // Sync the header checkbox tri-state from how many visible rows are
+        // checked: 0 -> false, all -> true, mixed -> null (indeterminate).
+        private static void UpdateSelectAllHeader<T>(CheckBox header, IEnumerable<T> visibleRows)
+            where T : PresetRowBase
+        {
+            if (header == null) return;
+            int total = 0, on = 0;
+            foreach (var r in visibleRows) { total++; if (r.IsChecked) on++; }
+            // Header has IsThreeState=false; we still want indeterminate
+            // visually -- setting IsChecked to null works for that even with
+            // IsThreeState=false (it just blocks USER cycling through null).
+            if (total == 0)       header.IsChecked = false;
+            else if (on == 0)     header.IsChecked = false;
+            else if (on == total) header.IsChecked = true;
+            else                  header.IsChecked = null;
+        }
+
         // Bulk-capable buttons (Delete, Export) light up when any row is
         // checked, even if the highlighted row is built-in or no row is
         // selected, the action operates on the checked set in that case.
@@ -1250,6 +1307,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // Bulk delete labels: clue the user that the action applies to
             // the checked set, not the highlighted row.
             GameDeleteBtn.Content = checkedNonBuiltin > 0 ? $"Delete ({checkedNonBuiltin})" : "Delete";
+            if (!_bulkCheckInFlight)
+                UpdateSelectAllHeader(GameSelectAllCheck, GetVisible<GameRow>(_gameRows));
         }
 
         private void RefreshCarButtons()
@@ -1289,6 +1348,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             CarCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
             CarDeleteBtn.Content = checkedNonBuiltin > 0 ? $"Delete ({checkedNonBuiltin})" : "Delete";
+            if (!_bulkCheckInFlight)
+                UpdateSelectAllHeader(CarSelectAllCheck, GetVisible<CarRow>(_carRows));
         }
 
         private void RefreshCustomButtons()
@@ -1301,6 +1362,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             CustomCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
             CustomDeleteBtn.Content = checkedCount > 0 ? $"Delete ({checkedCount})" : "Delete";
+            if (!_bulkCheckInFlight)
+                UpdateSelectAllHeader(CustomSelectAllCheck, GetVisible<CustomRow>(_customRows));
         }
 
         // ===================== Game preset actions =====================

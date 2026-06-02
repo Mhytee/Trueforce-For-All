@@ -182,6 +182,11 @@
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
+                                    <GridViewColumn.Header>
+                                        <CheckBox x:Name="GameSelectAllCheck" IsThreeState="False"
+                                                  Click="GameSelectAll_Click" HorizontalAlignment="Center"
+                                                  ToolTip="Check / uncheck every visible game preset."/>
+                                    </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
@@ -240,6 +245,11 @@
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
+                                    <GridViewColumn.Header>
+                                        <CheckBox x:Name="CarSelectAllCheck" IsThreeState="False"
+                                                  Click="CarSelectAll_Click" HorizontalAlignment="Center"
+                                                  ToolTip="Check / uncheck every visible car preset."/>
+                                    </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
@@ -282,6 +292,11 @@
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Width="34">
+                                    <GridViewColumn.Header>
+                                        <CheckBox x:Name="CustomSelectAllCheck" IsThreeState="False"
+                                                  Click="CustomSelectAll_Click" HorizontalAlignment="Center"
+                                                  ToolTip="Check / uncheck every visible custom engine."/>
+                                    </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
