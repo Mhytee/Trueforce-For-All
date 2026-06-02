@@ -62,9 +62,11 @@ CloseApplications=yes
 RestartApplications=yes
 
 ; EULA.txt (safety notice + liability disclaimer) is the accept-to-install
-; page. The GPL-2.0 LICENSE is referenced by the EULA and shipped into {app}
-; (see [Files]) rather than shown on the accept page.
+; page (LicenseFile). The GPL-2.0 LICENSE is shown as an Information page at
+; install (InfoBeforeFile) so users still read it, and is shipped into {app}
+; (see [Files]).
 LicenseFile=..\EULA.txt
+InfoBeforeFile=..\LICENSE
 SetupIconFile=
 
 ; Remove pre-rebrand plugin files. Pre-1.0 builds shipped under the old
