@@ -14,6 +14,12 @@ the diagnostics block, the changelog dialog, and the auto-updater all read
 at runtime. The installer build picks it up via the `TRUEFORCEFORALL_VERSION`
 environment variable (step 6 below); set that to the same value.
 
+If you edit `EULA.txt` or `LICENSE`, bump `#define LegalRevision` in
+`installer/TrueforceForAll.iss`. The installer records the revision each user
+agreed to and skips the license + EULA pages on a later update only while it
+still matches; bumping forces those pages to be shown (and re-accepted) once
+after the text changes.
+
 For each release:
 
 1. Bump `<Version>X.Y.Z</Version>` in
