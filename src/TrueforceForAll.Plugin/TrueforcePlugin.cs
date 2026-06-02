@@ -135,7 +135,7 @@ namespace TrueforceForAll.Plugin
         public  ITelemetrySource      TelemetrySource => _telemetrySource;
 
         // ---- Port discovery ----
-        // When a UDP source (Forza or F1) has been running without
+        // When a UDP source (Forza) has been running without
         // receiving anything, kick off a scan across known alternate
         // ports to find where the game is actually sending. UI subscribes
         // to DiscoveredAlternatePort to surface a "switch to port X?"
@@ -156,7 +156,7 @@ namespace TrueforceForAll.Plugin
         private int  _discoveredAlternatePort;
         public int DiscoveredAlternatePort => System.Threading.Volatile.Read(ref _discoveredAlternatePort);
         /// <summary>Fired on a worker thread when a port scan succeeds.
-        /// Args: (gameKind "forza"/"f1", discoveredPort).</summary>
+        /// Args: (gameKind "forza", discoveredPort).</summary>
         public event Action<string, int> AlternatePortDiscovered;
 
         /// <summary>True when the active game is one SimHub has a telemetry
@@ -700,13 +700,12 @@ namespace TrueforceForAll.Plugin
                 double hz = src?.MeasuredHz ?? 0;
                 if (hz <= 0)
                 {
-                    // Forza / F1 deliver telemetry over UDP. If nothing has EVER
+                    // Forza delivers telemetry over UDP. If nothing has EVER
                     // arrived this session it's a UDP-setup problem, not a pause,
                     // so point at the setup instead of the generic menu/paused
                     // line (which would just duplicate the UDP setup banner).
                     long udpPackets = -1;
                     if (src is TrueforceForAll.Core.ForzaUdpTelemetrySource fz) udpPackets = fz.PacketsReceived;
-                    else if (src is TrueforceForAll.Core.F1UdpTelemetrySource f1) udpPackets = f1.PacketsReceived;
                     // Nothing has ever arrived: this is a UDP-setup case, owned
                     // by the dedicated setup banner (with its "Set up..." button).
                     // Stay silent here so we don't duplicate that with a text
@@ -1476,6 +1475,30 @@ namespace TrueforceForAll.Plugin
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
             LoadAndMigrateCarPresets();
+
+            // One-time cleanup: walk user/games + user/cars looking for
+            // files that are leftovers from before the file-based factory
+            // (commit c89c3f7 era). Game match = IsFactoryBuiltinName
+            // (current built-in OR retired-name list); car match =
+            // (carId, presetName) tuple exists in factory's CarPresetJsons,
+            // OR the file's own IsBuiltin tag is true, OR presetName
+            // matches IsFactoryBuiltinName. Archives matches to a backup
+            // folder + drops the matching entries from user/game-defaults
+            // and user/car-defaults so the factory seed takes over.
+            //
+            // Runs AFTER LoadAndMigrateCarPresets so user/cars reflects
+            // the full set of user-tier car files (step 1 of that method
+            // creates files from legacy Settings.CarOverrides). Flag
+            // stamps so it runs exactly once.
+            if (!Settings.LegacyBuiltinsCleanedV1)
+            {
+                CleanupLegacyBuiltinsInUserLibrary();
+                Settings.LegacyBuiltinsCleanedV1 = true;
+                // Re-run the car cache rebuild so Settings.CarDefaults
+                // reflects the post-cleanup state (factory seed for
+                // bindings whose user-side entry just got dropped).
+                LoadAndMigrateCarPresets();
+            }
             MigrateEngineHighRpmHelpersDefaults();
             // One-shot: bump rev-limiter engage threshold 0.97 -> 0.85 for
             // presets still on the old default (issue #8). Runs after the car
@@ -2941,12 +2964,6 @@ namespace TrueforceForAll.Plugin
         /// launched title.</summary>
         public bool IsGameRunning  => !string.IsNullOrEmpty(_currentGameName);
         public bool IsForzaRunning => IsForzaGameName(_currentGameName);
-        public bool IsF1Running    => IsF1GameName(_currentGameName);
-
-        /// <summary>True when the F1 UDP section should be visible.</summary>
-        public bool ShouldShowF1Section =>
-            IsF1GameName(_activeGame)
-            || (Settings?.F1?.AlwaysListen == true);
 
         /// <summary>True when the rim rev-LED + MAIRA section should be
         /// visible. iRacing-only: that is the sole game where the LEDs
@@ -3010,21 +3027,6 @@ namespace TrueforceForAll.Plugin
         /// that won't apply. Other sources unchanged.</summary>
         public bool ActiveSourceSupportsStationarySpring =>
             !(_telemetrySource is ForzaUdpTelemetrySource);
-
-        /// <summary>True if SimHub's GameName looks like an EA / Codemasters
-        /// F1 title we target. Currently F1 25 is the only validated wire
-        /// format; older games (F1 22/23/24) may receive packets but the
-        /// source skips PacketFormat != 2025 with a one-time log line. The
-        /// UI section still renders for those names so a user can confirm
-        /// that's why packets aren't parsing.</summary>
-        private static bool IsF1GameName(string game)
-        {
-            if (string.IsNullOrEmpty(game)) return false;
-            return game == "F12025"
-                || game == "F12024"
-                || game == "F12023"
-                || game == "F12022";
-        }
 
         /// <summary>True if SimHub's GameName looks like any Forza title
         /// (Horizon or Motorsport). Drives Forza UDP section visibility.
@@ -3159,35 +3161,6 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
-            else if (IsF1GameName(game) || Settings?.F1?.AlwaysListen == true)
-            {
-                // Like Forza, the F1 UDP reader is the only source of F1's
-                // per-wheel slip / DRS / pit-limiter data, so it's always on for
-                // F1 (no user toggle); it binds only while an F1 title is the
-                // active game (or AlwaysListen is set), and a port conflict falls
-                // back to SimHub below.
-                try
-                {
-                    var bindIp = ParseIpOrAny(Settings.F1.BindAddress);
-                    var forwardTo = BuildF1ForwardEndpoint(Settings.F1);
-                    var f1 = new F1UdpTelemetrySource(Settings.F1.Port, bindIp, forwardTo)
-                    {
-                        Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
-                    };
-                    f1.Start();
-                    newSource = f1;
-                }
-                catch (Exception ex)
-                {
-                    if (!silent)
-                    {
-                        SimHub.Logging.Current.Info(
-                            $"[Trueforce] F1 UDP source unavailable on port {Settings.F1.Port} " +
-                            $"({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
-                            "If another listener holds the port, change Trueforce's port to a free one and re-point F1's UDP Telemetry to it.");
-                    }
-                }
-            }
             if (newSource == null) newSource = _simHubSource;
             if (newSource == _telemetrySource) return;
 
@@ -3200,7 +3173,7 @@ namespace TrueforceForAll.Plugin
             _telemetrySource = newSource;
 
             // Reset port-discovery state on every source swap so a fresh
-            // start (Forza was idle, F1 just launched, port changed in
+            // start (Forza was idle or just launched, port changed in
             // settings, etc.) restarts the discovery cycle.
             _discoverySourceStartedTicks = Stopwatch.GetTimestamp();
             _discoveryNextAttemptTicks   = 0;
@@ -3221,7 +3194,7 @@ namespace TrueforceForAll.Plugin
         // ---------- Port discovery ----------
 
         // Polled from DataUpdate. Triggers a scan when:
-        //   - The active source is a UDP source (Forza or F1).
+        //   - The active source is a UDP source (Forza).
         //   - It's been running for >DiscoveryNoPacketsTriggerMs without
         //     receiving any packets.
         //   - The retry-interval gate has elapsed (DiscoveryRetryIntervalMs
@@ -3253,14 +3226,6 @@ namespace TrueforceForAll.Plugin
                 validator   = ForzaUdpTelemetrySource.IsValidPacketCandidate;
                 kind        = "forza";
             }
-            else if (src is F1UdpTelemetrySource f1)
-            {
-                received    = f1.PacketsReceived;
-                candidates  = F1UdpTelemetrySource.DiscoveryCandidatePorts;
-                currentPort = Settings?.F1?.Port ?? 0;
-                validator   = F1UdpTelemetrySource.IsValidPacketCandidate;
-                kind        = "f1";
-            }
             else return;
 
             if (received > 0) return;
@@ -3288,8 +3253,7 @@ namespace TrueforceForAll.Plugin
 
             _discoveryScanInFlight = true;
 
-            var bindIp = ParseIpOrAny(
-                kind == "forza" ? Settings?.Forza?.BindAddress : Settings?.F1?.BindAddress);
+            var bindIp = ParseIpOrAny(Settings?.Forza?.BindAddress);
             System.Threading.Tasks.Task.Run(() =>
             {
                 int hit = 0;
@@ -3326,7 +3290,7 @@ namespace TrueforceForAll.Plugin
             });
         }
 
-        /// <summary>UI hook: switch the F1 (or Forza) listener to the
+        /// <summary>UI hook: switch the Forza listener to the
         /// just-discovered port and persist. Returns true if the switch
         /// was applied.</summary>
         public bool AdoptDiscoveredAlternatePort()
@@ -3339,11 +3303,6 @@ namespace TrueforceForAll.Plugin
             {
                 Settings.Forza.Port = port;
                 ApplyForzaSettings();
-            }
-            else if (src is F1UdpTelemetrySource && Settings.F1 != null)
-            {
-                Settings.F1.Port = port;
-                ApplyF1Settings();
             }
             else return false;
 
@@ -3372,27 +3331,6 @@ namespace TrueforceForAll.Plugin
         // invalid, the source treats null as "don't forward." Hostname (vs
         // IP) lookups go through Dns.GetHostAddresses so users can type
         // "localhost" or a NAS hostname; first resolved address wins.
-        /// <summary>Same as BuildForzaForwardEndpoint, for the F1 forwarder.</summary>
-        private static IPEndPoint BuildF1ForwardEndpoint(F1Settings fs)
-        {
-            if (fs == null || !fs.ForwardEnabled) return null;
-            if (fs.ForwardPort < 1 || fs.ForwardPort > 65535) return null;
-            string host = string.IsNullOrWhiteSpace(fs.ForwardHost) ? "127.0.0.1" : fs.ForwardHost.Trim();
-            try
-            {
-                if (IPAddress.TryParse(host, out var ip))
-                    return new IPEndPoint(ip, fs.ForwardPort);
-                var addrs = System.Net.Dns.GetHostAddresses(host);
-                foreach (var a in addrs)
-                {
-                    if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                        return new IPEndPoint(a, fs.ForwardPort);
-                }
-            }
-            catch { }
-            return null;
-        }
-
         private static IPEndPoint BuildForzaForwardEndpoint(ForzaSettings fs)
         {
             if (fs == null || !fs.ForwardEnabled) return null;
@@ -3432,7 +3370,7 @@ namespace TrueforceForAll.Plugin
             // dispose runs cleanly before SwapTelemetrySource (re)builds.
             // SwapTelemetrySource decides what to attach next based on the
             // new settings + active game; if we're disabling, it'll fall
-            // through to a non-Forza source (F1 if applicable, else SimHub).
+            // through to a non-Forza source (SimHub).
             if (currentlyForza)
             {
                 var oldFz = _telemetrySource;
@@ -3440,28 +3378,6 @@ namespace TrueforceForAll.Plugin
                 _simHubSource.OnFrame = DispatchFrame;
                 _telemetrySource = _simHubSource;
                 try { oldFz.Dispose(); } catch { }
-            }
-            SwapTelemetrySource(_activeGame);
-        }
-
-        /// <summary>Same shape as ApplyForzaSettings, for the F1 source.</summary>
-        public void ApplyF1Settings()
-        {
-            if (Settings?.F1 == null) return;
-            this.SaveCommonSettings("GeneralSettings", Settings);
-
-            bool currentlyF1 = _telemetrySource is F1UdpTelemetrySource;
-            bool shouldListen = Settings.F1.AlwaysListen
-                             || (!string.IsNullOrEmpty(_activeGame) && IsF1GameName(_activeGame));
-            if (!currentlyF1 && !shouldListen) return;
-
-            if (currentlyF1)
-            {
-                var oldF1 = _telemetrySource;
-                oldF1.OnFrame = null;
-                _simHubSource.OnFrame = DispatchFrame;
-                _telemetrySource = _simHubSource;
-                try { oldF1.Dispose(); } catch { }
             }
             SwapTelemetrySource(_activeGame);
         }
@@ -4478,6 +4394,301 @@ namespace TrueforceForAll.Plugin
                 $"[Trueforce] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car file(s) + {skippedFactoryCarDefaults} factory-bound default(s); {failedCars} failed).");
         }
 
+        // Rewrite legacy "Forza_<n>" identifiers to today's "Car_<n>" form.
+        // Used by the cleanup pass when matching user car files against
+        // BuiltinPresets.CarPresetJsons keys. Mirrors the runtime alias
+        // applied in CarOverridesForCar at ~line 2325 so a pre-NORMALIZEFORZA
+        // file's (CarId, PresetName) tuple finds its current factory entry.
+        private static string NormalizeForzaPrefix(string s)
+            => s != null && s.StartsWith("Forza_", StringComparison.Ordinal)
+                ? "Car_" + s.Substring("Forza_".Length)
+                : s;
+
+        /// <summary>Walk user/games and user/cars looking for files whose
+        /// stems match a current OR retired built-in name, archive them to
+        /// a timestamped backup folder, and drop the matching entries from
+        /// user/game-defaults.json + user/car-defaults.json so the factory
+        /// seed takes over on the next cache rebuild. Idempotent because
+        /// the caller stamps LegacyBuiltinsCleanedV1=true; restoring files
+        /// from the backup and clearing the flag re-runs it.</summary>
+        private void CleanupLegacyBuiltinsInUserLibrary()
+        {
+            string folder = UserPresets.CurrentFolder;
+            if (string.IsNullOrEmpty(folder) || !System.IO.Directory.Exists(folder))
+                return;
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+
+            // ---- Games ----
+            int archivedGames = 0;
+            var droppedGameDefaults = new List<string>();
+            try
+            {
+                string gamesDir = System.IO.Path.Combine(folder, "games");
+                if (System.IO.Directory.Exists(gamesDir))
+                {
+                    string backupDir = System.IO.Path.Combine(gamesDir, $".cleanup-{stamp}");
+                    bool createdBackup = false;
+                    var archivedNames = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var path in System.IO.Directory.GetFiles(gamesDir, "*.json"))
+                    {
+                        string stem = System.IO.Path.GetFileNameWithoutExtension(path);
+                        if (!IsFactoryBuiltinName(stem)) continue;
+                        if (!createdBackup) { System.IO.Directory.CreateDirectory(backupDir); createdBackup = true; }
+                        string dest = System.IO.Path.Combine(backupDir, System.IO.Path.GetFileName(path));
+                        try
+                        {
+                            if (System.IO.File.Exists(dest)) System.IO.File.Delete(dest);
+                            System.IO.File.Move(path, dest);
+                            archivedNames.Add(stem);
+                            archivedGames++;
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't archive '{path}': {ex.Message}");
+                        }
+                    }
+
+                    // Drop user/game-defaults entries that pointed at any
+                    // file we just archived; the factory seed re-binds.
+                    if (archivedNames.Count > 0)
+                    {
+                        string dpath = System.IO.Path.Combine(folder, BuiltinPresetStore.GameDefaultsFileName);
+                        if (System.IO.File.Exists(dpath))
+                        {
+                            try
+                            {
+                                var o = Newtonsoft.Json.Linq.JObject.Parse(System.IO.File.ReadAllText(dpath));
+                                var stale = new List<string>();
+                                foreach (var p in o.Properties())
+                                    if (archivedNames.Contains((string)p.Value)) stale.Add(p.Name);
+                                foreach (var k in stale)
+                                {
+                                    o.Remove(k);
+                                    droppedGameDefaults.Add(k);
+                                }
+                                if (stale.Count > 0)
+                                    System.IO.File.WriteAllText(dpath,
+                                        o.ToString(Newtonsoft.Json.Formatting.Indented));
+                            }
+                            catch (Exception ex)
+                            {
+                                SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't rewrite user game-defaults: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup (games) failed: {ex.Message}");
+            }
+
+            // ---- Cars ----
+            // Reads each user-tier car file and asks whether it's a leftover
+            // duplicate of a factory built-in. Match signals (any one
+            // triggers archive):
+            //   (a) inside-file (CarId, PresetName), with carId normalized
+            //       Forza_<n> -> Car_<n>, matches a key in
+            //       BuiltinPresets.CarPresetJsons. The normalization
+            //       handles legacy Forza_<n> ids that pre-date the
+            //       NORMALIZEFORZA migration; the inside-file CarId
+            //       handles names containing ':' (Wreckfest car11:default)
+            //       that the path sanitizes to '_'.
+            //   (b) file's own IsBuiltin=true tag (rare for user files but
+            //       possible if migration ever marked one).
+            //   (c) PresetName matches IsFactoryBuiltinName (the game-side
+            //       check, in case a car preset was named like a retired
+            //       game built-in).
+            // Refuses to match on carId alone: the user may have
+            // legitimately authored a custom preset under a different
+            // PresetName for the same car (e.g. user's
+            // ks_toyota_ae86_tuned vs factory's ks_toyota_ae86_tuned1).
+            //
+            // For files we DON'T archive (genuine user presets) that have
+            // an empty GameName, infer the GameName from factory's
+            // carId->game map and rewrite the file in place so the manager
+            // shows the correct game in the row.
+            int archivedCars = 0;
+            int rewroteCarGameNames = 0;
+            var droppedCarDefaults = new List<string>();
+            try
+            {
+                string carsRoot = System.IO.Path.Combine(folder, "cars");
+                if (System.IO.Directory.Exists(carsRoot))
+                {
+                    // Pre-compute factory carId -> game map for GameName
+                    // inference on retained user files. Walks the factory
+                    // cars/ directory once.
+                    var factoryCarGames = new Dictionary<string, string>(StringComparer.Ordinal);
+                    try
+                    {
+                        string factoryCarsRoot = System.IO.Path.Combine(BuiltinPresets.CurrentFolder ?? "", "cars");
+                        if (System.IO.Directory.Exists(factoryCarsRoot))
+                        {
+                            foreach (var gameDir in System.IO.Directory.GetDirectories(factoryCarsRoot))
+                            {
+                                string gameName = System.IO.Path.GetFileName(gameDir);
+                                foreach (var path in System.IO.Directory.GetFiles(gameDir, "*.json", System.IO.SearchOption.AllDirectories))
+                                {
+                                    try
+                                    {
+                                        var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(System.IO.File.ReadAllText(path));
+                                        if (f != null && !string.IsNullOrEmpty(f.CarId))
+                                            factoryCarGames[f.CarId] = gameName;
+                                    }
+                                    catch { /* malformed factory file, skip */ }
+                                }
+                            }
+                        }
+                    }
+                    catch { /* leave map empty if scan fails */ }
+
+                    string backupRoot = System.IO.Path.Combine(carsRoot, $".cleanup-{stamp}");
+                    bool createdBackup = false;
+                    var archivedCarKeys = new HashSet<string>(StringComparer.Ordinal); // carId/presetName
+                    var archivedCarPresetNames = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var gameDir in System.IO.Directory.GetDirectories(carsRoot))
+                    {
+                        string gameName = System.IO.Path.GetFileName(gameDir);
+                        if (gameName.StartsWith(".cleanup-", StringComparison.Ordinal)) continue;
+                        foreach (var carDir in System.IO.Directory.GetDirectories(gameDir))
+                        {
+                            string pathCarId = System.IO.Path.GetFileName(carDir);
+                            foreach (var path in System.IO.Directory.GetFiles(carDir, "*.json"))
+                            {
+                                string pathPresetName = System.IO.Path.GetFileNameWithoutExtension(path);
+
+                                // Load the file once: gets the real (inside-
+                                // file) CarId + PresetName + IsBuiltin and
+                                // lets us rewrite the GameName below if we
+                                // keep the file.
+                                CarPresetFile carFile = null;
+                                try { carFile = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(System.IO.File.ReadAllText(path)); }
+                                catch { /* malformed; leave it alone */ continue; }
+                                if (carFile == null) continue;
+
+                                string realCarId     = string.IsNullOrEmpty(carFile.CarId)      ? pathCarId      : carFile.CarId;
+                                string realPresetName = string.IsNullOrEmpty(carFile.PresetName) ? pathPresetName : carFile.PresetName;
+                                // Normalize Forza_<n> -> Car_<n> on BOTH the
+                                // carId and the presetName: pre-NORMALIZEFORZA
+                                // legacy stamped both halves with the same
+                                // string (Save(kv.Key, kv.Key, ...)), and
+                                // factory now uses Car_<n> for both.
+                                string normCarId      = NormalizeForzaPrefix(realCarId);
+                                string normPresetName = NormalizeForzaPrefix(realPresetName);
+                                string factoryKey     = normCarId + "/" + normPresetName;
+
+                                bool flagged = BuiltinPresets.CarPresetJsons.ContainsKey(factoryKey)
+                                            || carFile.IsBuiltin
+                                            || IsFactoryBuiltinName(realPresetName);
+
+                                if (!flagged)
+                                {
+                                    // Keep this file as a genuine user
+                                    // preset. If GameName is empty and the
+                                    // factory has a binding for this carId,
+                                    // populate GameName and rewrite the
+                                    // file so the manager shows it.
+                                    if (string.IsNullOrEmpty(carFile.GameName)
+                                        && factoryCarGames.TryGetValue(realCarId, out var inferredGame))
+                                    {
+                                        try
+                                        {
+                                            carFile.GameName = inferredGame;
+                                            System.IO.File.WriteAllText(path,
+                                                Newtonsoft.Json.JsonConvert.SerializeObject(carFile, Newtonsoft.Json.Formatting.Indented));
+                                            rewroteCarGameNames++;
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't backfill GameName for '{path}': {ex.Message}");
+                                        }
+                                    }
+                                    continue;
+                                }
+
+                                string destDir = System.IO.Path.Combine(backupRoot, gameName, pathCarId);
+                                if (!createdBackup) { System.IO.Directory.CreateDirectory(backupRoot); createdBackup = true; }
+                                System.IO.Directory.CreateDirectory(destDir);
+                                string dest = System.IO.Path.Combine(destDir, System.IO.Path.GetFileName(path));
+                                try
+                                {
+                                    if (System.IO.File.Exists(dest)) System.IO.File.Delete(dest);
+                                    System.IO.File.Move(path, dest);
+                                    archivedCarKeys.Add(factoryKey);
+                                    archivedCarPresetNames.Add(realPresetName);
+                                    archivedCars++;
+                                }
+                                catch (Exception ex)
+                                {
+                                    SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't archive car '{path}': {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+
+                    // Drop user/car-defaults entries whose target preset
+                    // no longer exists for that carId in the merged map
+                    // (user-tier + factory). Broader than archive-tracking:
+                    // catches bindings that were already stale before this
+                    // run (e.g. "Forza_4268 (default)" pointing at a preset
+                    // name that never existed, or one renamed long ago).
+                    // Without this, every Init logs the same "Car default
+                    // dropped" warnings forever because the in-memory
+                    // self-heal in LoadAndMigrateCarPresets never writes
+                    // back to disk.
+                    string carDefaultsPath = System.IO.Path.Combine(folder, BuiltinPresetStore.CarDefaultsFileName);
+                    if (System.IO.File.Exists(carDefaultsPath))
+                    {
+                        try
+                        {
+                            // Build the merged-loaded map once for membership checks.
+                            var loaded = _carStore != null ? _carStore.LoadAll() : new Dictionary<string, Dictionary<string, CarPresetEntry>>();
+                            MergeBuiltinCarPresetsInto(loaded);
+
+                            var o = Newtonsoft.Json.Linq.JObject.Parse(System.IO.File.ReadAllText(carDefaultsPath));
+                            var stale = new List<string>();
+                            foreach (var p in o.Properties())
+                            {
+                                string carIdKey   = p.Name;
+                                string presetVal  = (string)p.Value;
+                                if (string.IsNullOrEmpty(carIdKey) || string.IsNullOrEmpty(presetVal)) { stale.Add(carIdKey); continue; }
+                                if (!loaded.TryGetValue(carIdKey, out var perCar)) { stale.Add(carIdKey); continue; }
+                                if (perCar.ContainsKey(presetVal)) continue;  // exact match, keep
+                                // Case-insensitive tolerance, matching the runtime self-heal.
+                                bool ci = false;
+                                foreach (var k in perCar.Keys)
+                                    if (string.Equals(k, presetVal, StringComparison.OrdinalIgnoreCase)) { ci = true; break; }
+                                if (!ci) stale.Add(carIdKey);
+                            }
+                            foreach (var k in stale)
+                            {
+                                o.Remove(k);
+                                droppedCarDefaults.Add(k);
+                            }
+                            if (stale.Count > 0)
+                                System.IO.File.WriteAllText(carDefaultsPath,
+                                    o.ToString(Newtonsoft.Json.Formatting.Indented));
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't rewrite user car-defaults: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup (cars) failed: {ex.Message}");
+            }
+
+            // Force the in-memory user stores to reflect what's on disk now.
+            try { UserPresets.Reload(); } catch { }
+
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] Legacy-builtin cleanup: archived {archivedGames} game file(s) + {archivedCars} car file(s); dropped {droppedGameDefaults.Count} game-default binding(s) ({string.Join(",", droppedGameDefaults)}) + {droppedCarDefaults.Count} car-default binding(s) ({string.Join(",", droppedCarDefaults)}); backfilled GameName on {rewroteCarGameNames} retained user car file(s).");
+        }
+
         // Game-preset names we have shipped as factory built-ins in the past
         // and have since RETIRED (dropped the file from the shipped folder).
         // Used only by the one-time MigrateLegacyUserPresetsToFolder to skip
@@ -4492,7 +4703,22 @@ namespace TrueforceForAll.Plugin
         // that user; it only matters for someone still upgrading from v0.1.20.
         private static readonly HashSet<string> RetiredBuiltinNames = new HashSet<string>(StringComparer.Ordinal)
         {
+            // F1 25 was a brief experimental built-in, retired when we
+            // confirmed F1 22-25 are native-Trueforce out of scope.
             "F1 25 (default)",
+            // Names from the pre-file-based-factory era (before commit
+            // c89c3f7). Each was a hard-coded BuiltinPresetJsons entry in
+            // BuiltinPresets.cs at the time. The current shipped factory
+            // files have the " (Built-In)" suffix and live on disk under
+            // factory/games/, so any user-tier file still named with the
+            // old "(default)" suffix is a leftover from a pre-V2 install,
+            // not a user-authored preset. IsFactoryBuiltinName uses this
+            // list to recognise them so the cleanup migration archives
+            // them and lets the file-based factory take over.
+            "Assetto Corsa (default)",
+            "Forza Horizon (default)",
+            "iRacing (default)",
+            "Wreckfest 2 (default)",
         };
 
         // True if the name is either currently shipped as a built-in or was

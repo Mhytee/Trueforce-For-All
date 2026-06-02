@@ -33,21 +33,10 @@ namespace TrueforceForAll.Plugin
         private bool _forceForzaStall;
         private static readonly long ForzaStallExpandTicks =
             System.Diagnostics.Stopwatch.Frequency * 12;   // 12 s sustained zero packets
-        // F1 mirror of _forzaZeroSinceTicks, gating the persistent UDP-setup banner.
-        private long _f1ZeroSinceTicks;
-        // Which game's UDP section the setup banner should jump to.
-        private enum UdpSetupTarget { Forza, F1 }
-        private UdpSetupTarget _udpSetupTarget = UdpSetupTarget.Forza;
-        // UDP test code: 0 = off, 1 = force Forza banner, 2 = force F1 banner.
+        // UDP test code: 0 = off, 1 = force Forza banner.
         // Lets us exercise the setup-banner -> "Set up..." -> jump flow without a
-        // live (broken) Forza/F1 session.
+        // live (broken) Forza session.
         private int _forceUdpSetupBanner;
-        // Which game the unified "UDP telemetry" section is configuring. Auto
-        // follows the running game (the plugin already picks the parser from the
-        // detected game); Forza / F1 pin it so the user can pre-configure with
-        // nothing running. UI-only, defaults to Auto each session.
-        private enum UdpGame { Auto, Forza, F1 }
-        private UdpGame _udpGameSel = UdpGame.Auto;
         // CarIds we've already prompted to submit engine data for in this
         // SimHub session. The save-time prompt only fires for cars with no
         // resolver-cached engine info AND only once per car so a user who
@@ -352,18 +341,6 @@ namespace TrueforceForAll.Plugin
                     ForzaForwardEnabledCheck.IsChecked = fz.ForwardEnabled;
                     ForzaForwardHostBox.Text           = fz.ForwardHost ?? "127.0.0.1";
                     ForzaForwardPortBox.Text           = fz.ForwardPort > 0 ? fz.ForwardPort.ToString() : "";
-                }
-
-                // F1 section
-                var f1 = _plugin.Settings?.F1;
-                if (f1 != null)
-                {
-                    F1PortBox.Text                  = f1.Port.ToString();
-                    F1BindBox.Text                  = f1.BindAddress ?? "0.0.0.0";
-                    F1AlwaysListenCheck.IsChecked   = f1.AlwaysListen;
-                    F1ForwardEnabledCheck.IsChecked = f1.ForwardEnabled;
-                    F1ForwardHostBox.Text           = f1.ForwardHost ?? "127.0.0.1";
-                    F1ForwardPortBox.Text           = f1.ForwardPort > 0 ? f1.ForwardPort.ToString() : "";
                 }
 
                 // Header strip context. Prefer the resolver's DisplayName when
@@ -835,8 +812,8 @@ namespace TrueforceForAll.Plugin
                     if (UsbPcapReinstallButton.Visibility != want) UsbPcapReinstallButton.Visibility = want;
                 }
 
-                // Unified UDP telemetry section: the game selector decides which
-                // per-game body shows (Auto follows the detected game).
+                // UDP telemetry section: Forza is the only UDP game, so its
+                // config is always shown as the body of the expander.
                 UpdateUdpSectionVisibility();
                 if (RpmLedSection != null)
                 {
@@ -1019,9 +996,9 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
-                // Set by the Forza / F1 blocks below; drives the persistent
-                // UDP-setup banner once either game is running but silent.
-                bool forzaNeedsSetup = false, f1NeedsSetup = false;
+                // Set by the Forza block below; drives the persistent
+                // UDP-setup banner once Forza is running but silent.
+                bool forzaNeedsSetup = false;
 
                 if (ForzaStatusText != null)
                 {
@@ -1144,95 +1121,9 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
-                // F1 listener status. Mirrors the Forza shape but adds a
-                // separate yellow rate-warning when packets are arriving
-                // below the recommended 60 Hz threshold (so the user knows
-                // to bump UDP Send Rate in F1's settings).
-                if (F1StatusText != null)
-                {
-                    var f1Src = _plugin.TelemetrySource as TrueforceForAll.Core.F1UdpTelemetrySource;
-                    if (f1Src == null)
-                    {
-                        F1StatusText.Text = "(idle, not active for current game)";
-                        if (F1RateWarning != null) F1RateWarning.Visibility = System.Windows.Visibility.Collapsed;
-                        _f1ZeroSinceTicks = 0;
-                    }
-                    else if (f1Src.PacketsReceived == 0)
-                    {
-                        F1StatusText.Text =
-                            $"Listening on {(_plugin.Settings?.F1?.BindAddress ?? "0.0.0.0")}:{(_plugin.Settings?.F1?.Port ?? 0)}. No packets yet (check F1's UDP Telemetry settings).";
-                        if (F1RateWarning != null) F1RateWarning.Visibility = System.Windows.Visibility.Collapsed;
-                        // Mirror the Forza sustain gate so the banner doesn't
-                        // flash during the first second after a title launches,
-                        // and only prompt when the F1 process is actually running.
-                        long nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                        if (_f1ZeroSinceTicks == 0) _f1ZeroSinceTicks = nowTicks;
-                        if (nowTicks - _f1ZeroSinceTicks >= ForzaStallExpandTicks && _plugin.IsF1Running)
-                            f1NeedsSetup = true;
-                    }
-                    else
-                    {
-                        _f1ZeroSinceTicks = 0;
-                        double hz = f1Src.MeasuredHz;
-                        F1StatusText.Text = $"Receiving {f1Src.PacketsReceived:N0} packets at ~{hz:0} Hz";
-                        if (F1RateWarning != null)
-                        {
-                            // Only show the warning once we've seen enough
-                            // packets that MeasuredHz isn't a startup
-                            // transient. ~50 Hz is the trigger so 60 Hz with
-                            // a little jitter doesn't false-fire.
-                            bool warn = hz > 0 && hz < TrueforceForAll.Core.F1UdpTelemetrySource.LowRateThresholdHz
-                                        && f1Src.PacketsReceived > 30;
-                            F1RateWarning.Visibility = warn
-                                ? System.Windows.Visibility.Visible
-                                : System.Windows.Visibility.Collapsed;
-                            if (warn && F1RateWarningText != null)
-                            {
-                                F1RateWarningText.Text =
-                                    $"UDP Send Rate looks low (~{hz:0} Hz). Set it to 60Hz in F1's Telemetry Settings for the most responsive haptics.";
-                            }
-                        }
-                    }
-
-                    // F1 discovered-port banner.
-                    if (F1DiscoveryBanner != null)
-                    {
-                        int alt = _plugin.DiscoveredAlternatePort;
-                        bool show = f1Src != null && alt > 0;
-                        F1DiscoveryBanner.Visibility = show
-                            ? System.Windows.Visibility.Visible
-                            : System.Windows.Visibility.Collapsed;
-                        if (show && F1DiscoveryText != null)
-                        {
-                            F1DiscoveryText.Text =
-                                $"F1 packets detected on port {alt}. Switch to it?";
-                        }
-                    }
-
-                    // F1 forwarder status: mirrors the Forza shape.
-                    if (F1ForwardStatusText != null)
-                    {
-                        var fwd = _plugin.Settings?.F1;
-                        if (fwd == null || !fwd.ForwardEnabled)
-                        {
-                            F1ForwardStatusText.Text = "(disabled)";
-                        }
-                        else if (f1Src == null)
-                        {
-                            F1ForwardStatusText.Text = "(armed, will relay once an F1 title is detected)";
-                        }
-                        else
-                        {
-                            F1ForwardStatusText.Text =
-                                $"{f1Src.PacketsForwarded:N0} packets relayed to {fwd.ForwardHost}:{fwd.ForwardPort}";
-                        }
-                    }
-                }
-
                 // UDP test code override (forces the banner without a session).
                 if (_forceUdpSetupBanner == 1) forzaNeedsSetup = true;
-                else if (_forceUdpSetupBanner == 2) { forzaNeedsSetup = false; f1NeedsSetup = true; }
-                UpdateUdpSetupBanner(forzaNeedsSetup, f1NeedsSetup);
+                UpdateUdpSetupBanner(forzaNeedsSetup);
             }
 
             // Telemetry-source line in Diagnostics: source name + live measured Hz,
@@ -3140,13 +3031,9 @@ namespace TrueforceForAll.Plugin
                     // address (the common "no telemetry" cause) is visible in the
                     // manifest without opening the full settings JSON below.
                     var fz = _plugin?.Settings?.Forza;
-                    var f1 = _plugin?.Settings?.F1;
                     string forzaLine = fz == null ? "(n/a)"
                         : $"enabled={fz.Enabled} port={fz.Port} bind={fz.BindAddress} " +
                           $"forward={(fz.ForwardEnabled ? $"{fz.ForwardHost}:{fz.ForwardPort}" : "off")}";
-                    string f1Line = f1 == null ? "(n/a)"
-                        : $"enabled={f1.Enabled} port={f1.Port} bind={f1.BindAddress} alwaysListen={f1.AlwaysListen} " +
-                          $"forward={(f1.ForwardEnabled ? $"{f1.ForwardHost}:{f1.ForwardPort}" : "off")}";
                     string manifest =
                         $"Generated: {DateTime.Now:o}\n" +
                         $"Plugin version: {version}\n" +
@@ -3158,7 +3045,6 @@ namespace TrueforceForAll.Plugin
                         $"Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n" +
                         $"Experimental FFB capture: {(_plugin?.Settings?.ExperimentalFfbCapture ?? false ? "ON" : "OFF")}\n" +
                         $"Forza UDP: {forzaLine}\n" +
-                        $"F1 UDP: {f1Line}\n" +
                         $"Manual USBPcap override: {(_plugin?.HasManualUsbPcapDevice ?? false ? $"{_plugin.Settings.ManualUsbPcapInterface} dev {_plugin.Settings.ManualUsbPcapDeviceAddress}" : "(none)")}\n" +
                         $"USB byte logging: {(_plugin?.Settings?.LogUsbBytesEnabled ?? false ? "enabled" : "disabled")}\n" +
                         $"Full settings: see Trueforce-settings.json in this zip\n" +
@@ -3774,22 +3660,15 @@ namespace TrueforceForAll.Plugin
             ShowPresetManager(PresetManagerControl.InitialTab.GamePresets);
         }
 
-        // Persistent nudge for the UDP-telemetry games (Forza / F1): shown when
-        // the title is running but no packets are arriving, so a silent wheel
-        // points the user at the per-game UDP setup on the Settings tab.
-        private void UpdateUdpSetupBanner(bool forzaNeedsSetup, bool f1NeedsSetup)
+        // Persistent nudge for Forza UDP telemetry: shown when Forza is running
+        // but no packets are arriving, so a silent wheel points the user at the
+        // Forza UDP setup on the Settings tab.
+        private void UpdateUdpSetupBanner(bool forzaNeedsSetup)
         {
             if (UdpSetupBanner == null) return;
             if (forzaNeedsSetup)
             {
-                _udpSetupTarget = UdpSetupTarget.Forza;
                 UdpSetupBannerText.Text = "Forza is running but no telemetry is reaching the plugin. Forza sends telemetry over UDP, which has to be turned on in-game (Data Out) and pointed at the plugin.";
-                UdpSetupBanner.Visibility = Visibility.Visible;
-            }
-            else if (f1NeedsSetup)
-            {
-                _udpSetupTarget = UdpSetupTarget.F1;
-                UdpSetupBannerText.Text = "F1 is running but no telemetry is reaching the plugin. Turn on UDP Telemetry in the game's settings and point it at the plugin.";
                 UdpSetupBanner.Visibility = Visibility.Visible;
             }
             else
@@ -3802,17 +3681,10 @@ namespace TrueforceForAll.Plugin
         {
             if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
             if (UdpTelemetryExpander != null) UdpTelemetryExpander.IsExpanded = true;
-            // Pin the UDP game selector to the relevant game so its section is
-            // shown even with nothing running (e.g. testing via the UDP code).
-            // SelectionChanged updates _udpGameSel + refreshes visibility.
-            if (UdpGameSelector != null)
-                UdpGameSelector.SelectedIndex = _udpSetupTarget == UdpSetupTarget.F1 ? 2 : 1;
-            FrameworkElement target = _udpSetupTarget == UdpSetupTarget.F1
-                ? (FrameworkElement)F1Section
-                : ForzaSection;
-            if (_udpSetupTarget == UdpSetupTarget.Forza && ForzaTroubleshootExpander != null)
+            if (ForzaTroubleshootExpander != null)
                 ForzaTroubleshootExpander.IsExpanded = true;
             // Defer the scroll until the Settings tab has laid out its content.
+            FrameworkElement target = ForzaSection;
             if (target != null)
                 Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),
                     DispatcherPriority.Background);
@@ -3825,46 +3697,10 @@ namespace TrueforceForAll.Plugin
             _plugin.SetShowFeedbackBox(ShowFeedbackBoxCheck.IsChecked == true);
         }
 
-        // Game selector for the unified UDP telemetry section.
-        private void UdpGameSelector_Changed(object sender, SelectionChangedEventArgs e)
-        {
-            if (UdpGameSelector == null) return;
-            _udpGameSel = UdpGameSelector.SelectedIndex == 1 ? UdpGame.Forza
-                        : UdpGameSelector.SelectedIndex == 2 ? UdpGame.F1
-                        : UdpGame.Auto;
-            UpdateUdpSectionVisibility();
-        }
-
-        // Show the per-game body that matches the selector. Auto shows whichever
-        // game is currently detected (and nothing but a hint when idle); Forza /
-        // F1 pin their body so it can be pre-configured with nothing running.
+        // Forza is the only UDP-telemetry game, so its config is always the
+        // body of the UDP telemetry expander (shown directly in XAML).
         private void UpdateUdpSectionVisibility()
         {
-            if (_plugin == null) return;
-            // "Active" here means the game's process is actually running, so Auto
-            // and the "detected" label don't fire on a selected-but-closed profile.
-            bool forzaActive = _plugin.IsForzaRunning || _forceForzaStall;
-            bool f1Active    = _plugin.IsF1Running;
-
-            bool showForza, showF1;
-            switch (_udpGameSel)
-            {
-                case UdpGame.Forza: showForza = true;         showF1 = false;                  break;
-                case UdpGame.F1:    showForza = false;        showF1 = true;                   break;
-                default:            showForza = forzaActive;  showF1 = f1Active && !forzaActive; break;
-            }
-
-            if (ForzaSection != null)
-                ForzaSection.Visibility = showForza ? Visibility.Visible : Visibility.Collapsed;
-            if (F1Section != null)
-                F1Section.Visibility = showF1 ? Visibility.Visible : Visibility.Collapsed;
-            if (UdpNoGameNote != null)
-                UdpNoGameNote.Visibility = (!showForza && !showF1) ? Visibility.Visible : Visibility.Collapsed;
-            if (UdpDetectedText != null)
-            {
-                string d = forzaActive ? "Forza detected" : f1Active ? "F1 detected" : "";
-                UdpDetectedText.Text = (_udpGameSel == UdpGame.Auto && d.Length > 0) ? "· " + d : "";
-            }
         }
 
         // Sync the pattern readout textbox to the currently selected layout.
@@ -4567,7 +4403,7 @@ namespace TrueforceForAll.Plugin
             "SHARE          Force the 'spread the word' banner on now.\n" +
             "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
-            "UDP            Cycle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> F1 -> off.\n" +
+            "UDP            Toggle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> off.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
             "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
@@ -4660,18 +4496,17 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Cycle the persistent UDP-setup banner so the whole flow (banner ->
-            // "Set up..." -> jump to the game's UDP section on the Settings tab)
-            // can be tested without a live session: off -> Forza -> F1 -> off.
+            // Toggle the persistent UDP-setup banner so the whole flow (banner ->
+            // "Set up..." -> jump to the Forza UDP section on the Settings tab)
+            // can be tested without a live session: off -> Forza -> off.
             // Lands on the next refresh tick.
             if (code.Equals("UDP", StringComparison.OrdinalIgnoreCase))
             {
-                _forceUdpSetupBanner = (_forceUdpSetupBanner + 1) % 3;
+                _forceUdpSetupBanner = (_forceUdpSetupBanner + 1) % 2;
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text =
-                        _forceUdpSetupBanner == 1 ? "UDP setup banner: simulating Forza (type UDP again for F1)."
-                      : _forceUdpSetupBanner == 2 ? "UDP setup banner: simulating F1 (type UDP again to clear)."
+                        _forceUdpSetupBanner == 1 ? "UDP setup banner: simulating Forza (type UDP again to clear)."
                       : "UDP setup banner simulation cleared.";
                 return;
             }
@@ -5059,124 +4894,12 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---- Port discovery banner handlers ----
-        // Shared between Forza and F1: the plugin exposes a single
-        // DiscoveredAlternatePort and AdoptDiscoveredAlternatePort handles
-        // both kinds based on the active source type.
+        // The plugin exposes a single DiscoveredAlternatePort and
+        // AdoptDiscoveredAlternatePort handles it based on the active source type.
         private void ForzaDiscoveryAdopt_Click(object sender, RoutedEventArgs e)
             => _plugin?.AdoptDiscoveredAlternatePort();
         private void ForzaDiscoveryDismiss_Click(object sender, RoutedEventArgs e)
             => _plugin?.DismissDiscoveredAlternatePort();
-        private void F1DiscoveryAdopt_Click(object sender, RoutedEventArgs e)
-            => _plugin?.AdoptDiscoveredAlternatePort();
-        private void F1DiscoveryDismiss_Click(object sender, RoutedEventArgs e)
-            => _plugin?.DismissDiscoveredAlternatePort();
-
-        // ---- F1 UDP handlers ----
-        // Mirror the Forza ones; no forwarder field (F1 doesn't share a
-        // single-destination limitation the way Forza does).
-
-        private void F1AlwaysListen_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            _plugin.Settings.F1.AlwaysListen = F1AlwaysListenCheck.IsChecked == true;
-            _plugin.ApplyF1Settings();
-        }
-
-        private void F1Port_LostFocus(object sender, RoutedEventArgs e) => CommitF1Port();
-        private void F1Port_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1Port();
-        }
-        private void CommitF1Port()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1PortBox.Text?.Trim();
-            if (int.TryParse(raw, out int port) && port >= 1 && port <= 65535)
-            {
-                if (_plugin.Settings.F1.Port != port)
-                {
-                    _plugin.Settings.F1.Port = port;
-                    _plugin.ApplyF1Settings();
-                }
-            }
-            else
-            {
-                F1PortBox.Text = _plugin.Settings.F1.Port.ToString();
-            }
-        }
-
-        private void F1Bind_LostFocus(object sender, RoutedEventArgs e) => CommitF1Bind();
-        private void F1Bind_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1Bind();
-        }
-        private void CommitF1Bind()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1BindBox.Text?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(raw)) raw = "0.0.0.0";
-            if (_plugin.Settings.F1.BindAddress != raw)
-            {
-                _plugin.Settings.F1.BindAddress = raw;
-                _plugin.ApplyF1Settings();
-            }
-        }
-
-        private void F1ForwardEnabled_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            _plugin.Settings.F1.ForwardEnabled = F1ForwardEnabledCheck.IsChecked == true;
-            _plugin.ApplyF1Settings();
-        }
-
-        private void F1ForwardHost_LostFocus(object sender, RoutedEventArgs e) => CommitF1ForwardHost();
-        private void F1ForwardHost_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1ForwardHost();
-        }
-        private void CommitF1ForwardHost()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1ForwardHostBox.Text?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(raw)) raw = "127.0.0.1";
-            if (_plugin.Settings.F1.ForwardHost != raw)
-            {
-                _plugin.Settings.F1.ForwardHost = raw;
-                _plugin.ApplyF1Settings();
-            }
-        }
-
-        private void F1ForwardPort_LostFocus(object sender, RoutedEventArgs e) => CommitF1ForwardPort();
-        private void F1ForwardPort_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1ForwardPort();
-        }
-        private void CommitF1ForwardPort()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1ForwardPortBox.Text?.Trim();
-            if (string.IsNullOrEmpty(raw))
-            {
-                if (_plugin.Settings.F1.ForwardPort != 0)
-                {
-                    _plugin.Settings.F1.ForwardPort = 0;
-                    _plugin.ApplyF1Settings();
-                }
-                return;
-            }
-            if (int.TryParse(raw, out int port) && port >= 1 && port <= 65535)
-            {
-                if (_plugin.Settings.F1.ForwardPort != port)
-                {
-                    _plugin.Settings.F1.ForwardPort = port;
-                    _plugin.ApplyF1Settings();
-                }
-            }
-            else
-            {
-                F1ForwardPortBox.Text = _plugin.Settings.F1.ForwardPort > 0 ? _plugin.Settings.F1.ForwardPort.ToString() : "";
-            }
-        }
 
         private void ForzaForwardEnabled_Changed(object sender, RoutedEventArgs e)
         {

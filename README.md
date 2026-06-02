@@ -159,8 +159,7 @@ picks up per-tire fields for the surface-texture, rumble strips, and curb
 collision effects. These games send this telemetry once per rendered frame,
 so it tracks your frame rate (often well above 60 Hz), giving more depth in
 surface detail effects than some other titles offer. All three are
-auto-detected from SimHub's game profile, so the only setup is pointing
-Forza's DATA OUT at the listener's IP and port.
+auto-detected from SimHub's game profile.
 
 Additional direct-read titles will be added over time.
 
@@ -170,29 +169,31 @@ unlicensed that feed is capped at 10 Hz, which makes the effects feel coarse.
 A licensed copy of SimHub (a small one-time payment) lifts it to 60 Hz, a
 big step up in feel.
 
-### Using a UDP game alongside SimHub (dashboards, bass shakers, Buttkicker)
+### Forza UDP setup
 
-This plugin sits between the game and SimHub: the game sends telemetry to
-the plugin, and the plugin passes a copy to SimHub, so both work. Forza
-and F1 only send to one place, which is why the game must point at this
-plugin, not at SimHub. Anything SimHub drives (dashboards, ShakeIt bass
-shakers, a Buttkicker, arduino devices) keeps working through the relay.
-In the Forza (or F1) section of the plugin settings:
+In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE
+TELEMETRY. Turn DATA OUT ON, set DATA OUT IP ADDRESS to `127.0.0.1`, and
+set DATA OUT IP PORT to match the plugin's Port field in the Forza section
+(`5300` by default). That is the whole setup.
 
-1. In SimHub, open Games then the game and note the UDP port it uses. If
-   SimHub has an "automatically configure" option for that game's data
-   output, turn it off, or it will keep overwriting the setting you make
-   in step 2.
-2. In the game's telemetry settings, set the data-out IP to `127.0.0.1`
-   and the data-out port to this plugin's listen port (the Port field in
-   that section, default 5300). This must be a different number than
-   SimHub's port from step 1.
-3. Enable "Also forward to SimHub", set the forward host to `127.0.0.1`
-   and the forward port to SimHub's port from step 1.
-4. Drive for a moment and check the "Forwarded:" line in that section.
+#### Also forwarding to SimHub (dashboards, bass shakers, Buttkicker)
+
+This plugin passes a copy of Forza's telemetry on to SimHub, so anything
+SimHub drives (dashboards, ShakeIt bass shakers, a Buttkicker, arduino
+devices) keeps working too. You have already pointed Forza at the plugin
+in the setup above; this just adds the relay to SimHub. In the Forza
+section of the plugin settings:
+
+1. In SimHub, click the Home button at the top of the left sidebar. It
+   should show Forza Horizon as the active game (if not, click Change
+   game). Open Game config and note the UDP port it shows (often 8000).
+   You are only reading this number here, so do not change anything.
+2. Enable "Also forward to SimHub", set the forward host to `127.0.0.1`,
+   and set the forward port to that SimHub port.
+3. Drive for a moment and check the "Forwarded:" line in that section.
    Once it shows packets, SimHub's dashboards and bass shakers are back.
 
-The result is `game → this plugin → SimHub`, so haptics from this plugin
+The result is `Forza → this plugin → SimHub`, so haptics from this plugin
 and everything SimHub drives both work at the same time.
 
 ## iRacing + MAIRA

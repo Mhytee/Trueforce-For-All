@@ -275,11 +275,6 @@ namespace TrueforceForAll.Plugin
         // here so it survives preset switches.
         public ForzaSettings Forza { get; set; } = new ForzaSettings();
 
-        // F1 (EA / Codemasters) UDP listener config. Mirrors ForzaSettings
-        // local-to-the-user, persists across preset switches. Default port
-        // 20777 matches F1 25's factory default in Telemetry Settings.
-        public F1Settings F1 { get; set; } = new F1Settings();
-
         // Built-in preset source folder. Blank = use the shipped default next
         // to the plugin DLL (<dll>\TrueforceForAll-Presets). A user can point this at
         // a moved folder (repair) or a shared "preset pack" to swap the seed
@@ -313,6 +308,18 @@ namespace TrueforceForAll.Plugin
         // PresetsMigratedV2 because game migration shipped first; users who
         // already migrated games still need to migrate cars when this lands.
         public bool CarsMigratedV2 { get; set; } = false;
+
+        // Flips to true after the one-time cleanup pass that walks
+        // user/games and user/cars looking for files whose stems match a
+        // current OR retired built-in name (IsFactoryBuiltinName). The
+        // PresetsMigratedV2 check used an incomplete RetiredBuiltinNames
+        // when it ran, so users who upgraded across the pre-V2 to file-
+        // based-factory boundary had old (default)-named built-ins land in
+        // user/ as if they were user-authored. This pass archives them to
+        // user/{games,cars}/.cleanup-<timestamp>/ and drops matching
+        // entries from user/{game,car}-defaults.json so the factory seed
+        // takes over.
+        public bool LegacyBuiltinsCleanedV1 { get; set; } = false;
 
         // Flips to true after the one-time folder restructure moves
         //   <SimHub>\TrueforceForAll-Presets             -> PluginsData\Common\TrueforceForAll\factory
@@ -616,26 +623,6 @@ namespace TrueforceForAll.Plugin
         /// Game → Forza Horizon settings, in the "UDP port" field). Same
         /// value the user originally typed into SimHub when they set it up.
         /// Ignored when <see cref="ForwardEnabled"/> is false.</summary>
-        public int    ForwardPort    { get; set; } = 0;
-    }
-
-    public sealed class F1Settings
-    {
-        public bool   Enabled       { get; set; } = true;
-        public int    Port          { get; set; } = 20777;
-        public string BindAddress   { get; set; } = "0.0.0.0";
-
-        /// <summary>Keep the listener open even when SimHub doesn't recognize
-        /// the running game. Useful for future F1 titles before SimHub adds
-        /// their game name.</summary>
-        public bool   AlwaysListen  { get; set; } = false;
-
-        /// <summary>Re-broadcast every received F1 packet to a second
-        /// destination. Same coexistence problem as Forza: F1 only sends
-        /// to one IP+port, so the user points F1 at us and we relay
-        /// verbatim to SimHub. Default off.</summary>
-        public bool   ForwardEnabled { get; set; } = false;
-        public string ForwardHost    { get; set; } = "127.0.0.1";
         public int    ForwardPort    { get; set; } = 0;
     }
 
@@ -978,6 +965,13 @@ namespace TrueforceForAll.Plugin
         public string Type    { get; set; } = FileType;
         public int    Version { get; set; } = 1;
         public string PresetName { get; set; }
+        // True for files exported FROM a currently-shipped factory built-in.
+        // Sharing-context signal: a recipient can tell the file represents a
+        // shipped baseline rather than a user creation. Mirrors
+        // CarPresetFile.IsBuiltin. Doesn't affect on-disk storage in user/
+        // or factory/games (those write the bare GameSettingsSnapshot, not
+        // a PresetFile wrapper); only the export/import format uses this.
+        public bool   IsBuiltin     { get; set; }
         // Optional sharing metadata. All four fields are user-supplied and
         // free-form; null/empty means "not provided" and the importer
         // gracefully omits them from the success dialog. PackName tags this
