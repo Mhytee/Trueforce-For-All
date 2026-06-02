@@ -452,19 +452,21 @@ namespace TrueforceForAll.Plugin
             }
 
             // Track each column's "preferred" width -- the width the user
-            // last consciously asked for (either the declared XAML width on
-            // load or the value they dragged it to). When a column is
-            // shrunk by cascade (because the user widened a neighbour), we
-            // remember its preferred so a later drag-back can restore it
-            // before spilling further width into the immediate neighbour.
+            // last consciously asked for. Populated in initOnce below from
+            // POST-LAYOUT ActualWidths so the flex column's preferred
+            // matches what it's actually sized to (ResizeFlexColumn fires on
+            // Loaded and sets the flex column far wider than its declared
+            // XAML Width). If we snapshotted preferreds from the declared
+            // widths instead, the flex column's preferred would stay at
+            // 240 while its ActualWidth was 464, and the drag-back
+            // cascade-rightward Pass 1 would compute a negative `room` for
+            // it -- silently skipping the restore.
             var preferredWidths = new Dictionary<GridViewColumn, double>();
-            foreach (var c in gv.Columns)
-                preferredWidths[c] = Math.Max(mins[c], double.IsNaN(c.Width) ? mins[c] : c.Width);
 
             // The first LayoutUpdated after our columns get their initial
-            // ActualWidths populates prevWidths so subsequent Δ-tracking is
-            // accurate. Until then we treat handler calls as initialisation
-            // only (no drag interpretation).
+            // ActualWidths populates prevWidths AND preferredWidths so
+            // subsequent Δ-tracking is accurate and so the flex column's
+            // post-layout width is its baseline restore target.
             bool initialized = false;
             EventHandler initOnce = null;
             initOnce = (s, e) =>
@@ -475,7 +477,11 @@ namespace TrueforceForAll.Plugin
                     if (c.ActualWidth <= 0 || double.IsNaN(c.ActualWidth)) { allReady = false; break; }
                 }
                 if (!allReady) return;
-                foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
+                foreach (var c in gv.Columns)
+                {
+                    prevWidths[c]      = c.ActualWidth;
+                    preferredWidths[c] = c.ActualWidth;
+                }
                 initialized = true;
                 lv.LayoutUpdated -= initOnce;
             };
