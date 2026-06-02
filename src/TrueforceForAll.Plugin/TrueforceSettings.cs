@@ -978,9 +978,13 @@ namespace TrueforceForAll.Plugin
         public string Type    { get; set; } = FileType;
         public int    Version { get; set; } = 1;
         public string PresetName { get; set; }
-        // Optional sharing metadata. All three fields are user-supplied and
+        // Optional sharing metadata. All four fields are user-supplied and
         // free-form; null/empty means "not provided" and the importer
-        // gracefully omits them from the success dialog.
+        // gracefully omits them from the success dialog. PackName tags this
+        // preset as part of a named pack; (Author, AuthorVersion, PackName)
+        // is the pack identity used for "delete pack" / "filter by pack" /
+        // "set pack default" operations. Empty PackName = loose preset.
+        public string PackName      { get; set; }
         public string Author        { get; set; }
         public string Description   { get; set; }
         public string AuthorVersion { get; set; }
@@ -1011,6 +1015,9 @@ namespace TrueforceForAll.Plugin
         public bool   IsBuiltin { get; set; }
         // Optional sharing metadata. Set on export when the user chose to
         // include it; built-in / locally-saved files leave these blank.
+        // PackName tags this car preset as part of a named pack; same
+        // semantics as PresetFile.PackName (empty = loose).
+        public string PackName      { get; set; }
         public string Author        { get; set; }
         public string Description   { get; set; }
         public string AuthorVersion { get; set; }
@@ -1032,8 +1039,12 @@ namespace TrueforceForAll.Plugin
         public int    Version { get; set; } = 1;
         public string ExportedAt { get; set; }
         // Pack-level sharing metadata. Each contained preset / car preset
-        // also carries its own Author/Description/AuthorVersion when set;
-        // the pack-level fields cover the bundle as a whole.
+        // also carries its own Author/Description/AuthorVersion/PackName
+        // when set; the pack-level fields cover the bundle as a whole.
+        // PackName is the human-friendly identity of the pack (user-typed
+        // on export); (Author, AuthorVersion, PackName) is the tuple a
+        // later "delete pack" / "set pack as default" UI keys off.
+        public string PackName      { get; set; }
         public string Author        { get; set; }
         public string Description   { get; set; }
         public string AuthorVersion { get; set; }

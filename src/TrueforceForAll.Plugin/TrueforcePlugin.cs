@@ -7896,7 +7896,8 @@ namespace TrueforceForAll.Plugin
             string path,
             IEnumerable<string> presetNames,
             IEnumerable<(string CarId, string PresetName)> carPresets,
-            string author = null, string description = null, string authorVersion = null)
+            string author = null, string description = null, string authorVersion = null,
+            string packName = null)
         {
             if (Settings == null) return (0, 0);
 
@@ -7911,9 +7912,11 @@ namespace TrueforceForAll.Plugin
             string normAuthor = NullIfBlank(author);
             string normDesc   = NullIfBlank(description);
             string normVer    = NullIfBlank(authorVersion);
+            string normPack   = NullIfBlank(packName);
             var manifest = new PresetPackManifest
             {
                 ExportedAt    = DateTime.UtcNow.ToString("o"),
+                PackName      = normPack,
                 Author        = normAuthor,
                 Description   = normDesc,
                 AuthorVersion = normVer,
@@ -7936,6 +7939,7 @@ namespace TrueforceForAll.Plugin
                         {
                             PresetName    = kv.Key,
                             Snapshot      = kv.Value,
+                            PackName      = normPack,
                             Author        = normAuthor,
                             Description   = normDesc,
                             AuthorVersion = normVer,
@@ -7966,6 +7970,7 @@ namespace TrueforceForAll.Plugin
                                 CarId         = entry.CarId,
                                 PresetName    = entry.PresetName,
                                 IsBuiltin     = false, // shareable copies are user-tier
+                                PackName      = normPack,
                                 Author        = normAuthor,
                                 Description   = normDesc,
                                 AuthorVersion = normVer,
@@ -7990,6 +7995,130 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info(
                 $"[Trueforce] Exported pack to {path}: {presetsCount} game preset(s), {carsCount} car preset(s).");
             return (presetsCount, carsCount);
+        }
+
+        /// <summary>Export the selected presets as loose .tfpreset / .tfcar.json
+        /// files into <paramref name="folderPath"/>. No manifest, no PackName
+        /// (these are loose by definition). Author / Description / AuthorVersion
+        /// still flow into each file's metadata when supplied. Filenames are
+        /// sanitized the same way as pack entries; collisions overwrite.
+        /// Returns (presetsExported, carsExported).</summary>
+        public (int presetsExported, int carsExported, string exportFolder) ExportLoose(
+            string folderPath,
+            IEnumerable<string> presetNames,
+            IEnumerable<(string CarId, string PresetName)> carPresets,
+            string author = null, string description = null, string authorVersion = null)
+        {
+            if (Settings == null) return (0, 0, null);
+            if (string.IsNullOrEmpty(folderPath)) return (0, 0, null);
+
+            // Create a timestamped subfolder inside the picked location so
+            // each export is self-contained: the README and all loose files
+            // share one folder, multiple exports into the same parent don't
+            // collide, and the folder name itself signals "this is a
+            // Trueforce export" to recipients who see it on disk.
+            string stamp = DateTime.Now.ToString("yyyy-MM-dd-HHmmss");
+            string outDir = System.IO.Path.Combine(folderPath, $"TF4ALL-export-{stamp}");
+            System.IO.Directory.CreateDirectory(outDir);
+            folderPath = outDir;
+
+            var pickedPresets = presetNames != null
+                ? new HashSet<string>(presetNames, StringComparer.Ordinal)
+                : null;
+            var pickedCars = carPresets != null
+                ? new HashSet<(string, string)>(carPresets)
+                : null;
+
+            string normAuthor = NullIfBlank(author);
+            string normDesc   = NullIfBlank(description);
+            string normVer    = NullIfBlank(authorVersion);
+
+            int presetsCount = 0, carsCount = 0;
+            if (Settings.Presets != null)
+            {
+                foreach (var kv in Settings.Presets)
+                {
+                    if (pickedPresets != null && !pickedPresets.Contains(kv.Key)) continue;
+                    if (kv.Value == null) continue;
+                    string path = System.IO.Path.Combine(folderPath,
+                        SanitizeForZip(kv.Key) + ".tfpreset.json");
+                    var file = new PresetFile
+                    {
+                        PresetName    = kv.Key,
+                        Snapshot      = kv.Value,
+                        Author        = normAuthor,
+                        Description   = normDesc,
+                        AuthorVersion = normVer,
+                    };
+                    System.IO.File.WriteAllText(path,
+                        Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
+                    presetsCount++;
+                }
+            }
+            if (_carStore != null)
+            {
+                var loaded = _carStore.LoadAll();
+                foreach (var carKv in loaded)
+                {
+                    foreach (var pKv in carKv.Value)
+                    {
+                        var entry = pKv.Value;
+                        var key = (entry.CarId, entry.PresetName);
+                        if (pickedCars != null && !pickedCars.Contains(key)) continue;
+                        string path = System.IO.Path.Combine(folderPath,
+                            SanitizeForZip(entry.CarId) + "~"
+                            + SanitizeForZip(entry.PresetName) + ".tfcar.json");
+                        var file = new CarPresetFile
+                        {
+                            GameName      = entry.GameName ?? "",
+                            CarId         = entry.CarId,
+                            PresetName    = entry.PresetName,
+                            IsBuiltin     = false,
+                            Author        = normAuthor,
+                            Description   = normDesc,
+                            AuthorVersion = normVer,
+                            Override      = entry.Override,
+                        };
+                        System.IO.File.WriteAllText(path,
+                            Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
+                        carsCount++;
+                    }
+                }
+            }
+            // Drop a README so a recipient who finds the folder understands
+            // what the files are AND knows the better path (Export as Pack)
+            // for sharing a curated set. Zipping this folder would NOT make
+            // it a real pack: there's no manifest.json, so ImportPack would
+            // just walk the contents as loose imports. The README sets the
+            // expectation up front.
+            try
+            {
+                string readme = string.Join("\r\n", new[]
+                {
+                    "Trueforce For All - loose preset files",
+                    "",
+                    "These .tfpreset.json / .tfcar.json files are individual presets exported",
+                    "from the Trueforce For All plugin. Each one carries optional author /",
+                    "description / version metadata in its own JSON.",
+                    "",
+                    "To import: open SimHub, go to the Trueforce Presets tab, click Import, and",
+                    "pick one or more files. Drag-select multiple files at once if you want.",
+                    "",
+                    "Sharing tip: if you want recipients to see these presets as a curated",
+                    "group (so they can apply, filter, set as defaults, or remove them as a",
+                    "unit), use Export as Pack instead. A pack carries a name and a single",
+                    "set of author / version metadata that the manager keeps together.",
+                });
+                System.IO.File.WriteAllText(System.IO.Path.Combine(folderPath, "README.txt"), readme);
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Couldn't write loose-export README: {ex.Message}");
+            }
+
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] Exported loose files to {folderPath}: {presetsCount} game preset(s), {carsCount} car preset(s).");
+            return (presetsCount, carsCount, folderPath);
         }
 
         /// <summary>Read every preset and car-preset file in the pack zip.
