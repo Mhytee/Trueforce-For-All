@@ -12,16 +12,6 @@
             <Setter Property="Opacity" Value="0.6"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
-        <!-- Implicit DataGridColumnHeader style: adds a 1px right-edge
-             divider on every column header. The checkbox column has
-             CanUserResize=False so WPF's stock template hides its right
-             gripper-separator; this Border setter paints the divider on
-             ALL header cells, including that first one, so the checkbox
-             column is visually separated from the data columns. -->
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="BorderBrush" Value="#4A4A4A"/>
-            <Setter Property="BorderThickness" Value="0,0,1,0"/>
-        </Style>
         <!-- Custom-templated row button. SimHub's stock theme greys every
              Button.Background regardless of IsEnabled, which made the dialog's
              action buttons look the same color whether they were usable or
