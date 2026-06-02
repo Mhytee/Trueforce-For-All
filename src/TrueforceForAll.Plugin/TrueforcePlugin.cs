@@ -4288,6 +4288,10 @@ namespace TrueforceForAll.Plugin
                             if (f == null || string.IsNullOrEmpty(f.CarId) || f.Override == null) { failedCars++; continue; }
                             // Built-in car files re-seed from the built-in folder; skip them here.
                             if (f.IsBuiltin) { skippedBuiltinCars++; continue; }
+                            // Skip files that duplicate a factory built-in car
+                            // (content match): the factory version provides the
+                            // car with its game, so a user copy is redundant.
+                            if (IsFactoryCarDuplicate(f.CarId, f.Override)) { skippedBuiltinCars++; continue; }
                             string presetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
                             string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                                 new CarPresetFile
@@ -4555,8 +4559,14 @@ namespace TrueforceForAll.Plugin
                                 string normPresetName = NormalizeForzaPrefix(realPresetName);
                                 string factoryKey     = normCarId + "/" + normPresetName;
 
-                                bool flagged = BuiltinPresets.CarPresetJsons.ContainsKey(factoryKey)
-                                            || carFile.IsBuiltin
+                                // Archive a user car only when it is genuinely a
+                                // factory copy: marked built-in, OR its tuning
+                                // CONTENT matches a factory preset for this car
+                                // (not merely a name collision, so a customized
+                                // car sharing a factory name is kept), OR the
+                                // preset name is a factory game-builtin name.
+                                bool flagged = carFile.IsBuiltin
+                                            || IsFactoryCarDuplicate(realCarId, carFile.Override)
                                             || IsFactoryBuiltinName(realPresetName);
 
                                 if (!flagged)
@@ -4704,6 +4714,54 @@ namespace TrueforceForAll.Plugin
         private bool IsFactoryBuiltinName(string name)
             => !string.IsNullOrEmpty(name)
             && (BuiltinPresets.IsBuiltin(name) || RetiredBuiltinNames.Contains(name));
+
+        // True when the user's car override is content-identical to a factory
+        // built-in car preset for the same carId (carId-normalized). Such a
+        // file duplicates a shipped preset and shouldn't be imported as a user
+        // copy: the factory built-in already provides the car, with its game.
+        // A genuinely-different tuning returns false and is kept + imported.
+        private bool IsFactoryCarDuplicate(string carId, CarOverride ovr)
+        {
+            if (string.IsNullOrEmpty(carId) || ovr == null) return false;
+            string normCarId = NormalizeForzaPrefix(carId);
+            string ovrJson = null;
+            foreach (var kvp in BuiltinPresets.CarPresetJsons)
+            {
+                int slash = kvp.Key.IndexOf('/');
+                if (slash <= 0) continue;
+                if (!string.Equals(NormalizeForzaPrefix(kvp.Key.Substring(0, slash)), normCarId, StringComparison.Ordinal))
+                    continue;
+                try
+                {
+                    var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(kvp.Value);
+                    if (f?.Override == null) continue;
+                    ovrJson = ovrJson ?? Newtonsoft.Json.JsonConvert.SerializeObject(ovr);
+                    if (Newtonsoft.Json.JsonConvert.SerializeObject(f.Override) == ovrJson) return true;
+                }
+                catch { /* malformed factory entry, skip */ }
+            }
+            return false;
+        }
+
+        // carId (normalized) -> game, built from the loaded factory car
+        // presets. Recovers the game for cache-migrated cars whose source
+        // (Settings.CarOverrides) carries no game. Empty if factory isn't
+        // loaded yet (callers then fall back to the active game).
+        private Dictionary<string, string> BuildFactoryCarGameMap()
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var kvp in BuiltinPresets.CarPresetJsons)
+            {
+                try
+                {
+                    var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(kvp.Value);
+                    if (f != null && !string.IsNullOrEmpty(f.CarId) && !string.IsNullOrEmpty(f.GameName))
+                        map[NormalizeForzaPrefix(f.CarId)] = f.GameName;
+                }
+                catch { /* malformed factory entry, skip */ }
+            }
+            return map;
+        }
 
         /// <summary>Make a timestamped sibling backup of the plugin's
         /// GeneralSettings.json. Used before destructive migrations.</summary>
@@ -5451,6 +5509,10 @@ namespace TrueforceForAll.Plugin
             var loaded = _carStore.LoadAll();
             var carIdsWithUserFiles = new HashSet<string>(loaded.Keys, StringComparer.Ordinal);
 
+            // Factory carId -> game map: recovers the game for cache-migrated
+            // cars (Settings.CarOverrides is keyed by carId only, no game).
+            var factoryCarGames = BuildFactoryCarGameMap();
+
             // 1) Migrate Settings.CarOverrides → files (only if no file yet for
             //    that carId). Use carId as the preset name so the migrated
             //    entry has a stable identity in the new multi-preset model.
@@ -5467,7 +5529,13 @@ namespace TrueforceForAll.Plugin
                 if (kv.Value == null || kv.Value.IsEmpty) continue;
                 if (Settings.CarDefaults.ContainsKey(kv.Key)) continue;
                 if (carIdsWithUserFiles.Contains(kv.Key)) continue;
-                _carStore.Save(kv.Key, kv.Key, _activeGame ?? "", kv.Value, isBuiltin: false);
+                // Skip cars that duplicate a factory built-in: the factory
+                // version provides it with its game. Skipping at import (vs
+                // import-then-archive) avoids the blank-game Unknown copies the
+                // old path created when the .tfcar.json migration was skipped.
+                if (IsFactoryCarDuplicate(kv.Key, kv.Value)) continue;
+                string g1 = factoryCarGames.TryGetValue(NormalizeForzaPrefix(kv.Key), out var fg1) ? fg1 : (_activeGame ?? "");
+                _carStore.Save(kv.Key, kv.Key, g1, kv.Value, isBuiltin: false);
                 carIdsWithUserFiles.Add(kv.Key);
                 if (!Settings.CarDefaults.ContainsKey(kv.Key))
                     Settings.CarDefaults[kv.Key] = kv.Key;
@@ -5486,7 +5554,9 @@ namespace TrueforceForAll.Plugin
                     {
                         if (carKv.Value == null || carKv.Value.IsEmpty) continue;
                         if (carIdsWithUserFiles.Contains(carKv.Key)) continue;
-                        _carStore.Save(carKv.Key, carKv.Key, "", carKv.Value, isBuiltin: false);
+                        if (IsFactoryCarDuplicate(carKv.Key, carKv.Value)) continue;
+                        string g2 = factoryCarGames.TryGetValue(NormalizeForzaPrefix(carKv.Key), out var fg2) ? fg2 : (_activeGame ?? "");
+                        _carStore.Save(carKv.Key, carKv.Key, g2, carKv.Value, isBuiltin: false);
                         carIdsWithUserFiles.Add(carKv.Key);
                         if (!Settings.CarDefaults.ContainsKey(carKv.Key))
                             Settings.CarDefaults[carKv.Key] = carKv.Key;
