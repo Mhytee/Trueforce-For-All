@@ -274,20 +274,20 @@ namespace TrueforceForAll.Plugin
         private readonly ObservableCollection<CarRow>    _carRows    = new ObservableCollection<CarRow>();
         private readonly ObservableCollection<CustomRow> _customRows = new ObservableCollection<CustomRow>();
 
-        // Per-ListView sort state. The sort key for each column comes from
-        // its DisplayMemberBinding.Path (e.g. "Name", "BuiltinLabel"), so the
-        // checkbox column auto-skips (no DisplayMemberBinding). Base header
-        // text is captured per column so the ▲/▼ indicator can be appended /
+        // Per-DataGrid sort state. The sort key for each column comes from
+        // its Binding.Path (e.g. "Name", "BuiltinLabel"). The checkbox
+        // column has no Binding so it auto-skips. Base header text is
+        // captured per column so the ▲/▼ indicator can be appended /
         // stripped without losing the original label.
         private sealed class ListSortState
         {
-            public ListView List;
+            public DataGrid List;
             public string CurrentSortKey;
             public bool   Descending;
-            public readonly Dictionary<GridViewColumn, string> SortKeys
-                = new Dictionary<GridViewColumn, string>();
-            public readonly Dictionary<GridViewColumn, string> BaseHeaders
-                = new Dictionary<GridViewColumn, string>();
+            public readonly Dictionary<DataGridColumn, string> SortKeys
+                = new Dictionary<DataGridColumn, string>();
+            public readonly Dictionary<DataGridColumn, string> BaseHeaders
+                = new Dictionary<DataGridColumn, string>();
         }
         private ListSortState _gameSort;
         private ListSortState _carSort;
@@ -319,434 +319,14 @@ namespace TrueforceForAll.Plugin
             _gameSort   = BuildSortState(GameList);
             _carSort    = BuildSortState(CarList);
             _customSort = BuildSortState(CustomList);
-            GameList.AddHandler(GridViewColumnHeader.ClickEvent,   new RoutedEventHandler((s, e) => HandleHeaderClick(e, _gameSort)));
-            CarList.AddHandler(GridViewColumnHeader.ClickEvent,    new RoutedEventHandler((s, e) => HandleHeaderClick(e, _carSort)));
-            CustomList.AddHandler(GridViewColumnHeader.ClickEvent, new RoutedEventHandler((s, e) => HandleHeaderClick(e, _customSort)));
+            GameList.AddHandler(DataGridColumnHeader.ClickEvent,   new RoutedEventHandler((s, e) => HandleHeaderClick(e, _gameSort)));
+            CarList.AddHandler(DataGridColumnHeader.ClickEvent,    new RoutedEventHandler((s, e) => HandleHeaderClick(e, _carSort)));
+            CustomList.AddHandler(DataGridColumnHeader.ClickEvent, new RoutedEventHandler((s, e) => HandleHeaderClick(e, _customSort)));
 
-            // GridView has no star-width column, so flex the primary name column
-            // (index 1, after the checkbox) to fill the panel width. Was a fixed
-            // 860px dialog; this makes it fit the narrower Presets tab.
-            MakeFlexColumn(GameList, 1);
-            MakeFlexColumn(CarList, 2);   // Car ID column (after Game)
-            MakeFlexColumn(CustomList, 1);
-
-            // GridView columns are user-resizable but have no built-in minimum,
-            // so a divider can be dragged to zero and hide the column (and its
-            // header). Clamp each column's width to at least its header text.
-            ApplyColumnMinWidths(GameList);
-            ApplyColumnMinWidths(CarList);
-            ApplyColumnMinWidths(CustomList);
-        }
-
-        // Keep the flex column sized to whatever space the other (fixed) columns
-        // leave. Recomputed on every resize of the list.
-        // Set true while ResizeFlexColumn / cascade handlers are actively
-        // writing GridViewColumn.Width values. The user-drag handler in
-        // ApplyColumnMinWidths checks this and skips its absorb-cascade
-        // logic for programmatic writes (otherwise our own flex assignment
-        // would be misinterpreted as a drag and undone immediately).
-        private bool _columnAdjusting;
-
-        private void MakeFlexColumn(ListView lv, int flexIndex)
-        {
-            if (lv == null) return;
-            lv.SizeChanged += (s, e) => { if (e.WidthChanged) RunColumnAdjust(() => ResizeFlexColumn(lv, flexIndex)); };
-            lv.Loaded      += (s, e) => RunColumnAdjust(() => ResizeFlexColumn(lv, flexIndex));
-            // ScrollChanged catches the vertical-scrollbar visibility flip
-            // (rows added / removed by filter / reload) so the flex column
-            // re-fits the new ViewportWidth. The same event ALSO fires when
-            // the user drags a column -- the horizontal extent changes,
-            // which counts as a scroll change. Re-flexing on every such fire
-            // undoes the user's drag of the flex column every frame and the
-            // divider appears stuck. Gate on a real ViewportWidth delta:
-            // column drags don't change the viewport, bar-visibility flips do.
-            double lastViewport = -1;
-            lv.AddHandler(ScrollViewer.ScrollChangedEvent,
-                new ScrollChangedEventHandler((s, e) =>
-                {
-                    var sv = FindVisualDescendant<ScrollViewer>(lv);
-                    if (sv == null) return;
-                    double vw = sv.ViewportWidth;
-                    if (Math.Abs(vw - lastViewport) < 0.5) return;
-                    lastViewport = vw;
-                    RunColumnAdjust(() => ResizeFlexColumn(lv, flexIndex));
-                }));
-        }
-
-        private void RunColumnAdjust(Action body)
-        {
-            bool prev = _columnAdjusting;
-            _columnAdjusting = true;
-            try { body(); }
-            finally { _columnAdjusting = prev; }
-        }
-
-        private static void ResizeFlexColumn(ListView lv, int flexIndex)
-        {
-            if (!(lv.View is GridView gv) || flexIndex >= gv.Columns.Count) return;
-            double others = 0;
-            for (int i = 0; i < gv.Columns.Count; i++)
-                if (i != flexIndex) others += gv.Columns[i].ActualWidth;
-            var sv = FindVisualDescendant<ScrollViewer>(lv);
-            double availableWidth = (sv != null && sv.ViewportWidth > 0)
-                ? sv.ViewportWidth
-                : Math.Max(0, lv.ActualWidth - 4);
-            double avail = availableWidth - others;
-            if (avail < 120) avail = 120;
-            gv.Columns[flexIndex].Width = avail;
-        }
-
-        private static T FindVisualDescendant<T>(DependencyObject root) where T : DependencyObject
-        {
-            if (root == null) return null;
-            int n = VisualTreeHelper.GetChildrenCount(root);
-            for (int i = 0; i < n; i++)
-            {
-                var child = VisualTreeHelper.GetChild(root, i);
-                if (child is T t) return t;
-                var nested = FindVisualDescendant<T>(child);
-                if (nested != null) return nested;
-            }
-            return null;
-        }
-
-        // Enforce a per-column minimum width (header text + padding). The header
-        // gripper writes straight to GridViewColumn.Width with no floor, so we
-        // watch that property and snap it back up if a drag takes it below the
-        // minimum. Template-independent, unlike a header MinWidth.
-        private void ApplyColumnMinWidths(ListView lv)
-        {
-            if (!(lv?.View is GridView gv)) return;
-            var dpd = System.ComponentModel.DependencyPropertyDescriptor
-                .FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn));
-            if (dpd == null) return;
-
-            var mins        = new Dictionary<GridViewColumn, double>();
-            var indexOf     = new Dictionary<GridViewColumn, int>();
-            var prevWidths  = new Dictionary<GridViewColumn, double>();
-            for (int i = 0; i < gv.Columns.Count; i++)
-            {
-                var c = gv.Columns[i];
-                string text = c.Header as string;
-                // Always reserve room for the sort arrow (" ▼") so that
-                // clicking a column header to sort doesn't reveal a clip
-                // that wasn't there before. Header text is measured with the
-                // header's actual semibold weight (ListView body font would
-                // underestimate the rendered header width). Empty-header
-                // columns (the checkbox column) get a roomier 36px floor so
-                // the checkbox + gripper still fit comfortably when shrunk.
-                mins[c]      = string.IsNullOrEmpty(text)
-                    ? 36
-                    : MeasureHeaderText(lv, text + " ▼") + 26;
-                indexOf[c]   = i;
-                prevWidths[c] = double.NaN;
-            }
-            // The dpd watcher only fires on Width CHANGES -- a column whose
-            // declared XAML Width is already below its computed min never
-            // gets snapped up. Bump now so the initial layout already
-            // honours the min (and the sort arrow won't clip when revealed).
-            foreach (var c in gv.Columns)
-            {
-                if (!double.IsNaN(c.Width) && c.Width < mins[c])
-                    c.Width = mins[c];
-            }
-
-            // Track each column's "preferred" width -- the width the user
-            // last consciously asked for. Populated in initOnce below from
-            // POST-LAYOUT ActualWidths so the flex column's preferred
-            // matches what it's actually sized to (ResizeFlexColumn fires on
-            // Loaded and sets the flex column far wider than its declared
-            // XAML Width). If we snapshotted preferreds from the declared
-            // widths instead, the flex column's preferred would stay at
-            // 240 while its ActualWidth was 464, and the drag-back
-            // cascade-rightward Pass 1 would compute a negative `room` for
-            // it -- silently skipping the restore.
-            var preferredWidths = new Dictionary<GridViewColumn, double>();
-
-            // When a widen drag exhausts the cascade-rightward absorbtion
-            // budget (all columns to the right hit their min and the dragged
-            // column is rolled back to prevent overflow), the WPF Thumb's
-            // cursor has moved further right than the column's actual right
-            // edge. Without bookkeeping, the next leftward motion would
-            // start shrinking the column immediately -- the drag-back would
-            // overshoot by the snap-back amount. Track the accumulated
-            // overshoot per column; the shrink branch consumes it first
-            // before letting the column actually shrink, so the cursor
-            // visually has to catch up to the divider before drag-back kicks
-            // in. Symmetric inverse on the shrink side: if a column was
-            // taken below its min through cascade-leftward exhaustion, we
-            // do the same accounting in the other direction.
-            var gripperOverflow = new Dictionary<GridViewColumn, double>();
-            foreach (var c in gv.Columns) gripperOverflow[c] = 0.0;
-
-            // The first LayoutUpdated after our columns get their initial
-            // ActualWidths populates prevWidths AND preferredWidths so
-            // subsequent Δ-tracking is accurate and so the flex column's
-            // post-layout width is its baseline restore target.
-            bool initialized = false;
-            EventHandler initOnce = null;
-            initOnce = (s, e) =>
-            {
-                bool allReady = true;
-                foreach (var c in gv.Columns)
-                {
-                    if (c.ActualWidth <= 0 || double.IsNaN(c.ActualWidth)) { allReady = false; break; }
-                }
-                if (!allReady) return;
-                foreach (var c in gv.Columns)
-                {
-                    prevWidths[c]      = c.ActualWidth;
-                    preferredWidths[c] = c.ActualWidth;
-                }
-                initialized = true;
-                lv.LayoutUpdated -= initOnce;
-            };
-            lv.LayoutUpdated += initOnce;
-
-            // User-drag handler. Two responsibilities:
-            //   1. Keep the column total == ViewportWidth so the right edge
-            //      stays pinned (adjacent column absorbs the Δ; cascade
-            //      sideways if the adjacent hits its min/max).
-            //   2. Honour each column's min: snap a dragged column back to
-            //      its min and cascade the leftover Δ leftward so the
-            //      divider keeps following the cursor as the column "slides
-            //      over" past its min.
-            //
-            // For a shrink (Δ<0): the dragged column shrinks (or snaps at min
-            // and cascades leftward); the adjacent right column widens by the
-            // total shrunk to keep totals == viewport.
-            //
-            // For a widen (Δ>0): the adjacent right column shrinks (and
-            // cascades further right if it hits min); if the right side runs
-            // out of slack we snap the dragged column back so the total never
-            // exceeds the viewport (no "pushed out of bounds").
-            bool inCascade = false;
-            foreach (var column in gv.Columns)
-            {
-                var col = column; // capture per iteration
-                dpd.AddValueChanged(col, (s, e) =>
-                {
-                    if (inCascade || _columnAdjusting)
-                    {
-                        if (initialized)
-                        {
-                            prevWidths[col] = col.ActualWidth;
-                            // _columnAdjusting (and NOT inCascade) means
-                            // ResizeFlexColumn wrote the flex column's
-                            // width (window resize, scrollbar visibility
-                            // flip). Treat that as the new natural target
-                            // so a later drag-back restores to the
-                            // post-resize width, not whatever the column
-                            // was sized to before. inCascade alone means
-                            // our own cascade is absorbing a user drag,
-                            // and those writes must NOT change preferred
-                            // (preferred's whole point is to remember the
-                            // pre-cascade target so drag-back can restore).
-                            if (_columnAdjusting && !inCascade)
-                                preferredWidths[col] = col.ActualWidth;
-                        }
-                        return;
-                    }
-                    if (!initialized) { prevWidths[col] = col.ActualWidth; return; }
-                    if (double.IsNaN(col.Width)) return;
-
-                    double oldW = prevWidths[col];
-                    if (double.IsNaN(oldW)) { prevWidths[col] = col.ActualWidth; return; }
-                    double newW = col.ActualWidth;
-                    double delta = newW - oldW;
-                    if (Math.Abs(delta) < 0.5) { prevWidths[col] = newW; return; }
-
-                    try
-                    {
-                        inCascade = true;
-                        int colIdx = indexOf[col];
-
-                        // Consume any accumulated gripper overshoot first.
-                        // If the previous widen exhausted cascade-right and
-                        // we rolled col back, gripperOverflow[col] holds
-                        // how far the cursor moved past where col actually
-                        // ended. Drag-back has to cover that distance before
-                        // the column itself starts shrinking; otherwise the
-                        // drag-back overshoots by the snap-back amount.
-                        // Symmetric for the shrink direction.
-                        if (gripperOverflow[col] > 0.5 && delta > 0)
-                        {
-                            // Cursor was sitting past the snapped right edge;
-                            // moving further right just increases the
-                            // overshoot, no real widen.
-                            gripperOverflow[col] += delta;
-                            col.Width = oldW;
-                            preferredWidths[col] = col.ActualWidth;
-                            foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
-                            return;
-                        }
-                        if (gripperOverflow[col] > 0.5 && delta < 0)
-                        {
-                            double consume = Math.Min(gripperOverflow[col], -delta);
-                            gripperOverflow[col] -= consume;
-                            delta += consume;
-                            // Bring col back to where it actually was (oldW)
-                            // so the residual delta is the actual shrink.
-                            col.Width = oldW;
-                            if (delta > -0.5)
-                            {
-                                // Whole drag was consumed by overflow -- no
-                                // real shrink. Update tracking and return.
-                                preferredWidths[col] = col.ActualWidth;
-                                foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
-                                return;
-                            }
-                            // Recompute newW from where col actually sits now.
-                            newW = oldW + delta;
-                            col.Width = newW;
-                        }
-                        if (gripperOverflow[col] < -0.5 && delta < 0)
-                        {
-                            // Mirror of the widen-overflow case: previous
-                            // shrink exhausted cascade-left and col stayed
-                            // at min while cursor kept moving left.
-                            gripperOverflow[col] += delta; // becomes more negative
-                            col.Width = oldW;
-                            preferredWidths[col] = col.ActualWidth;
-                            foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
-                            return;
-                        }
-                        if (gripperOverflow[col] < -0.5 && delta > 0)
-                        {
-                            double consume = Math.Min(-gripperOverflow[col], delta);
-                            gripperOverflow[col] += consume;
-                            delta -= consume;
-                            col.Width = oldW;
-                            if (delta < 0.5)
-                            {
-                                preferredWidths[col] = col.ActualWidth;
-                                foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
-                                return;
-                            }
-                            newW = oldW + delta;
-                            col.Width = newW;
-                        }
-
-                        if (delta > 0)
-                        {
-                            // Widen by delta. Adjacent + cascade right.
-                            double remaining = delta;
-                            int ri = colIdx;
-                            while (remaining > 0.5 && ri < gv.Columns.Count - 1)
-                            {
-                                ri++;
-                                var next   = gv.Columns[ri];
-                                double maxShrink = next.ActualWidth - mins[next];
-                                if (maxShrink <= 0.5) continue;
-                                double shrinkBy = Math.Min(maxShrink, remaining);
-                                next.Width = next.ActualWidth - shrinkBy;
-                                remaining -= shrinkBy;
-                            }
-                            // Right side exhausted -- prevent overflow by
-                            // rolling the dragged column back AND remembering
-                            // how far the cursor over-moved so drag-back can
-                            // consume that gap first.
-                            if (remaining > 0.5)
-                            {
-                                col.Width = newW - remaining;
-                                gripperOverflow[col] += remaining;
-                            }
-                        }
-                        else
-                        {
-                            // Shrink by |delta|. Snap col to min if it went
-                            // below, then cascade leftward for any leftover,
-                            // then push the freed-up width into the columns
-                            // on the right -- preferring to restore them to
-                            // their PREFERRED widths first (so a previous
-                            // widen-cascade can be undone in reverse) before
-                            // letting the immediate adjacent take the rest.
-                            double shrinkAmount = -delta;
-                            double actualShrinkCol = shrinkAmount;
-                            double colMin = mins[col];
-                            if (newW < colMin)
-                            {
-                                actualShrinkCol = oldW - colMin;
-                                col.Width = colMin;
-                            }
-                            double leftover = shrinkAmount - actualShrinkCol;
-                            int li = colIdx;
-                            while (leftover > 0.5 && li > 0)
-                            {
-                                li--;
-                                var prev = gv.Columns[li];
-                                double maxShrink = prev.ActualWidth - mins[prev];
-                                if (maxShrink <= 0.5) continue;
-                                double shrinkBy = Math.Min(maxShrink, leftover);
-                                prev.Width = prev.ActualWidth - shrinkBy;
-                                leftover -= shrinkBy;
-                            }
-                            // Cascade-leftward exhausted -- remember that the
-                            // cursor moved past where the layout could
-                            // actually take the shrink, so a later drag-back
-                            // wider has to cover that distance before the
-                            // dragged column widens.
-                            if (leftover > 0.5)
-                                gripperOverflow[col] -= leftover;
-                            double widenAmount = shrinkAmount - leftover;
-                            // Pass 1: restore shrunk-by-cascade columns to
-                            // their preferred width, walking rightward from
-                            // the dragged column.
-                            int ri = colIdx;
-                            while (widenAmount > 0.5 && ri < gv.Columns.Count - 1)
-                            {
-                                ri++;
-                                var next = gv.Columns[ri];
-                                double room = preferredWidths[next] - next.ActualWidth;
-                                if (room <= 0.5) continue;
-                                double w = Math.Min(room, widenAmount);
-                                next.Width = next.ActualWidth + w;
-                                widenAmount -= w;
-                            }
-                            // Pass 2: if everything to the right is already
-                            // at preferred and we still have width to give,
-                            // dump the remainder into the immediate adjacent
-                            // (it grows above its preferred to keep total ==
-                            // viewport, which is fine -- the user just shrunk
-                            // the dragged column smaller than its preferred).
-                            if (widenAmount > 0.5 && colIdx + 1 < gv.Columns.Count)
-                            {
-                                var rightNeighbour = gv.Columns[colIdx + 1];
-                                rightNeighbour.Width = rightNeighbour.ActualWidth + widenAmount;
-                            }
-                        }
-
-                        // User-driven Width changes (the outer handler
-                        // invocation, not cascade re-entries) update the
-                        // dragged column's preferred so future shrinks
-                        // remember the new target. Cascade-affected columns
-                        // keep their old preferred so drag-back can restore.
-                        preferredWidths[col] = col.ActualWidth;
-                        foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
-                    }
-                    finally { inCascade = false; }
-                });
-            }
-        }
-
-        private static double MeasureHeaderText(Control owner, string text)
-        {
-            try
-            {
-                double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(owner).PixelsPerDip;
-                // GridViewColumnHeader renders its text bolder than the body
-                // font by default; measuring at SemiBold matches the actual
-                // rendered width more closely. The few extra pixels matter
-                // because they decide whether the sort arrow clips on a
-                // column that's sitting right at its min.
-                var tf = new System.Windows.Media.Typeface(owner.FontFamily, owner.FontStyle, FontWeights.SemiBold, owner.FontStretch);
-                var ft = new System.Windows.Media.FormattedText(
-                    text, System.Globalization.CultureInfo.CurrentUICulture,
-                    FlowDirection.LeftToRight, tf, owner.FontSize,
-                    System.Windows.Media.Brushes.Black, dpi);
-                return ft.Width;
-            }
-            catch { return text.Length * 8.0; }
+            // Column widths are handled by DataGrid star sizing in XAML
+            // (Width="*" on the primary column, fixed widths + MinWidth on the
+            // others). No flex/min/cascade code needed. WPF redistributes
+            // automatically when the user drags a divider.
         }
 
         // Hydrate one ListSortState from a persisted ManageSort + apply.
@@ -769,25 +349,28 @@ namespace TrueforceForAll.Plugin
         // the original label. Sortable = column has a DisplayMemberBinding
         // with a Path (the property to sort on); the checkbox column has
         // none and is skipped.
-        private static ListSortState BuildSortState(ListView lv)
+        private static ListSortState BuildSortState(DataGrid dg)
         {
-            var s = new ListSortState { List = lv };
-            if (lv.View is GridView gv)
+            var s = new ListSortState { List = dg };
+            foreach (var col in dg.Columns)
             {
-                foreach (var col in gv.Columns)
-                {
-                    var key = (col.DisplayMemberBinding as Binding)?.Path?.Path;
-                    if (string.IsNullOrEmpty(key) || !(col.Header is string str)) continue;
-                    s.SortKeys[col]    = key;
-                    s.BaseHeaders[col] = str;
-                }
+                // The text columns expose their binding directly. The
+                // checkbox template column has no Binding, so it's auto
+                // skipped here (no SortKey, so a header click on that column
+                // becomes a no-op).
+                string key = null;
+                if (col is DataGridBoundColumn boundCol && boundCol.Binding is Binding b)
+                    key = b.Path?.Path;
+                if (string.IsNullOrEmpty(key) || !(col.Header is string str)) continue;
+                s.SortKeys[col]    = key;
+                s.BaseHeaders[col] = str;
             }
             return s;
         }
 
         private void HandleHeaderClick(RoutedEventArgs e, ListSortState s)
         {
-            if (!(e.OriginalSource is GridViewColumnHeader hdr) || hdr.Column == null) return;
+            if (!(e.OriginalSource is DataGridColumnHeader hdr) || hdr.Column == null) return;
             if (!s.SortKeys.TryGetValue(hdr.Column, out var sortKey)) return;
 
             bool descending = string.Equals(s.CurrentSortKey, sortKey, StringComparison.Ordinal)
@@ -1310,7 +893,7 @@ namespace TrueforceForAll.Plugin
 
         private void List_MouseMove(object sender, MouseEventArgs e)
         {
-            var list = sender as ListView;
+            var list = sender as DataGrid;
             if (list == null) { HideDetailsPopup(); return; }
             var row = FindRowUnderCursor(list, e);
             string text = (row as GameRow)?.DetailsText ?? (row as CarRow)?.DetailsText;
@@ -1338,14 +921,14 @@ namespace TrueforceForAll.Plugin
         }
 
         // Walk the visual tree from the click's original source up to the
-        // ListViewItem container (skipping checkbox / column cell content)
+        // DataGridRow container (skipping checkbox / column cell content)
         // and return its DataContext (a PresetRowBase). Null if the cursor
         // is over header / scrollbar / blank list area.
-        private static object FindRowUnderCursor(ListView list, MouseEventArgs e)
+        private static object FindRowUnderCursor(DataGrid list, MouseEventArgs e)
         {
             for (var d = e.OriginalSource as DependencyObject; d != null; d = VisualTreeHelper.GetParent(d))
             {
-                if (d is ListViewItem item) return item.DataContext;
+                if (d is DataGridRow item) return item.DataContext;
             }
             return null;
         }
