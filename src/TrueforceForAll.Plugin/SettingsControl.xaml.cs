@@ -6488,7 +6488,12 @@ namespace TrueforceForAll.Plugin
             var pending    = _plugin.GetPendingChangelog();
             bool useGitHub = ghReleases != null && ghReleases.Count > 0;
             bool useLocal  = !useGitHub && pending != null && pending.Count > 0;
-            if (!useGitHub && !useLocal) return;
+            // The banner fires on any version upgrade (HasUnseenChangelog is
+            // version-based, independent of bundled content), so an offline
+            // upgrade with no EffectChangelog entry for this build would be a
+            // dead banner click. Keep the early-out only when there's genuinely
+            // nothing new; otherwise fall through to a short offline note below.
+            if (!useGitHub && !useLocal && !_plugin.HasUnseenChangelog) return;
 
             var win = new Window
             {
@@ -6554,7 +6559,7 @@ namespace TrueforceForAll.Plugin
                     bodyStack.Children.Add(RenderReleaseNotes(r.Body));
                 }
             }
-            else
+            else if (useLocal)
             {
                 // Offline fallback: EffectChangelog. Same rendering shape as
                 // before this refactor so the in-source structured form still
@@ -6615,6 +6620,21 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+            }
+            else
+            {
+                // Offline and no bundled changelog entry for this build: GitHub
+                // notes are canonical but couldn't be fetched, so point the user
+                // there instead of opening a blank modal.
+                var curr = _plugin.UpdateChecker?.CurrentVersion;
+                string ver = curr != null ? curr.ToString(3) : "this version";
+                bodyStack.Children.Add(new TextBlock
+                {
+                    Text = "You're offline. The full release notes for v" + ver +
+                           " are on the project's GitHub releases page once you're back online.",
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 12,
+                });
             }
 
             var notesScroll = new ScrollViewer
