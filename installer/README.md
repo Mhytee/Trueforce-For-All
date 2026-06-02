@@ -16,13 +16,13 @@ A single setup `.exe` that:
    silently, then registers the `NonStandardHWIDs` key (`USBPcapCMD -I`) so
    USB 3.0 ports are captured too.
 
-The user never picks an install path — it's locked to wherever SimHub lives.
+The user never picks an install path. It's locked to wherever SimHub lives.
 
 ## How releases get built
 
 Releases are built **locally** by the maintainer. The full checklist
 (version bumps, changelog entries, tagging, draft-release upload) lives in
-[../RELEASING.md](../RELEASING.md). There is no CI build — the SimHub
+[../RELEASING.md](../RELEASING.md). There is no CI build. The SimHub
 plugin csproj references SimHub's redistributable DLLs by hint path, so
 a runner without SimHub installed can't compile the plugin.
 

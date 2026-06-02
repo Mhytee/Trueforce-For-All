@@ -26,9 +26,8 @@ __*
 /src/DiscoveryTest/
 /src/UsbPcapTest/
 
-# Maintainer-only release process + running changelog. Local dev notes,
-# not user-facing product docs.
-/RELEASING.md
+# Maintainer-only running changelog. Local dev notes, not a user-facing doc.
+# (RELEASING.md is tracked as the public release checklist.)
 /CHANGELOG_UNRELEASED.md
 
 # Claude Code personal settings (do not commit)
