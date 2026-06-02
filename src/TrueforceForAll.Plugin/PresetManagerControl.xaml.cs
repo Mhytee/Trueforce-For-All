@@ -936,6 +936,36 @@ namespace TrueforceForAll.Plugin
 
         private void List_MouseLeave(object sender, MouseEventArgs e) => HideDetailsPopup();
 
+        // Reload built-ins + user library from disk and refresh all three
+        // tabs. Lets users drop files into the library folders (or edit
+        // them outside SimHub) and pick the changes up without restarting
+        // the plugin. Sort + column layout aren't reset; the row data
+        // refills under the existing view.
+        private void RefreshLibrary_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            try
+            {
+                _plugin.ReloadLibraryFromFolders();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Refresh library failed: {ex.Message}");
+                MessageBox.Show(Window.GetWindow(this),
+                    "Refresh failed. Check the SimHub log for details.",
+                    "Refresh library", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            _initializing = true;
+            try
+            {
+                ReloadGames();
+                ReloadCars();
+                ReloadCustoms();
+            }
+            finally { _initializing = false; }
+        }
+
         // Keep the leftmost (select-all checkbox) column pinned at DisplayIndex 0
         // no matter what the user drags. CanUserReorder=False on the column +
         // FrozenColumnCount=1 on the DataGrid disallow dragging the checkbox

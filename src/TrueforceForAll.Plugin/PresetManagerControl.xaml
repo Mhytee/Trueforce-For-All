@@ -129,12 +129,25 @@
         </Popup>
 
         <DockPanel Grid.Row="0">
-            <!-- Segmented selector in place of an inner tab strip. -->
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
-                <RadioButton x:Name="SegGame"   Content="Game presets"   GroupName="PresetSeg" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Segment_Checked"/>
-                <RadioButton x:Name="SegCar"    Content="Car presets"    GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
-                <RadioButton x:Name="SegCustom" Content="Custom engines" GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
-            </StackPanel>
+            <!-- Segmented selector in place of an inner tab strip. Refresh
+                 icon docked right reloads built-ins + user library from
+                 disk; useful for picking up files dropped into the library
+                 folders without restarting the plugin. -->
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                <Button x:Name="RefreshLibraryBtn" DockPanel.Dock="Right"
+                        Width="28" Height="28" Padding="0"
+                        Background="#3A3A3A" BorderBrush="#3A3A3A" Foreground="#CFCFCF"
+                        Cursor="Hand" Click="RefreshLibrary_Click"
+                        ToolTip="Reload presets from disk. Use after dropping JSON files into the library folders to pick them up without restarting the plugin.">
+                    <TextBlock Text="&#x21BB;" FontSize="16" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="SegGame"   Content="Game presets"   GroupName="PresetSeg" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Segment_Checked"/>
+                    <RadioButton x:Name="SegCar"    Content="Car presets"    GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
+                    <RadioButton x:Name="SegCustom" Content="Custom engines" GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
+                </StackPanel>
+            </DockPanel>
 
             <!-- The three views share one cell; the selected segment shows one. -->
             <Grid>
