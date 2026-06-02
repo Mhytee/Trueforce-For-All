@@ -31,6 +31,11 @@ namespace TrueforceForAll.Plugin
         private long _forzaZeroSinceTicks;
         private bool _forzaTroubleshootAutoExpanded;
         private bool _forceForzaStall;
+        // Dev-only (UPDATEDIRTY access code): arm the update modal to (1) report
+        // unsaved changes so the pre-update warning fires, and (2) run a
+        // locally-picked installer instead of downloading from GitHub. Cleared
+        // when the update modal closes.
+        private bool _updateLocalInstallerTest;
         private static readonly long ForzaStallExpandTicks =
             System.Diagnostics.Stopwatch.Frequency * 12;   // 12 s sustained zero packets
         // CarIds we've already prompted to submit engine data for in this
@@ -4203,6 +4208,7 @@ namespace TrueforceForAll.Plugin
             "PREVIEW        Render the release-notes markdown on your clipboard exactly as the in-app 'What's new' will (copy the GitHub notes first, then type PREVIEW).\n" +
             "UPDATE         Simulate an available update (banner + update dialog).\n" +
             "CLOSESIM       Pick an installer and run it with /CloseSimHub=1 to test the silent SimHub auto-close. Closes SimHub.\n" +
+            "UPDATEDIRTY    Simulate an update with unsaved changes, then run a locally-picked installer instead of downloading (tests the pre-update 'unsaved changes' warning and the silent SimHub close). Closes SimHub.\n" +
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
@@ -4393,6 +4399,30 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = _plugin.UpdateChecker != null
                         ? "Simulated update available: the update banner appears within ~1 s; click it to see the update modal."
                         : "Update checker unavailable.";
+                return;
+            }
+
+            // Dev-only: like UPDATE, but also (1) reports unsaved changes so the
+            // pre-update warning fires, and (2) opens the update modal in a mode
+            // where "Update now" runs a locally-picked installer instead of
+            // downloading from GitHub. Exercises the whole in-app update flow
+            // (unsaved-changes guard, then launch the installer with
+            // /CloseSimHub=1) without a real release. WARNING: the picked
+            // installer closes SimHub.
+            if (code.Equals("UPDATEDIRTY", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                var checker = _plugin.UpdateChecker;
+                if (checker == null)
+                {
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = "Update checker unavailable.";
+                    return;
+                }
+                checker.DebugSimulateUpdateAvailable();
+                _updateLocalInstallerTest = true;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Local-installer update test: the unsaved-changes warning is armed; pick an installer when you click Update now.";
+                ShowUpdateModal();
                 return;
             }
 
@@ -6351,6 +6381,7 @@ namespace TrueforceForAll.Plugin
         private bool HasUnsavedChanges()
         {
             if (_plugin == null) return false;
+            if (_updateLocalInstallerTest) return true;   // forced by the UPDATEDIRTY test code
             for (int i = 0; i < _effectDirty.Length; i++)
                 if (_effectDirty[i]) return true;
             return !string.IsNullOrEmpty(_plugin.ActiveCarId)
@@ -6471,11 +6502,8 @@ namespace TrueforceForAll.Plugin
                 if (HasUnsavedChanges())
                 {
                     var confirm = MessageBox.Show(Window.GetWindow(this),
-                        "You have unsaved changes.\n\n" +
-                        "Updating closes SimHub to replace the plugin, and any tuning you " +
-                        "haven't saved to a preset will be discarded.\n\n" +
-                        "Discard those changes and continue with the update? " +
-                        "(Click No to go back and save first.)",
+                        "You have unsaved changes that will be discarded if you continue.\n\n" +
+                        "Update now? (No to go back and save first.)",
                         "Trueforce For All: unsaved changes",
                         MessageBoxButton.YesNo, MessageBoxImage.Warning);
                     if (confirm != MessageBoxResult.Yes) return;
@@ -6483,29 +6511,54 @@ namespace TrueforceForAll.Plugin
 
                 updateBtn.IsEnabled = false;
                 dismissBtn.IsEnabled = false;
-                progress.Visibility = Visibility.Visible;
-                progress.IsIndeterminate = true;
-                status.Text = "Downloading installer...";
 
                 try
                 {
-                    string path = await upd.DownloadInstallerAsync((received, total) =>
+                    string path;
+                    if (_updateLocalInstallerTest)
                     {
-                        Dispatcher.Invoke(() =>
+                        // Test mode (UPDATEDIRTY): skip the GitHub download and
+                        // run a locally-picked installer through the same launch
+                        // path instead, so the whole in-app update flow can be
+                        // exercised without a real release.
+                        var pick = new Microsoft.Win32.OpenFileDialog
                         {
-                            if (total > 0)
+                            Title  = "Pick the installer to run (test; runs with /CloseSimHub=1)",
+                            Filter = "Installer (*.exe)|*.exe",
+                        };
+                        if (pick.ShowDialog() != true)
+                        {
+                            status.Text = "Cancelled (no installer picked).";
+                            updateBtn.IsEnabled = true;
+                            dismissBtn.IsEnabled = true;
+                            return;
+                        }
+                        path = pick.FileName;
+                    }
+                    else
+                    {
+                        progress.Visibility = Visibility.Visible;
+                        progress.IsIndeterminate = true;
+                        status.Text = "Downloading installer...";
+                        path = await upd.DownloadInstallerAsync((received, total) =>
+                        {
+                            Dispatcher.Invoke(() =>
                             {
-                                progress.IsIndeterminate = false;
-                                progress.Maximum = total;
-                                progress.Value = received;
-                                status.Text = $"Downloading installer... {(received / 1024.0 / 1024.0):F1} / {(total / 1024.0 / 1024.0):F1} MB";
-                            }
-                            else
-                            {
-                                status.Text = $"Downloading installer... {(received / 1024.0 / 1024.0):F1} MB";
-                            }
-                        });
-                    }, _plugin.UpdateCheckerToken);
+                                if (total > 0)
+                                {
+                                    progress.IsIndeterminate = false;
+                                    progress.Maximum = total;
+                                    progress.Value = received;
+                                    status.Text = $"Downloading installer... {(received / 1024.0 / 1024.0):F1} / {(total / 1024.0 / 1024.0):F1} MB";
+                                }
+                                else
+                                {
+                                    status.Text = $"Downloading installer... {(received / 1024.0 / 1024.0):F1} MB";
+                                }
+                            });
+                        }, _plugin.UpdateCheckerToken);
+                    }
+
                     status.Text = "Launching installer...";
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path)
                     {
@@ -6527,6 +6580,9 @@ namespace TrueforceForAll.Plugin
             };
 
             win.ShowDialog();
+            // Disarm the local-installer test once the modal closes (no-op for
+            // the real update path, which never sets it).
+            _updateLocalInstallerTest = false;
         }
 
         // ---------- "What's new" banner / modal ----------
