@@ -420,24 +420,59 @@ namespace TrueforceForAll.Plugin
             var dpd = System.ComponentModel.DependencyPropertyDescriptor
                 .FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn));
             if (dpd == null) return;
+
+            // Precompute the min per column (header text + sort arrow + padding)
+            // and each column's index, so the cascade handler doesn't repeat work.
+            var mins     = new Dictionary<GridViewColumn, double>();
+            var indexOf  = new Dictionary<GridViewColumn, int>();
+            for (int i = 0; i < gv.Columns.Count; i++)
+            {
+                var c = gv.Columns[i];
+                string text = c.Header as string;
+                mins[c]    = string.IsNullOrEmpty(text)
+                    ? 28
+                    : MeasureHeaderText(lv, text + " ▼") + 26;
+                indexOf[c] = i;
+            }
+
+            // Cascade-leftward shrink: when a gripper drag tries to take a
+            // column below its min, snap that column at min and propagate
+            // the leftover Δ to the column on its LEFT (and onwards) so the
+            // drag's divider keeps following the cursor. The dragged column
+            // appears to "slide over" once it hits its min: the column to its
+            // left shrinks instead. Re-entrancy guarded with a flag so
+            // programmatic widths inside the cascade don't re-trigger the
+            // handler.
+            bool inCascade = false;
             foreach (var column in gv.Columns)
             {
-                string text = column.Header as string;
-                // Min = enough to render the header text + sort-arrow glyph,
-                // no extra padding. Adding padding here (was +26) pushed the
-                // floor for narrow-headered columns (Built-in, Default, Game)
-                // above their declared Width, so the watcher snapped them up
-                // at startup and refused all drag-narrower attempts. With the
-                // floor at exactly the header glyph width the columns sit at
-                // their declared width by default but still resist shrinking
-                // past the point of legibility.
-                double min = string.IsNullOrEmpty(text)
-                    ? 24
-                    : Math.Max(24, MeasureHeaderText(lv, text + " ▼"));
                 var col = column; // capture per iteration
                 dpd.AddValueChanged(col, (s, e) =>
                 {
-                    if (!double.IsNaN(col.Width) && col.Width < min) col.Width = min;
+                    if (inCascade) return;
+                    if (double.IsNaN(col.Width)) return;
+                    double colMin = mins[col];
+                    if (col.Width >= colMin) return;
+
+                    double leftover = colMin - col.Width;
+                    try
+                    {
+                        inCascade = true;
+                        col.Width = colMin;
+                        int idx = indexOf[col];
+                        while (leftover > 0.5 && idx > 0)
+                        {
+                            idx--;
+                            var prev = gv.Columns[idx];
+                            double prevMin   = mins[prev];
+                            double maxShrink = prev.ActualWidth - prevMin;
+                            if (maxShrink <= 0.5) continue;
+                            double shrinkBy = Math.Min(maxShrink, leftover);
+                            prev.Width = prev.ActualWidth - shrinkBy;
+                            leftover -= shrinkBy;
+                        }
+                    }
+                    finally { inCascade = false; }
                 });
             }
         }
