@@ -1,0 +1,50 @@
+TRUEFORCE FOR ALL
+SAFETY NOTICE & LIABILITY DISCLAIMER
+
+IMPORTANT. PLEASE READ CAREFULLY BEFORE USE.
+
+Trueforce For All drives the force-feedback motors of sim-racing wheels,
+including direct-drive wheelbases capable of high torque. Improper
+configuration, software bugs, or unexpected behavior CAN CAUSE PHYSICAL
+INJURY or damage to your equipment.
+
+This is a safety and liability notice. It supplements, and does not replace
+or limit, the software's license. Trueforce For All is free and open-source
+software under the GNU General Public License, version 2.0 (see LICENSE).
+Nothing here restricts the rights that license grants you.
+
+1. AS IS, NO WARRANTY. The software is provided "AS IS", without warranty of
+   any kind, as set out in the GPL-2.0 license. It is pre-1.0 software. It
+   includes force-spike reduction and other safety-minded behavior, but these
+   are NOT guaranteed to prevent dangerous force output in every scenario.
+
+2. ASSUMPTION OF RISK. You acknowledge that using force-feedback wheel
+   hardware carries inherent physical risk, including injury from sudden or
+   strong wheel motion. You assume all responsibility for any personal injury,
+   property or hardware damage, or other harm arising from your use of the
+   software.
+
+3. KEEP CLEAR. Keep hands, fingers, and loose clothing clear of the wheel rim
+   when you are not in control of it.
+
+4. LIMITATION OF LIABILITY. To the maximum extent permitted by law, in no
+   event shall the developer or any contributor be liable for any claim,
+   damages, or other liability, whether in contract, tort, or otherwise,
+   arising from or in connection with the software or its use, including but
+   not limited to personal injury, property damage, damage to your wheel or
+   other hardware, or loss of data.
+
+5. OPEN SOURCE. This software is free and open source under GPL-2.0-only. You
+   may use, study, modify, and redistribute it under the terms of that
+   license; see LICENSE.
+
+6. DONATIONS. The software is currently free of charge. The developer may
+   accept voluntary donations, which are not a purchase and grant no
+   additional rights, warranty, or support. The developer may offer paid
+   versions or features in the future.
+
+7. SEVERABILITY. If any provision of this notice is held invalid or
+   unenforceable, the remaining provisions continue in full force.
+
+By installing or using the software, you acknowledge that you have read,
+understood, and accept this notice.

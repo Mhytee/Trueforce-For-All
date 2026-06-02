@@ -61,8 +61,10 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=yes
 
-; LICENSE in repo root; license page lets users read GPL-2.0 before installing.
-LicenseFile=..\LICENSE
+; EULA.txt (safety notice + liability disclaimer) is the accept-to-install
+; page. The GPL-2.0 LICENSE is referenced by the EULA and shipped into {app}
+; (see [Files]) rather than shown on the accept page.
+LicenseFile=..\EULA.txt
 SetupIconFile=
 
 ; Remove pre-rebrand plugin files. Pre-1.0 builds shipped under the old
@@ -80,6 +82,10 @@ Type: files; Name: "{app}\SimHubTrueforce.LoopbackHelper.exe"
 Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
+; GPL-2.0 license + the EULA / safety notice, shipped so they travel with the
+; install (the EULA is also the accept-to-install page; see LicenseFile above).
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\EULA.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 ; NOTE: We deliberately do NOT ship our own HidSharp.dll. SimHub ships
 ; HidSharp 2.6.x in its install root and loads it process-wide; our plugin
