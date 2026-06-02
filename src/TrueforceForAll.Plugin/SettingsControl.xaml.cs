@@ -6024,9 +6024,17 @@ namespace TrueforceForAll.Plugin
                         continue;
                     }
 
-                    // No recognised Type marker: looks like a full settings
-                    // backup. Prompt per-file (rare and destructive enough
-                    // that auto-importing in a batch would be wrong).
+                    // No recognised Type marker. Only offer the destructive
+                    // "replace all settings" path if the file actually looks
+                    // like a settings backup (it has the settings' top-level
+                    // fields). An unrecognized or malformed file must NOT be
+                    // mistaken for a backup and risk wiping everything.
+                    if (!LooksLikeSettingsBackup(json))
+                    {
+                        filesSkipped++;
+                        failures.Add($"{System.IO.Path.GetFileName(path)}: unrecognized file (not a TF4ALL preset, car preset, pack, or settings backup)");
+                        continue;
+                    }
                     var confirm = MessageBox.Show(owner,
                         $"'{System.IO.Path.GetFileName(path)}' looks like a full TF4ALL settings backup. Importing replaces all current settings (master, audio, every effect, all per-car overrides). Continue with this file?",
                         "Trueforce For All", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -6082,6 +6090,21 @@ namespace TrueforceForAll.Plugin
                 return jo["Type"]?.ToString();
             }
             catch { return null; }
+        }
+
+        // True if the JSON looks like a full TF4ALL settings backup (the raw
+        // TrueforceSettings shape, which carries no Type field). Requires a
+        // couple of distinctive top-level fields so an unrecognized or
+        // malformed file is never mistaken for a backup and offered the
+        // destructive replace-all path.
+        private static bool LooksLikeSettingsBackup(string json)
+        {
+            try
+            {
+                var jo = Newtonsoft.Json.Linq.JObject.Parse(json);
+                return jo["MasterGain"] != null && (jo["Performance"] != null || jo["Forza"] != null);
+            }
+            catch { return false; }
         }
 
         // ---------- Performance tab ----------

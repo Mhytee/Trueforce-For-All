@@ -53,6 +53,12 @@ namespace TrueforceForAll.Plugin
         // per-car values.
         private CarPresetStore _carStore;
 
+        // Sidecar registry of imported community packs (installed-packs.json at
+        // the user library root). Preserves pack identity that the bare
+        // game-preset snapshots and car files don't otherwise carry; the
+        // Preset Manager's Source column reads it to attribute imported rows.
+        private InstalledPacksStore _installedPacks;
+
         // Snapshot of each car's override AS OF its last save / load. Used
         // by IsSectionDirty to tell whether an override section has been
         // edited since the last save, without re-reading the file. Updated
@@ -1472,6 +1478,9 @@ namespace TrueforceForAll.Plugin
             // subfolder under TrueforceForAll-Library). Built-in cars live in
             // BuiltinPresets and merge in via LoadAndMigrateCarPresets.
             _carStore = new CarPresetStore(
+                () => UserPresets.CurrentFolder,
+                msg => SimHub.Logging.Current.Info(msg));
+            _installedPacks = new InstalledPacksStore(
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
             LoadAndMigrateCarPresets();
@@ -4964,6 +4973,29 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            // Pack archives are binary (not *.json), so scan them separately and
+            // route each to ImportPack. A dropped .tfpack/.zip now installs here
+            // the same way the manual Import button handles it.
+            var packFiles = new List<string>();
+            packFiles.AddRange(Directory.GetFiles(folder, "*.tfpack", SearchOption.AllDirectories));
+            packFiles.AddRange(Directory.GetFiles(folder, "*.zip", SearchOption.AllDirectories));
+            foreach (var path in packFiles)
+            {
+                if (path.StartsWith(archiveRoot, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var r = ImportPack(path);
+                    packGameOk += r.PresetsImported;
+                    packCarOk  += r.CarsImported;
+                    imported.Add(path);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to import pack '{Path.GetFileName(path)}': {ex.Message}");
+                    failed++;
+                }
+            }
+
             if (imported.Count > 0)
             {
                 try
@@ -5334,11 +5366,17 @@ namespace TrueforceForAll.Plugin
         /// the UI rows.</summary>
         public string ReloadLibraryFromFolders()
         {
+            // Install anything dropped into the import folder first, so a Refresh
+            // picks up newly-dropped presets/packs (not just at plugin startup).
+            string importMsg = null;
+            try { importMsg = ImportFromUserImportsFolder(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] Import-folder scan on refresh failed: {ex.Message}"); }
             BuiltinPresets.Reload();
             UserPresets.Reload();
             RebuildPresetCacheFromFolders();
             LoadAndMigrateCarPresets();
             string msg = $"Reloaded library from folders: {BuiltinPresets.BuiltinPresetJsons.Count} game + {BuiltinPresets.CarPresetJsons.Count} car built-in(s), {UserPresets.PresetJsons.Count} user game preset(s), {UserPresets.CarPresetJsons.Count} user car preset(s).";
+            if (!string.IsNullOrEmpty(importMsg)) msg = importMsg + " " + msg;
             SimHub.Logging.Current.Info($"[Trueforce] {msg}");
             return msg;
         }
@@ -5983,7 +6021,10 @@ namespace TrueforceForAll.Plugin
             var loaded = _carStore.LoadAll();
             if (!loaded.TryGetValue(carId, out var perCar) || !perCar.TryGetValue(oldDisk, out var entry)) return false;
 
-            _carStore.Save(carId, newDisk, entry.GameName ?? "", entry.Override, isBuiltin: false);
+            // Keep pack identity across a rename so the Source column doesn't
+            // flip to "Local" for an imported preset the user renamed.
+            _carStore.Save(carId, newDisk, entry.GameName ?? "", entry.Override, isBuiltin: false,
+                packName: entry.PackName, author: entry.Author);
             _carStore.Delete(carId, oldDisk);
 
             if (Settings.CarDefaults != null
@@ -6020,7 +6061,9 @@ namespace TrueforceForAll.Plugin
             if (entry == null) return false;
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(entry.Override);
             var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CarOverride>(json);
-            _carStore.Save(carId, newDisk, entry.GameName ?? "", clone, isBuiltin: false);
+            // A duplicate of an imported preset stays attributed to its pack.
+            _carStore.Save(carId, newDisk, entry.GameName ?? "", clone, isBuiltin: false,
+                packName: entry.PackName, author: entry.Author);
             SimHub.Logging.Current.Info($"[Trueforce] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
             return true;
         }
@@ -6206,6 +6249,45 @@ namespace TrueforceForAll.Plugin
             if (!HasBuiltinSuffix(presetName)) return false;
             string disk = ToDiskName(presetName);
             return BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + disk);
+        }
+
+        // ---------- Source attribution (Preset Manager "Source" column) ----------
+
+        /// <summary>Label shown in the Preset Manager's Source column for a
+        /// game preset row. "Built-In" for factory presets, the pack label for
+        /// presets recorded in the installed-packs sidecar, else "Local".</summary>
+        public string ResolveGamePresetSource(string presetName, bool isBuiltin)
+        {
+            if (isBuiltin) return "Built-In";
+            var pack = _installedPacks?.FindPackForGame(presetName);
+            return PackLabel(pack?.PackName, pack?.Author) ?? "Local";
+        }
+
+        /// <summary>Label shown in the Preset Manager's Source column for a car
+        /// preset row. "Built-In" for factory presets; else the pack label when
+        /// the preset is in the installed-packs sidecar OR the on-disk car file
+        /// carries pack metadata (passed in by the caller); else "Local".</summary>
+        public string ResolveCarPresetSource(string carId, string presetName, bool isBuiltin,
+            string filePackName = null, string fileAuthor = null)
+        {
+            if (isBuiltin) return "Built-In";
+            // Sidecar first (richest identity), then the car file's own
+            // PackName/Author (loose-imported single car files), then Local.
+            var pack = _installedPacks?.FindPackForCar(carId, presetName);
+            return PackLabel(pack?.PackName, pack?.Author)
+                ?? PackLabel(filePackName, fileAuthor)
+                ?? "Local";
+        }
+
+        // Compose a Source label from a pack name and author. Prefer
+        // "PackName (Author)" when both exist, else PackName, else Author.
+        // Returns null when neither is present (caller falls back to "Local").
+        private static string PackLabel(string packName, string author)
+        {
+            string p = NullIfBlank(packName);
+            string a = NullIfBlank(author);
+            if (p != null && a != null) return $"{p} ({a})";
+            return p ?? a;
         }
 
         /// <summary>True iff the active preset for the active car is a
@@ -7937,15 +8019,17 @@ namespace TrueforceForAll.Plugin
             // independent of the built-in folder).
             string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                 file.Snapshot, Newtonsoft.Json.Formatting.Indented);
-            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, file.PresetName, snapJson);
+            // Never clobber an existing user preset of the same name.
+            string importName = MakeUniqueGamePresetName(file.PresetName);
+            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, importName, snapJson);
             UserPresets.Reload();
             RebuildPresetCacheFromFolders();
             this.SaveCommonSettings("GeneralSettings", Settings);
 
-            SimHub.Logging.Current.Info($"[Trueforce] Imported preset '{file.PresetName}' from {path} into the user library.");
+            SimHub.Logging.Current.Info($"[Trueforce] Imported preset '{importName}' from {path} into the user library.");
             return new ImportPresetResult
             {
-                PresetName    = file.PresetName,
+                PresetName    = importName,
                 Author        = file.Author,
                 Description   = file.Description,
                 AuthorVersion = file.AuthorVersion,
@@ -8132,6 +8216,23 @@ namespace TrueforceForAll.Plugin
             {
                 string candidate = $"{desired} ({i})";
                 if (!perCar.ContainsKey(candidate)) return candidate;
+            }
+            return $"{desired} ({DateTime.Now:HHmmss})";
+        }
+
+        // Append "(2)", "(3)", … to a game preset name until it's unique among
+        // the user's existing presets (and any imported earlier in the same
+        // batch via alsoUsed). Mirrors MakeUniqueCarPresetName: an import never
+        // clobbers an existing user game preset of the same name.
+        private string MakeUniqueGamePresetName(string desired, HashSet<string> alsoUsed = null)
+        {
+            if (string.IsNullOrEmpty(desired)) return desired;
+            bool Taken(string n) => UserPresets.HasGamePreset(n) || (alsoUsed != null && alsoUsed.Contains(n));
+            if (!Taken(desired)) return desired;
+            for (int i = 2; i < 100; i++)
+            {
+                string candidate = $"{desired} ({i})";
+                if (!Taken(candidate)) return candidate;
             }
             return $"{desired} ({DateTime.Now:HHmmss})";
         }
@@ -8469,8 +8570,13 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null) return default(ImportPackResult);
 
-            string packAuthor = null, packDesc = null, packVer = null;
+            string packAuthor = null, packDesc = null, packVer = null, packName = null;
             int presetsImported = 0, carsImported = 0;
+            // Identity entries this import actually wrote (actual unique names),
+            // recorded into the installed-packs sidecar at the end so a later
+            // "delete pack / filter by pack" feature and the Source column can
+            // attribute these rows to their pack.
+            var packEntries = new List<InstalledPackEntry>();
             using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
             {
@@ -8492,11 +8598,17 @@ namespace TrueforceForAll.Plugin
                         packAuthor = manifest.Author;
                         packDesc   = manifest.Description;
                         packVer    = manifest.AuthorVersion;
+                        packName   = manifest.PackName;
                     }
                 }
 
                 if (Settings.Presets == null)
                     Settings.Presets = new Dictionary<string, GameSettingsSnapshot>();
+
+                // Track game-preset names chosen in this pack so two entries
+                // with the same name (or a clash with an existing user preset)
+                // don't clobber each other. Mirrors the car unique-name guard.
+                var importedGameNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var entry in zip.Entries)
                 {
@@ -8512,7 +8624,16 @@ namespace TrueforceForAll.Plugin
                         {
                             string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                                 pf.Snapshot, Newtonsoft.Json.Formatting.Indented);
-                            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, pf.PresetName, snapJson);
+                            string gName = MakeUniqueGamePresetName(pf.PresetName, importedGameNames);
+                            importedGameNames.Add(gName);
+                            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, gName, snapJson);
+                            // Record the ACTUAL name written (post-uniquing) so
+                            // the sidecar identity matches what's on disk.
+                            packEntries.Add(new InstalledPackEntry
+                            {
+                                Kind = InstalledPackEntry.KindGame,
+                                Name = gName,
+                            });
                             presetsImported++;
                         }
                         catch (Exception ex)
@@ -8529,10 +8650,43 @@ namespace TrueforceForAll.Plugin
 
                         string desired = string.IsNullOrEmpty(cf.PresetName) ? cf.CarId : cf.PresetName;
                         string presetName = MakeUniqueCarPresetName(cf.CarId, desired);
-                        _carStore?.Save(cf.CarId, presetName, cf.GameName ?? "", cf.Override, isBuiltin: false);
+                        // Persist the pack identity onto the car file so it
+                        // survives on disk. Prefer the file's own metadata
+                        // (per-preset), fall back to the pack-level fields.
+                        _carStore?.Save(cf.CarId, presetName, cf.GameName ?? "", cf.Override, isBuiltin: false,
+                            packName:      cf.PackName      ?? packName,
+                            author:        cf.Author        ?? packAuthor,
+                            description:   cf.Description    ?? packDesc,
+                            authorVersion: cf.AuthorVersion ?? packVer);
+                        // Record the ACTUAL carId + name written (post-uniquing).
+                        packEntries.Add(new InstalledPackEntry
+                        {
+                            Kind       = InstalledPackEntry.KindCar,
+                            CarId      = cf.CarId,
+                            PresetName = presetName,
+                        });
                         carsImported++;
                     }
                 }
+            }
+
+            // Record the pack identity in the sidecar so future "delete pack /
+            // filter by pack / set pack as default" and the Source column can
+            // attribute these rows. One record per ImportPack call. Fall back
+            // to a sensible label when no PackName was supplied (the author, or
+            // a generic "Imported pack").
+            if (packEntries.Count > 0)
+            {
+                string label = NullIfBlank(packName) ?? NullIfBlank(packAuthor) ?? "Imported pack";
+                _installedPacks?.AddPack(new InstalledPack
+                {
+                    PackName      = label,
+                    Author        = packAuthor,
+                    AuthorVersion = packVer,
+                    Description    = packDesc,
+                    ImportedAt    = DateTime.Now,
+                    Entries       = packEntries,
+                });
             }
 
             // Game presets just landed in the user library folder; reload +

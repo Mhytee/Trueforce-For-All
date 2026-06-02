@@ -56,7 +56,7 @@ namespace TrueforceForAll.Plugin
         // flat-folder game scan must skip them. Their stem (without .json) is
         // also a reserved preset name that should never appear in the library.
         private static readonly string[] ReservedMetadataFiles =
-            { GameDefaultsFileName, CarDefaultsFileName, "manifest.json" };
+            { GameDefaultsFileName, CarDefaultsFileName, "manifest.json", "installed-packs.json" };
 
         public static bool IsReservedMetadataFile(string fileName)
         {
@@ -69,7 +69,7 @@ namespace TrueforceForAll.Plugin
         /// library preset with one of these names is a stray that leaked from a
         /// folder scan and should be pruned.</summary>
         public static IReadOnlyList<string> ReservedPresetNames { get; } =
-            new[] { "game-defaults", "car-defaults", "manifest" };
+            new[] { "game-defaults", "car-defaults", "manifest", "installed-packs" };
 
 
         /// <summary>Load every built-in from <paramref name="folder"/> by

@@ -225,7 +225,11 @@ namespace TrueforceForAll.Plugin
         {
             public string Name { get; set; }
             public bool   Builtin { get; set; }
-            public string BuiltinLabel => Builtin ? "Built-in" : "";
+            // Source column label: "Built-In" for factory presets, "Local" for
+            // the user's own, or the pack label for community-imported presets.
+            // Populated at row build via the plugin's source resolver. Builtin
+            // (above) stays as the protection flag the action buttons read.
+            public string Source { get; set; } = "";
             public List<string> Defaults { get; set; } = new List<string>();
             public string DefaultForLabel => Defaults.Count == 0 ? "" : string.Join(", ", Defaults);
             // Bound by the expandable-row template's details area; populated
@@ -238,10 +242,16 @@ namespace TrueforceForAll.Plugin
         {
             public string CarId { get; set; }
             public string PresetName { get; set; }
+            // Suffix-stripped name for the grid's "Preset name" column. The
+            // real PresetName keeps the " (Built-In)" suffix (it is the merged-
+            // map key and the default-match key); the Source column now shows
+            // "Built-In", so the suffix in the column would just be redundant.
+            public string DisplayName { get; set; }
             public string GameName { get; set; }
             public string GameLabel => string.IsNullOrEmpty(GameName) ? "" : GameName;
             public bool   Builtin { get; set; }
-            public string BuiltinLabel => Builtin ? "Built-in" : "";
+            // Source column label, populated at row build (see GameRow.Source).
+            public string Source { get; set; } = "";
             public bool   Active { get; set; }
             public string ActiveLabel => Active ? "★" : "";
             public string DetailsText { get; set; }
@@ -275,7 +285,7 @@ namespace TrueforceForAll.Plugin
         private readonly ObservableCollection<CustomRow> _customRows = new ObservableCollection<CustomRow>();
 
         // Per-DataGrid sort state. The sort key for each column comes from
-        // its Binding.Path (e.g. "Name", "BuiltinLabel"). The checkbox
+        // its Binding.Path (e.g. "Name", "Source"). The checkbox
         // column has no Binding so it auto-skips. Base header text is
         // captured per column so the ▲/▼ indicator can be appended /
         // stripped without losing the original label.
@@ -531,10 +541,12 @@ namespace TrueforceForAll.Plugin
                 if (_builtinsOnly && !_plugin.IsBuiltinPreset(name)) continue;
                 reverseDefaults.TryGetValue(name, out var defaults);
                 _plugin.Settings.Presets.TryGetValue(name, out var snap);
+                bool builtin = _plugin.IsBuiltinPreset(name);
                 _gameRows.Add(new GameRow
                 {
                     Name        = name,
-                    Builtin     = _plugin.IsBuiltinPreset(name),
+                    Builtin     = builtin,
+                    Source      = _plugin.ResolveGamePresetSource(name, builtin),
                     Defaults    = defaults ?? new List<string>(),
                     DetailsText = BuildGameDetailsText(snap),
                 });
@@ -572,12 +584,18 @@ namespace TrueforceForAll.Plugin
                         baseline = ResolveGameBaseline(gameKey);
                         baselineByGame[gameKey] = baseline;
                     }
+                    string carDisplayName = entry.PresetName ?? "";
+                    if (carDisplayName.EndsWith(TrueforcePlugin.BuiltinNameSuffix, StringComparison.Ordinal))
+                        carDisplayName = carDisplayName.Substring(0, carDisplayName.Length - TrueforcePlugin.BuiltinNameSuffix.Length);
                     _carRows.Add(new CarRow
                     {
                         CarId       = carId,
                         PresetName  = entry.PresetName,
+                        DisplayName = carDisplayName,
                         GameName    = entry.GameName,
                         Builtin     = entry.IsBuiltin,
+                        Source      = _plugin.ResolveCarPresetSource(carId, entry.PresetName, entry.IsBuiltin,
+                                          entry.PackName, entry.Author),
                         Active      = string.Equals(activeName, entry.PresetName, StringComparison.Ordinal),
                         DetailsText = BuildCarDetailsText(carId, entry, baseline),
                     });

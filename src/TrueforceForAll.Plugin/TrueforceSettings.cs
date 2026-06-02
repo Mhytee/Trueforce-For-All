@@ -393,7 +393,7 @@ namespace TrueforceForAll.Plugin
 
         // Persisted sort preferences for the preset manager, one per
         // tab. Key matches a column's binding path (e.g. "Name",
-        // "BuiltinLabel"); empty/null = natural order. Hydrated when the
+        // "Source"); empty/null = natural order. Hydrated when the
         // dialog opens, rewritten on every header click.
         public ManageSort ManageGamesSort   { get; set; } = new ManageSort();
         public ManageSort ManageCarsSort    { get; set; } = new ManageSort();

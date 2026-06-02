@@ -221,7 +221,7 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Default for"  Width="240" MinWidth="130" Binding="{Binding DefaultForLabel}"/>
                             <DataGridTextColumn Header="Preset name"  Width="*"   MinWidth="130" Binding="{Binding Name}"/>
-                            <DataGridTextColumn Header="Built-in"     Width="70"  MinWidth="100" Binding="{Binding BuiltinLabel}"/>
+                            <DataGridTextColumn Header="Source"       Width="120" MinWidth="100" Binding="{Binding Source}"/>
                         </DataGrid.Columns>
                     </DataGrid>
             </DockPanel>
@@ -292,8 +292,8 @@
                             <DataGridTextColumn Header="Default"     Width="70"  MinWidth="95"  Binding="{Binding ActiveLabel}"/>
                             <DataGridTextColumn Header="Game"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
                             <DataGridTextColumn Header="Car ID"      Width="*"   MinWidth="120" Binding="{Binding CarId}"/>
-                            <DataGridTextColumn Header="Preset name" Width="190" MinWidth="130" Binding="{Binding PresetName}"/>
-                            <DataGridTextColumn Header="Built-in"    Width="70"  MinWidth="100" Binding="{Binding BuiltinLabel}"/>
+                            <DataGridTextColumn Header="Preset name" Width="190" MinWidth="130" Binding="{Binding DisplayName}"/>
+                            <DataGridTextColumn Header="Source"      Width="120" MinWidth="100" Binding="{Binding Source}"/>
                         </DataGrid.Columns>
                     </DataGrid>
             </DockPanel>

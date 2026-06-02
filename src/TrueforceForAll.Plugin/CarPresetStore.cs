@@ -32,6 +32,12 @@ namespace TrueforceForAll.Plugin
         public string PresetName  { get; set; }
         public string GameName    { get; set; }
         public bool   IsBuiltin   { get; set; }
+        // Optional pack/sharing metadata, carried from the on-disk
+        // CarPresetFile when present (set on imported pack files). Left null
+        // for built-ins and locally-saved presets. Used by the Preset
+        // Manager's Source column to attribute a car preset to its pack.
+        public string PackName    { get; set; }
+        public string Author      { get; set; }
         public CarOverride Override { get; set; }
     }
 
@@ -111,6 +117,8 @@ namespace TrueforceForAll.Plugin
                             PresetName = presetName,
                             GameName   = f.GameName ?? "",
                             IsBuiltin  = false, // user-library files are user; built-ins come from the built-in folder
+                            PackName   = f.PackName,
+                            Author     = f.Author,
                             Override   = f.Override,
                         };
                         if (!result.TryGetValue(f.CarId, out var perCar))
@@ -136,8 +144,12 @@ namespace TrueforceForAll.Plugin
         /// <summary>Writes a car preset file for (carId, presetName). Empty
         /// overrides are deleted instead of written. Throws nothing; logs on
         /// I/O failure. <paramref name="isBuiltin"/> is accepted for API
-        /// compat but ignored: user-library writes are always non-builtin.</summary>
-        public void Save(string carId, string presetName, string gameName, CarOverride ovr, bool isBuiltin = false)
+        /// compat but ignored: user-library writes are always non-builtin.
+        /// The optional pack/sharing metadata (packName, author, description,
+        /// authorVersion) is persisted when provided; non-import callers leave
+        /// it null and the fields stay blank (no behavior change for them).</summary>
+        public void Save(string carId, string presetName, string gameName, CarOverride ovr, bool isBuiltin = false,
+            string packName = null, string author = null, string description = null, string authorVersion = null)
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
             if (ovr == null || ovr.IsEmpty)
@@ -151,11 +163,15 @@ namespace TrueforceForAll.Plugin
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 var f = new CarPresetFile
                 {
-                    GameName   = gameName ?? "",
-                    CarId      = carId,
-                    PresetName = presetName,
-                    IsBuiltin  = false,
-                    Override   = ovr,
+                    GameName      = gameName ?? "",
+                    CarId         = carId,
+                    PresetName    = presetName,
+                    IsBuiltin     = false,
+                    PackName      = packName,
+                    Author        = author,
+                    Description   = description,
+                    AuthorVersion = authorVersion,
+                    Override      = ovr,
                 };
                 AtomicWriteAllText(path, JsonConvert.SerializeObject(f, Formatting.Indented));
             }
