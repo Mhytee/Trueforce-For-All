@@ -512,7 +512,23 @@ namespace TrueforceForAll.Plugin
                 {
                     if (inCascade || _columnAdjusting)
                     {
-                        if (initialized) prevWidths[col] = col.ActualWidth;
+                        if (initialized)
+                        {
+                            prevWidths[col] = col.ActualWidth;
+                            // _columnAdjusting (and NOT inCascade) means
+                            // ResizeFlexColumn wrote the flex column's
+                            // width (window resize, scrollbar visibility
+                            // flip). Treat that as the new natural target
+                            // so a later drag-back restores to the
+                            // post-resize width, not whatever the column
+                            // was sized to before. inCascade alone means
+                            // our own cascade is absorbing a user drag,
+                            // and those writes must NOT change preferred
+                            // (preferred's whole point is to remember the
+                            // pre-cascade target so drag-back can restore).
+                            if (_columnAdjusting && !inCascade)
+                                preferredWidths[col] = col.ActualWidth;
+                        }
                         return;
                     }
                     if (!initialized) { prevWidths[col] = col.ActualWidth; return; }
