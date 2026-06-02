@@ -451,6 +451,16 @@ namespace TrueforceForAll.Plugin
                     c.Width = mins[c];
             }
 
+            // Track each column's "preferred" width -- the width the user
+            // last consciously asked for (either the declared XAML width on
+            // load or the value they dragged it to). When a column is
+            // shrunk by cascade (because the user widened a neighbour), we
+            // remember its preferred so a later drag-back can restore it
+            // before spilling further width into the immediate neighbour.
+            var preferredWidths = new Dictionary<GridViewColumn, double>();
+            foreach (var c in gv.Columns)
+                preferredWidths[c] = Math.Max(mins[c], double.IsNaN(c.Width) ? mins[c] : c.Width);
+
             // The first LayoutUpdated after our columns get their initial
             // ActualWidths populates prevWidths so subsequent Δ-tracking is
             // accurate. Until then we treat handler calls as initialisation
@@ -537,8 +547,11 @@ namespace TrueforceForAll.Plugin
                         {
                             // Shrink by |delta|. Snap col to min if it went
                             // below, then cascade leftward for any leftover,
-                            // then widen adjacent-right to absorb the actual
-                            // total shrink so total stays == viewport.
+                            // then push the freed-up width into the columns
+                            // on the right -- preferring to restore them to
+                            // their PREFERRED widths first (so a previous
+                            // widen-cascade can be undone in reverse) before
+                            // letting the immediate adjacent take the rest.
                             double shrinkAmount = -delta;
                             double actualShrinkCol = shrinkAmount;
                             double colMin = mins[col];
@@ -560,6 +573,26 @@ namespace TrueforceForAll.Plugin
                                 leftover -= shrinkBy;
                             }
                             double widenAmount = shrinkAmount - leftover;
+                            // Pass 1: restore shrunk-by-cascade columns to
+                            // their preferred width, walking rightward from
+                            // the dragged column.
+                            int ri = colIdx;
+                            while (widenAmount > 0.5 && ri < gv.Columns.Count - 1)
+                            {
+                                ri++;
+                                var next = gv.Columns[ri];
+                                double room = preferredWidths[next] - next.ActualWidth;
+                                if (room <= 0.5) continue;
+                                double w = Math.Min(room, widenAmount);
+                                next.Width = next.ActualWidth + w;
+                                widenAmount -= w;
+                            }
+                            // Pass 2: if everything to the right is already
+                            // at preferred and we still have width to give,
+                            // dump the remainder into the immediate adjacent
+                            // (it grows above its preferred to keep total ==
+                            // viewport, which is fine -- the user just shrunk
+                            // the dragged column smaller than its preferred).
                             if (widenAmount > 0.5 && colIdx + 1 < gv.Columns.Count)
                             {
                                 var rightNeighbour = gv.Columns[colIdx + 1];
@@ -567,6 +600,12 @@ namespace TrueforceForAll.Plugin
                             }
                         }
 
+                        // User-driven Width changes (the outer handler
+                        // invocation, not cascade re-entries) update the
+                        // dragged column's preferred so future shrinks
+                        // remember the new target. Cascade-affected columns
+                        // keep their old preferred so drag-back can restore.
+                        preferredWidths[col] = col.ActualWidth;
                         foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
                     }
                     finally { inCascade = false; }
