@@ -423,12 +423,17 @@ namespace TrueforceForAll.Plugin
             foreach (var column in gv.Columns)
             {
                 string text = column.Header as string;
-                // Always include the sort-arrow glyph (" ▼") in the minimum so
-                // a click on a narrow column doesn't clip the arrow. Use the
-                // wider of ▼ / ▲ measured at the column's own header font.
+                // Min = enough to render the header text + sort-arrow glyph,
+                // no extra padding. Adding padding here (was +26) pushed the
+                // floor for narrow-headered columns (Built-in, Default, Game)
+                // above their declared Width, so the watcher snapped them up
+                // at startup and refused all drag-narrower attempts. With the
+                // floor at exactly the header glyph width the columns sit at
+                // their declared width by default but still resist shrinking
+                // past the point of legibility.
                 double min = string.IsNullOrEmpty(text)
-                    ? 28
-                    : MeasureHeaderText(lv, text + " ▼") + 26;
+                    ? 24
+                    : Math.Max(24, MeasureHeaderText(lv, text + " ▼"));
                 var col = column; // capture per iteration
                 dpd.AddValueChanged(col, (s, e) =>
                 {
