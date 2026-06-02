@@ -27,6 +27,13 @@
 ; Shipped built-in presets (data files; loaded at runtime by BuiltinPresets).
 #define BuiltinsDir    "..\builtins"
 
+; Revision of the legal text (EULA.txt + the GPL LICENSE). BUMP THIS whenever
+; you edit EULA.txt or LICENSE. The installer records the revision the user
+; agreed to; on a later update it skips the GPL info + EULA pages only while
+; the stored revision still matches (see ShouldSkipPage). Forgetting to bump it
+; would let a changed EULA go un-reshown on update.
+#define LegalRevision  "1"
+
 [Setup]
 ; AppId is what registers our uninstall entry. Don't change once published.
 AppId={{8A6F3B22-1D5E-4C9A-9F1B-7E3D5A2C4F11}
@@ -63,8 +70,12 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=yes
 
-; LICENSE in repo root; license page lets users read GPL-2.0 before installing.
-LicenseFile=..\LICENSE
+; EULA.txt (safety notice + liability disclaimer) is the accept-to-install
+; page (LicenseFile). The GPL-2.0 LICENSE is shown as an Information page at
+; install (InfoBeforeFile) so users still read it, and is shipped into {app}
+; (see [Files]).
+LicenseFile=..\EULA.txt
+InfoBeforeFile=..\LICENSE
 SetupIconFile=
 
 ; Remove pre-rebrand plugin files. Pre-1.0 builds shipped under the old
@@ -82,6 +93,10 @@ Type: files; Name: "{app}\SimHubTrueforce.LoopbackHelper.exe"
 Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
+; GPL-2.0 license + the EULA / safety notice, shipped so they travel with the
+; install (the EULA is also the accept-to-install page; see LicenseFile above).
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\EULA.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Factory preset data files -> {app}\PluginsData\Common\TrueforceForAll\factory.
 ; That's the source of truth for shipped built-ins (no longer C# consts);
@@ -159,6 +174,16 @@ Filename: "powershell.exe"; \
     StatusMsg: "Registering Trueforce For All with SimHub..."; \
     Flags: runhidden waituntilterminated
 
+; Auto-relaunch SimHub for an update where we closed a running instance. The
+; user was using SimHub, so just bring it back, no Finished-page prompt. Runs
+; now (not postinstall) and reuses the same shell-launch trick as the checkbox
+; below to avoid the headless-process bug. Mutually exclusive with that
+; checkbox (CanLaunchNow vs ShouldAutoRelaunchSimHub).
+Filename: "{cmd}"; \
+    Parameters: "/c start """" /D ""{app}"" ""{app}\SimHubWPF.exe"""; \
+    Check: ShouldAutoRelaunchSimHub; \
+    Flags: nowait runasoriginaluser
+
 ; Postinstall checkbox on the Finished page: launch SimHub when the user
 ; clicks Finish (default checked).
 ;
@@ -198,6 +223,16 @@ var
   // restarted. Drives NeedsRestart and the Finished-page wording so users
   // actually reboot instead of hitting "FFB pass-through disabled".
   UsbPcapInstalledThisRun: Boolean;
+  // Set once CloseSimHub force-closes a running SimHub for this install (the
+  // user was actively using SimHub). Combined with PluginWasInstalled this
+  // decides the automatic relaunch; see ShouldAutoRelaunchSimHub.
+  ClosedSimHub: Boolean;
+  // True when our plugin DLL already existed in the SimHub folder before this
+  // run, i.e. this is an update, not a first install. Captured in
+  // InitializeSetup before [Files] overwrites it. First install -> offer the
+  // "Launch SimHub now" checkbox; update -> skip that prompt (and auto-relaunch
+  // a SimHub we closed).
+  PluginWasInstalled: Boolean;
 
 function StripTrailingSlash(S: string): string;
 begin
@@ -297,6 +332,32 @@ begin
     end;
   end;
   DeleteFile(TmpFile);
+end;
+
+// Force-close SimHub so its open files (our plugin DLL + the loopback helper)
+// can be replaced. A normal window-close only minimizes SimHub to the tray,
+// so we terminate the process outright. Also stops our loopback helper, which
+// can outlive SimHub and keep its own exe locked. The post-install launch
+// step brings SimHub back.
+procedure CloseSimHub;
+var
+  ResultCode, Waited: Integer;
+begin
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM SimHubWPF.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM TrueforceForAll.LoopbackHelper.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Wait for the process to actually disappear before [Files] tries the copy.
+  Waited := 0;
+  while IsSimHubRunning and (Waited < 5000) do
+  begin
+    Sleep(250);
+    Waited := Waited + 250;
+  end;
+  Sleep(500);  // brief settle so the file handles are released
+  // Remember we took down a running SimHub: this is an update and the user was
+  // using it, so we relaunch it automatically and drop the Finished-page prompt.
+  ClosedSimHub := True;
 end;
 
 // OnClick handler for the "Open download page" button in the
@@ -462,24 +523,43 @@ begin
     if CachedSimHubDir <> '' then Break;
   end;
 
-  // Block install while SimHub is running: it holds the plugin DLL open,
-  // and pushing through anyway leaves either a stale install or a Restart
-  // Manager prompt later in the wizard. Loop until SimHub is closed or
-  // the user cancels. SimHub minimizes to the system tray by default —
-  // closing the window doesn't actually exit it; the user has to
-  // right-click the tray icon and pick Exit.
+  // Capture whether our plugin is already present BEFORE [Files] overwrites it.
+  // Distinguishes an update (skip the launch prompt; auto-relaunch a SimHub we
+  // closed) from a first install (offer the Launch SimHub checkbox).
+  PluginWasInstalled := (CachedSimHubDir <> '')
+                        and FileExists(AddBackslash(CachedSimHubDir) + 'User.TrueforceForAll.dll');
+
+  // SimHub holds the plugin DLL (and our helper) open, so it must be closed
+  // before [Files] can replace them. Offer to close it for the user. A normal
+  // close just minimizes SimHub to the tray, so CloseSimHub force-terminates
+  // the process; the post-install step relaunches it.
+  if IsSimHubRunning then
+  begin
+    if ExpandConstant('{param:CloseSimHub|0}') = '1' then
+      // Launched from the in-app updater, which already confirmed with the
+      // user (including discarding any unsaved changes). Close SimHub without
+      // a second prompt.
+      CloseSimHub
+    else if MsgBox(
+        'SimHub must be closed to finish updating Trueforce For All.' + #13#10 + #13#10 +
+        'The plugin loads into SimHub, so its files can''t be replaced while ' +
+        'SimHub is running.' + #13#10 + #13#10 +
+        'Close SimHub now and continue? SimHub is relaunched at the end of ' +
+        'the update.',
+        mbConfirmation, MB_YESNO) = IDYES then
+      CloseSimHub;
+  end;
+
+  // Fallback: if SimHub is still up (user declined, or the close didn't take),
+  // don't push a half-applied update. Loop with manual-close instructions.
   while IsSimHubRunning do
   begin
     if MsgBox(
-        'SimHub is currently running.' + #13#10 + #13#10 +
-        'The plugin DLL is loaded into SimHub''s process and can''t be ' +
-        'replaced while SimHub holds it open. Please close SimHub before ' +
-        'continuing.' + #13#10 + #13#10 +
-        'SimHub usually minimizes to the system tray when its window is ' +
-        'closed. To fully exit, right-click the SimHub icon in the tray ' +
-        '(near the clock) and pick Exit.' + #13#10 + #13#10 +
-        'Click Retry once SimHub is closed, or Cancel to abort the install.',
-        mbConfirmation, MB_RETRYCANCEL) <> IDRETRY then
+        'SimHub is still running and must be closed to continue.' + #13#10 + #13#10 +
+        'Close it fully (right-click the SimHub icon in the system tray, ' +
+        'near the clock, and pick Exit), then click Retry. Or click Cancel ' +
+        'to abort the update.',
+        mbError, MB_RETRYCANCEL) <> IDRETRY then
     begin
       Result := False;
       Exit;
@@ -558,7 +638,47 @@ end;
 // think the plugin itself is broken.
 function CanLaunchNow: Boolean;
 begin
-  Result := not UsbPcapInstalledThisRun;
+  // Offer the optional "Launch SimHub now" checkbox only on a first install.
+  // On an update we skip the prompt (ShouldAutoRelaunchSimHub brings back a
+  // SimHub we closed). Always suppressed when a reboot is pending.
+  Result := (not UsbPcapInstalledThisRun) and (not PluginWasInstalled);
+end;
+
+// True when we should silently bring SimHub back after an update: we closed a
+// running instance, and no reboot is pending (launching before USBPcap's
+// driver attaches reproduces the "no wheel on the bus" state).
+function ShouldAutoRelaunchSimHub: Boolean;
+begin
+  // Only on an update where we actually closed a running SimHub: the user was
+  // using it, so bring it back. (A first install uses the checkbox instead; an
+  // update with SimHub already closed leaves launching to the user.)
+  Result := PluginWasInstalled and ClosedSimHub and (not UsbPcapInstalledThisRun);
+end;
+
+// Skip the GPL info page and the EULA accept page on an update when the user
+// has already agreed to the same legal text. The revision they agreed to is
+// recorded by RegisterPreviousData; a non-empty match against the current
+// LegalRevision means "same EULA + license, already accepted." First installs
+// (and anyone upgrading from before this feature) have nothing stored, so the
+// pages show; bumping LegalRevision after editing the text re-shows them once.
+function ShouldSkipPage(PageID: Integer): Boolean;
+var
+  Stored: string;
+begin
+  Result := False;
+  if (PageID = wpInfoBefore) or (PageID = wpLicense) then
+  begin
+    Stored := GetPreviousData('AgreedLegalRev', '');
+    if (Stored <> '') and (Stored = '{#LegalRevision}') then
+      Result := True;
+  end;
+end;
+
+// Persist the legal-text revision the user agreed to this run, so a future
+// update with the same revision can skip the pages above.
+procedure RegisterPreviousData(PreviousDataKey: Integer);
+begin
+  SetPreviousData(PreviousDataKey, 'AgreedLegalRev', '{#LegalRevision}');
 end;
 
 function GetUSBPcapCmdPath(Param: string): string;
@@ -583,12 +703,17 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpFinished then
   begin
-    WizardForm.FinishedHeadingLabel.Caption :=
-      'Trueforce For All is installed';
+    if PluginWasInstalled then
+      WizardForm.FinishedHeadingLabel.Caption := 'Trueforce For All is updated'
+    else
+      WizardForm.FinishedHeadingLabel.Caption := 'Trueforce For All is installed';
     if UsbPcapInstalledThisRun then
       WizardForm.FinishedLabel.Caption :=
         'IMPORTANT: USBPcap was just installed. You must restart your computer before the plugin can read your game''s force feedback. Until you reboot you will get Trueforce haptics, but the in-game force feedback pass-through stays disabled (the plugin reports "no wheel on the USB bus", which is expected until the restart).' + #13#10 + #13#10 +
         'Please pick "restart now" below. After the reboot, close Logitech G HUB, then launch SimHub.'
+    else if ShouldAutoRelaunchSimHub then
+      WizardForm.FinishedLabel.Caption :=
+        'Update complete. SimHub is reopening now; give it a few seconds to come back up.'
     else
       WizardForm.FinishedLabel.Caption :=
         'Close Logitech G HUB before launching SimHub. G HUB claims the wheel''s HID interface and will block this plugin.' + #13#10 + #13#10 +
