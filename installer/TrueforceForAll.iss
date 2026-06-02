@@ -297,6 +297,29 @@ begin
   DeleteFile(TmpFile);
 end;
 
+// Force-close SimHub so its open files (our plugin DLL + the loopback helper)
+// can be replaced. A normal window-close only minimizes SimHub to the tray,
+// so we terminate the process outright. Also stops our loopback helper, which
+// can outlive SimHub and keep its own exe locked. The post-install launch
+// step brings SimHub back.
+procedure CloseSimHub;
+var
+  ResultCode, Waited: Integer;
+begin
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM SimHubWPF.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM TrueforceForAll.LoopbackHelper.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Wait for the process to actually disappear before [Files] tries the copy.
+  Waited := 0;
+  while IsSimHubRunning and (Waited < 5000) do
+  begin
+    Sleep(250);
+    Waited := Waited + 250;
+  end;
+  Sleep(500);  // brief settle so the file handles are released
+end;
+
 // OnClick handler for the "Open download page" button in the
 // SimHub-missing dialog. Top-level so the OnClick assignment can take
 // its address. Doesn't set ModalResult — the dialog stays open so the
@@ -460,24 +483,32 @@ begin
     if CachedSimHubDir <> '' then Break;
   end;
 
-  // Block install while SimHub is running: it holds the plugin DLL open,
-  // and pushing through anyway leaves either a stale install or a Restart
-  // Manager prompt later in the wizard. Loop until SimHub is closed or
-  // the user cancels. SimHub minimizes to the system tray by default —
-  // closing the window doesn't actually exit it; the user has to
-  // right-click the tray icon and pick Exit.
+  // SimHub holds the plugin DLL (and our helper) open, so it must be closed
+  // before [Files] can replace them. Offer to close it for the user. A normal
+  // close just minimizes SimHub to the tray, so CloseSimHub force-terminates
+  // the process; the post-install step relaunches it.
+  if IsSimHubRunning then
+  begin
+    if MsgBox(
+        'SimHub must be closed to finish updating Trueforce For All.' + #13#10 + #13#10 +
+        'The plugin loads into SimHub, so its files can''t be replaced while ' +
+        'SimHub is running.' + #13#10 + #13#10 +
+        'Close SimHub now and continue? SimHub is relaunched at the end of ' +
+        'the update.',
+        mbConfirmation, MB_YESNO) = IDYES then
+      CloseSimHub;
+  end;
+
+  // Fallback: if SimHub is still up (user declined, or the close didn't take),
+  // don't push a half-applied update. Loop with manual-close instructions.
   while IsSimHubRunning do
   begin
     if MsgBox(
-        'SimHub is currently running.' + #13#10 + #13#10 +
-        'The plugin DLL is loaded into SimHub''s process and can''t be ' +
-        'replaced while SimHub holds it open. Please close SimHub before ' +
-        'continuing.' + #13#10 + #13#10 +
-        'SimHub usually minimizes to the system tray when its window is ' +
-        'closed. To fully exit, right-click the SimHub icon in the tray ' +
-        '(near the clock) and pick Exit.' + #13#10 + #13#10 +
-        'Click Retry once SimHub is closed, or Cancel to abort the install.',
-        mbConfirmation, MB_RETRYCANCEL) <> IDRETRY then
+        'SimHub is still running and must be closed to continue.' + #13#10 + #13#10 +
+        'Close it fully (right-click the SimHub icon in the system tray, ' +
+        'near the clock, and pick Exit), then click Retry. Or click Cancel ' +
+        'to abort the update.',
+        mbError, MB_RETRYCANCEL) <> IDRETRY then
     begin
       Result := False;
       Exit;
