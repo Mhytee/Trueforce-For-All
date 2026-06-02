@@ -4202,6 +4202,7 @@ namespace TrueforceForAll.Plugin
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
             "PREVIEW        Render the release-notes markdown on your clipboard exactly as the in-app 'What's new' will (copy the GitHub notes first, then type PREVIEW).\n" +
             "UPDATE         Simulate an available update (banner + update dialog).\n" +
+            "CLOSESIM       Pick an installer and run it with /CloseSimHub=1 to test the silent SimHub auto-close. Closes SimHub.\n" +
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
@@ -4222,6 +4223,38 @@ namespace TrueforceForAll.Plugin
                 MessageBox.Show(Window.GetWindow(this), TestCodeCatalog,
                     "Trueforce For All: test codes", MessageBoxButton.OK, MessageBoxImage.Information);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = "Showed the test-code list.";
+                return;
+            }
+            // Dev-only: launch a chosen installer with /CloseSimHub=1 so the
+            // installer's silent SimHub auto-close (what the in-app Update
+            // button passes once the user accepts) can be tested without a real
+            // update download. WARNING: the picked installer closes SimHub.
+            if (code.Equals("CLOSESIM", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title  = "Pick the TrueforceForAll-Setup .exe to run with /CloseSimHub=1",
+                    Filter = "Installer (*.exe)|*.exe",
+                };
+                if (dlg.ShowDialog() == true)
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(dlg.FileName)
+                        {
+                            UseShellExecute = true,
+                            Arguments = "/CloseSimHub=1",
+                        });
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = "Launched installer with /CloseSimHub=1 (test).";
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(Window.GetWindow(this), "Couldn't launch: " + ex.Message,
+                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
                 return;
             }
             // Dev-only: force the one-and-done word-of-mouth banner to show
@@ -6311,6 +6344,19 @@ namespace TrueforceForAll.Plugin
                 CheckForUpdatesStatus.Text = "";
         }
 
+        /// <summary>True when there are unsaved tuning changes (a Save / Revert
+        /// button is showing): any per-section dirty bit, or the active car
+        /// preset drifting from its saved override. Used to warn before an
+        /// update force-closes SimHub and discards them.</summary>
+        private bool HasUnsavedChanges()
+        {
+            if (_plugin == null) return false;
+            for (int i = 0; i < _effectDirty.Length; i++)
+                if (_effectDirty[i]) return true;
+            return !string.IsNullOrEmpty(_plugin.ActiveCarId)
+                   && _plugin.IsActiveCarPresetDirty();
+        }
+
         /// <summary>Modal showing the latest release notes plus an "Update now"
         /// button that downloads the installer to %TEMP% with a progress bar
         /// and ShellExecutes it. The installer's IsSimHubRunning loop handles
@@ -6417,6 +6463,24 @@ namespace TrueforceForAll.Plugin
             dismissBtn.Click += (_, __) => win.Close();
             updateBtn.Click += async (_, __) =>
             {
+                // Updating force-closes SimHub to replace the plugin, which
+                // discards any unsaved tuning (effect edits aren't written to
+                // disk until saved/closed, and we don't get a graceful close).
+                // If there are unsaved changes, confirm first; once the user
+                // accepts here, the installer closes SimHub without re-asking.
+                if (HasUnsavedChanges())
+                {
+                    var confirm = MessageBox.Show(Window.GetWindow(this),
+                        "You have unsaved changes.\n\n" +
+                        "Updating closes SimHub to replace the plugin, and any tuning you " +
+                        "haven't saved to a preset will be discarded.\n\n" +
+                        "Discard those changes and continue with the update? " +
+                        "(Click No to go back and save first.)",
+                        "Trueforce For All: unsaved changes",
+                        MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (confirm != MessageBoxResult.Yes) return;
+                }
+
                 updateBtn.IsEnabled = false;
                 dismissBtn.IsEnabled = false;
                 progress.Visibility = Visibility.Visible;
@@ -6446,6 +6510,10 @@ namespace TrueforceForAll.Plugin
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path)
                     {
                         UseShellExecute = true,
+                        // The user already accepted (incl. discarding unsaved
+                        // changes), so tell the installer to close SimHub
+                        // without prompting again.
+                        Arguments = "/CloseSimHub=1",
                     });
                     win.Close();
                 }

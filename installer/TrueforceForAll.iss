@@ -489,7 +489,12 @@ begin
   // the process; the post-install step relaunches it.
   if IsSimHubRunning then
   begin
-    if MsgBox(
+    if ExpandConstant('{param:CloseSimHub|0}') = '1' then
+      // Launched from the in-app updater, which already confirmed with the
+      // user (including discarding any unsaved changes). Close SimHub without
+      // a second prompt.
+      CloseSimHub
+    else if MsgBox(
         'SimHub must be closed to finish updating Trueforce For All.' + #13#10 + #13#10 +
         'The plugin loads into SimHub, so its files can''t be replaced while ' +
         'SimHub is running.' + #13#10 + #13#10 +
