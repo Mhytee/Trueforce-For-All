@@ -181,18 +181,19 @@
                     <DataGrid x:Name="GameList"
                               AutoGenerateColumns="False" CanUserAddRows="False"
                               CanUserDeleteRows="False" CanUserResizeRows="False"
-                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              CanUserSortColumns="False" CanUserReorderColumns="True"
                               SelectionMode="Single" SelectionUnit="FullRow"
                               HeadersVisibility="Column" GridLinesVisibility="None"
                               IsReadOnly="True" RowHeaderWidth="0"
                               HorizontalScrollBarVisibility="Auto"
                               SelectionChanged="GameList_SelectionChanged"
+                              ColumnDisplayIndexChanged="List_ColumnDisplayIndexChanged"
                               MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Width="34" CanUserSort="False" CanUserResize="False">
+                            <DataGridTemplateColumn Width="34" MinWidth="34" CanUserSort="False" CanUserReorder="False">
                                 <DataGridTemplateColumn.Header>
                                     <CheckBox x:Name="GameSelectAllCheck" IsThreeState="False"
-                                              Click="GameSelectAll_Click" HorizontalAlignment="Left" Margin="3,0,0,0"
+                                              Click="GameSelectAll_Click" HorizontalAlignment="Left" Margin="-8,0,0,0"
                                               ToolTip="Check / uncheck every visible game preset."/>
                                 </DataGridTemplateColumn.Header>
                                 <DataGridTemplateColumn.CellTemplate>
@@ -200,13 +201,13 @@
                                         <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay,
                                                               UpdateSourceTrigger=PropertyChanged}"
                                                   Checked="RowCheckBox_Toggled" Unchecked="RowCheckBox_Toggled"
-                                                  HorizontalAlignment="Left" Margin="6,0,0,0"/>
+                                                  HorizontalAlignment="Left" Margin="0"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Default for"  Width="240" MinWidth="130" Binding="{Binding DefaultForLabel}"/>
                             <DataGridTextColumn Header="Preset name"  Width="*"   MinWidth="130" Binding="{Binding Name}"/>
                             <DataGridTextColumn Header="Built-in"     Width="70"  MinWidth="100" Binding="{Binding BuiltinLabel}"/>
-                            <DataGridTextColumn Header="Default for"  Width="240" MinWidth="130" Binding="{Binding DefaultForLabel}"/>
                         </DataGrid.Columns>
                     </DataGrid>
             </DockPanel>
@@ -250,18 +251,19 @@
                     <DataGrid x:Name="CarList"
                               AutoGenerateColumns="False" CanUserAddRows="False"
                               CanUserDeleteRows="False" CanUserResizeRows="False"
-                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              CanUserSortColumns="False" CanUserReorderColumns="True"
                               SelectionMode="Single" SelectionUnit="FullRow"
                               HeadersVisibility="Column" GridLinesVisibility="None"
                               IsReadOnly="True" RowHeaderWidth="0"
                               HorizontalScrollBarVisibility="Auto"
                               SelectionChanged="CarList_SelectionChanged"
+                              ColumnDisplayIndexChanged="List_ColumnDisplayIndexChanged"
                               MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Width="34" CanUserSort="False" CanUserResize="False">
+                            <DataGridTemplateColumn Width="34" MinWidth="34" CanUserSort="False" CanUserReorder="False">
                                 <DataGridTemplateColumn.Header>
                                     <CheckBox x:Name="CarSelectAllCheck" IsThreeState="False"
-                                              Click="CarSelectAll_Click" HorizontalAlignment="Left" Margin="3,0,0,0"
+                                              Click="CarSelectAll_Click" HorizontalAlignment="Left" Margin="-8,0,0,0"
                                               ToolTip="Check / uncheck every visible car preset."/>
                                 </DataGridTemplateColumn.Header>
                                 <DataGridTemplateColumn.CellTemplate>
@@ -269,14 +271,14 @@
                                         <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay,
                                                               UpdateSourceTrigger=PropertyChanged}"
                                                   Checked="RowCheckBox_Toggled" Unchecked="RowCheckBox_Toggled"
-                                                  HorizontalAlignment="Left" Margin="6,0,0,0"/>
+                                                  HorizontalAlignment="Left" Margin="0"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Default"     Width="70"  MinWidth="95"  Binding="{Binding ActiveLabel}"/>
                             <DataGridTextColumn Header="Game"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
                             <DataGridTextColumn Header="Car ID"      Width="*"   MinWidth="120" Binding="{Binding CarId}"/>
                             <DataGridTextColumn Header="Preset name" Width="190" MinWidth="130" Binding="{Binding PresetName}"/>
-                            <DataGridTextColumn Header="Default"     Width="70"  MinWidth="95"  Binding="{Binding ActiveLabel}"/>
                             <DataGridTextColumn Header="Built-in"    Width="70"  MinWidth="100" Binding="{Binding BuiltinLabel}"/>
                         </DataGrid.Columns>
                     </DataGrid>
@@ -304,17 +306,18 @@
                     <DataGrid x:Name="CustomList"
                               AutoGenerateColumns="False" CanUserAddRows="False"
                               CanUserDeleteRows="False" CanUserResizeRows="False"
-                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              CanUserSortColumns="False" CanUserReorderColumns="True"
                               SelectionMode="Single" SelectionUnit="FullRow"
                               HeadersVisibility="Column" GridLinesVisibility="None"
                               IsReadOnly="True" RowHeaderWidth="0"
                               HorizontalScrollBarVisibility="Auto"
-                              SelectionChanged="CustomList_SelectionChanged">
+                              SelectionChanged="CustomList_SelectionChanged"
+                              ColumnDisplayIndexChanged="List_ColumnDisplayIndexChanged">
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Width="34" CanUserSort="False" CanUserResize="False">
+                            <DataGridTemplateColumn Width="34" MinWidth="34" CanUserSort="False" CanUserReorder="False">
                                 <DataGridTemplateColumn.Header>
                                     <CheckBox x:Name="CustomSelectAllCheck" IsThreeState="False"
-                                              Click="CustomSelectAll_Click" HorizontalAlignment="Left" Margin="3,0,0,0"
+                                              Click="CustomSelectAll_Click" HorizontalAlignment="Left" Margin="-8,0,0,0"
                                               ToolTip="Check / uncheck every visible custom engine."/>
                                 </DataGridTemplateColumn.Header>
                                 <DataGridTemplateColumn.CellTemplate>
@@ -322,7 +325,7 @@
                                         <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay,
                                                               UpdateSourceTrigger=PropertyChanged}"
                                                   Checked="RowCheckBox_Toggled" Unchecked="RowCheckBox_Toggled"
-                                                  HorizontalAlignment="Left" Margin="6,0,0,0"/>
+                                                  HorizontalAlignment="Left" Margin="0"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>

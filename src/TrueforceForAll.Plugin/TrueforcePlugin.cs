@@ -4100,6 +4100,41 @@ namespace TrueforceForAll.Plugin
             foreach (var kv in UserPresets.GameDefaults)
                 Settings.GameDefaults[kv.Key] = kv.Value;
 
+            // Self-heal stale or case-drifted user game-default bindings.
+            // Settings.Presets is keyed by the literal filename stem; if a
+            // user/game-defaults.json value doesn't match any current key,
+            // either correct the case (case-insensitive match) or drop the
+            // binding so the factory seed below can fill it in. Closes the
+            // class of "Default for column silently empty because user/ and
+            // factory/ disagree on case" bugs.
+            {
+                var rekey = new List<KeyValuePair<string, string>>();
+                var stale = new List<string>();
+                foreach (var kv in Settings.GameDefaults)
+                {
+                    if (string.IsNullOrEmpty(kv.Value)) continue;
+                    if (Settings.Presets.ContainsKey(kv.Value)) continue;
+                    string ciMatch = null;
+                    foreach (var k in Settings.Presets.Keys)
+                    {
+                        if (string.Equals(k, kv.Value, StringComparison.OrdinalIgnoreCase))
+                        { ciMatch = k; break; }
+                    }
+                    if (ciMatch != null) rekey.Add(new KeyValuePair<string, string>(kv.Key, ciMatch));
+                    else                 stale.Add(kv.Key);
+                }
+                foreach (var p in rekey)
+                {
+                    SimHub.Logging.Current.Info($"[Trueforce] Game default for '{p.Key}' normalized: '{Settings.GameDefaults[p.Key]}' -> '{p.Value}'.");
+                    Settings.GameDefaults[p.Key] = p.Value;
+                }
+                foreach (var k in stale)
+                {
+                    SimHub.Logging.Current.Info($"[Trueforce] Game default for '{k}' dropped: target '{Settings.GameDefaults[k]}' no longer exists.");
+                    Settings.GameDefaults.Remove(k);
+                }
+            }
+
             // 2) Built-ins: overwrite same-named entries (factory wins). The
             //    shipped JSON is the source of truth for built-ins, so this
             //    also catches the "built-in shipped before a later-added
@@ -5295,6 +5330,42 @@ namespace TrueforceForAll.Plugin
                     _lastPersistedCarOverrides[carId] = CloneCarOverride(entry.Override);
                     if (!Settings.CarDefaults.ContainsKey(carId))
                         Settings.CarDefaults[carId] = activeName;
+                }
+            }
+
+            // Self-heal stale or case-drifted user car-default bindings,
+            // same idea as the game-default normalization in
+            // RebuildPresetCacheFromFolders. If a Settings.CarDefaults
+            // value doesn't match any preset name for that carId in the
+            // merged map, either correct the case (case-insensitive) or
+            // drop the entry. Avoids "this car has a binding but the
+            // active preset never resolves" silent failures.
+            {
+                var rekey = new List<KeyValuePair<string, string>>();
+                var stale = new List<string>();
+                foreach (var kv in Settings.CarDefaults)
+                {
+                    if (string.IsNullOrEmpty(kv.Value)) continue;
+                    if (!loaded.TryGetValue(kv.Key, out var perCar)) { stale.Add(kv.Key); continue; }
+                    if (perCar.ContainsKey(kv.Value)) continue;
+                    string ciMatch = null;
+                    foreach (var k in perCar.Keys)
+                    {
+                        if (string.Equals(k, kv.Value, StringComparison.OrdinalIgnoreCase))
+                        { ciMatch = k; break; }
+                    }
+                    if (ciMatch != null) rekey.Add(new KeyValuePair<string, string>(kv.Key, ciMatch));
+                    else                 stale.Add(kv.Key);
+                }
+                foreach (var p in rekey)
+                {
+                    SimHub.Logging.Current.Info($"[Trueforce] Car default for '{p.Key}' normalized: '{Settings.CarDefaults[p.Key]}' -> '{p.Value}'.");
+                    Settings.CarDefaults[p.Key] = p.Value;
+                }
+                foreach (var k in stale)
+                {
+                    SimHub.Logging.Current.Info($"[Trueforce] Car default for '{k}' dropped: target '{Settings.CarDefaults[k]}' no longer exists.");
+                    Settings.CarDefaults.Remove(k);
                 }
             }
 

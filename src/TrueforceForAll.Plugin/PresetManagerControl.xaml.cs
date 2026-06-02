@@ -323,10 +323,28 @@ namespace TrueforceForAll.Plugin
             CarList.AddHandler(DataGridColumnHeader.ClickEvent,    new RoutedEventHandler((s, e) => HandleHeaderClick(e, _carSort)));
             CustomList.AddHandler(DataGridColumnHeader.ClickEvent, new RoutedEventHandler((s, e) => HandleHeaderClick(e, _customSort)));
 
-            // Column widths are handled by DataGrid star sizing in XAML
-            // (Width="*" on the primary column, fixed widths + MinWidth on the
-            // others). No flex/min/cascade code needed. WPF redistributes
-            // automatically when the user drags a divider.
+            // Watch every column's Width DP so a user drag-resize persists.
+            // The ColumnDisplayIndexChanged handler covers reorders; widths
+            // need a separate hook because WPF doesn't raise a "resize done"
+            // event - the gripper writes straight to Column.Width.
+            WatchColumnWidths(GameList);
+            WatchColumnWidths(CarList);
+            WatchColumnWidths(CustomList);
+        }
+
+        private void WatchColumnWidths(DataGrid dg)
+        {
+            var desc = System.ComponentModel.DependencyPropertyDescriptor
+                .FromProperty(DataGridColumn.WidthProperty, typeof(DataGridColumn));
+            if (desc == null) return;
+            foreach (var col in dg.Columns)
+            {
+                // Skip the checkbox template column. It has no Binding so
+                // PersistColumns would drop it anyway, but no point firing
+                // PersistColumns on its layout passes either.
+                if (!(col is DataGridBoundColumn)) continue;
+                desc.AddValueChanged(col, (s, e) => PersistColumns(dg));
+            }
         }
 
         // Hydrate one ListSortState from a persisted ManageSort + apply.
@@ -440,6 +458,10 @@ namespace TrueforceForAll.Plugin
                 HydrateSort(_gameSort,   s.ManageGamesSort);
                 HydrateSort(_carSort,    s.ManageCarsSort);
                 HydrateSort(_customSort, s.ManageCustomsSort);
+
+                HydrateColumnLayout(GameList,   s.ManageGamesColumns);
+                HydrateColumnLayout(CarList,    s.ManageCarsColumns);
+                HydrateColumnLayout(CustomList, s.ManageCustomsColumns);
             }
 
             SelectTab(initialTab);
@@ -913,6 +935,113 @@ namespace TrueforceForAll.Plugin
         }
 
         private void List_MouseLeave(object sender, MouseEventArgs e) => HideDetailsPopup();
+
+        // Keep the leftmost (select-all checkbox) column pinned at DisplayIndex 0
+        // no matter what the user drags. CanUserReorder=False on the column +
+        // FrozenColumnCount=1 on the DataGrid disallow dragging the checkbox
+        // column itself, but the user could still drop ANOTHER column left of
+        // it; snap it back here. Re-entrancy guard avoids the recursive
+        // ColumnDisplayIndexChanged that our own DisplayIndex=0 write would
+        // otherwise trigger.
+        private bool _pinFirstAdjusting;
+        private void List_ColumnDisplayIndexChanged(object sender, DataGridColumnEventArgs e)
+        {
+            var dg = sender as DataGrid;
+            if (dg == null || dg.Columns.Count == 0) return;
+            if (!_pinFirstAdjusting)
+            {
+                var first = dg.Columns[0];
+                if (first.DisplayIndex != 0)
+                {
+                    _pinFirstAdjusting = true;
+                    try { first.DisplayIndex = 0; }
+                    finally { _pinFirstAdjusting = false; }
+                }
+            }
+            // Persist after any user-driven reorder. Skipped during pin
+            // snap-back (the second event in the pair will re-fire and
+            // catch the final layout) and during hydration.
+            PersistColumns(dg);
+        }
+
+        // Read every bound column's current DisplayIndex + Width and write
+        // the snapshot back to settings. Skipped while hydrating to avoid
+        // a write storm during the WPF layout pass that fires Width changes
+        // for every column we touch.
+        private bool _columnsHydrating;
+        private void PersistColumns(DataGrid dg)
+        {
+            if (_columnsHydrating) return;
+            if (_plugin?.Settings == null) return;
+            var layout = new ManageColumnLayout();
+            foreach (var col in dg.Columns)
+            {
+                if (!(col is DataGridBoundColumn bc) || !(bc.Binding is Binding b)) continue;
+                var path = b.Path?.Path;
+                if (string.IsNullOrEmpty(path)) continue;
+                var w = col.Width;
+                layout.Columns.Add(new ManageColumnState
+                {
+                    Key          = path,
+                    DisplayIndex = col.DisplayIndex,
+                    WidthValue   = w.IsAbsolute ? w.DisplayValue : w.Value,
+                    WidthType    = w.UnitType.ToString()
+                });
+            }
+            if      (dg == GameList)   _plugin.Settings.ManageGamesColumns   = layout;
+            else if (dg == CarList)    _plugin.Settings.ManageCarsColumns    = layout;
+            else if (dg == CustomList) _plugin.Settings.ManageCustomsColumns = layout;
+            else return;
+            _plugin.PersistSettings();
+        }
+
+        // Apply persisted widths first (layout pass), then DisplayIndex in
+        // ascending order so columns slot into their saved positions without
+        // colliding. Unknown binding paths (XAML renames) are ignored: the
+        // user's saved entry simply doesn't bind to anything this session.
+        private void HydrateColumnLayout(DataGrid dg, ManageColumnLayout layout)
+        {
+            if (layout?.Columns == null || layout.Columns.Count == 0) return;
+            var byKey = new Dictionary<string, DataGridColumn>();
+            foreach (var col in dg.Columns)
+            {
+                if (!(col is DataGridBoundColumn bc) || !(bc.Binding is Binding b)) continue;
+                var path = b.Path?.Path;
+                if (!string.IsNullOrEmpty(path)) byKey[path] = col;
+            }
+            _columnsHydrating = true;
+            try
+            {
+                foreach (var saved in layout.Columns)
+                {
+                    if (string.IsNullOrEmpty(saved.Key)) continue;
+                    if (!byKey.TryGetValue(saved.Key, out var col)) continue;
+                    DataGridLengthUnitType unit;
+                    switch (saved.WidthType)
+                    {
+                        case "Star":         unit = DataGridLengthUnitType.Star;         break;
+                        case "Auto":         unit = DataGridLengthUnitType.Auto;         break;
+                        case "SizeToCells":  unit = DataGridLengthUnitType.SizeToCells;  break;
+                        case "SizeToHeader": unit = DataGridLengthUnitType.SizeToHeader; break;
+                        default:             unit = DataGridLengthUnitType.Pixel;        break;
+                    }
+                    col.Width = new DataGridLength(saved.WidthValue, unit);
+                }
+                var ordered = layout.Columns
+                    .Where(s => !string.IsNullOrEmpty(s.Key) && byKey.ContainsKey(s.Key))
+                    .OrderBy(s => s.DisplayIndex)
+                    .ToList();
+                foreach (var saved in ordered)
+                {
+                    var col = byKey[saved.Key];
+                    var target = saved.DisplayIndex;
+                    if (target < 1) target = 1;                              // leave slot 0 for the pinned checkbox column
+                    if (target > dg.Columns.Count - 1) target = dg.Columns.Count - 1;
+                    if (col.DisplayIndex != target) col.DisplayIndex = target;
+                }
+            }
+            finally { _columnsHydrating = false; }
+        }
 
         private void HideDetailsPopup()
         {

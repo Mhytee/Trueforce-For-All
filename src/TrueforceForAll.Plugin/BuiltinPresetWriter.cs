@@ -5,6 +5,7 @@
 // After a batch of writes the caller calls BuiltinPresets.Reload() so the
 // in-memory store reflects the new files.
 
+using System;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -21,6 +22,29 @@ namespace TrueforceForAll.Plugin
             foreach (var c in Path.GetInvalidFileNameChars())
                 s = s.Replace(c, '_');
             return s.Trim();
+        }
+
+        // Rename a file safely on a case-insensitive filesystem (Windows).
+        // Naive "if exists delete then move" wipes the source when the rename
+        // is case-only ("iRacing.json" -> "IRacing.json" is the SAME file),
+        // because File.Exists(newPath) returns true and File.Delete erases
+        // both. Two-step via a temp filename avoids that.
+        private static void SafeRenameFile(string oldPath, string newPath)
+        {
+            if (string.Equals(oldPath, newPath, StringComparison.Ordinal)) return;
+            if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+            {
+                string dir = Path.GetDirectoryName(newPath) ?? "";
+                string tmpPath = Path.Combine(dir,
+                    Path.GetFileNameWithoutExtension(newPath)
+                    + ".tfren-" + Guid.NewGuid().ToString("N")
+                    + Path.GetExtension(newPath));
+                File.Move(oldPath, tmpPath);
+                File.Move(tmpPath, newPath);
+                return;
+            }
+            if (File.Exists(newPath)) File.Delete(newPath);
+            File.Move(oldPath, newPath);
         }
 
         /// <summary>Write a game preset (GameSettingsSnapshot JSON) to
@@ -80,8 +104,7 @@ namespace TrueforceForAll.Plugin
             if (File.Exists(oldPath))
             {
                 Directory.CreateDirectory(carDir);
-                if (File.Exists(newPath)) File.Delete(newPath);
-                File.Move(oldPath, newPath);
+                SafeRenameFile(oldPath, newPath);
             }
             // Repoint car-defaults if it pointed at the old name.
             string dpath = Path.Combine(folder, BuiltinPresetStore.CarDefaultsFileName);
@@ -107,8 +130,7 @@ namespace TrueforceForAll.Plugin
             if (File.Exists(oldPath))
             {
                 Directory.CreateDirectory(Path.Combine(folder, "games"));
-                if (File.Exists(newPath)) File.Delete(newPath);
-                File.Move(oldPath, newPath);
+                SafeRenameFile(oldPath, newPath);
             }
             // Repoint defaults old -> new.
             string dpath = Path.Combine(folder, BuiltinPresetStore.GameDefaultsFileName);

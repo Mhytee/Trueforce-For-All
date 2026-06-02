@@ -392,6 +392,14 @@ namespace TrueforceForAll.Plugin
         public ManageSort ManageCarsSort    { get; set; } = new ManageSort();
         public ManageSort ManageCustomsSort { get; set; } = new ManageSort();
 
+        // Persisted column layout (width + display order) for the preset
+        // manager tabs. Keyed by column binding path the same way sort is.
+        // Empty list = use XAML declared layout; populated entries override
+        // per column. Rewritten on every drag-resize and every reorder.
+        public ManageColumnLayout ManageGamesColumns   { get; set; } = new ManageColumnLayout();
+        public ManageColumnLayout ManageCarsColumns    { get; set; } = new ManageColumnLayout();
+        public ManageColumnLayout ManageCustomsColumns { get; set; } = new ManageColumnLayout();
+
         // Keyed by GameData.NewData.CarId. Override entries supersede the
         // global engine settings whenever that car is the active one.
         public Dictionary<string, CarOverride> CarOverrides { get; set; } = new Dictionary<string, CarOverride>();
@@ -458,6 +466,23 @@ namespace TrueforceForAll.Plugin
     {
         public string Key { get; set; }
         public bool   Descending { get; set; }
+    }
+
+    /// <summary>Persisted layout (width + display order) for one preset
+    /// manager tab. Columns identified by binding path so renames in XAML
+    /// don't silently apply stale widths/orders to the wrong column.</summary>
+    public sealed class ManageColumnLayout
+    {
+        public System.Collections.Generic.List<ManageColumnState> Columns { get; set; }
+            = new System.Collections.Generic.List<ManageColumnState>();
+    }
+
+    public sealed class ManageColumnState
+    {
+        public string Key { get; set; }            // binding path, e.g. "Name"
+        public int    DisplayIndex { get; set; }   // 0-based visual position
+        public double WidthValue { get; set; }     // numeric width
+        public string WidthType { get; set; }      // "Star" | "Pixel" | "Auto" | "SizeToCells" | "SizeToHeader"
     }
 
     /// <see cref="TrueforceSettings.CustomEngines"/> and referenced by per-
