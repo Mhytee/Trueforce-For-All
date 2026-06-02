@@ -12,6 +12,16 @@
             <Setter Property="Opacity" Value="0.6"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
+        <!-- Implicit DataGridColumnHeader style: adds a 1px right-edge
+             divider on every column header. The checkbox column has
+             CanUserResize=False so WPF's stock template hides its right
+             gripper-separator; this Border setter paints the divider on
+             ALL header cells, including that first one, so the checkbox
+             column is visually separated from the data columns. -->
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="BorderBrush" Value="#4A4A4A"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
         <!-- Custom-templated row button. SimHub's stock theme greys every
              Button.Background regardless of IsEnabled, which made the dialog's
              action buttons look the same color whether they were usable or
@@ -185,6 +195,7 @@
                               SelectionMode="Single" SelectionUnit="FullRow"
                               HeadersVisibility="Column" GridLinesVisibility="None"
                               IsReadOnly="True" RowHeaderWidth="0"
+                              HorizontalScrollBarVisibility="Auto"
                               SelectionChanged="GameList_SelectionChanged"
                               MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                         <DataGrid.Columns>
@@ -203,9 +214,9 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Preset name"  Width="*"   MinWidth="120" Binding="{Binding Name}"/>
-                            <DataGridTextColumn Header="Built-in"     Width="70"  MinWidth="60"  Binding="{Binding BuiltinLabel}"/>
-                            <DataGridTextColumn Header="Default for"  Width="240" MinWidth="80"  Binding="{Binding DefaultForLabel}"/>
+                            <DataGridTextColumn Header="Preset name"  Width="*"   MinWidth="130" Binding="{Binding Name}"/>
+                            <DataGridTextColumn Header="Built-in"     Width="70"  MinWidth="100" Binding="{Binding BuiltinLabel}"/>
+                            <DataGridTextColumn Header="Default for"  Width="240" MinWidth="130" Binding="{Binding DefaultForLabel}"/>
                         </DataGrid.Columns>
                     </DataGrid>
             </DockPanel>
@@ -253,6 +264,7 @@
                               SelectionMode="Single" SelectionUnit="FullRow"
                               HeadersVisibility="Column" GridLinesVisibility="None"
                               IsReadOnly="True" RowHeaderWidth="0"
+                              HorizontalScrollBarVisibility="Auto"
                               SelectionChanged="CarList_SelectionChanged"
                               MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                         <DataGrid.Columns>
@@ -273,9 +285,9 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Game"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
                             <DataGridTextColumn Header="Car ID"      Width="*"   MinWidth="120" Binding="{Binding CarId}"/>
-                            <DataGridTextColumn Header="Preset name" Width="190" MinWidth="100" Binding="{Binding PresetName}"/>
-                            <DataGridTextColumn Header="Default"     Width="70"  MinWidth="60"  Binding="{Binding ActiveLabel}"/>
-                            <DataGridTextColumn Header="Built-in"    Width="70"  MinWidth="60"  Binding="{Binding BuiltinLabel}"/>
+                            <DataGridTextColumn Header="Preset name" Width="190" MinWidth="130" Binding="{Binding PresetName}"/>
+                            <DataGridTextColumn Header="Default"     Width="70"  MinWidth="95"  Binding="{Binding ActiveLabel}"/>
+                            <DataGridTextColumn Header="Built-in"    Width="70"  MinWidth="100" Binding="{Binding BuiltinLabel}"/>
                         </DataGrid.Columns>
                     </DataGrid>
             </DockPanel>
@@ -306,6 +318,7 @@
                               SelectionMode="Single" SelectionUnit="FullRow"
                               HeadersVisibility="Column" GridLinesVisibility="None"
                               IsReadOnly="True" RowHeaderWidth="0"
+                              HorizontalScrollBarVisibility="Auto"
                               SelectionChanged="CustomList_SelectionChanged">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Width="34" CanUserSort="False" CanUserResize="False">
