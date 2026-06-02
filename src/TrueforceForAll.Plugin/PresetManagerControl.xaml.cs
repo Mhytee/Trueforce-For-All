@@ -340,11 +340,18 @@ namespace TrueforceForAll.Plugin
 
         // Keep the flex column sized to whatever space the other (fixed) columns
         // leave. Recomputed on every resize of the list.
+        // Set true while ResizeFlexColumn / cascade handlers are actively
+        // writing GridViewColumn.Width values. The user-drag handler in
+        // ApplyColumnMinWidths checks this and skips its absorb-cascade
+        // logic for programmatic writes (otherwise our own flex assignment
+        // would be misinterpreted as a drag and undone immediately).
+        private bool _columnAdjusting;
+
         private void MakeFlexColumn(ListView lv, int flexIndex)
         {
             if (lv == null) return;
-            lv.SizeChanged += (s, e) => { if (e.WidthChanged) ResizeFlexColumn(lv, flexIndex); };
-            lv.Loaded      += (s, e) => ResizeFlexColumn(lv, flexIndex);
+            lv.SizeChanged += (s, e) => { if (e.WidthChanged) RunColumnAdjust(() => ResizeFlexColumn(lv, flexIndex)); };
+            lv.Loaded      += (s, e) => RunColumnAdjust(() => ResizeFlexColumn(lv, flexIndex));
             // ScrollChanged catches the vertical-scrollbar visibility flip
             // (rows added / removed by filter / reload) so the flex column
             // re-fits the new ViewportWidth. The same event ALSO fires when
@@ -362,17 +369,16 @@ namespace TrueforceForAll.Plugin
                     double vw = sv.ViewportWidth;
                     if (Math.Abs(vw - lastViewport) < 0.5) return;
                     lastViewport = vw;
-                    ResizeFlexColumn(lv, flexIndex);
+                    RunColumnAdjust(() => ResizeFlexColumn(lv, flexIndex));
                 }));
-            // NOTE: we don't watch non-flex columns' Width changes. The
-            // intent was to keep totals == ViewportWidth when the user drags
-            // a non-flex column, but the side effect (silently shrinking the
-            // flex column while the user dragged another) made drags feel
-            // inverted and eventually pushed columns past the right edge
-            // once the flex hit its minimum. Plain WPF drag behaviour is in
-            // effect now: drag a divider right and the column to its left
-            // widens; if the total exceeds ViewportWidth the horizontal
-            // scrollbar appears.
+        }
+
+        private void RunColumnAdjust(Action body)
+        {
+            bool prev = _columnAdjusting;
+            _columnAdjusting = true;
+            try { body(); }
+            finally { _columnAdjusting = prev; }
         }
 
         private static void ResizeFlexColumn(ListView lv, int flexIndex)
@@ -381,12 +387,6 @@ namespace TrueforceForAll.Plugin
             double others = 0;
             for (int i = 0; i < gv.Columns.Count; i++)
                 if (i != flexIndex) others += gv.Columns[i].ActualWidth;
-            // ScrollViewer.ViewportWidth measures exactly the visible content
-            // area: border + padding + visible scrollbar already excluded.
-            // That avoids the "guess the inset" approach (which left a few
-            // pixels of dead space after the last column that looked like a
-            // shrunken extra column). Fall back to ActualWidth - small inset
-            // before the layout pass has run.
             var sv = FindVisualDescendant<ScrollViewer>(lv);
             double availableWidth = (sv != null && sv.ViewportWidth > 0)
                 ? sv.ViewportWidth
@@ -421,56 +421,137 @@ namespace TrueforceForAll.Plugin
                 .FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn));
             if (dpd == null) return;
 
-            // Precompute the min per column (header text + sort arrow + padding)
-            // and each column's index, so the cascade handler doesn't repeat work.
-            var mins     = new Dictionary<GridViewColumn, double>();
-            var indexOf  = new Dictionary<GridViewColumn, int>();
+            var mins        = new Dictionary<GridViewColumn, double>();
+            var indexOf     = new Dictionary<GridViewColumn, int>();
+            var prevWidths  = new Dictionary<GridViewColumn, double>();
             for (int i = 0; i < gv.Columns.Count; i++)
             {
                 var c = gv.Columns[i];
                 string text = c.Header as string;
-                mins[c]    = string.IsNullOrEmpty(text)
+                mins[c]      = string.IsNullOrEmpty(text)
                     ? 28
                     : MeasureHeaderText(lv, text + " ▼") + 26;
-                indexOf[c] = i;
+                indexOf[c]   = i;
+                prevWidths[c] = double.NaN;
             }
 
-            // Cascade-leftward shrink: when a gripper drag tries to take a
-            // column below its min, snap that column at min and propagate
-            // the leftover Δ to the column on its LEFT (and onwards) so the
-            // drag's divider keeps following the cursor. The dragged column
-            // appears to "slide over" once it hits its min: the column to its
-            // left shrinks instead. Re-entrancy guarded with a flag so
-            // programmatic widths inside the cascade don't re-trigger the
-            // handler.
+            // The first LayoutUpdated after our columns get their initial
+            // ActualWidths populates prevWidths so subsequent Δ-tracking is
+            // accurate. Until then we treat handler calls as initialisation
+            // only (no drag interpretation).
+            bool initialized = false;
+            EventHandler initOnce = null;
+            initOnce = (s, e) =>
+            {
+                bool allReady = true;
+                foreach (var c in gv.Columns)
+                {
+                    if (c.ActualWidth <= 0 || double.IsNaN(c.ActualWidth)) { allReady = false; break; }
+                }
+                if (!allReady) return;
+                foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
+                initialized = true;
+                lv.LayoutUpdated -= initOnce;
+            };
+            lv.LayoutUpdated += initOnce;
+
+            // User-drag handler. Two responsibilities:
+            //   1. Keep the column total == ViewportWidth so the right edge
+            //      stays pinned (adjacent column absorbs the Δ; cascade
+            //      sideways if the adjacent hits its min/max).
+            //   2. Honour each column's min: snap a dragged column back to
+            //      its min and cascade the leftover Δ leftward so the
+            //      divider keeps following the cursor as the column "slides
+            //      over" past its min.
+            //
+            // For a shrink (Δ<0): the dragged column shrinks (or snaps at min
+            // and cascades leftward); the adjacent right column widens by the
+            // total shrunk to keep totals == viewport.
+            //
+            // For a widen (Δ>0): the adjacent right column shrinks (and
+            // cascades further right if it hits min); if the right side runs
+            // out of slack we snap the dragged column back so the total never
+            // exceeds the viewport (no "pushed out of bounds").
             bool inCascade = false;
             foreach (var column in gv.Columns)
             {
                 var col = column; // capture per iteration
                 dpd.AddValueChanged(col, (s, e) =>
                 {
-                    if (inCascade) return;
+                    if (inCascade || _columnAdjusting)
+                    {
+                        if (initialized) prevWidths[col] = col.ActualWidth;
+                        return;
+                    }
+                    if (!initialized) { prevWidths[col] = col.ActualWidth; return; }
                     if (double.IsNaN(col.Width)) return;
-                    double colMin = mins[col];
-                    if (col.Width >= colMin) return;
 
-                    double leftover = colMin - col.Width;
+                    double oldW = prevWidths[col];
+                    if (double.IsNaN(oldW)) { prevWidths[col] = col.ActualWidth; return; }
+                    double newW = col.ActualWidth;
+                    double delta = newW - oldW;
+                    if (Math.Abs(delta) < 0.5) { prevWidths[col] = newW; return; }
+
                     try
                     {
                         inCascade = true;
-                        col.Width = colMin;
-                        int idx = indexOf[col];
-                        while (leftover > 0.5 && idx > 0)
+                        int colIdx = indexOf[col];
+
+                        if (delta > 0)
                         {
-                            idx--;
-                            var prev = gv.Columns[idx];
-                            double prevMin   = mins[prev];
-                            double maxShrink = prev.ActualWidth - prevMin;
-                            if (maxShrink <= 0.5) continue;
-                            double shrinkBy = Math.Min(maxShrink, leftover);
-                            prev.Width = prev.ActualWidth - shrinkBy;
-                            leftover -= shrinkBy;
+                            // Widen by delta. Adjacent + cascade right.
+                            double remaining = delta;
+                            int ri = colIdx;
+                            while (remaining > 0.5 && ri < gv.Columns.Count - 1)
+                            {
+                                ri++;
+                                var next   = gv.Columns[ri];
+                                double maxShrink = next.ActualWidth - mins[next];
+                                if (maxShrink <= 0.5) continue;
+                                double shrinkBy = Math.Min(maxShrink, remaining);
+                                next.Width = next.ActualWidth - shrinkBy;
+                                remaining -= shrinkBy;
+                            }
+                            // Right side exhausted -- prevent overflow by
+                            // rolling the dragged column back by the leftover.
+                            if (remaining > 0.5)
+                                col.Width = newW - remaining;
                         }
+                        else
+                        {
+                            // Shrink by |delta|. Snap col to min if it went
+                            // below, then cascade leftward for any leftover,
+                            // then widen adjacent-right to absorb the actual
+                            // total shrink so total stays == viewport.
+                            double shrinkAmount = -delta;
+                            double actualShrinkCol = shrinkAmount;
+                            double colMin = mins[col];
+                            if (newW < colMin)
+                            {
+                                actualShrinkCol = oldW - colMin;
+                                col.Width = colMin;
+                            }
+                            double leftover = shrinkAmount - actualShrinkCol;
+                            int li = colIdx;
+                            while (leftover > 0.5 && li > 0)
+                            {
+                                li--;
+                                var prev = gv.Columns[li];
+                                double maxShrink = prev.ActualWidth - mins[prev];
+                                if (maxShrink <= 0.5) continue;
+                                double shrinkBy = Math.Min(maxShrink, leftover);
+                                prev.Width = prev.ActualWidth - shrinkBy;
+                                leftover -= shrinkBy;
+                            }
+                            double widenAmount = shrinkAmount - leftover;
+                            if (widenAmount > 0.5 && colIdx + 1 < gv.Columns.Count)
+                            {
+                                var rightNeighbour = gv.Columns[colIdx + 1];
+                                rightNeighbour.Width = rightNeighbour.ActualWidth + widenAmount;
+                            }
+                        }
+
+                        foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
                     }
                     finally { inCascade = false; }
                 });
