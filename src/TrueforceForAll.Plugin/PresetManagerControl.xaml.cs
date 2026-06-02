@@ -463,6 +463,22 @@ namespace TrueforceForAll.Plugin
             // it -- silently skipping the restore.
             var preferredWidths = new Dictionary<GridViewColumn, double>();
 
+            // When a widen drag exhausts the cascade-rightward absorbtion
+            // budget (all columns to the right hit their min and the dragged
+            // column is rolled back to prevent overflow), the WPF Thumb's
+            // cursor has moved further right than the column's actual right
+            // edge. Without bookkeeping, the next leftward motion would
+            // start shrinking the column immediately -- the drag-back would
+            // overshoot by the snap-back amount. Track the accumulated
+            // overshoot per column; the shrink branch consumes it first
+            // before letting the column actually shrink, so the cursor
+            // visually has to catch up to the divider before drag-back kicks
+            // in. Symmetric inverse on the shrink side: if a column was
+            // taken below its min through cascade-leftward exhaustion, we
+            // do the same accounting in the other direction.
+            var gripperOverflow = new Dictionary<GridViewColumn, double>();
+            foreach (var c in gv.Columns) gripperOverflow[c] = 0.0;
+
             // The first LayoutUpdated after our columns get their initial
             // ActualWidths populates prevWidths AND preferredWidths so
             // subsequent Δ-tracking is accurate and so the flex column's
@@ -545,6 +561,72 @@ namespace TrueforceForAll.Plugin
                         inCascade = true;
                         int colIdx = indexOf[col];
 
+                        // Consume any accumulated gripper overshoot first.
+                        // If the previous widen exhausted cascade-right and
+                        // we rolled col back, gripperOverflow[col] holds
+                        // how far the cursor moved past where col actually
+                        // ended. Drag-back has to cover that distance before
+                        // the column itself starts shrinking; otherwise the
+                        // drag-back overshoots by the snap-back amount.
+                        // Symmetric for the shrink direction.
+                        if (gripperOverflow[col] > 0.5 && delta > 0)
+                        {
+                            // Cursor was sitting past the snapped right edge;
+                            // moving further right just increases the
+                            // overshoot, no real widen.
+                            gripperOverflow[col] += delta;
+                            col.Width = oldW;
+                            preferredWidths[col] = col.ActualWidth;
+                            foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
+                            return;
+                        }
+                        if (gripperOverflow[col] > 0.5 && delta < 0)
+                        {
+                            double consume = Math.Min(gripperOverflow[col], -delta);
+                            gripperOverflow[col] -= consume;
+                            delta += consume;
+                            // Bring col back to where it actually was (oldW)
+                            // so the residual delta is the actual shrink.
+                            col.Width = oldW;
+                            if (delta > -0.5)
+                            {
+                                // Whole drag was consumed by overflow -- no
+                                // real shrink. Update tracking and return.
+                                preferredWidths[col] = col.ActualWidth;
+                                foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
+                                return;
+                            }
+                            // Recompute newW from where col actually sits now.
+                            newW = oldW + delta;
+                            col.Width = newW;
+                        }
+                        if (gripperOverflow[col] < -0.5 && delta < 0)
+                        {
+                            // Mirror of the widen-overflow case: previous
+                            // shrink exhausted cascade-left and col stayed
+                            // at min while cursor kept moving left.
+                            gripperOverflow[col] += delta; // becomes more negative
+                            col.Width = oldW;
+                            preferredWidths[col] = col.ActualWidth;
+                            foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
+                            return;
+                        }
+                        if (gripperOverflow[col] < -0.5 && delta > 0)
+                        {
+                            double consume = Math.Min(-gripperOverflow[col], delta);
+                            gripperOverflow[col] += consume;
+                            delta -= consume;
+                            col.Width = oldW;
+                            if (delta < 0.5)
+                            {
+                                preferredWidths[col] = col.ActualWidth;
+                                foreach (var c in gv.Columns) prevWidths[c] = c.ActualWidth;
+                                return;
+                            }
+                            newW = oldW + delta;
+                            col.Width = newW;
+                        }
+
                         if (delta > 0)
                         {
                             // Widen by delta. Adjacent + cascade right.
@@ -561,9 +643,14 @@ namespace TrueforceForAll.Plugin
                                 remaining -= shrinkBy;
                             }
                             // Right side exhausted -- prevent overflow by
-                            // rolling the dragged column back by the leftover.
+                            // rolling the dragged column back AND remembering
+                            // how far the cursor over-moved so drag-back can
+                            // consume that gap first.
                             if (remaining > 0.5)
+                            {
                                 col.Width = newW - remaining;
+                                gripperOverflow[col] += remaining;
+                            }
                         }
                         else
                         {
@@ -594,6 +681,13 @@ namespace TrueforceForAll.Plugin
                                 prev.Width = prev.ActualWidth - shrinkBy;
                                 leftover -= shrinkBy;
                             }
+                            // Cascade-leftward exhausted -- remember that the
+                            // cursor moved past where the layout could
+                            // actually take the shrink, so a later drag-back
+                            // wider has to cover that distance before the
+                            // dragged column widens.
+                            if (leftover > 0.5)
+                                gripperOverflow[col] -= leftover;
                             double widenAmount = shrinkAmount - leftover;
                             // Pass 1: restore shrunk-by-cascade columns to
                             // their preferred width, walking rightward from
