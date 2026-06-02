@@ -428,11 +428,27 @@ namespace TrueforceForAll.Plugin
             {
                 var c = gv.Columns[i];
                 string text = c.Header as string;
+                // Always reserve room for the sort arrow (" ▼") so that
+                // clicking a column header to sort doesn't reveal a clip
+                // that wasn't there before. Header text is measured with the
+                // header's actual semibold weight (ListView body font would
+                // underestimate the rendered header width). Empty-header
+                // columns (the checkbox column) get a roomier 36px floor so
+                // the checkbox + gripper still fit comfortably when shrunk.
                 mins[c]      = string.IsNullOrEmpty(text)
-                    ? 28
+                    ? 36
                     : MeasureHeaderText(lv, text + " ▼") + 26;
                 indexOf[c]   = i;
                 prevWidths[c] = double.NaN;
+            }
+            // The dpd watcher only fires on Width CHANGES -- a column whose
+            // declared XAML Width is already below its computed min never
+            // gets snapped up. Bump now so the initial layout already
+            // honours the min (and the sort arrow won't clip when revealed).
+            foreach (var c in gv.Columns)
+            {
+                if (!double.IsNaN(c.Width) && c.Width < mins[c])
+                    c.Width = mins[c];
             }
 
             // The first LayoutUpdated after our columns get their initial
@@ -563,7 +579,12 @@ namespace TrueforceForAll.Plugin
             try
             {
                 double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(owner).PixelsPerDip;
-                var tf = new System.Windows.Media.Typeface(owner.FontFamily, owner.FontStyle, owner.FontWeight, owner.FontStretch);
+                // GridViewColumnHeader renders its text bolder than the body
+                // font by default; measuring at SemiBold matches the actual
+                // rendered width more closely. The few extra pixels matter
+                // because they decide whether the sort arrow clips on a
+                // column that's sitting right at its min.
+                var tf = new System.Windows.Media.Typeface(owner.FontFamily, owner.FontStyle, FontWeights.SemiBold, owner.FontStretch);
                 var ft = new System.Windows.Media.FormattedText(
                     text, System.Globalization.CultureInfo.CurrentUICulture,
                     FlowDirection.LeftToRight, tf, owner.FontSize,

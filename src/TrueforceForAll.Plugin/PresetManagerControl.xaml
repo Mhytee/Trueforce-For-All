@@ -184,7 +184,7 @@
                                 <GridViewColumn Width="34">
                                     <GridViewColumn.Header>
                                         <CheckBox x:Name="GameSelectAllCheck" IsThreeState="False"
-                                                  Click="GameSelectAll_Click" HorizontalAlignment="Left" Margin="6,0,0,0"
+                                                  Click="GameSelectAll_Click" HorizontalAlignment="Left" Margin="0,0,0,0"
                                                   ToolTip="Check / uncheck every visible game preset."/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
@@ -247,7 +247,7 @@
                                 <GridViewColumn Width="34">
                                     <GridViewColumn.Header>
                                         <CheckBox x:Name="CarSelectAllCheck" IsThreeState="False"
-                                                  Click="CarSelectAll_Click" HorizontalAlignment="Left" Margin="6,0,0,0"
+                                                  Click="CarSelectAll_Click" HorizontalAlignment="Left" Margin="0,0,0,0"
                                                   ToolTip="Check / uncheck every visible car preset."/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
@@ -294,7 +294,7 @@
                                 <GridViewColumn Width="34">
                                     <GridViewColumn.Header>
                                         <CheckBox x:Name="CustomSelectAllCheck" IsThreeState="False"
-                                                  Click="CustomSelectAll_Click" HorizontalAlignment="Left" Margin="6,0,0,0"
+                                                  Click="CustomSelectAll_Click" HorizontalAlignment="Left" Margin="0,0,0,0"
                                                   ToolTip="Check / uncheck every visible custom engine."/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
