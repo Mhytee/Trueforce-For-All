@@ -7990,11 +7990,82 @@ namespace TrueforceForAll.Plugin
                 }
 
                 WriteJsonZipEntry(zip, "manifest.json", manifest);
+
+                // README inside the archive so a recipient who extracts the
+                // zip first (instead of using Import directly) sees how to
+                // install it without leaving the folder.
+                var readmeEntry = zip.CreateEntry("README.txt");
+                using (var ws = readmeEntry.Open())
+                using (var sw = new System.IO.StreamWriter(ws, new System.Text.UTF8Encoding(false)))
+                {
+                    sw.Write(BuildPackReadme(normPack, normAuthor, normVer, presetsCount, carsCount));
+                }
             }
 
             SimHub.Logging.Current.Info(
                 $"[Trueforce] Exported pack to {path}: {presetsCount} game preset(s), {carsCount} car preset(s).");
             return (presetsCount, carsCount);
+        }
+
+        // README written into pack zips. Helps a recipient who extracts the
+        // archive instead of importing it directly. Mentions the pack
+        // identity (name + author + version) and the step-by-step Import
+        // flow inside SimHub.
+        private static string BuildPackReadme(string packName, string author, string version,
+            int presetsCount, int carsCount)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Trueforce For All - preset pack");
+            sb.AppendLine();
+            if (!string.IsNullOrEmpty(packName))   sb.AppendLine($"Pack:    {packName}");
+            if (!string.IsNullOrEmpty(author))     sb.AppendLine($"Author:  {author}");
+            if (!string.IsNullOrEmpty(version))    sb.AppendLine($"Version: {version}");
+            if (presetsCount > 0 || carsCount > 0)
+            {
+                var parts = new List<string>();
+                if (presetsCount > 0) parts.Add($"{presetsCount} game preset(s)");
+                if (carsCount    > 0) parts.Add($"{carsCount} car preset(s)");
+                sb.AppendLine($"Contents: " + string.Join(", ", parts));
+            }
+            sb.AppendLine();
+            sb.AppendLine("To install:");
+            sb.AppendLine("  1. Open SimHub.");
+            sb.AppendLine("  2. Left sidebar -> Trueforce For All plugin.");
+            sb.AppendLine("  3. Click the Presets tab.");
+            sb.AppendLine("  4. Click Import (top right of the preset list).");
+            sb.AppendLine("  5. Pick this .tfpack file (or this extracted folder).");
+            sb.AppendLine();
+            sb.AppendLine("All presets in the pack share the (Author, Version, Pack Name) identity,");
+            sb.AppendLine("so the manager can later show them grouped and let you remove or set");
+            sb.AppendLine("them as defaults as a unit.");
+            return sb.ToString();
+        }
+
+        // README written next to loose-exported files. Same step-by-step
+        // install instructions as the pack README, plus the recommendation
+        // to use Export as Pack for sharing a curated set with metadata.
+        private static string BuildLooseExportReadme()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Trueforce For All - loose preset files");
+            sb.AppendLine();
+            sb.AppendLine("These .tfpreset.json / .tfcar.json files are individual presets exported");
+            sb.AppendLine("from the Trueforce For All plugin. Each carries optional author /");
+            sb.AppendLine("description / version metadata in its own JSON.");
+            sb.AppendLine();
+            sb.AppendLine("To install:");
+            sb.AppendLine("  1. Open SimHub.");
+            sb.AppendLine("  2. Left sidebar -> Trueforce For All plugin.");
+            sb.AppendLine("  3. Click the Presets tab.");
+            sb.AppendLine("  4. Click Import (top right of the preset list).");
+            sb.AppendLine("  5. Navigate into this folder, select the files (Ctrl+A picks them");
+            sb.AppendLine("     all; the README.txt is filtered out), and click Open.");
+            sb.AppendLine();
+            sb.AppendLine("Sharing tip: if you want recipients to see these presets as a curated");
+            sb.AppendLine("group (so they can apply, filter, set as defaults, or remove them as a");
+            sb.AppendLine("unit), use Export as Pack instead. A pack carries a name and a single");
+            sb.AppendLine("set of author / version metadata that the manager keeps together.");
+            return sb.ToString();
         }
 
         /// <summary>Export the selected presets as loose .tfpreset / .tfcar.json
@@ -8093,23 +8164,9 @@ namespace TrueforceForAll.Plugin
             // expectation up front.
             try
             {
-                string readme = string.Join("\r\n", new[]
-                {
-                    "Trueforce For All - loose preset files",
-                    "",
-                    "These .tfpreset.json / .tfcar.json files are individual presets exported",
-                    "from the Trueforce For All plugin. Each one carries optional author /",
-                    "description / version metadata in its own JSON.",
-                    "",
-                    "To import: open SimHub, go to the Trueforce Presets tab, click Import, and",
-                    "pick one or more files. Drag-select multiple files at once if you want.",
-                    "",
-                    "Sharing tip: if you want recipients to see these presets as a curated",
-                    "group (so they can apply, filter, set as defaults, or remove them as a",
-                    "unit), use Export as Pack instead. A pack carries a name and a single",
-                    "set of author / version metadata that the manager keeps together.",
-                });
-                System.IO.File.WriteAllText(System.IO.Path.Combine(folderPath, "README.txt"), readme);
+                System.IO.File.WriteAllText(
+                    System.IO.Path.Combine(folderPath, "README.txt"),
+                    BuildLooseExportReadme());
             }
             catch (Exception ex)
             {
