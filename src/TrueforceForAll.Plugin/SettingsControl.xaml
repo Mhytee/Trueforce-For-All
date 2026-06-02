@@ -1795,7 +1795,7 @@
             <StackPanel x:Name="ForzaSection" Visibility="Collapsed" Margin="0,20,0,0">
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Forza telemetry (UDP)" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE TELEMETRY. Turn DATA OUT ON, set DATA OUT IP ADDRESS to 127.0.0.1, and set DATA OUT IP PORT to the Port shown below. That is the whole setup. The listener is always on for Forza; per-tire surface rumble, kerbs, and cylinder count flow through automatically."/>
+                Text="In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE TELEMETRY. Turn DATA OUT ON, set DATA OUT IP ADDRESS to 127.0.0.1, and set DATA OUT IP PORT to match this plugin's Port field below (5300 by default). That is the whole setup."/>
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
@@ -1855,7 +1855,7 @@
                               FontWeight="SemiBold"
                               ToolTip="Enable when you also use SimHub for Forza (dashboards, ShakeIt bass shakers / Buttkicker, anything SimHub drives). Forza can only send telemetry to one place, so this plugin receives it and re-broadcasts every packet verbatim to SimHub."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="11"
-                               Text="This plugin sits between Forza and SimHub: Forza sends telemetry to the plugin, and the plugin passes a copy to SimHub, so both work. Forza only sends to one place, which is why it must point at this plugin, not at SimHub.&#10;1. In SimHub, open Games then Forza Horizon 5/6 and note the UDP port it uses. If SimHub has an &quot;automatically configure&quot; option for Forza's data output, turn it OFF, or it will keep overwriting the setting you make in step 2.&#10;2. In Forza's telemetry settings: Data Out IP = 127.0.0.1, Data Out Port = this plugin's listen port (the Port field above, default 5300). This must be a different number than SimHub's port from step 1.&#10;3. Enable this box. Set the forward host to 127.0.0.1 and the forward port to SimHub's port from step 1.&#10;4. Drive for a moment and check the &quot;Forwarded:&quot; line below. Once it shows packets, SimHub's dashboards and bass shakers are back."/>
+                               Text="This plugin passes a copy of Forza's telemetry on to SimHub, so anything SimHub drives (dashboards, bass shakers, Buttkicker) keeps working too. The setup above already points Forza at this plugin; this just adds the relay to SimHub.&#10;1. In SimHub, click the Home button at the top of the left sidebar. It should show Forza Horizon as the active game (if not, click Change game). Click Game config and note the UDP port it shows (often 8000). Just read it, do not change anything here.&#10;2. Enable this box, set the forward host to 127.0.0.1, and set the forward port to that SimHub port.&#10;3. Drive for a moment and check the &quot;Forwarded:&quot; line below. Once it shows packets, SimHub's dashboards and bass shakers are back."/>
                     <Grid Margin="0,0,0,4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
@@ -1868,7 +1868,7 @@
                                    ToolTip="127.0.0.1 if SimHub runs on the same PC. A LAN IP (or hostname) for a separate SimHub host."/>
                         <TextBlock Grid.Column="2" Text="port:" Style="{StaticResource LabelText}" Margin="8,0,0,0"/>
                         <TextBox   Grid.Column="3" x:Name="ForzaForwardPortBox" LostFocus="ForzaForwardPort_LostFocus" KeyDown="ForzaForwardPort_KeyDown" VerticalAlignment="Center" Width="120" HorizontalAlignment="Left"
-                                   ToolTip="The port SimHub is listening on for Forza Data Out. Match this to the value in SimHub's Forza game settings."/>
+                                   ToolTip="The port SimHub is listening on for Forza Data Out. Match this to the UDP port shown in SimHub's Forza Game config."/>
                     </Grid>
                     <Grid Margin="0,0,0,0">
                         <Grid.ColumnDefinitions>
@@ -1899,111 +1899,6 @@
             </Expander>
             </StackPanel> <!-- /ForzaSection -->
 
-            <!-- F1 Telemetry (UDP). EA / Codemasters F1 series emits a rich
-                 UDP telemetry stream the user enables in Settings → Telemetry
-                 Settings. We target F1 25's wire format (PacketFormat=2025);
-                 older years receive packets but skip parsing with a clear log
-                 line. Recommend 60 Hz Send Rate; warn if the observed rate
-                 drops well below that. -->
-            <StackPanel x:Name="F1Section" Visibility="Collapsed">
-            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="F1 telemetry (UDP)" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="In F1 25, open Settings → Telemetry Settings. Set UDP Telemetry to On, UDP IP Address to 127.0.0.1, UDP Port to the port below, UDP Send Rate to 60Hz, and UDP Format to 2025. Enables direct per-wheel slip, KERS deployment, pit limiter, DRS, and surface type."/>
-            <CheckBox x:Name="F1EnabledCheck" Content="Enable F1 UDP listener" Click="F1Enabled_Changed" Margin="0,0,0,8"
-                      ToolTip="When off, F1 titles fall back to SimHub's universal telemetry (60 Hz, no direct slip, no KERS)."/>
-            <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="120"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Port:" Style="{StaticResource LabelText}"/>
-                <TextBox   Grid.Column="1" x:Name="F1PortBox" LostFocus="F1Port_LostFocus" KeyDown="F1Port_KeyDown" VerticalAlignment="Center"
-                           ToolTip="Match this in F1's UDP Port. Default 20777."/>
-                <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" Margin="8,0,0,0" VerticalAlignment="Center"
-                           Text="Takes effect immediately."/>
-            </Grid>
-            <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="120"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Bind address:" Style="{StaticResource LabelText}"/>
-                <TextBox   Grid.Column="1" x:Name="F1BindBox" LostFocus="F1Bind_LostFocus" KeyDown="F1Bind_KeyDown" VerticalAlignment="Center"
-                           ToolTip="0.0.0.0 listens on every interface (recommended)."/>
-                <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" Margin="8,0,0,0" VerticalAlignment="Center"
-                           Text="0.0.0.0 = listen on every network adapter."/>
-            </Grid>
-            <CheckBox x:Name="F1AlwaysListenCheck" Content="Always listen (use for unrecognized F1 titles)" Click="F1AlwaysListen_Changed" Margin="0,4,0,4"
-                      ToolTip="Keep the F1 source open even when SimHub doesn't recognize the running game."/>
-            <Grid Margin="0,4,0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Status:" Style="{StaticResource LabelText}"/>
-                <TextBlock Grid.Column="1" x:Name="F1StatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
-            </Grid>
-            <!-- Auto-discovered alternate port banner (F1). Same flow as Forza. -->
-            <Border x:Name="F1DiscoveryBanner" Background="#3300A8FF" BorderBrush="#00A8FF" BorderThickness="1"
-                    CornerRadius="3" Padding="8" Margin="0,4,0,4" Visibility="Collapsed">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="F1DiscoveryText" FontSize="11" TextWrapping="Wrap"
-                               VerticalAlignment="Center" MaxWidth="380"
-                               Text="F1 packets detected on a different port."/>
-                    <Button x:Name="F1DiscoveryAdoptButton" Content="Switch" Width="80" Height="22" FontSize="11"
-                            Margin="10,0,4,0" Click="F1DiscoveryAdopt_Click"/>
-                    <Button x:Name="F1DiscoveryDismissButton" Content="Dismiss" Width="80" Height="22" FontSize="11"
-                            Click="F1DiscoveryDismiss_Click"/>
-                </StackPanel>
-            </Border>
-            <!-- Send-rate warning. Shown only when packets are arriving but
-                 the observed rate is well below 60 Hz; we recommend the user
-                 bump UDP Send Rate in F1's Telemetry Settings. -->
-            <Border x:Name="F1RateWarning" Background="#33FFC107" BorderBrush="#FFC107" BorderThickness="1"
-                    CornerRadius="3" Padding="8" Margin="0,4,0,8" Visibility="Collapsed">
-                <TextBlock x:Name="F1RateWarningText" FontSize="11" TextWrapping="Wrap"
-                           Text="UDP Send Rate looks low. Set it to 60Hz in F1 25's Telemetry Settings for the most responsive haptics."/>
-            </Border>
-
-            <!-- Coexistence forwarder. F1 only sends to one destination, so
-                 if the user wants both Trueforce haptics AND SimHub
-                 dashboards, they point F1 at us and we relay raw packet
-                 bytes verbatim to SimHub. Default off. -->
-            <Border BorderThickness="0,1,0,0" BorderBrush="#22FFFFFF" Margin="0,4,0,8" Padding="0,8,0,0">
-                <StackPanel>
-                    <CheckBox x:Name="F1ForwardEnabledCheck" Content="Also forward to SimHub (dashboards, ShakeIt / Buttkicker, etc.)" Click="F1ForwardEnabled_Changed" Margin="0,0,0,4"
-                              FontWeight="SemiBold"
-                              ToolTip="Enable when you also use SimHub for F1 (dashboards, ShakeIt bass shakers / Buttkicker, anything SimHub drives). F1 can only send telemetry to one place, so this plugin receives it and re-broadcasts every packet verbatim to SimHub."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="11"
-                               Text="This plugin sits between F1 and SimHub: F1 sends telemetry to the plugin, and the plugin passes a copy to SimHub, so both work. F1 only sends to one place, which is why it must point at this plugin, not at SimHub.&#10;1. In SimHub, open Games then F1 25 and note the UDP port it uses. If SimHub has an &quot;automatically configure&quot; option for F1's telemetry, turn it OFF, or it will keep overwriting the setting you make in step 2.&#10;2. In F1's telemetry settings: UDP IP = 127.0.0.1, UDP port = this plugin's listen port (the Port field above, default 5300). This must be a different number than SimHub's port from step 1.&#10;3. Enable this box. Set the forward host to 127.0.0.1 and the forward port to SimHub's port from step 1.&#10;4. Drive for a moment and check the &quot;Forwarded:&quot; line below. Once it shows packets, SimHub's dashboards and bass shakers are back."/>
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="140"/>
-                            <ColumnDefinition Width="160"/>
-                            <ColumnDefinition Width="80"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Forward to host:" Style="{StaticResource LabelText}"/>
-                        <TextBox   Grid.Column="1" x:Name="F1ForwardHostBox" LostFocus="F1ForwardHost_LostFocus" KeyDown="F1ForwardHost_KeyDown" VerticalAlignment="Center"
-                                   ToolTip="127.0.0.1 if SimHub runs on the same PC. A LAN IP (or hostname) for a separate SimHub host."/>
-                        <TextBlock Grid.Column="2" Text="port:" Style="{StaticResource LabelText}" Margin="8,0,0,0"/>
-                        <TextBox   Grid.Column="3" x:Name="F1ForwardPortBox" LostFocus="F1ForwardPort_LostFocus" KeyDown="F1ForwardPort_KeyDown" VerticalAlignment="Center" Width="120" HorizontalAlignment="Left"
-                                   ToolTip="The port SimHub is listening on for F1 UDP telemetry. Match this to the value in SimHub's F1 25 game settings."/>
-                    </Grid>
-                    <Grid Margin="0,0,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="140"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Forwarded:" Style="{StaticResource LabelText}"/>
-                        <TextBlock Grid.Column="1" x:Name="F1ForwardStatusText" Text="(disabled)" FontSize="11" Opacity="0.85"/>
-                    </Grid>
-                </StackPanel>
-            </Border>
-            </StackPanel> <!-- /F1Section -->
-
             <!-- Diagnostics moved into the Advanced Settings modal. See
                  AdvancedSettingsHost near the bottom. -->
 
@@ -2016,7 +1911,7 @@
                  picker (preselects the current car, hides built-ins);
                  Import auto-detects the file kind (preset, car preset,
                  pack, or full settings backup). -->
-            <!-- Top margin: when the Forza/F1 sections above are hidden (most
+            <!-- Top margin: when the Forza section above is hidden (most
                  users), this is the first section after the effects list and
                  would otherwise sit flush against the last effect's 4px margin
                  (this margin formerly lived on the removed Presets header). -->

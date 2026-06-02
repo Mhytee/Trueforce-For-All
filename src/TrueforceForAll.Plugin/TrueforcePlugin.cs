@@ -134,7 +134,7 @@ namespace TrueforceForAll.Plugin
         public  ITelemetrySource      TelemetrySource => _telemetrySource;
 
         // ---- Port discovery ----
-        // When a UDP source (Forza or F1) has been running without
+        // When a UDP source (Forza) has been running without
         // receiving anything, kick off a scan across known alternate
         // ports to find where the game is actually sending. UI subscribes
         // to DiscoveredAlternatePort to surface a "switch to port X?"
@@ -2697,11 +2697,6 @@ namespace TrueforceForAll.Plugin
         public bool ShouldShowForzaSection =>
             IsForzaGameName(_activeGame);
 
-        /// <summary>True when the F1 UDP section should be visible.</summary>
-        public bool ShouldShowF1Section =>
-            IsF1GameName(_activeGame)
-            || (Settings?.F1?.AlwaysListen == true);
-
         /// <summary>True when the rim rev-LED + MAIRA section should be
         /// visible. iRacing-only: that is the sole game where the LEDs
         /// (and the MAIRA passthrough that makes them safe) apply.</summary>
@@ -2730,21 +2725,6 @@ namespace TrueforceForAll.Plugin
         /// that won't apply. Other sources unchanged.</summary>
         public bool ActiveSourceSupportsStationarySpring =>
             !(_telemetrySource is ForzaUdpTelemetrySource);
-
-        /// <summary>True if SimHub's GameName looks like an EA / Codemasters
-        /// F1 title we target. Currently F1 25 is the only validated wire
-        /// format; older games (F1 22/23/24) may receive packets but the
-        /// source skips PacketFormat != 2025 with a one-time log line. The
-        /// UI section still renders for those names so a user can confirm
-        /// that's why packets aren't parsing.</summary>
-        private static bool IsF1GameName(string game)
-        {
-            if (string.IsNullOrEmpty(game)) return false;
-            return game == "F12025"
-                || game == "F12024"
-                || game == "F12023"
-                || game == "F12022";
-        }
 
         /// <summary>True if SimHub's GameName looks like any Forza title
         /// (Horizon or Motorsport). Drives Forza UDP section visibility.
@@ -2857,34 +2837,6 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
-            else if (IsF1GameName(game)
-                     || (Settings?.F1?.AlwaysListen == true && Settings.F1.Enabled))
-            {
-                if (Settings?.F1?.Enabled == true)
-                {
-                    try
-                    {
-                        var bindIp = ParseIpOrAny(Settings.F1.BindAddress);
-                        var forwardTo = BuildF1ForwardEndpoint(Settings.F1);
-                        var f1 = new F1UdpTelemetrySource(Settings.F1.Port, bindIp, forwardTo)
-                        {
-                            Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
-                        };
-                        f1.Start();
-                        newSource = f1;
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!silent)
-                        {
-                            SimHub.Logging.Current.Info(
-                                $"[Trueforce] F1 UDP source unavailable on port {Settings.F1.Port} " +
-                                $"({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
-                                "If another listener holds the port, change Trueforce's port to a free one and re-point F1's UDP Telemetry to it.");
-                        }
-                    }
-                }
-            }
             if (newSource == null) newSource = _simHubSource;
             if (newSource == _telemetrySource) return;
 
@@ -2897,8 +2849,8 @@ namespace TrueforceForAll.Plugin
             _telemetrySource = newSource;
 
             // Reset port-discovery state on every source swap so a fresh
-            // start (Forza was idle, F1 just launched, port changed in
-            // settings, etc.) restarts the discovery cycle.
+            // start (Forza was idle, port changed in settings, etc.)
+            // restarts the discovery cycle.
             _discoverySourceStartedTicks = Stopwatch.GetTimestamp();
             _discoveryNextAttemptTicks   = 0;
             _discoverySourceKey = newSource;
@@ -2918,7 +2870,7 @@ namespace TrueforceForAll.Plugin
         // ---------- Port discovery ----------
 
         // Polled from DataUpdate. Triggers a scan when:
-        //   - The active source is a UDP source (Forza or F1).
+        //   - The active source is a UDP source (Forza).
         //   - It's been running for >DiscoveryNoPacketsTriggerMs without
         //     receiving any packets.
         //   - The retry-interval gate has elapsed (DiscoveryRetryIntervalMs
@@ -2950,14 +2902,6 @@ namespace TrueforceForAll.Plugin
                 validator   = ForzaUdpTelemetrySource.IsValidPacketCandidate;
                 kind        = "forza";
             }
-            else if (src is F1UdpTelemetrySource f1)
-            {
-                received    = f1.PacketsReceived;
-                candidates  = F1UdpTelemetrySource.DiscoveryCandidatePorts;
-                currentPort = Settings?.F1?.Port ?? 0;
-                validator   = F1UdpTelemetrySource.IsValidPacketCandidate;
-                kind        = "f1";
-            }
             else return;
 
             if (received > 0) return;
@@ -2985,8 +2929,7 @@ namespace TrueforceForAll.Plugin
 
             _discoveryScanInFlight = true;
 
-            var bindIp = ParseIpOrAny(
-                kind == "forza" ? Settings?.Forza?.BindAddress : Settings?.F1?.BindAddress);
+            var bindIp = ParseIpOrAny(Settings?.Forza?.BindAddress);
             System.Threading.Tasks.Task.Run(() =>
             {
                 int hit = 0;
@@ -3023,9 +2966,8 @@ namespace TrueforceForAll.Plugin
             });
         }
 
-        /// <summary>UI hook: switch the F1 (or Forza) listener to the
-        /// just-discovered port and persist. Returns true if the switch
-        /// was applied.</summary>
+        /// <summary>UI hook: switch the Forza listener to the just-discovered
+        /// port and persist. Returns true if the switch was applied.</summary>
         public bool AdoptDiscoveredAlternatePort()
         {
             int port = DiscoveredAlternatePort;
@@ -3036,11 +2978,6 @@ namespace TrueforceForAll.Plugin
             {
                 Settings.Forza.Port = port;
                 ApplyForzaSettings();
-            }
-            else if (src is F1UdpTelemetrySource && Settings.F1 != null)
-            {
-                Settings.F1.Port = port;
-                ApplyF1Settings();
             }
             else return false;
 
@@ -3069,27 +3006,6 @@ namespace TrueforceForAll.Plugin
         // invalid, the source treats null as "don't forward." Hostname (vs
         // IP) lookups go through Dns.GetHostAddresses so users can type
         // "localhost" or a NAS hostname; first resolved address wins.
-        /// <summary>Same as BuildForzaForwardEndpoint, for the F1 forwarder.</summary>
-        private static IPEndPoint BuildF1ForwardEndpoint(F1Settings fs)
-        {
-            if (fs == null || !fs.ForwardEnabled) return null;
-            if (fs.ForwardPort < 1 || fs.ForwardPort > 65535) return null;
-            string host = string.IsNullOrWhiteSpace(fs.ForwardHost) ? "127.0.0.1" : fs.ForwardHost.Trim();
-            try
-            {
-                if (IPAddress.TryParse(host, out var ip))
-                    return new IPEndPoint(ip, fs.ForwardPort);
-                var addrs = System.Net.Dns.GetHostAddresses(host);
-                foreach (var a in addrs)
-                {
-                    if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                        return new IPEndPoint(a, fs.ForwardPort);
-                }
-            }
-            catch { }
-            return null;
-        }
-
         private static IPEndPoint BuildForzaForwardEndpoint(ForzaSettings fs)
         {
             if (fs == null || !fs.ForwardEnabled) return null;
@@ -3129,7 +3045,7 @@ namespace TrueforceForAll.Plugin
             // dispose runs cleanly before SwapTelemetrySource (re)builds.
             // SwapTelemetrySource decides what to attach next based on the
             // new settings + active game; if we're disabling, it'll fall
-            // through to a non-Forza source (F1 if applicable, else SimHub).
+            // through to the SimHub source.
             if (currentlyForza)
             {
                 var oldFz = _telemetrySource;
@@ -3137,28 +3053,6 @@ namespace TrueforceForAll.Plugin
                 _simHubSource.OnFrame = DispatchFrame;
                 _telemetrySource = _simHubSource;
                 try { oldFz.Dispose(); } catch { }
-            }
-            SwapTelemetrySource(_activeGame);
-        }
-
-        /// <summary>Same shape as ApplyForzaSettings, for the F1 source.</summary>
-        public void ApplyF1Settings()
-        {
-            if (Settings?.F1 == null) return;
-            this.SaveCommonSettings("GeneralSettings", Settings);
-
-            bool currentlyF1 = _telemetrySource is F1UdpTelemetrySource;
-            bool shouldListen = (Settings.F1.AlwaysListen && Settings.F1.Enabled)
-                             || (!string.IsNullOrEmpty(_activeGame) && IsF1GameName(_activeGame));
-            if (!currentlyF1 && !shouldListen) return;
-
-            if (currentlyF1)
-            {
-                var oldF1 = _telemetrySource;
-                oldF1.OnFrame = null;
-                _simHubSource.OnFrame = DispatchFrame;
-                _telemetrySource = _simHubSource;
-                try { oldF1.Dispose(); } catch { }
             }
             SwapTelemetrySource(_activeGame);
         }

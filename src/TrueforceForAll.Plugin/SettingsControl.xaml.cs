@@ -290,19 +290,6 @@ namespace TrueforceForAll.Plugin
                     ForzaForwardPortBox.Text           = fz.ForwardPort > 0 ? fz.ForwardPort.ToString() : "";
                 }
 
-                // F1 section
-                var f1 = _plugin.Settings?.F1;
-                if (f1 != null)
-                {
-                    F1EnabledCheck.IsChecked        = f1.Enabled;
-                    F1PortBox.Text                  = f1.Port.ToString();
-                    F1BindBox.Text                  = f1.BindAddress ?? "0.0.0.0";
-                    F1AlwaysListenCheck.IsChecked   = f1.AlwaysListen;
-                    F1ForwardEnabledCheck.IsChecked = f1.ForwardEnabled;
-                    F1ForwardHostBox.Text           = f1.ForwardHost ?? "127.0.0.1";
-                    F1ForwardPortBox.Text           = f1.ForwardPort > 0 ? f1.ForwardPort.ToString() : "";
-                }
-
                 // Header strip context. Prefer the resolver's DisplayName when
                 // available so opaque ordinals (Forza "Car_424") render as the
                 // actual car name ("1997 Mazda RX-7"). Falls back to carId for
@@ -709,13 +696,6 @@ namespace TrueforceForAll.Plugin
                         : System.Windows.Visibility.Collapsed;
                     if (ForzaSection.Visibility != want) ForzaSection.Visibility = want;
                 }
-                if (F1Section != null)
-                {
-                    var want = _plugin.ShouldShowF1Section
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-                    if (F1Section.Visibility != want) F1Section.Visibility = want;
-                }
                 if (RpmLedSection != null)
                 {
                     // Two gates, both required: (1) the tester unlocked it
@@ -1007,84 +987,6 @@ namespace TrueforceForAll.Plugin
                         {
                             ForzaDiscoveryText.Text =
                                 $"Forza packets detected on port {alt}. Switch to it?";
-                        }
-                    }
-                }
-
-                // F1 listener status. Mirrors the Forza shape but adds a
-                // separate yellow rate-warning when packets are arriving
-                // below the recommended 60 Hz threshold (so the user knows
-                // to bump UDP Send Rate in F1's settings).
-                if (F1StatusText != null)
-                {
-                    var f1Src = _plugin.TelemetrySource as TrueforceForAll.Core.F1UdpTelemetrySource;
-                    if (f1Src == null)
-                    {
-                        F1StatusText.Text = (_plugin.Settings?.F1?.Enabled ?? true)
-                            ? "(idle, not active for current game)"
-                            : "(disabled)";
-                        if (F1RateWarning != null) F1RateWarning.Visibility = System.Windows.Visibility.Collapsed;
-                    }
-                    else if (f1Src.PacketsReceived == 0)
-                    {
-                        F1StatusText.Text =
-                            $"Listening on {(_plugin.Settings?.F1?.BindAddress ?? "0.0.0.0")}:{(_plugin.Settings?.F1?.Port ?? 0)}. No packets yet (check F1's UDP Telemetry settings).";
-                        if (F1RateWarning != null) F1RateWarning.Visibility = System.Windows.Visibility.Collapsed;
-                    }
-                    else
-                    {
-                        double hz = f1Src.MeasuredHz;
-                        F1StatusText.Text = $"Receiving {f1Src.PacketsReceived:N0} packets at ~{hz:0} Hz";
-                        if (F1RateWarning != null)
-                        {
-                            // Only show the warning once we've seen enough
-                            // packets that MeasuredHz isn't a startup
-                            // transient. ~50 Hz is the trigger so 60 Hz with
-                            // a little jitter doesn't false-fire.
-                            bool warn = hz > 0 && hz < TrueforceForAll.Core.F1UdpTelemetrySource.LowRateThresholdHz
-                                        && f1Src.PacketsReceived > 30;
-                            F1RateWarning.Visibility = warn
-                                ? System.Windows.Visibility.Visible
-                                : System.Windows.Visibility.Collapsed;
-                            if (warn && F1RateWarningText != null)
-                            {
-                                F1RateWarningText.Text =
-                                    $"UDP Send Rate looks low (~{hz:0} Hz). Set it to 60Hz in F1's Telemetry Settings for the most responsive haptics.";
-                            }
-                        }
-                    }
-
-                    // F1 discovered-port banner.
-                    if (F1DiscoveryBanner != null)
-                    {
-                        int alt = _plugin.DiscoveredAlternatePort;
-                        bool show = f1Src != null && alt > 0;
-                        F1DiscoveryBanner.Visibility = show
-                            ? System.Windows.Visibility.Visible
-                            : System.Windows.Visibility.Collapsed;
-                        if (show && F1DiscoveryText != null)
-                        {
-                            F1DiscoveryText.Text =
-                                $"F1 packets detected on port {alt}. Switch to it?";
-                        }
-                    }
-
-                    // F1 forwarder status: mirrors the Forza shape.
-                    if (F1ForwardStatusText != null)
-                    {
-                        var fwd = _plugin.Settings?.F1;
-                        if (fwd == null || !fwd.ForwardEnabled)
-                        {
-                            F1ForwardStatusText.Text = "(disabled)";
-                        }
-                        else if (f1Src == null)
-                        {
-                            F1ForwardStatusText.Text = "(armed, will relay once an F1 title is detected)";
-                        }
-                        else
-                        {
-                            F1ForwardStatusText.Text =
-                                $"{f1Src.PacketsForwarded:N0} packets relayed to {fwd.ForwardHost}:{fwd.ForwardPort}";
                         }
                     }
                 }
@@ -2883,13 +2785,9 @@ namespace TrueforceForAll.Plugin
                     // address (the common "no telemetry" cause) is visible in the
                     // manifest without opening the full settings JSON below.
                     var fz = _plugin?.Settings?.Forza;
-                    var f1 = _plugin?.Settings?.F1;
                     string forzaLine = fz == null ? "(n/a)"
                         : $"enabled={fz.Enabled} port={fz.Port} bind={fz.BindAddress} " +
                           $"forward={(fz.ForwardEnabled ? $"{fz.ForwardHost}:{fz.ForwardPort}" : "off")}";
-                    string f1Line = f1 == null ? "(n/a)"
-                        : $"enabled={f1.Enabled} port={f1.Port} bind={f1.BindAddress} alwaysListen={f1.AlwaysListen} " +
-                          $"forward={(f1.ForwardEnabled ? $"{f1.ForwardHost}:{f1.ForwardPort}" : "off")}";
                     string manifest =
                         $"Generated: {DateTime.Now:o}\n" +
                         $"Plugin version: {version}\n" +
@@ -2901,7 +2799,6 @@ namespace TrueforceForAll.Plugin
                         $"Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n" +
                         $"Experimental FFB capture: {(_plugin?.Settings?.ExperimentalFfbCapture ?? false ? "ON" : "OFF")}\n" +
                         $"Forza UDP: {forzaLine}\n" +
-                        $"F1 UDP: {f1Line}\n" +
                         $"Manual USBPcap override: {(_plugin?.HasManualUsbPcapDevice ?? false ? $"{_plugin.Settings.ManualUsbPcapInterface} dev {_plugin.Settings.ManualUsbPcapDeviceAddress}" : "(none)")}\n" +
                         $"USB byte logging: {(_plugin?.Settings?.LogUsbBytesEnabled ?? false ? "enabled" : "disabled")}\n" +
                         $"Full settings: see Trueforce-settings.json in this zip\n" +
@@ -4628,131 +4525,12 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---- Port discovery banner handlers ----
-        // Shared between Forza and F1: the plugin exposes a single
-        // DiscoveredAlternatePort and AdoptDiscoveredAlternatePort handles
-        // both kinds based on the active source type.
+        // The plugin exposes a single DiscoveredAlternatePort and
+        // AdoptDiscoveredAlternatePort acts on the active source.
         private void ForzaDiscoveryAdopt_Click(object sender, RoutedEventArgs e)
             => _plugin?.AdoptDiscoveredAlternatePort();
         private void ForzaDiscoveryDismiss_Click(object sender, RoutedEventArgs e)
             => _plugin?.DismissDiscoveredAlternatePort();
-        private void F1DiscoveryAdopt_Click(object sender, RoutedEventArgs e)
-            => _plugin?.AdoptDiscoveredAlternatePort();
-        private void F1DiscoveryDismiss_Click(object sender, RoutedEventArgs e)
-            => _plugin?.DismissDiscoveredAlternatePort();
-
-        // ---- F1 UDP handlers ----
-        // Mirror the Forza ones; no forwarder field (F1 doesn't share a
-        // single-destination limitation the way Forza does).
-
-        private void F1Enabled_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            _plugin.Settings.F1.Enabled = F1EnabledCheck.IsChecked == true;
-            _plugin.ApplyF1Settings();
-        }
-
-        private void F1AlwaysListen_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            _plugin.Settings.F1.AlwaysListen = F1AlwaysListenCheck.IsChecked == true;
-            _plugin.ApplyF1Settings();
-        }
-
-        private void F1Port_LostFocus(object sender, RoutedEventArgs e) => CommitF1Port();
-        private void F1Port_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1Port();
-        }
-        private void CommitF1Port()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1PortBox.Text?.Trim();
-            if (int.TryParse(raw, out int port) && port >= 1 && port <= 65535)
-            {
-                if (_plugin.Settings.F1.Port != port)
-                {
-                    _plugin.Settings.F1.Port = port;
-                    _plugin.ApplyF1Settings();
-                }
-            }
-            else
-            {
-                F1PortBox.Text = _plugin.Settings.F1.Port.ToString();
-            }
-        }
-
-        private void F1Bind_LostFocus(object sender, RoutedEventArgs e) => CommitF1Bind();
-        private void F1Bind_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1Bind();
-        }
-        private void CommitF1Bind()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1BindBox.Text?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(raw)) raw = "0.0.0.0";
-            if (_plugin.Settings.F1.BindAddress != raw)
-            {
-                _plugin.Settings.F1.BindAddress = raw;
-                _plugin.ApplyF1Settings();
-            }
-        }
-
-        private void F1ForwardEnabled_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            _plugin.Settings.F1.ForwardEnabled = F1ForwardEnabledCheck.IsChecked == true;
-            _plugin.ApplyF1Settings();
-        }
-
-        private void F1ForwardHost_LostFocus(object sender, RoutedEventArgs e) => CommitF1ForwardHost();
-        private void F1ForwardHost_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1ForwardHost();
-        }
-        private void CommitF1ForwardHost()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1ForwardHostBox.Text?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(raw)) raw = "127.0.0.1";
-            if (_plugin.Settings.F1.ForwardHost != raw)
-            {
-                _plugin.Settings.F1.ForwardHost = raw;
-                _plugin.ApplyF1Settings();
-            }
-        }
-
-        private void F1ForwardPort_LostFocus(object sender, RoutedEventArgs e) => CommitF1ForwardPort();
-        private void F1ForwardPort_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter) CommitF1ForwardPort();
-        }
-        private void CommitF1ForwardPort()
-        {
-            if (_suppressEvents || _plugin?.Settings?.F1 == null) return;
-            string raw = F1ForwardPortBox.Text?.Trim();
-            if (string.IsNullOrEmpty(raw))
-            {
-                if (_plugin.Settings.F1.ForwardPort != 0)
-                {
-                    _plugin.Settings.F1.ForwardPort = 0;
-                    _plugin.ApplyF1Settings();
-                }
-                return;
-            }
-            if (int.TryParse(raw, out int port) && port >= 1 && port <= 65535)
-            {
-                if (_plugin.Settings.F1.ForwardPort != port)
-                {
-                    _plugin.Settings.F1.ForwardPort = port;
-                    _plugin.ApplyF1Settings();
-                }
-            }
-            else
-            {
-                F1ForwardPortBox.Text = _plugin.Settings.F1.ForwardPort > 0 ? _plugin.Settings.F1.ForwardPort.ToString() : "";
-            }
-        }
 
         private void ForzaForwardEnabled_Changed(object sender, RoutedEventArgs e)
         {

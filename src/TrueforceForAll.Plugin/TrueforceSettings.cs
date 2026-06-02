@@ -257,11 +257,6 @@ namespace TrueforceForAll.Plugin
         // here so it survives preset switches.
         public ForzaSettings Forza { get; set; } = new ForzaSettings();
 
-        // F1 (EA / Codemasters) UDP listener config. Mirrors ForzaSettings
-        // local-to-the-user, persists across preset switches. Default port
-        // 20777 matches F1 25's factory default in Telemetry Settings.
-        public F1Settings F1 { get; set; } = new F1Settings();
-
         // Author name auto-stamped onto exported presets / car presets / packs.
         // Set once via the Backup & sync section; the export-info dialog
         // pre-fills it and writes back any edits the user makes there. Blank
@@ -508,26 +503,6 @@ namespace TrueforceForAll.Plugin
         /// Game → Forza Horizon settings, in the "UDP port" field). Same
         /// value the user originally typed into SimHub when they set it up.
         /// Ignored when <see cref="ForwardEnabled"/> is false.</summary>
-        public int    ForwardPort    { get; set; } = 0;
-    }
-
-    public sealed class F1Settings
-    {
-        public bool   Enabled       { get; set; } = true;
-        public int    Port          { get; set; } = 20777;
-        public string BindAddress   { get; set; } = "0.0.0.0";
-
-        /// <summary>Keep the listener open even when SimHub doesn't recognize
-        /// the running game. Useful for future F1 titles before SimHub adds
-        /// their game name.</summary>
-        public bool   AlwaysListen  { get; set; } = false;
-
-        /// <summary>Re-broadcast every received F1 packet to a second
-        /// destination. Same coexistence problem as Forza: F1 only sends
-        /// to one IP+port, so the user points F1 at us and we relay
-        /// verbatim to SimHub. Default off.</summary>
-        public bool   ForwardEnabled { get; set; } = false;
-        public string ForwardHost    { get; set; } = "127.0.0.1";
         public int    ForwardPort    { get; set; } = 0;
     }
 
