@@ -324,10 +324,10 @@ namespace TrueforceForAll.Plugin
         // Flips to true after the one-time folder restructure moves
         //   <SimHub>\TrueforceForAll-Presets             -> PluginsData\Common\TrueforceForAll\factory
         //   <SimHub>\PluginsData\Common\TrueforceForAll-Library -> .../TrueforceForAll\user
-        //   <SimHub>\PluginsData\Common\TrueforceForAll-Imports -> .../TrueforceForAll\user\drop
+        //   <SimHub>\PluginsData\Common\TrueforceForAll-Imports -> .../TrueforceForAll\user\import
         // and stamps so it doesn't run again. The new layout collapses three
         // sibling folders into one root with the two real roles (factory, user)
-        // and the drop-in inbox as a subfolder of user.
+        // and the import inbox as a subfolder of user.
         public bool FoldersRestructuredV3 { get; set; } = false;
 
         // ---- Serialization gates for the now-runtime-cache dicts ----

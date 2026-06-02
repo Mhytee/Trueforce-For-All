@@ -1328,7 +1328,7 @@ namespace TrueforceForAll.Plugin
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
             // One-time folder restructure: move the three legacy sibling
             // folders (TrueforceForAll-Presets / -Library / -Imports) into the
-            // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\drop}
+            // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\import}
             // layout. Idempotent; skipped once stamped. Runs BEFORE the stores
             // load so they read from the new location on the first new launch.
             if (!Settings.FoldersRestructuredV3)
@@ -1514,6 +1514,16 @@ namespace TrueforceForAll.Plugin
             // Make sure all three folders exist with their READMEs, then auto-
             // import anything the user dropped into the imports folder. All
             // best-effort: folder access errors degrade gracefully.
+            // One-time: the imports inbox was renamed from "drop" to "import";
+            // move a leftover default "drop" folder to the new name.
+            try
+            {
+                string legacyDropFolder = Path.Combine(UserPresets.DefaultFolder, "drop");
+                string newImportFolder  = Path.Combine(UserPresets.DefaultFolder, UserImportsFolderName);
+                if (Directory.Exists(legacyDropFolder) && !Directory.Exists(newImportFolder))
+                    Directory.Move(legacyDropFolder, newImportFolder);
+            }
+            catch { /* best-effort rename */ }
             WriteReadmeIfMissing(BuiltinPresets.CurrentFolder, BuiltinReadmeText);
             WriteReadmeIfMissing(UserPresets.CurrentFolder, UserLibraryReadmeText);
             WriteReadmeIfMissing(UserImportsFolderPath, ImportsReadmeText);
@@ -4802,11 +4812,11 @@ namespace TrueforceForAll.Plugin
 
         // ----- User imports folder (drop-in community packs) -----
 
-        public const string UserImportsFolderName = "drop";
+        public const string UserImportsFolderName = "import";
         public const string UserImportsArchiveSubfolder = "imported";
 
-        /// <summary>Drop-in inbox for community / shared preset files. Lives
-        /// inside the user folder (<c>...\TrueforceForAll\user\drop</c>) so
+        /// <summary>Import inbox for community / shared preset files. Lives
+        /// inside the user folder (<c>...\TrueforceForAll\user\import</c>) so
         /// it's writable without admin. Auto-imported on plugin start into the
         /// user library and the originals are moved into the
         /// <c>imported/&lt;timestamp&gt;/</c> archive subfolder. Honours
@@ -4881,7 +4891,7 @@ namespace TrueforceForAll.Plugin
             "is the friendlier option there.\r\n";
 
         private const string ImportsReadmeText =
-            "Trueforce For All - drop-in inbox\r\n" +
+            "Trueforce For All - import folder\r\n" +
             "\r\n" +
             "Drop any shared / community Trueforce For All file here. On the next\r\n" +
             "SimHub start the plugin reads each file's content, routes it to the\r\n" +
