@@ -4100,13 +4100,31 @@ namespace TrueforceForAll.Plugin
             foreach (var kv in UserPresets.GameDefaults)
                 Settings.GameDefaults[kv.Key] = kv.Value;
 
+            // 2) Built-ins: overwrite same-named entries (factory wins). The
+            //    shipped JSON is the source of truth for built-ins, so this
+            //    also catches the "built-in shipped before a later-added
+            //    section" case (the section deserializes as null otherwise).
+            foreach (var kv in BuiltinPresets.BuiltinPresetJsons)
+            {
+                try
+                {
+                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value);
+                    if (snap != null) Settings.Presets[kv.Key] = snap;
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to load built-in preset '{kv.Key}': {ex.Message}");
+                }
+            }
             // Self-heal stale or case-drifted user game-default bindings.
             // Settings.Presets is keyed by the literal filename stem; if a
             // user/game-defaults.json value doesn't match any current key,
             // either correct the case (case-insensitive match) or drop the
-            // binding so the factory seed below can fill it in. Closes the
-            // class of "Default for column silently empty because user/ and
-            // factory/ disagree on case" bugs.
+            // binding so the factory seed below can fill it in. Runs AFTER
+            // factory presets are loaded so factory-named bindings (e.g.
+            // "Assetto Corsa  (Built-In)") aren't falsely flagged stale.
+            // Closes the class of "Default for column silently empty
+            // because user/ and factory/ disagree on case" bugs.
             {
                 var rekey = new List<KeyValuePair<string, string>>();
                 var stale = new List<string>();
@@ -4135,22 +4153,6 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // 2) Built-ins: overwrite same-named entries (factory wins). The
-            //    shipped JSON is the source of truth for built-ins, so this
-            //    also catches the "built-in shipped before a later-added
-            //    section" case (the section deserializes as null otherwise).
-            foreach (var kv in BuiltinPresets.BuiltinPresetJsons)
-            {
-                try
-                {
-                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value);
-                    if (snap != null) Settings.Presets[kv.Key] = snap;
-                }
-                catch (Exception ex)
-                {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to load built-in preset '{kv.Key}': {ex.Message}");
-                }
-            }
             // Seed built-in game defaults only for games the user hasn't chosen.
             foreach (var kv in BuiltinPresets.GameDefaultBindings)
             {

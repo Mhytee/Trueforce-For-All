@@ -138,6 +138,7 @@
                         Width="28" Height="28" Padding="0"
                         Background="#3A3A3A" BorderBrush="#3A3A3A" Foreground="#CFCFCF"
                         Cursor="Hand" Click="RefreshLibrary_Click"
+                        Focusable="False" FocusVisualStyle="{x:Null}"
                         ToolTip="Reload presets from disk. Use after dropping JSON files into the library folders to pick them up without restarting the plugin.">
                     <TextBlock Text="&#x21BB;" FontSize="16" FontWeight="Bold"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
