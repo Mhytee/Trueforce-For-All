@@ -2364,15 +2364,21 @@
                  most users, so this is the first section after the effects list and
                  would otherwise sit flush against the last effect's 4px margin
                  (this margin formerly lived on the removed Presets header). -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,28,0,12"><TextBlock Text="Backup &amp; restore" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                       Text="Bundle your full Trueforce state (settings, every preset, every default, every car tuning) into one archive for moving to a new machine. To share individual presets or car tunings with other users, use Import / Export in the Preset Manager (Presets tab) instead."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <Button x:Name="BackupButton" Content="Backup…" Width="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
-                        ToolTip="Save settings + every user preset + every default + every car tuning to a single .zip you can carry to another machine."/>
-                <Button x:Name="RestoreButton" Content="Restore…" Width="140" Height="28" Click="Restore_Click"
-                        ToolTip="Replace all current Trueforce settings, presets, defaults, and car tunings with a backup archive's contents. Destructive: confirm before running."/>
-            </StackPanel>
+            <Expander x:Name="BackupExpander" IsExpanded="False" Margin="0,28,0,4">
+                <Expander.Header>
+                    <TextBlock Text="Backup" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                               Text="Bundle your full Trueforce For All state (settings, every preset, every default, every car tuning) into one archive for moving to a new machine. To share individual presets or car tunings with other users, use Import / Export in the Preset Manager (Presets tab) instead."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button x:Name="BackupButton" Content="Backup…" Width="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
+                                ToolTip="Save settings + every user preset + every default + every car tuning to a single .zip you can carry to another machine."/>
+                        <Button x:Name="RestoreButton" Content="Restore…" Width="140" Height="28" Click="Restore_Click"
+                                ToolTip="Replace all current Trueforce For All settings, presets, defaults, and car tunings with a backup archive's contents. Destructive: confirm before running."/>
+                    </StackPanel>
+                </StackPanel>
+            </Expander>
 
             <!-- Persistent author name. Stamped on every preset you save so the
                  Preset Manager's Source column attributes your work, and

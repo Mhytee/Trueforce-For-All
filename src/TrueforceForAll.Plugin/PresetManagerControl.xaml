@@ -356,8 +356,10 @@
             <StackPanel Orientation="Horizontal">
                 <Button Content="Export…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogExport_Click"
                         ToolTip="Pick which presets and car tunings to bundle into a shareable file. Same flow as the Export button on the main panel."/>
-                <Button Content="Import…" Width="100" Height="28" Click="DialogImport_Click"
+                <Button Content="Import…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogImport_Click"
                         ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
+                <Button Content="Installed packs…" Width="140" Height="28" Click="ManagePacks_Click"
+                        ToolTip="View installed community packs. Set a pack's contents as defaults in bulk, or remove a pack (deletes its presets; entries you have edited are kept)."/>
             </StackPanel>
 
             <!-- Developer tools (built-in folder maintenance). Hidden unless the

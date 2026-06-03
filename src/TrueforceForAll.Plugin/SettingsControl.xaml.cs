@@ -6152,6 +6152,36 @@ namespace TrueforceForAll.Plugin
         // so the caller can refresh its own UI (the main panel reapplies the
         // imported settings; the manage dialog reloads its lists).
         //
+        // Open the Pack Manager modal for browsing imported community packs.
+        // Each action inside the window (Set as defaults / Remove) routes
+        // through the plugin's matching method; the window refreshes itself
+        // after every action. Returns true when at least one action was
+        // performed, so the caller can rebuild its own tabs in case car or
+        // game defaults moved.
+        internal static bool RunManagePacksFlow(Window owner, TrueforcePlugin plugin)
+        {
+            if (plugin == null) return false;
+            bool anyAction = false;
+            var win = new PackManagerWindow(
+                loadPacks:     plugin.LoadInstalledPacks,
+                setAsDefaults: p =>
+                {
+                    anyAction = true;
+                    return plugin.SetPackAsDefaults(p);
+                },
+                removePack:    p =>
+                {
+                    anyAction = true;
+                    return plugin.RemovePack(p);
+                })
+            {
+                Owner = owner,
+            };
+            if (win.Owner == null) win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            win.ShowDialog();
+            return anyAction;
+        }
+
         // Multi-select: each picked file is routed by its own extension +
         // JSON "Type" marker, and the results are folded into one summary
         // dialog at the end. Per-file failures are collected and surfaced

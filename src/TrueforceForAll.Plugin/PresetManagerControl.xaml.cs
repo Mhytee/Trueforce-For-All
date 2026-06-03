@@ -1401,6 +1401,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
         }
 
+        private void ManagePacks_Click(object sender, RoutedEventArgs e)
+        {
+            if (SettingsControl.RunManagePacksFlow(Window.GetWindow(this), _plugin))
+            {
+                // Removing or default-binding a pack rewrites game / car-default
+                // bindings and may delete preset files; rebuild all three tabs.
+                ReloadGames();
+                ReloadCars();
+                ReloadCustoms();
+            }
+        }
+
         private void GameSetDefault_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedGame;

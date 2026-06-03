@@ -81,10 +81,11 @@ namespace TrueforceForAll.Plugin
             return Path.Combine(FolderPath, game, SafeFile(carId), SafeFile(presetName) + FileExtension);
         }
 
-        // Find a car file by (carId, presetName) when the game isn't known
-        // (Delete / Exists callers). Walks the cars/ tree and matches on
-        // sanitised filename. Returns null if not found.
-        private string FindCarFile(string carId, string presetName)
+        /// <summary>Resolve the on-disk path for (carId, presetName), walking
+        /// the cars/ tree when the game folder isn't known. Returns null if no
+        /// matching file exists. Public so the Pack Manager can hash + delete
+        /// car entries whose owning game wasn't captured in the pack record.</summary>
+        public string FindCarFile(string carId, string presetName)
         {
             string root = FolderPath;
             if (!Directory.Exists(root)) return null;

@@ -47,6 +47,13 @@ namespace TrueforceForAll.Plugin
             File.Move(oldPath, newPath);
         }
 
+        /// <summary>Resolve the absolute path WriteGame / DeleteGame use for a
+        /// given preset name, without writing or reading anything. The Pack
+        /// Manager calls this to hash the file's current content against the
+        /// pack record's BaselineHash before destructive removal.</summary>
+        public static string GetGamePresetPath(string folder, string name) =>
+            Path.Combine(folder, "games", SafeFile(name) + ".json");
+
         /// <summary>Write a game preset (GameSettingsSnapshot JSON) to
         /// games/&lt;name&gt;.json. The preset name is taken from the filename
         /// on load, so it round-trips. Returns the relative path.</summary>

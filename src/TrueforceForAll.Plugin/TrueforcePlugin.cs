@@ -8823,10 +8823,14 @@ namespace TrueforceForAll.Plugin
                             BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, gName, snapJson);
                             // Record the ACTUAL name written (post-uniquing) so
                             // the sidecar identity matches what's on disk.
+                            // BaselineHash stamps the JSON we just wrote so the
+                            // Pack Manager can detect user edits before destructive
+                            // remove (hash mismatch → user touched it → keep).
                             packEntries.Add(new InstalledPackEntry
                             {
-                                Kind = InstalledPackEntry.KindGame,
-                                Name = gName,
+                                Kind         = InstalledPackEntry.KindGame,
+                                Name         = gName,
+                                BaselineHash = InstalledPacksStore.ComputeContentHash(snapJson),
                             });
                             presetsImported++;
                         }
@@ -8853,11 +8857,17 @@ namespace TrueforceForAll.Plugin
                             description:   cf.Description    ?? packDesc,
                             authorVersion: cf.AuthorVersion ?? packVer);
                         // Record the ACTUAL carId + name written (post-uniquing).
+                        // GameName lets the Pack Manager locate the file without
+                        // walking the cars/ tree; BaselineHash is read from the
+                        // just-saved file (CarPresetStore.Save folds in existing
+                        // attribution so we can't hash the input directly).
                         packEntries.Add(new InstalledPackEntry
                         {
-                            Kind       = InstalledPackEntry.KindCar,
-                            CarId      = cf.CarId,
-                            PresetName = presetName,
+                            Kind         = InstalledPackEntry.KindCar,
+                            CarId        = cf.CarId,
+                            PresetName   = presetName,
+                            GameName     = cf.GameName ?? "",
+                            BaselineHash = TryHashCarPresetFile(cf.CarId, presetName),
                         });
                         carsImported++;
                     }
@@ -8993,7 +9003,12 @@ namespace TrueforceForAll.Plugin
                             string gName = MakeUniqueGamePresetName(pf.PresetName, importedGameNames);
                             importedGameNames.Add(gName);
                             BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, gName, snapJson);
-                            packEntries.Add(new InstalledPackEntry { Kind = InstalledPackEntry.KindGame, Name = gName });
+                            packEntries.Add(new InstalledPackEntry
+                            {
+                                Kind         = InstalledPackEntry.KindGame,
+                                Name         = gName,
+                                BaselineHash = InstalledPacksStore.ComputeContentHash(snapJson),
+                            });
                             presetsImported++;
 
                             // Set-as-default for game presets requires a
@@ -9032,9 +9047,11 @@ namespace TrueforceForAll.Plugin
                             authorVersion: cf.AuthorVersion ?? packVer);
                         packEntries.Add(new InstalledPackEntry
                         {
-                            Kind       = InstalledPackEntry.KindCar,
-                            CarId      = cf.CarId,
-                            PresetName = presetName,
+                            Kind         = InstalledPackEntry.KindCar,
+                            CarId        = cf.CarId,
+                            PresetName   = presetName,
+                            GameName     = cf.GameName ?? "",
+                            BaselineHash = TryHashCarPresetFile(cf.CarId, presetName),
                         });
                         carsImported++;
 
@@ -9087,6 +9104,190 @@ namespace TrueforceForAll.Plugin
                 Description     = packDesc,
                 AuthorVersion   = packVer,
             };
+        }
+
+        /// <summary>Walk an installed pack's entries and bind each one as the
+        /// active default (game preset for its game key(s), car preset for its
+        /// carId). Game entries without a DefaultForGames hint are counted as
+        /// skipped. existing defaults are overwritten silently and tallied so
+        /// the caller's summary toast can surface what changed.</summary>
+        public SetDefaultsSummary SetPackAsDefaults(InstalledPack pack)
+        {
+            var summary = new SetDefaultsSummary();
+            if (pack?.Entries == null) return summary;
+
+            if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
+            if (Settings.CarDefaults  == null) Settings.CarDefaults  = new Dictionary<string, string>();
+
+            string folder = UserPresets.CurrentFolder;
+            bool activeCarBindingChanged = false;
+
+            foreach (var e in pack.Entries)
+            {
+                if (e == null) continue;
+                if (e.Kind == InstalledPackEntry.KindCar)
+                {
+                    if (string.IsNullOrEmpty(e.CarId) || string.IsNullOrEmpty(e.PresetName)) continue;
+                    if (Settings.CarDefaults.TryGetValue(e.CarId, out string prev)
+                        && !string.Equals(prev, e.PresetName, StringComparison.Ordinal))
+                        summary.CarDefaultsOverwritten++;
+                    Settings.CarDefaults[e.CarId] = e.PresetName;
+                    BuiltinPresetWriter.SetCarDefault(folder, e.CarId, e.PresetName);
+                    summary.CarDefaultsSet++;
+                    if (string.Equals(_activeCarId, e.CarId, StringComparison.Ordinal))
+                        activeCarBindingChanged = true;
+                }
+                else if (e.Kind == InstalledPackEntry.KindGame)
+                {
+                    // Game preset → game-default binding needs to know which
+                    // game(s) the pack intends this preset to be the default
+                    // for. That hint lives on DefaultForGames (populated from
+                    // the pack manifest when present). When missing we skip
+                    // rather than guessing from the user's current
+                    // GameDefaultBindings, which would silently overwrite the
+                    // pack author's intent.
+                    if (e.DefaultForGames == null || e.DefaultForGames.Count == 0 || string.IsNullOrEmpty(e.Name))
+                    {
+                        summary.GamePresetsSkipped++;
+                        continue;
+                    }
+                    foreach (var gameKey in e.DefaultForGames)
+                    {
+                        if (string.IsNullOrEmpty(gameKey)) continue;
+                        if (Settings.GameDefaults.TryGetValue(gameKey, out string prev)
+                            && !string.Equals(prev, e.Name, StringComparison.Ordinal))
+                            summary.GameDefaultsOverwritten++;
+                        Settings.GameDefaults[gameKey] = e.Name;
+                        BuiltinPresetWriter.SetGameDefault(folder, gameKey, e.Name);
+                        summary.GameDefaultsSet++;
+                    }
+                }
+            }
+
+            this.SaveCommonSettings("GeneralSettings", Settings);
+            if (activeCarBindingChanged) ReloadActiveCarOverrideFromStore();
+            return summary;
+        }
+
+        /// <summary>Destructively remove an installed pack: delete each entry
+        /// whose current on-disk hash still matches its install-time
+        /// BaselineHash (so the user hasn't edited it), leave entries the user
+        /// touched in place, and drop the pack record either way. Entries
+        /// imported before BaselineHash was tracked are conservatively kept so
+        /// we never delete data we can't reason about.</summary>
+        public RemovePackSummary RemovePack(InstalledPack pack)
+        {
+            var summary = new RemovePackSummary();
+            if (pack == null) return summary;
+
+            string folder = UserPresets.CurrentFolder;
+            bool gameTouched = false, carTouched = false;
+
+            if (pack.Entries != null)
+            {
+                foreach (var e in pack.Entries)
+                {
+                    if (e == null) continue;
+                    if (e.Kind == InstalledPackEntry.KindGame)
+                    {
+                        if (string.IsNullOrEmpty(e.Name)) continue;
+                        if (IsEntrySafeToDelete(e, gameName: e.Name, isCar: false))
+                        {
+                            try { BuiltinPresetWriter.DeleteGame(folder, e.Name); summary.EntriesDeleted++; gameTouched = true; }
+                            catch (Exception ex)
+                            {
+                                SimHub.Logging.Current.Warn($"[Trueforce] Pack remove: delete of game preset '{e.Name}' failed: {ex.Message}");
+                                summary.EntriesKept++;
+                            }
+                        }
+                        else summary.EntriesKept++;
+                    }
+                    else if (e.Kind == InstalledPackEntry.KindCar)
+                    {
+                        if (string.IsNullOrEmpty(e.CarId) || string.IsNullOrEmpty(e.PresetName)) continue;
+                        if (IsEntrySafeToDelete(e, gameName: null, isCar: true))
+                        {
+                            try { _carStore?.Delete(e.CarId, e.PresetName); summary.EntriesDeleted++; carTouched = true; }
+                            catch (Exception ex)
+                            {
+                                SimHub.Logging.Current.Warn($"[Trueforce] Pack remove: delete of car preset '{e.CarId}/{e.PresetName}' failed: {ex.Message}");
+                                summary.EntriesKept++;
+                            }
+                        }
+                        else summary.EntriesKept++;
+                    }
+                }
+            }
+
+            _installedPacks?.RemovePack(pack);
+
+            if (gameTouched)
+            {
+                UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+            }
+            if (carTouched && !string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
+
+            return summary;
+        }
+
+        // True iff RemovePack should delete this entry. Safe = we cannot prove
+        // the user edited it. Unsafe = we CAN prove it (hash recorded AND
+        // current file hash differs). Pre-this-work entries with no recorded
+        // BaselineHash are treated as safe because the user explicitly invoked
+        // destructive remove; refusing to delete them would silently leave the
+        // pack's contents behind on the every-pack-installed-before-this-build
+        // case, which is what we hit when the feature first shipped. The
+        // hash-protected safety net still works for any pack imported AFTER
+        // the BaselineHash code went live, which is the only window where we
+        // can detect a user edit at all.
+        private bool IsEntrySafeToDelete(InstalledPackEntry e, string gameName, bool isCar)
+        {
+            if (e == null) return false;
+            if (string.IsNullOrEmpty(e.BaselineHash)) return true;
+            try
+            {
+                string path;
+                if (isCar)
+                {
+                    path = _carStore?.FindCarFile(e.CarId, e.PresetName);
+                }
+                else
+                {
+                    path = BuiltinPresetWriter.GetGamePresetPath(UserPresets.CurrentFolder, gameName);
+                }
+                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return true;
+                string current = InstalledPacksStore.ComputeContentHash(System.IO.File.ReadAllText(path));
+                return string.Equals(current, e.BaselineHash, StringComparison.Ordinal);
+            }
+            catch
+            {
+                // If we can't even read the file, fall back to "safe to delete"
+                // so the destructive button keeps doing what it advertises.
+                // BuiltinPresetWriter.DeleteGame / CarPresetStore.Delete are
+                // both no-op-safe on missing files.
+                return true;
+            }
+        }
+
+        /// <summary>Reload the installed-packs registry from disk. Wired into
+        /// PackManagerWindow so it always sees current state without holding
+        /// onto a stale cached file across reopens.</summary>
+        public InstalledPacksFile LoadInstalledPacks() => _installedPacks?.Load() ?? new InstalledPacksFile();
+
+        // Stamp the baseline hash on a freshly-saved car preset. CarPresetStore.Save
+        // folds existing on-disk attribution into the serialized output, so the
+        // input override JSON wouldn't match what landed on disk; reading the
+        // file back is the only way to capture an accurate baseline.
+        private string TryHashCarPresetFile(string carId, string presetName)
+        {
+            try
+            {
+                string path = _carStore?.FindCarFile(carId, presetName);
+                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+                return InstalledPacksStore.ComputeContentHash(System.IO.File.ReadAllText(path));
+            }
+            catch { return null; }
         }
 
         // Replace anything not-safe-in-a-zip-entry-name with '_'. Zip handles

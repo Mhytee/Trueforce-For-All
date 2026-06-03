@@ -19,6 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using Newtonsoft.Json;
 
 namespace TrueforceForAll.Plugin
@@ -37,16 +39,56 @@ namespace TrueforceForAll.Plugin
     /// <summary>One preset written by an import. For a game preset, Kind is
     /// "game" and Name is the actual (unique) preset name written. For a car
     /// preset, Kind is "car" and CarId + PresetName are the actual values
-    /// written.</summary>
+    /// written. GameName is the car preset's owning game folder (cars are stored
+    /// under cars/&lt;game&gt;/&lt;carId&gt;/), captured so removal can find the
+    /// file without enumerating. BaselineHash is the hash of the JSON written at
+    /// install time; removal compares it to the file's current hash to decide
+    /// whether the user edited the entry (different hash → keep, same hash →
+    /// safe to delete). DefaultForGames is the optional list of game keys the
+    /// pack intends this preset to be the default for; populated from the pack
+    /// manifest when present and consumed by "Set pack as defaults". All three
+    /// new fields are nullable so older installed-packs.json records (written
+    /// before this work) keep loading; missing BaselineHash is treated as
+    /// "potentially edited" so removal won't blow away data we don't recognize.</summary>
     public sealed class InstalledPackEntry
     {
         public const string KindGame = "game";
         public const string KindCar  = "car";
 
-        public string Kind       { get; set; }
-        public string Name       { get; set; } // game preset name (Kind == "game")
-        public string CarId      { get; set; } // car id        (Kind == "car")
-        public string PresetName { get; set; } // car preset    (Kind == "car")
+        public string Kind         { get; set; }
+        public string Name         { get; set; } // game preset name (Kind == "game")
+        public string CarId        { get; set; } // car id        (Kind == "car")
+        public string PresetName   { get; set; } // car preset    (Kind == "car")
+        public string GameName     { get; set; } // car preset's owning game folder
+        public string BaselineHash { get; set; } // SHA1 of JSON we wrote at install
+        public List<string> DefaultForGames { get; set; } // optional set-as-default hint (game keys)
+    }
+
+    /// <summary>Result of "Set pack as defaults", aggregated across every
+    /// entry in the pack. The Pack Manager renders this as the post-action
+    /// toast. Overwritten counts cover the case where an existing default
+    /// pointed somewhere else and we replaced it; GamePresetsSkipped covers
+    /// the data-model gap (pre-this-work imports + manifests without
+    /// DefaultForGames) where we can't tell which game(s) a preset belongs
+    /// to.</summary>
+    public sealed class SetDefaultsSummary
+    {
+        public int GameDefaultsSet         { get; set; }
+        public int CarDefaultsSet          { get; set; }
+        public int GameDefaultsOverwritten { get; set; }
+        public int CarDefaultsOverwritten  { get; set; }
+        public int GamePresetsSkipped      { get; set; }
+    }
+
+    /// <summary>Result of destructive "Remove pack". Deleted counts the
+    /// entries whose on-disk file matched its install-time BaselineHash (so
+    /// the user hadn't touched it). Kept covers entries with a hash mismatch
+    /// OR no recorded BaselineHash (pre-this-work packs are conservatively
+    /// kept so we never destroy data we can't reason about).</summary>
+    public sealed class RemovePackSummary
+    {
+        public int EntriesDeleted { get; set; }
+        public int EntriesKept    { get; set; }
     }
 
     /// <summary>Top-level shape of installed-packs.json.</summary>
@@ -114,6 +156,45 @@ namespace TrueforceForAll.Plugin
             if (pack == null || pack.Entries == null || pack.Entries.Count == 0) return;
             var file = Load();
             file.Packs.Add(pack);
+            SaveToDisk(file);
+        }
+
+        /// <summary>Remove a pack record by reference. The caller passes the
+        /// InstalledPack it got from Load().Packs (or via FindPackFor*). On-disk
+        /// preset files are NOT touched here; the Pack Manager handles those
+        /// separately so it can preserve user-edited entries.</summary>
+        public void RemovePack(InstalledPack pack)
+        {
+            if (pack == null) return;
+            var file = Load();
+            if (file.Packs.Remove(pack)) SaveToDisk(file);
+        }
+
+        /// <summary>Persist updates to an entry-level field on an already-loaded
+        /// pack (e.g. after Pack Manager edits BaselineHash or DefaultForGames).
+        /// The cache and disk both reflect the change.</summary>
+        public void Save()
+        {
+            if (_cache != null) SaveToDisk(_cache);
+        }
+
+        /// <summary>SHA1 of a UTF8 string, hex-lowercase. Used by the import
+        /// flow to stamp each entry's BaselineHash and by the Pack Manager to
+        /// detect user edits before destructive remove.</summary>
+        public static string ComputeContentHash(string content)
+        {
+            if (content == null) return null;
+            using (var sha = SHA1.Create())
+            {
+                byte[] bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(content));
+                var sb = new StringBuilder(bytes.Length * 2);
+                foreach (byte b in bytes) sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
+        }
+
+        private void SaveToDisk(InstalledPacksFile file)
+        {
             try
             {
                 string path = FilePath;
