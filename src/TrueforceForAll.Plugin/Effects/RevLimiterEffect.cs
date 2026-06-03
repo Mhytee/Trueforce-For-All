@@ -79,6 +79,15 @@ namespace TrueforceForAll.Plugin.Effects
         /// negative offset can't make it fire off idle.</summary>
         public float RedlineOffsetRpm { get; set; } = 0.0f;
 
+        /// <summary>Optional CarFacts-supplied redline for the active car
+        /// (set per car-change by the plugin from
+        /// <c>Settings.CarFacts[...].EngineVariants[active].RedlineRpm</c>).
+        /// When set AND the engage mode would pick "no redline" because the
+        /// game doesn't expose one (Forza family), this is treated as the
+        /// real redline. Cleared on car change. Per-machine, not preset-
+        /// saved. Stage 1 wiring of the CarFacts layer.</summary>
+        public int? CarFactsRedline { get; set; }
+
         private const double SampleRate = 4000.0;
         private const int HoldMs = 80;   // post-disengage decay window
         private static readonly long HoldStopwatchTicks =
@@ -142,6 +151,13 @@ namespace TrueforceForAll.Plugin.Effects
         // else the hard rev limit. Sets _amp; RenderAdd plays it.
         private void UpdateEngagement(double rpm, double redlineRpm, double maxRpm)
         {
+            // CarFacts redline (when populated by the plugin for this car)
+            // substitutes for a missing telemetry redline. Doesn't override
+            // a sane game-reported value: if the game gives a redline that
+            // passes the sanity gate below, we trust it over CarFacts.
+            if ((redlineRpm <= MinEngineRpm) && CarFactsRedline.HasValue
+                && CarFactsRedline.Value > MinEngineRpm)
+                redlineRpm = CarFactsRedline.Value;
             // Two engagement modes:
             //   * Game reports a real redline (AC, iRacing, most SimHub-fallback
             //     titles): the redline IS the exact shift point, so engage AT it
@@ -209,8 +225,18 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>Feed a synthetic (rpm, maxRpm) sample through the real
         /// engagement logic during a self-test. Runs regardless of IsTesting
         /// so the plugin's scheduled sequence controls the buzz; RenderAdd
-        /// outputs the resulting _amp because the test window is open.</summary>
-        public void DebugFeedRpm(double rpm, double maxRpm) => UpdateEngagement(rpm, 0.0, maxRpm);
+        /// outputs the resulting _amp because the test window is open. The
+        /// self-test sweep is built around the maxRpm percentage path, so we
+        /// suppress the CarFactsRedline substitution for the duration of the
+        /// call (otherwise a Forza car with a CarFacts-supplied redline in
+        /// EngageMode.Redline would miss the sweep's 99%-of-MaxRpm peak).</summary>
+        public void DebugFeedRpm(double rpm, double maxRpm)
+        {
+            var savedRedline = CarFactsRedline;
+            CarFactsRedline = null;
+            try { UpdateEngagement(rpm, 0.0, maxRpm); }
+            finally { CarFactsRedline = savedRedline; }
+        }
 
         public override void Reset()
         {

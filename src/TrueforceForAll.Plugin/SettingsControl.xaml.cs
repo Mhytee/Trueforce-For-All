@@ -925,6 +925,10 @@ namespace TrueforceForAll.Plugin
                             srcSuffix = " (from built-in car list)";
                         else if (string.Equals(detectSrc, "cache", StringComparison.OrdinalIgnoreCase))
                             srcSuffix = " (cached from earlier session)";
+                        else if (string.Equals(detectSrc, "community", StringComparison.OrdinalIgnoreCase))
+                            srcSuffix = " (community-confirmed)";
+                        else if (string.Equals(detectSrc, "user-set", StringComparison.OrdinalIgnoreCase))
+                            srcSuffix = " (you set this)";
                         else if (!string.IsNullOrEmpty(detectSrc))
                             srcSuffix = $" (heuristic: {detectSrc})";
                         else

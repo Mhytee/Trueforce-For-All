@@ -82,6 +82,29 @@ namespace TrueforceForAll.Plugin
         // against the improved heuristic.
         public int CarCylinderCacheVersion { get; set; } = 1;
 
+        // Car facts layer: community-vetted (or scanner-detected) truth per
+        // (game, carId). Replaces the cylinder-only CarCylinderCache as
+        // first-class storage for engine layout, redline, and car-name
+        // facts. Keyed by "{game}/{carId}". Empty when no facts are known
+        // (apply path falls through to the scanner / heuristic). See the
+        // CarFactsBundle / EngineVariant classes above and the
+        // project_car_facts_layer memory entry for the architecture.
+        public Dictionary<string, CarFactsBundle> CarFacts { get; set; }
+            = new Dictionary<string, CarFactsBundle>();
+
+        // User's default-variant choice per car: "{game}/{carId}" ->
+        // EngineVariant.Id. Used at apply time when the bundle has more
+        // than one variant AND telemetry can't unambiguously pick one
+        // (most non-Forza cases). Single-variant cars and unambiguous
+        // telemetry matches bypass this dict entirely.
+        public Dictionary<string, string> CarFactsSelection { get; set; }
+            = new Dictionary<string, string>();
+
+        // One-time migration latch. Flips true after the CarCylinderCache
+        // entries have been promoted to seed Stock EngineVariants in the
+        // CarFacts dict above. Migrate-once + idempotent.
+        public bool CarFactsMigratedV1 { get; set; } = false;
+
         public float MasterGain { get; set; } = 1.0f;
 
         // Step master gain moves on each press of a bound Controls-tab action
@@ -535,6 +558,121 @@ namespace TrueforceForAll.Plugin
         /// defs leave this blank until shared (and until the local user has
         /// set Settings.SharingAuthor).</summary>
         public string Author { get; set; }
+    }
+
+    // ============================================================
+    // Car Facts layer
+    //
+    // Splits the preset model into two layers:
+    //   - Presets carry preferences (gain, scale, waveform).
+    //   - CarFacts carries community-vetted truth about a car (engine
+    //     layout, redline RPM, human-readable name).
+    //
+    // The existing EnginePulseSettings.Layout enum's Auto value is the
+    // trigger to consult this layer. When Layout is anything other than
+    // Auto, the preset is overriding the facts — sharing the preset ships
+    // the override, but CarFacts on the recipient's side is untouched.
+    //
+    // Variants exist because Forza-style games allow in-game engine swaps
+    // that change cylinder count + redline while keeping the same carId.
+    // Most cars in most games have exactly one variant, in which case the
+    // picker UX never shows. See project_car_facts_layer memory entry for
+    // full design notes.
+    // ============================================================
+
+    /// <summary>Where a CarFacts value came from. Drives the per-field source
+    /// line in the UI ("scanner detected" vs "community (N ✓)" vs "you
+    /// corrected"), and gates community-submission prompts.</summary>
+    public enum CarFactSource
+    {
+        /// <summary>Plugin's runtime scanner / heuristic. The starting point
+        /// for most cars before community data exists.</summary>
+        Scanner,
+        /// <summary>Pulled from the community DB with the trusted-tier
+        /// threshold (Wilson-ranked).</summary>
+        Community,
+        /// <summary>User typed / corrected this value locally. Wins over
+        /// community + scanner when present.</summary>
+        User,
+        /// <summary>Game telemetry supplies the value directly each session
+        /// (e.g. AC's CarSettings_RedLineRPM). Treated as the truth and
+        /// never persisted — the apply path reads it live each time.</summary>
+        GameTelemetry,
+    }
+
+    /// <summary>One engine configuration for a (game, carId). For most cars
+    /// the bundle has exactly one variant ("Stock") and the user never sees
+    /// a picker. Forza in-game engine swaps create same-carId-multiple-
+    /// variants, in which case the UI surfaces a default selector and the
+    /// plugin auto-picks via telemetry when it can disambiguate.</summary>
+    public sealed class EngineVariant
+    {
+        /// <summary>Stable identifier. Survives label renames so the user's
+        /// CarFactsSelection doesn't get invalidated when a moderator
+        /// cleans up community labels.</summary>
+        public string Id { get; set; }
+
+        /// <summary>Display label. "Stock V8" / "SR20 swap" / "LSx swap".
+        /// Auto-detected variants land with a generic label that the user
+        /// edits at confirmation time.</summary>
+        public string Label { get; set; }
+
+        /// <summary>Cylinder count. 0 means "unknown / use heuristic."</summary>
+        public int Cylinders { get; set; }
+
+        /// <summary>Engine configuration (V / Inline / Boxer / Rotary /
+        /// Electric / Auto). Paired with Cylinders, drives the firing-pattern
+        /// derivation via FiringPatternDb. Auto = unknown.</summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public EngineConfig EngineConfig { get; set; } = EngineConfig.Auto;
+
+        /// <summary>Optional custom firing-pattern string for community
+        /// submissions that don't fit a stock pattern. Used in place of
+        /// EngineLayout-derived pattern when non-empty. Format mirrors
+        /// CustomEngineDef.Pattern (FiringPatternDb.ParseCustom).</summary>
+        public string CustomFiringPattern { get; set; } = "";
+
+        /// <summary>Optional absolute redline RPM. Only meaningful for games
+        /// whose telemetry doesn't expose a trustworthy RedLineRPM value
+        /// (Forza family). null = fall through to telemetry or MaxRpm
+        /// threshold.</summary>
+        public int? RedlineRpm { get; set; }
+
+        /// <summary>Where this variant came from. Drives the source label
+        /// in the picker UI.</summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public CarFactSource Source { get; set; } = CarFactSource.Scanner;
+
+        /// <summary>Community confidence: how many users have confirmed
+        /// this variant. Drives the "community (N ✓)" line and is used as
+        /// the tiebreaker when picking a default variant.</summary>
+        public int Confirmations { get; set; }
+    }
+
+    /// <summary>Truth about a single car: chassis-level facts plus a list
+    /// of engine variants. Keyed in Settings.CarFacts by "{game}/{carId}".
+    /// CarName is independent of variant — same chassis carries the same
+    /// human name regardless of what engine the player has swapped in.</summary>
+    public sealed class CarFactsBundle
+    {
+        /// <summary>Human-readable name for the car. Replaces / supplements
+        /// the ordinal-ID display ("Car_2267 → 1997 Mazda RX-7") in games
+        /// that don't expose human names. Null = unknown; UI shows the raw
+        /// carId with a "submit a name" affordance.</summary>
+        public string CarName { get; set; }
+
+        /// <summary>Where CarName came from. Used the same way as
+        /// EngineVariant.Source for the source-line UI.</summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public CarFactSource CarNameSource { get; set; } = CarFactSource.Scanner;
+
+        /// <summary>Community confidence on the CarName.</summary>
+        public int CarNameConfirmations { get; set; }
+
+        /// <summary>Engine variants known for this carId. Most cars have
+        /// exactly one (Stock). Forza in-game swaps create additional
+        /// variants. Empty = no engine data known yet.</summary>
+        public List<EngineVariant> EngineVariants { get; set; } = new List<EngineVariant>();
     }
 
     /// <summary>Whole-settings snapshot saved per-game. Mirrors the top-level

@@ -1465,6 +1465,15 @@ namespace TrueforceForAll.Plugin
             int cacheVer = Settings.CarCylinderCacheVersion;
             CarCylinderResolver.AttachPersistentCache(Settings.CarCylinderCache, ref cacheVer);
             Settings.CarCylinderCacheVersion = cacheVer;
+            // One-time migration: promote the cylinder-only CarCylinderCache
+            // entries into seed Stock EngineVariants in Settings.CarFacts so
+            // the new apply path has something to work with on day one.
+            // Idempotent; flag-gated.
+            if (!Settings.CarFactsMigratedV1)
+            {
+                MigrateCarCylinderCacheToCarFacts();
+                Settings.CarFactsMigratedV1 = true;
+            }
             MigrateLegacyGamePresets();
             MigrateSpikeTamingFlag();
             InstallBuiltinPresetsIfMissing();
@@ -2389,6 +2398,13 @@ namespace TrueforceForAll.Plugin
                 // New car, discard the previous car's auto-detected layout so
                 // the next resolver hit (or first telemetry frame) populates
                 // fresh.
+                // CarFacts redline for this car: cleared every car change,
+                // populated below when an active variant has a RedlineRpm.
+                // Lives outside the EnginePulse block since RevLimiter has
+                // its own lifecycle and may exist before EnginePulse hits
+                // the layout cascade.
+                if (RevLimiter != null) RevLimiter.CarFactsRedline = null;
+
                 if (EnginePulse != null)
                 {
                     EnginePulse.AutoLayout = null;
@@ -2403,13 +2419,75 @@ namespace TrueforceForAll.Plugin
                     // any car in both lookups. The user's saved Layout
                     // (when not Auto) always wins via EffectiveLayout, so this
                     // is purely the auto-default cascade.
-                    if (CarCylinderResolver.TryResolve(_activeGame, carId, out var carSpec))
+                    // CarFacts (the community-vetted layer) feeds variants for
+                    // this car. Two separable contributions:
+                    //   1. Cylinders + EngineConfig → AutoLayout
+                    //   2. RedlineRpm + CarName     → applied independently
+                    // The CarCylinderCache migration seeded Stock variants for
+                    // cars the user has already driven, so on day one (1) hits
+                    // the same set the legacy resolver used to. (2) is largely
+                    // dormant until community submissions arrive in later
+                    // stages. The split apply lets a redline-only or name-only
+                    // bundle still contribute without forcing a cylinder count.
+                    bool haveVariant = TryResolveActiveVariant(_activeGame, carId, out var v);
+
+                    // CarName from the bundle (chassis-level, variant-
+                    // independent) wins when set.
+                    string ck = _activeGame + "/" + carId;
+                    if (Settings.CarFacts != null
+                        && Settings.CarFacts.TryGetValue(ck, out var bundle)
+                        && bundle != null
+                        && !string.IsNullOrEmpty(bundle.CarName))
+                        _activeCarDisplayName = bundle.CarName;
+
+                    // RedlineRpm rides any usable variant, even one with
+                    // Cylinders=0 (the "unknown / use heuristic" sentinel from
+                    // the EngineVariant contract). The RevLimiter substitutes
+                    // it for a missing telemetry redline; if a layout fallback
+                    // runs below, the redline survives.
+                    if (haveVariant && RevLimiter != null
+                        && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
+                        RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
+
+                    // Layout: prefer the variant when cylinders are valid, but
+                    // defer to the legacy resolver when the variant is a Scanner
+                    // seed (Confirmations=0) AND the bake now knows this car.
+                    // This preserves the bake-wins-over-cache invariant that
+                    // existed pre-CarFacts so future bake additions reach users
+                    // who had the car cached at migration time.
+                    bool variantUsableForLayout = haveVariant
+                        && v.Cylinders >= 1 && v.Cylinders <= 16;
+                    if (variantUsableForLayout
+                        && v.Source == CarFactSource.Scanner
+                        && v.Confirmations == 0
+                        && BuiltinCarCylinders.TryGet(_activeGame, carId, out _))
+                        variantUsableForLayout = false;
+
+                    if (variantUsableForLayout)
+                    {
+                        EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
+                            v.Cylinders, v.EngineConfig, false);
+                        EnginePulse.AutoLayoutSource = MapCarFactSourceToUiLabel(v.Source);
+                        EnginePulse.CatalogCyl = v.Cylinders;
+                        // CarName fallback when the bundle didn't set one:
+                        // resolver still knows AC's ui_car.json etc.
+                        if (string.IsNullOrEmpty(_activeCarDisplayName)
+                            && CarCylinderResolver.TryResolve(_activeGame, carId, out var ds))
+                            _activeCarDisplayName = ds.DisplayName;
+                        SimHub.Logging.Current.Info(
+                            $"[Trueforce] Car '{carId}' resolved from CarFacts: "
+                            + $"variant='{v.Label}', cyl={v.Cylinders}, config={v.EngineConfig}, "
+                            + $"redline={(v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-")}, "
+                            + $"source={v.Source} -> layout={EnginePulse.AutoLayout}");
+                    }
+                    else if (CarCylinderResolver.TryResolve(_activeGame, carId, out var carSpec))
                     {
                         EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
                             carSpec.Cylinders, carSpec.EngineConfig, carSpec.IsElectric);
                         EnginePulse.AutoLayoutSource = carSpec.Source;
                         EnginePulse.CatalogCyl = carSpec.Cylinders;
-                        _activeCarDisplayName = carSpec.DisplayName;
+                        if (string.IsNullOrEmpty(_activeCarDisplayName))
+                            _activeCarDisplayName = carSpec.DisplayName;
                         SimHub.Logging.Current.Info(
                             $"[Trueforce] Car '{carId}' resolved: cyl={carSpec.Cylinders}, "
                             + $"electric={carSpec.IsElectric}, source={carSpec.Source}, "
@@ -6577,6 +6655,154 @@ namespace TrueforceForAll.Plugin
             {
                 this.SaveCommonSettings("GeneralSettings", Settings);
                 SimHub.Logging.Current.Info($"[Trueforce] Migrated {moved} legacy game-preset(s) to named library.");
+            }
+        }
+
+        // Promote existing Settings.CarCylinderCache entries to seed
+        // EngineVariants in Settings.CarFacts. The cache is the cylinder-only
+        // ancestor of the CarFacts layer; on the first run after this build
+        // ships, each cached entry becomes a single "Stock" variant inside
+        // its bundle. Idempotent: gated by Settings.CarFactsMigratedV1 at
+        // the call site, and per-key skipped if a bundle already exists
+        // (so a partial migration mid-flight wouldn't clobber edits).
+        //
+        // Cache shape: Dictionary<gameName, Dictionary<carId, encodedInt>>.
+        // Encoding (mirrors CarCylinderResolver): EvSentinel (-1) = electric,
+        // otherwise bits 0-4 = cylinder count (1-16), bits 8-11 = EngineConfig.
+        private void MigrateCarCylinderCacheToCarFacts()
+        {
+            const int EvSentinel  = -1;
+            const int CylBits     = 0x1F;
+            const int ConfigShift = 8;
+            const int ConfigBits  = 0xF00;
+
+            if (Settings?.CarCylinderCache == null) return;
+            if (Settings.CarFacts == null)
+                Settings.CarFacts = new Dictionary<string, CarFactsBundle>();
+
+            int seeded = 0;
+            foreach (var gameKv in Settings.CarCylinderCache)
+            {
+                string game = gameKv.Key;
+                if (string.IsNullOrEmpty(game) || gameKv.Value == null) continue;
+                foreach (var carKv in gameKv.Value)
+                {
+                    string carId = carKv.Key;
+                    if (string.IsNullOrEmpty(carId)) continue;
+                    int encoded = carKv.Value;
+
+                    // Skip EV entries: the legacy cache stored electric as
+                    // a sentinel and the EnginePulse path detects electric
+                    // separately via the resolver. Variants only carry
+                    // EngineConfig values that the FiringPatternDb knows,
+                    // so seeding "electric" as a variant would mislead.
+                    if (encoded == EvSentinel) continue;
+
+                    int cyl = encoded & CylBits;
+                    int cfgIdx = (encoded & ConfigBits) >> ConfigShift;
+                    if (cfgIdx < 0 || cfgIdx > (int)EngineConfig.Custom) cfgIdx = 0;
+                    EngineConfig cfg = (EngineConfig)cfgIdx;
+                    if (cyl < 1 || cyl > 16) continue;
+
+                    string key = game + "/" + carId;
+                    if (Settings.CarFacts.TryGetValue(key, out var existing) && existing != null
+                        && existing.EngineVariants != null && existing.EngineVariants.Count > 0)
+                        continue;
+
+                    var variant = new EngineVariant
+                    {
+                        Id            = Guid.NewGuid().ToString("N"),
+                        Label         = "Stock",
+                        Cylinders     = cyl,
+                        EngineConfig  = cfg,
+                        RedlineRpm    = null,
+                        Source        = CarFactSource.Scanner,
+                        Confirmations = 0,
+                    };
+                    var bundle = existing ?? new CarFactsBundle();
+                    if (bundle.EngineVariants == null)
+                        bundle.EngineVariants = new List<EngineVariant>();
+                    bundle.EngineVariants.Add(variant);
+                    Settings.CarFacts[key] = bundle;
+                    seeded++;
+                }
+            }
+
+            if (seeded > 0)
+                SimHub.Logging.Current.Info(
+                    $"[Trueforce] Seeded {seeded} car-fact variant(s) from the cylinder cache.");
+        }
+
+        // CarFacts lookup at apply time. Pick the active EngineVariant for
+        // (game, carId) using the variant-selection rules:
+        //   1. Single variant → use it.
+        //   2. CarFactsSelection[(game,carId)] set → use that variant by Id.
+        //   3. Highest-Confirmations variant (deterministic tiebreak: first
+        //      seen).
+        // Returns false when no bundle exists or the bundle has no variants.
+        // (Telemetry-based "unambiguous match" disambiguation is Stage 3 —
+        // this just covers the same-as-cache day-one path.)
+        private bool TryResolveActiveVariant(string game, string carId, out EngineVariant variant)
+        {
+            variant = null;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
+            if (Settings?.CarFacts == null) return false;
+            string key = game + "/" + carId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return false;
+            var variants = bundle.EngineVariants;
+            if (variants == null || variants.Count == 0) return false;
+
+            if (variants.Count == 1)
+            {
+                variant = variants[0];
+                return variant != null;
+            }
+
+            // User's chosen default for this car, if set.
+            if (Settings.CarFactsSelection != null
+                && Settings.CarFactsSelection.TryGetValue(key, out var chosenId)
+                && !string.IsNullOrEmpty(chosenId))
+            {
+                for (int i = 0; i < variants.Count; i++)
+                    if (variants[i] != null && variants[i].Id == chosenId)
+                    { variant = variants[i]; return true; }
+            }
+
+            // Highest-confirmation wins; first-seen breaks ties.
+            EngineVariant best = null;
+            int bestConf = int.MinValue;
+            for (int i = 0; i < variants.Count; i++)
+            {
+                var cand = variants[i];
+                if (cand == null) continue;
+                if (cand.Confirmations > bestConf)
+                {
+                    best = cand;
+                    bestConf = cand.Confirmations;
+                }
+            }
+            variant = best;
+            return variant != null;
+        }
+
+        // Map CarFactSource onto the source-label vocabulary the engine-layout
+        // status renderer (SettingsControl.xaml.cs EngineLayoutAutoText)
+        // already understands. Without this mapping the raw enum-name lowercase
+        // ("scanner", "community", ...) falls through to the renderer's
+        // "(heuristic: X)" catch-all and existing-cache users would see their
+        // label silently regress from "cached from earlier session" to
+        // "(heuristic: scanner)" on upgrade. Scanner-source variants in
+        // Stage 1 are exclusively the cylinder-cache migration cohort, so
+        // mapping them to "cache" preserves the pre-upgrade label exactly.
+        private static string MapCarFactSourceToUiLabel(CarFactSource s)
+        {
+            switch (s)
+            {
+                case CarFactSource.Scanner:       return "cache";
+                case CarFactSource.Community:     return "community";
+                case CarFactSource.User:          return "user-set";
+                case CarFactSource.GameTelemetry: return "telemetry";
+                default:                          return s.ToString().ToLowerInvariant();
             }
         }
 
