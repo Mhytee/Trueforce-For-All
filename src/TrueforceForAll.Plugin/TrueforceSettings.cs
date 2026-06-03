@@ -527,6 +527,14 @@ namespace TrueforceForAll.Plugin
         /// separated). Used only when <see cref="IsElectric"/> = false. See
         /// FiringPatternDb.ParseCustom. Empty string is treated as silence.</summary>
         public string Pattern { get; set; } = "";
+
+        /// <summary>Optional credit field. Set on export by stamping the
+        /// curator's SharingAuthor when the def doesn't already have one,
+        /// preserved on import so a recipient who acquires "MyV12 by Mhytee"
+        /// via a shared preset can see who authored it. Locally-created
+        /// defs leave this blank until shared (and until the local user has
+        /// set Settings.SharingAuthor).</summary>
+        public string Author { get; set; }
     }
 
     /// <summary>Whole-settings snapshot saved per-game. Mirrors the top-level
@@ -1001,6 +1009,13 @@ namespace TrueforceForAll.Plugin
         public string Description   { get; set; }
         public string AuthorVersion { get; set; }
         public GameSettingsSnapshot Snapshot { get; set; }
+        // Custom firing-pattern definitions referenced by Snapshot.EnginePulse
+        // .CustomEngineId. Travels with the preset so a recipient gets the
+        // actual pattern data, not just a dangling Guid. Empty/null = preset
+        // doesn't reference any custom engine. On import the recipient's
+        // Settings.CustomEngines absorbs missing-by-Id entries (existing
+        // local defs win on Id collision; see ImportPreset).
+        public List<CustomEngineDef> CustomEngines { get; set; }
     }
 
     /// <summary>Standalone car-preset file. Wraps a single named CarOverride
@@ -1034,6 +1049,11 @@ namespace TrueforceForAll.Plugin
         public string Description   { get; set; }
         public string AuthorVersion { get; set; }
         public CarOverride Override { get; set; }
+        // Custom firing-pattern definitions referenced by Override.EnginePulse
+        // .CustomEngineId. Same shape and import semantics as
+        // PresetFile.CustomEngines (recipient's Settings.CustomEngines
+        // absorbs missing-by-Id entries; local wins on collision).
+        public List<CustomEngineDef> CustomEngines { get; set; }
     }
 
     /// <summary>Manifest written into a multi-preset pack zip. Lists the
@@ -1062,6 +1082,13 @@ namespace TrueforceForAll.Plugin
         public string AuthorVersion { get; set; }
         public List<string> Presets { get; set; } = new List<string>();
         public List<PackedCarPreset> Cars { get; set; } = new List<PackedCarPreset>();
+        // Custom firing-pattern definitions referenced by any contained
+        // preset's EnginePulse.CustomEngineId. Deduped across the whole
+        // pack so a pattern shared by N presets ships once. ImportPack
+        // (and ImportPackSelective when its kept-items reference them)
+        // merges these into the recipient's Settings.CustomEngines on
+        // import; local wins on Id collision.
+        public List<CustomEngineDef> CustomEngines { get; set; }
     }
 
     public sealed class PackedCarPreset

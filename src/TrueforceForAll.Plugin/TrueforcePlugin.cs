@@ -8168,6 +8168,133 @@ namespace TrueforceForAll.Plugin
             return t.Length == 0 ? null : t;
         }
 
+        // Merge incoming CustomEngineDefs into the user's library by Id.
+        // Existing local defs ALWAYS win on collision — the Id is supposed
+        // to be stable across renames, so different content under the same
+        // Id is either a genuine local edit the user shouldn't lose, or
+        // backend corruption we shouldn't pave over. Logs both cases.
+        //
+        // Returns (added, skipped). Optionally constrains to a referenced-
+        // ids subset (ImportPackSelective passes it; full-pack imports
+        // pass null = merge every def in the wrapper).
+        private (int added, int skipped) MergeImportedCustomEngines(
+            IEnumerable<CustomEngineDef> incoming,
+            HashSet<string> referencedIds = null)
+        {
+            if (incoming == null) return (0, 0);
+            if (Settings == null) return (0, 0);
+            if (Settings.CustomEngines == null) Settings.CustomEngines = new List<CustomEngineDef>();
+            var existing = new Dictionary<string, CustomEngineDef>(StringComparer.Ordinal);
+            foreach (var def in Settings.CustomEngines)
+                if (def != null && !string.IsNullOrEmpty(def.Id) && !existing.ContainsKey(def.Id))
+                    existing[def.Id] = def;
+
+            int added = 0, skipped = 0;
+            foreach (var def in incoming)
+            {
+                if (def == null || string.IsNullOrEmpty(def.Id)) continue;
+                if (referencedIds != null && !referencedIds.Contains(def.Id)) continue;
+                if (existing.TryGetValue(def.Id, out var local))
+                {
+                    if (!string.Equals(local.Pattern, def.Pattern, StringComparison.Ordinal)
+                        || local.IsElectric != def.IsElectric
+                        || local.ElectricMode != def.ElectricMode)
+                    {
+                        SimHub.Logging.Current.Info(
+                            $"[Trueforce] Custom-engine import: keeping local def '{local.Name}' (Id {def.Id}); incoming '{def.Name}' has different content.");
+                    }
+                    skipped++;
+                    continue;
+                }
+                Settings.CustomEngines.Add(new CustomEngineDef
+                {
+                    Id           = def.Id,
+                    Name         = def.Name,
+                    IsElectric   = def.IsElectric,
+                    ElectricMode = def.ElectricMode,
+                    Pattern      = def.Pattern,
+                    Author       = NullIfBlank(def.Author),
+                });
+                existing[def.Id] = def;
+                added++;
+            }
+            return (added, skipped);
+        }
+
+        // Collect the CustomEngineDefs referenced by the given snapshots and
+        // car overrides. Walks each EnginePulse.CustomEngineId, resolves
+        // against Settings.CustomEngines (the user's library), and returns
+        // the matching defs (deduped by Id, only the ones that are actually
+        // in the library — dangling refs are silently dropped because the
+        // recipient can't do anything with them either). Stamps a curator
+        // Author on each resolved def when it has none and the curator's
+        // SharingAuthor is set, so a recipient who imports a "MyV12" by
+        // Mhytee sees the credit.
+        //
+        // Pass either or both collections; nulls are tolerated.
+        private List<CustomEngineDef> CollectReferencedCustomEngines(
+            IEnumerable<GameSettingsSnapshot> snapshots,
+            IEnumerable<CarOverride> carOverrides)
+        {
+            if (Settings?.CustomEngines == null || Settings.CustomEngines.Count == 0)
+                return null;
+            var wantedIds = new HashSet<string>(StringComparer.Ordinal);
+            if (snapshots != null)
+            {
+                foreach (var snap in snapshots)
+                {
+                    if (snap == null) continue;
+                    string id = NullIfBlank(snap.EnginePulse?.CustomEngineId);
+                    if (id != null) wantedIds.Add(id);
+                    // Legacy pre-Model-G presets carried per-car overrides
+                    // inline on the snapshot. Apply still reads these
+                    // (TrueforcePlugin.cs:7395-7406), so an override that
+                    // references a custom engine WOULD silently dangle on
+                    // the recipient if we didn't walk them here.
+                    if (snap.CarOverrides != null)
+                    {
+                        foreach (var inlineOvr in snap.CarOverrides.Values)
+                        {
+                            string nestedId = NullIfBlank(inlineOvr?.EnginePulse?.CustomEngineId);
+                            if (nestedId != null) wantedIds.Add(nestedId);
+                        }
+                    }
+                }
+            }
+            if (carOverrides != null)
+            {
+                foreach (var ovr in carOverrides)
+                {
+                    var ep = ovr?.EnginePulse;
+                    if (ep == null) continue;
+                    string id = NullIfBlank(ep.CustomEngineId);
+                    if (id != null) wantedIds.Add(id);
+                }
+            }
+            if (wantedIds.Count == 0) return null;
+
+            string curatorAuthor = NullIfBlank(Settings?.SharingAuthor);
+            var result = new List<CustomEngineDef>();
+            foreach (var def in Settings.CustomEngines)
+            {
+                if (def == null || string.IsNullOrEmpty(def.Id)) continue;
+                if (!wantedIds.Contains(def.Id)) continue;
+                // Shallow-copy the def so we don't mutate the in-memory
+                // library when stamping the curator Author for unattributed
+                // defs.
+                result.Add(new CustomEngineDef
+                {
+                    Id           = def.Id,
+                    Name         = def.Name,
+                    IsElectric   = def.IsElectric,
+                    ElectricMode = def.ElectricMode,
+                    Pattern      = def.Pattern,
+                    Author       = NullIfBlank(def.Author) ?? curatorAuthor,
+                });
+            }
+            return result.Count > 0 ? result : null;
+        }
+
         /// <summary>Read a preset file and store it in the library under the
         /// name embedded in the file. Does NOT auto-apply or auto-bind to a
         /// game, the user explicitly chooses what to do with it next.
@@ -8195,6 +8322,12 @@ namespace TrueforceForAll.Plugin
             file.Snapshot.Description   = NullIfBlank(file.Snapshot.Description)   ?? NullIfBlank(file.Description);
             file.Snapshot.AuthorVersion = NullIfBlank(file.Snapshot.AuthorVersion) ?? NullIfBlank(file.AuthorVersion);
             file.Snapshot.PackName      = NullIfBlank(file.Snapshot.PackName)      ?? NullIfBlank(file.PackName);
+
+            // Merge any custom firing-pattern defs the file carried into the
+            // user's library so the preset's EnginePulse.CustomEngineId
+            // resolves at apply time instead of falling through to silence.
+            // Local wins on Id collision.
+            var customEngineMerge = MergeImportedCustomEngines(file.CustomEngines);
             string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                 file.Snapshot, Newtonsoft.Json.Formatting.Indented);
             // Never clobber an existing user preset of the same name.
@@ -8358,6 +8491,11 @@ namespace TrueforceForAll.Plugin
             if (file.Type != CarPresetFile.FileType)
                 throw new System.IO.InvalidDataException($"Wrong file type '{file.Type}'. Expected '{CarPresetFile.FileType}'.");
 
+            // Merge any custom firing-pattern defs the file carried into the
+            // user's library so the override's EnginePulse.CustomEngineId
+            // resolves at apply time. Local wins on Id collision.
+            var customEngineMerge = MergeImportedCustomEngines(file.CustomEngines);
+
             // PresetName may be missing on legacy v1 imports, fall back to
             // the carId. IsBuiltin is force-cleared regardless of source.
             string desired = string.IsNullOrEmpty(file.PresetName) ? file.CarId : file.PresetName;
@@ -8499,6 +8637,12 @@ namespace TrueforceForAll.Plugin
             };
 
             int presetsCount = 0, carsCount = 0;
+            // Track every included snapshot + override so we can collect the
+            // CustomEngineDefs they reference once at the manifest write,
+            // deduped across the whole pack (a custom engine used by 3
+            // presets ships once, not three times).
+            var includedSnapshots = new List<GameSettingsSnapshot>();
+            var includedOverrides = new List<CarOverride>();
             using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Create, System.IO.FileAccess.Write))
             using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Create))
             {
@@ -8509,6 +8653,7 @@ namespace TrueforceForAll.Plugin
                     {
                         if (pickedPresets != null && !pickedPresets.Contains(kv.Key)) continue;
                         if (kv.Value == null) continue;
+                        includedSnapshots.Add(kv.Value);
 
                         string entryName = "presets/" + SanitizeForZip(kv.Key) + ".tfpreset";
                         // PackName at the per-preset level = the pack-level
@@ -8546,6 +8691,7 @@ namespace TrueforceForAll.Plugin
                             var entry = pKv.Value;
                             var key = (entry.CarId, entry.PresetName);
                             if (pickedCars != null && !pickedCars.Contains(key)) continue;
+                            if (entry.Override != null) includedOverrides.Add(entry.Override);
 
                             string entryName = "cars/" + SanitizeForZip(entry.CarId) + "~"
                                 + SanitizeForZip(entry.PresetName) + ".tfcar.json";
@@ -8579,6 +8725,11 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+
+                // Attach the deduped CustomEngineDefs referenced by any of
+                // the packed snapshots/overrides so a recipient gets the
+                // pattern data, not just dangling CustomEngineIds.
+                manifest.CustomEngines = CollectReferencedCustomEngines(includedSnapshots, includedOverrides);
 
                 WriteJsonZipEntry(zip, "manifest.json", manifest);
 
@@ -8669,6 +8820,7 @@ namespace TrueforceForAll.Plugin
                 Author        = finalAuthor,
                 Description   = finalDesc,
                 AuthorVersion = finalVer,
+                CustomEngines = CollectReferencedCustomEngines(new[] { snap }, carOverrides: null),
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
@@ -8711,6 +8863,7 @@ namespace TrueforceForAll.Plugin
                 Description   = finalDesc,
                 AuthorVersion = finalVer,
                 Override      = entry.Override,
+                CustomEngines = CollectReferencedCustomEngines(snapshots: null, carOverrides: new[] { entry.Override }),
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
@@ -8783,6 +8936,10 @@ namespace TrueforceForAll.Plugin
                         packDesc   = manifest.Description;
                         packVer    = manifest.AuthorVersion;
                         packName   = manifest.PackName;
+                        // Full-pack import: merge every CustomEngineDef the
+                        // manifest carried so any contained preset's
+                        // EnginePulse.CustomEngineId resolves on apply.
+                        MergeImportedCustomEngines(manifest.CustomEngines);
                     }
                 }
 
@@ -8952,6 +9109,12 @@ namespace TrueforceForAll.Plugin
             int presetsImported = 0, carsImported = 0;
             int carDefaultsSet = 0;
             var packEntries = new List<InstalledPackEntry>();
+            // Defer the CustomEngines merge until after the iteration so we
+            // can constrain to only the defs actually referenced by the
+            // user-selected items (selective imports shouldn't pollute the
+            // recipient's library with defs from rows the user deselected).
+            List<CustomEngineDef> manifestCustomEngines = null;
+            var referencedCustomEngineIds = new HashSet<string>(StringComparer.Ordinal);
 
             using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
@@ -8969,6 +9132,7 @@ namespace TrueforceForAll.Plugin
                         packDesc   = manifest.Description;
                         packVer    = manifest.AuthorVersion;
                         packName   = manifest.PackName;
+                        manifestCustomEngines = manifest.CustomEngines;
                     }
                 }
 
@@ -9010,6 +9174,23 @@ namespace TrueforceForAll.Plugin
                                 BaselineHash = InstalledPacksStore.ComputeContentHash(snapJson),
                             });
                             presetsImported++;
+                            // Track the custom engine the imported preset references
+                            // (if any) so the post-loop merge brings its def along.
+                            string epCustomId = NullIfBlank(pf.Snapshot.EnginePulse?.CustomEngineId);
+                            if (epCustomId != null) referencedCustomEngineIds.Add(epCustomId);
+                            // Legacy snap.CarOverrides path: nested per-car
+                            // overrides on a pre-Model-G snapshot also need
+                            // their CustomEngineId pulled into the merge set
+                            // or the dangling-pointer hole reopens for that
+                            // case.
+                            if (pf.Snapshot.CarOverrides != null)
+                            {
+                                foreach (var inlineOvr in pf.Snapshot.CarOverrides.Values)
+                                {
+                                    string nestedId = NullIfBlank(inlineOvr?.EnginePulse?.CustomEngineId);
+                                    if (nestedId != null) referencedCustomEngineIds.Add(nestedId);
+                                }
+                            }
 
                             // Set-as-default for game presets requires a
                             // (preset -> game) mapping that the bare
@@ -9054,6 +9235,8 @@ namespace TrueforceForAll.Plugin
                             BaselineHash = TryHashCarPresetFile(cf.CarId, presetName),
                         });
                         carsImported++;
+                        string carCustomId = NullIfBlank(cf.Override.EnginePulse?.CustomEngineId);
+                        if (carCustomId != null) referencedCustomEngineIds.Add(carCustomId);
 
                         // Set-as-default for this car. Settings.CarDefaults
                         // is a runtime cache (ShouldSerializeCarDefaults is
@@ -9071,6 +9254,12 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
+
+            // Merge only the CustomEngineDefs actually referenced by the
+            // items the user kept. Skipping unselected rows' defs keeps the
+            // recipient's library clean of patterns they didn't ask for.
+            if (manifestCustomEngines != null && referencedCustomEngineIds.Count > 0)
+                MergeImportedCustomEngines(manifestCustomEngines, referencedCustomEngineIds);
 
             if (packEntries.Count > 0)
             {
