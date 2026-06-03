@@ -95,7 +95,6 @@ namespace TrueforceForAll.Plugin
             var root = new Grid { Margin = new Thickness(12) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                            // header text
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });       // picker
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                            // output-mode (export only)
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                            // button row
 
             var header = new TextBlock
@@ -119,76 +118,9 @@ namespace TrueforceForAll.Plugin
             Grid.SetColumn(carPanel, 1);
             twoCol.Children.Add(carPanel);
 
-            // Output-mode selector + pack name input (export mode only).
-            // Two radios: bundle as one .tfpack archive, OR write loose
-            // .tfpreset.json / .tfcar.json files into a folder. The pack
-            // name TextBox is enabled only while the Pack radio is selected
-            // (it tags every contained file with the pack identity).
-            RadioButton rbPack = null;
-            RadioButton rbFolder = null;
-            TextBox tbPackName = null;
-            if (exportMode)
-            {
-                var modeRow = new Grid { Margin = new Thickness(0, 10, 0, 0) };
-                modeRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                modeRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-                rbPack = new RadioButton
-                {
-                    Content    = "Bundle as pack (.tfpack)",
-                    GroupName  = "ExportOutputMode",
-                    IsChecked  = true,
-                    Foreground = TextFg,
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-                rbFolder = new RadioButton
-                {
-                    Content    = "Loose files in a folder",
-                    GroupName  = "ExportOutputMode",
-                    Foreground = TextFg,
-                    Margin     = new Thickness(0, 6, 0, 0),
-                };
-
-                // Pack radio + Pack-name input share one row so the
-                // dependency between them reads at a glance. TextBox
-                // enables/disables to mirror the selected mode.
-                var packNameLbl = new TextBlock
-                {
-                    Text              = "Pack name:",
-                    Foreground        = TextFg,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin            = new Thickness(16, 0, 8, 0),
-                };
-                tbPackName = new TextBox
-                {
-                    Background        = PanelBg,
-                    Foreground        = TextFg,
-                    BorderBrush       = BorderFg,
-                    Padding           = new Thickness(4, 2, 4, 2),
-                    MinWidth          = 220,
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-
-                var topRow = new Grid();
-                topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                Grid.SetColumn(rbPack,      0); topRow.Children.Add(rbPack);
-                Grid.SetColumn(packNameLbl, 1); topRow.Children.Add(packNameLbl);
-                Grid.SetColumn(tbPackName,  2); topRow.Children.Add(tbPackName);
-                Grid.SetRow(topRow, 0);
-                modeRow.Children.Add(topRow);
-
-                Grid.SetRow(rbFolder, 1);
-                modeRow.Children.Add(rbFolder);
-
-                // Enable/disable pack-name TextBox to match selected mode.
-                rbPack.Checked   += (s, e) => { tbPackName.IsEnabled = true; };
-                rbFolder.Checked += (s, e) => { tbPackName.IsEnabled = false; };
-
-                Grid.SetRow(modeRow, 2);
-                root.Children.Add(modeRow);
-            }
+            // Output type is decided by the count of picked items: 1 item
+            // exports as a single loose .tfpreset.json / .tfcar.json, 2+
+            // items export as a .tfpack. No toggle here.
 
             // OK / Cancel row.
             var btnRow = new StackPanel
@@ -201,7 +133,7 @@ namespace TrueforceForAll.Plugin
             var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
-            Grid.SetRow(btnRow, 3);
+            Grid.SetRow(btnRow, 2);
             root.Children.Add(btnRow);
 
             ok.Click += (s, e) =>
@@ -221,29 +153,8 @@ namespace TrueforceForAll.Plugin
                     return;
                 }
 
-                if (exportMode)
-                {
-                    SelectedOutputMode = rbFolder?.IsChecked == true
-                        ? ExportOutputMode.FolderOfFiles
-                        : ExportOutputMode.Pack;
-                    if (SelectedOutputMode == ExportOutputMode.Pack)
-                    {
-                        var name = (tbPackName?.Text ?? "").Trim();
-                        if (string.IsNullOrEmpty(name))
-                        {
-                            MessageBox.Show(this, "Pack name is required when bundling as a pack.",
-                                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
-                            tbPackName?.Focus();
-                            return;
-                        }
-                        PackName = name;
-                    }
-                    else
-                    {
-                        PackName = null;
-                    }
-                }
-
+                // Output type (single file vs pack) is decided by
+                // RunExportFlow based on item count, not by the picker.
                 DialogResult = true;
             };
 

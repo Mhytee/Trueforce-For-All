@@ -2364,15 +2364,31 @@
                  most users, so this is the first section after the effects list and
                  would otherwise sit flush against the last effect's 4px margin
                  (this margin formerly lived on the removed Presets header). -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,28,0,12"><TextBlock Text="Backup &amp; sync" Style="{StaticResource SectionHeaderText}"/></Border>
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,28,0,12"><TextBlock Text="Backup &amp; restore" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                       Text="Share presets and car tunings with other users. Export bundles your picks into a single file; Import auto-detects whatever file you point it at."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button x:Name="ExportButton" Content="Export…" Width="140" Height="28" Margin="0,0,8,0" Click="Export_Click"
-                        ToolTip="Pick which presets and car tunings to bundle into a shareable file."/>
-                <Button x:Name="ImportButton" Content="Import…" Width="140" Height="28" Click="Import_Click"
-                        ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
+                       Text="Bundle your full Trueforce state (settings, every preset, every default, every car tuning) into one archive for moving to a new machine. To share individual presets or car tunings with other users, use Import / Export in the Preset Manager (Presets tab) instead."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <Button x:Name="BackupButton" Content="Backup…" Width="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
+                        ToolTip="Save settings + every user preset + every default + every car tuning to a single .zip you can carry to another machine."/>
+                <Button x:Name="RestoreButton" Content="Restore…" Width="140" Height="28" Click="Restore_Click"
+                        ToolTip="Replace all current Trueforce settings, presets, defaults, and car tunings with a backup archive's contents. Destructive: confirm before running."/>
             </StackPanel>
+
+            <!-- Persistent author name. Stamped on every preset you save so the
+                 Preset Manager's Source column attributes your work, and
+                 pre-fills the Author field at export time. Blank = anonymous
+                 (Source column reads "Local"). -->
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
+                <TextBlock Text="Author name:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                <TextBox x:Name="AuthorNameBox" Width="220" Height="24" Margin="8,0,0,0"
+                         VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="4,0"
+                         Background="#FF2D2D30" Foreground="White" CaretBrush="White"
+                         BorderBrush="#FF7A7A7A" BorderThickness="1"
+                         LostFocus="AuthorName_Changed" KeyDown="AuthorName_KeyDown"/>
+                <TextBlock x:Name="AuthorNameStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,2,0,16"
+                       Text="Stamped on presets you save. Shown as the Source for your presets in the Preset Manager and pre-filled when you export. Leave blank to stay anonymous."/>
 
             <!-- Report-issue + repo link: separate from cylinder reporting; this
                  is for everything else (bugs, feature requests, weird behavior). -->

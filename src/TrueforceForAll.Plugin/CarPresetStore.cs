@@ -35,9 +35,13 @@ namespace TrueforceForAll.Plugin
         // Optional pack/sharing metadata, carried from the on-disk
         // CarPresetFile when present (set on imported pack files). Left null
         // for built-ins and locally-saved presets. Used by the Preset
-        // Manager's Source column to attribute a car preset to its pack.
-        public string PackName    { get; set; }
-        public string Author      { get; set; }
+        // Manager's Source column to attribute a car preset to its pack
+        // and by the export flow to preserve per-row credit when assembling
+        // a curator's pack (Description + AuthorVersion round-trip too).
+        public string PackName      { get; set; }
+        public string Author        { get; set; }
+        public string Description   { get; set; }
+        public string AuthorVersion { get; set; }
         public CarOverride Override { get; set; }
     }
 
@@ -68,6 +72,8 @@ namespace TrueforceForAll.Plugin
             foreach (var c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
             return s.Trim();
         }
+
+        private static string NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
         private string PathFor(string gameName, string carId, string presetName)
         {
@@ -113,13 +119,15 @@ namespace TrueforceForAll.Plugin
                         string presetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
                         var entry = new CarPresetEntry
                         {
-                            CarId      = f.CarId,
-                            PresetName = presetName,
-                            GameName   = f.GameName ?? "",
-                            IsBuiltin  = false, // user-library files are user; built-ins come from the built-in folder
-                            PackName   = f.PackName,
-                            Author     = f.Author,
-                            Override   = f.Override,
+                            CarId         = f.CarId,
+                            PresetName    = presetName,
+                            GameName      = f.GameName ?? "",
+                            IsBuiltin     = false, // user-library files are user; built-ins come from the built-in folder
+                            PackName      = f.PackName,
+                            Author        = f.Author,
+                            Description   = f.Description,
+                            AuthorVersion = f.AuthorVersion,
+                            Override      = f.Override,
                         };
                         if (!result.TryGetValue(f.CarId, out var perCar))
                         {
@@ -147,9 +155,19 @@ namespace TrueforceForAll.Plugin
         /// compat but ignored: user-library writes are always non-builtin.
         /// The optional pack/sharing metadata (packName, author, description,
         /// authorVersion) is persisted when provided; non-import callers leave
-        /// it null and the fields stay blank (no behavior change for them).</summary>
+        /// it null and the fields stay blank (no behavior change for them).
+        ///
+        /// <paramref name="defaultAuthor"/> is the persistent author the
+        /// caller would like stamped on a new save when no per-call author
+        /// was supplied. The preserve-rule: per-field, an explicit non-null
+        /// argument wins; otherwise the existing on-disk file's value is
+        /// preserved; otherwise the defaultAuthor seeds Author only. This
+        /// makes a user re-saving a pack-imported preset keep the pack
+        /// attribution AND a user saving fresh stamp their own author, with
+        /// no per-call-site lookup churn.</summary>
         public void Save(string carId, string presetName, string gameName, CarOverride ovr, bool isBuiltin = false,
-            string packName = null, string author = null, string description = null, string authorVersion = null)
+            string packName = null, string author = null, string description = null, string authorVersion = null,
+            string defaultAuthor = null)
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
             if (ovr == null || ovr.IsEmpty)
@@ -161,16 +179,43 @@ namespace TrueforceForAll.Plugin
             {
                 var path = PathFor(gameName, carId, presetName);
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
+
+                // Preserve existing-on-disk attribution when the caller
+                // didn't pass a value for that specific field. Read the
+                // current file once if it exists; if it doesn't (fresh
+                // save), the defaultAuthor seeds Author.
+                string existingPackName = null, existingAuthor = null, existingDesc = null, existingVer = null;
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        var prev = JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path));
+                        if (prev != null)
+                        {
+                            existingPackName = NullIfBlank(prev.PackName);
+                            existingAuthor   = NullIfBlank(prev.Author);
+                            existingDesc     = NullIfBlank(prev.Description);
+                            existingVer      = NullIfBlank(prev.AuthorVersion);
+                        }
+                    }
+                    catch { /* malformed prior file; treat as no prior attribution */ }
+                }
+
+                string finalAuthor =
+                    author != null   ? author
+                    : existingAuthor != null ? existingAuthor
+                    : NullIfBlank(defaultAuthor);
+
                 var f = new CarPresetFile
                 {
                     GameName      = gameName ?? "",
                     CarId         = carId,
                     PresetName    = presetName,
                     IsBuiltin     = false,
-                    PackName      = packName,
-                    Author        = author,
-                    Description   = description,
-                    AuthorVersion = authorVersion,
+                    PackName      = packName      ?? existingPackName,
+                    Author        = finalAuthor,
+                    Description   = description   ?? existingDesc,
+                    AuthorVersion = authorVersion ?? existingVer,
                     Override      = ovr,
                 };
                 AtomicWriteAllText(path, JsonConvert.SerializeObject(f, Formatting.Indented));

@@ -13,16 +13,18 @@ namespace TrueforceForAll.Plugin
 {
     internal sealed class PresetMetadataDialog : Window
     {
+        public string PackName      { get; private set; }
         public string Author        { get; private set; }
         public string Description   { get; private set; }
         public string AuthorVersion { get; private set; }
 
         public PresetMetadataDialog(string title, string subjectKind,
-            string defaultAuthor, string defaultDescription, string defaultAuthorVersion)
+            string defaultAuthor, string defaultDescription, string defaultAuthorVersion,
+            bool includePackName = false, string defaultPackName = null)
         {
             Title = title;
             Width = 480;
-            Height = 360;
+            Height = includePackName ? 410 : 360;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
             ResizeMode = ResizeMode.NoResize;
@@ -34,11 +36,21 @@ namespace TrueforceForAll.Plugin
             var sp = new StackPanel { Margin = new Thickness(14) };
             sp.Children.Add(new TextBlock
             {
-                Text = $"Optional info for the {subjectKind}. Leave anything blank to omit it.",
+                Text = includePackName
+                    ? $"Info for the {subjectKind}. Pack name is required; the rest is optional."
+                    : $"Optional info for the {subjectKind}. Leave anything blank to omit it.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
                 Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
             });
+
+            TextBox tbPackName = null;
+            if (includePackName)
+            {
+                sp.Children.Add(BuildLabel("Pack name (required)"));
+                tbPackName = BuildInputTextBox(defaultPackName, multiline: false);
+                sp.Children.Add(tbPackName);
+            }
 
             sp.Children.Add(BuildLabel("Author"));
             var tbAuthor = BuildInputTextBox(defaultAuthor, multiline: false);
@@ -65,13 +77,29 @@ namespace TrueforceForAll.Plugin
 
             ok.Click += (s, e) =>
             {
+                if (includePackName)
+                {
+                    var name = (tbPackName?.Text ?? "").Trim();
+                    if (string.IsNullOrEmpty(name))
+                    {
+                        MessageBox.Show(this, "Pack name is required when bundling as a pack.",
+                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                        tbPackName?.Focus();
+                        return;
+                    }
+                    PackName = name;
+                }
                 Author        = tbAuthor.Text;
                 Description   = tbDesc.Text;
                 AuthorVersion = tbVersion.Text;
                 DialogResult = true;
             };
 
-            Loaded += (s, e) => { tbAuthor.Focus(); tbAuthor.SelectAll(); };
+            Loaded += (s, e) =>
+            {
+                if (includePackName && tbPackName != null) { tbPackName.Focus(); tbPackName.SelectAll(); }
+                else                                       { tbAuthor.Focus();   tbAuthor.SelectAll();   }
+            };
 
             Content = sp;
         }

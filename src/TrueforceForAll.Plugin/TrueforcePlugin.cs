@@ -3536,7 +3536,8 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false);
+                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
+                    defaultAuthor: CurrentAuthorForStamp());
                 if (patched.IsEmpty)
                     _lastPersistedCarOverrides.Remove(_activeCarId);
                 else
@@ -5497,6 +5498,13 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     var clone = CloneSnapshot(seed);
+                    // Stamp a sentinel PackName so BackfillAuthorOnLocalPresets
+                    // recognises this as a shipped seed, not user-authored
+                    // work, and skips stamping the user's name on it.
+                    // SaveSectionToActivePreset clears the sentinel on the
+                    // user's first edit so the preset becomes "theirs" the
+                    // moment they touch a slider.
+                    clone.PackName = SeededPresetSentinel;
                     string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                         clone, Newtonsoft.Json.Formatting.Indented);
                     BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, presetName, json);
@@ -5892,7 +5900,8 @@ namespace TrueforceForAll.Plugin
             }
 
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
-            _carStore.Save(_activeCarId, presetName, _activeGame ?? "", ovr, isBuiltin: false);
+            _carStore.Save(_activeCarId, presetName, _activeGame ?? "", ovr, isBuiltin: false,
+                defaultAuthor: CurrentAuthorForStamp());
             if (ovr == null || ovr.IsEmpty)
                 _lastPersistedCarOverrides.Remove(_activeCarId);
             else
@@ -5913,7 +5922,8 @@ namespace TrueforceForAll.Plugin
             // strip so the on-disk filename and CarDefaults binding are clean.
             string newDisk = ToDiskName(newPresetName);
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
-            _carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false);
+            _carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false,
+                defaultAuthor: CurrentAuthorForStamp());
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             Settings.CarDefaults[_activeCarId] = newDisk;
             if (ovr == null || ovr.IsEmpty)
@@ -6061,9 +6071,17 @@ namespace TrueforceForAll.Plugin
             if (entry == null) return false;
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(entry.Override);
             var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CarOverride>(json);
-            // A duplicate of an imported preset stays attributed to its pack.
+            // A duplicate of an imported preset stays attributed to its
+            // pack. When the source had no Author, stamp the duplicator (the
+            // user) via defaultAuthor so the new preset reads as theirs in
+            // the Source column. Carry Description + AuthorVersion too so
+            // the duplicate is a faithful copy, not a metadata-stripped one.
             _carStore.Save(carId, newDisk, entry.GameName ?? "", clone, isBuiltin: false,
-                packName: entry.PackName, author: entry.Author);
+                packName:      entry.PackName,
+                author:        entry.Author,
+                description:   entry.Description,
+                authorVersion: entry.AuthorVersion,
+                defaultAuthor: CurrentAuthorForStamp());
             SimHub.Logging.Current.Info($"[Trueforce] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
             return true;
         }
@@ -6255,12 +6273,135 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Label shown in the Preset Manager's Source column for a
         /// game preset row. "Built-In" for factory presets, the pack label for
-        /// presets recorded in the installed-packs sidecar, else "Local".</summary>
+        /// presets recorded in the installed-packs sidecar, the snapshot's
+        /// own PackName/Author (for stamped local saves or recovered pack
+        /// metadata when the sidecar entry was lost), else "Local".</summary>
         public string ResolveGamePresetSource(string presetName, bool isBuiltin)
         {
             if (isBuiltin) return "Built-In";
             var pack = _installedPacks?.FindPackForGame(presetName);
-            return PackLabel(pack?.PackName, pack?.Author) ?? "Local";
+            var fromPack = PackLabel(pack?.PackName, pack?.Author);
+            if (fromPack != null) return fromPack;
+            // Fallback: read the snapshot's own attribution. Catches both
+            // user-stamped local presets (snap.Author = SharingAuthor) and
+            // orphan pack-imported presets whose sidecar entry was lost.
+            // Seeded-from-AC-baseline sentinel is treated as Local (the user
+            // hasn't touched it yet; once they do, the sentinel clears).
+            GameSettingsSnapshot snap = null;
+            if (Settings?.Presets != null) Settings.Presets.TryGetValue(presetName, out snap);
+            string snapPack = NullIfBlank(snap?.PackName);
+            if (string.Equals(snapPack, SeededPresetSentinel, StringComparison.Ordinal)) snapPack = null;
+            return PackLabel(snapPack, snap?.Author) ?? "Local";
+        }
+
+        // Author string stamped on locally-saved presets. Null when the user
+        // hasn't set Settings.SharingAuthor, in which case saves leave Author
+        // blank and ResolveGamePresetSource falls through to "Local". Single
+        // source of truth so the policy lives in one place.
+        private string CurrentAuthorForStamp() => NullIfBlank(Settings?.SharingAuthor);
+
+        // Sentinel PackName stamped on the AC-baseline seed file written by
+        // EnsureSeededGamePreset. Used in two places: (a) BackfillAuthorOnLocal-
+        // Presets skips snapshots carrying this so an untouched seed never
+        // gets attributed to the user; (b) SaveSectionToActivePreset clears
+        // it on the user's first edit, after which the preset behaves like
+        // any other user-authored work. The literal string is chosen to be
+        // unambiguous if it ever leaks into the UI (which it shouldn't).
+        internal const string SeededPresetSentinel = "(seeded from Assetto Corsa baseline)";
+
+        /// <summary>One-shot backfill: walk every user-library game-preset
+        /// and car-preset file, set Author = <paramref name="author"/> on
+        /// the ones whose Author AND PackName are both blank (= the user's
+        /// own unattributed work). Files that already carry pack lineage or
+        /// an explicit author are left alone. Returns the count of files
+        /// touched. Triggered from the Settings UI on the first blank-to-set
+        /// transition of Settings.SharingAuthor.</summary>
+        public int BackfillAuthorOnLocalPresets(string author)
+        {
+            author = NullIfBlank(author);
+            if (author == null) return 0;
+            int touched = 0;
+
+            // ---- Game presets ----
+            try
+            {
+                string gamesDir = System.IO.Path.Combine(UserPresets.CurrentFolder ?? "", "games");
+                if (System.IO.Directory.Exists(gamesDir))
+                {
+                    foreach (var path in System.IO.Directory.GetFiles(gamesDir, "*.json"))
+                    {
+                        try
+                        {
+                            var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(
+                                System.IO.File.ReadAllText(path));
+                            if (snap == null) continue;
+                            if (!string.IsNullOrEmpty(snap.Author) || !string.IsNullOrEmpty(snap.PackName)) continue;
+                            snap.Author = author;
+                            System.IO.File.WriteAllText(path,
+                                Newtonsoft.Json.JsonConvert.SerializeObject(snap, Newtonsoft.Json.Formatting.Indented));
+                            touched++;
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Backfill: couldn't update '{path}': {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Backfill (games) failed: {ex.Message}");
+            }
+
+            // ---- Car presets ----
+            try
+            {
+                string carsRoot = System.IO.Path.Combine(UserPresets.CurrentFolder ?? "", "cars");
+                if (System.IO.Directory.Exists(carsRoot))
+                {
+                    foreach (var path in System.IO.Directory.GetFiles(carsRoot, "*.json", System.IO.SearchOption.AllDirectories))
+                    {
+                        // Skip the cleanup-archive backups produced by the
+                        // legacy-builtin cleanup migration.
+                        if (path.IndexOf($"{System.IO.Path.DirectorySeparatorChar}.cleanup-", StringComparison.Ordinal) >= 0)
+                            continue;
+                        try
+                        {
+                            var f = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(
+                                System.IO.File.ReadAllText(path));
+                            if (f == null || f.Override == null) continue;
+                            if (!string.IsNullOrEmpty(f.Author) || !string.IsNullOrEmpty(f.PackName)) continue;
+                            f.Author = author;
+                            System.IO.File.WriteAllText(path,
+                                Newtonsoft.Json.JsonConvert.SerializeObject(f, Newtonsoft.Json.Formatting.Indented));
+                            touched++;
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Backfill: couldn't update '{path}': {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Backfill (cars) failed: {ex.Message}");
+            }
+
+            // Reload + rebuild so the in-memory cache reflects the new
+            // attribution and the Source column refreshes on next read.
+            try
+            {
+                UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Backfill reload failed: {ex.Message}");
+            }
+
+            SimHub.Logging.Current.Info($"[Trueforce] Author backfill: stamped '{author}' on {touched} local preset file(s).");
+            return touched;
         }
 
         /// <summary>Label shown in the Preset Manager's Source column for a car
@@ -7350,6 +7491,17 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Audio:      snap.AudioCapture = CloneOrNull(Settings.AudioCapture); break;
                 default: return false;
             }
+            // Clear the seeded-preset sentinel on first edit so the row
+            // becomes the user's work the moment they touch a slider.
+            // (Without this clear, the PackName sentinel would block the
+            // attribution stamp below and the next backfill prompt.)
+            if (string.Equals(NullIfBlank(snap.PackName), SeededPresetSentinel, StringComparison.Ordinal))
+                snap.PackName = null;
+            // Attribute the section edit to the current author when the
+            // preset doesn't already carry attribution (community packs +
+            // already-stamped local saves keep theirs).
+            if (NullIfBlank(snap.Author) == null && NullIfBlank(snap.PackName) == null)
+                snap.Author = CurrentAuthorForStamp();
             // Persist the whole preset to its file (user library or, for DEV
             // editing a built-in, the built-in folder). Then save plugin
             // settings (the legacy Presets dict ends up empty after rebuild,
@@ -7410,7 +7562,8 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false);
+                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
+                    defaultAuthor: CurrentAuthorForStamp());
                 if (patched.IsEmpty)
                     _lastPersistedCarOverrides.Remove(_activeCarId);
                 else
@@ -7538,7 +7691,16 @@ namespace TrueforceForAll.Plugin
 
             // The duplicate always lands in the USER library (a copy of a
             // built-in becomes a normal user preset; the owner uses DEV +
-            // Export-as-built-in to promote one).
+            // Export-as-built-in to promote one). Stamp the duplicator as
+            // the author when the source had none (the user IS the author
+            // of this divergent copy); preserve existing attribution so
+            // forks of a community pack stay linked to their origin.
+            if (NullIfBlank(snap.Author) == null && NullIfBlank(snap.PackName) == null)
+            {
+                snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(
+                    Newtonsoft.Json.JsonConvert.SerializeObject(snap));
+                snap.Author = CurrentAuthorForStamp();
+            }
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(snap, Newtonsoft.Json.Formatting.Indented);
             try
             {
@@ -7958,6 +8120,14 @@ namespace TrueforceForAll.Plugin
                 Collision               = Clone(Settings.Collision),
                 RevLimiter              = Clone(Settings.RevLimiter),
                 Airborne                = Clone(Settings.Airborne),
+                // Attribution: stamp the persistent author so the Preset
+                // Manager's Source column attributes this row to its
+                // author. Null when SharingAuthor is unset (column reads
+                // "Local"). Pack identity fields (PackName/AuthorVersion/
+                // Description) stay null on user-saved snapshots — those
+                // are populated only by the pack-import code path so
+                // shared community presets retain their lineage.
+                Author                  = CurrentAuthorForStamp(),
                 // CarOverrides intentionally omitted, per-car tuning is
                 // managed via per-car .tfcar.json files post-Model-G.
             };
@@ -8016,7 +8186,15 @@ namespace TrueforceForAll.Plugin
             // Imports always land in the USER library as user presets, even
             // if the file's name happens to collide with a built-in (the
             // BuiltinPresetWriter is name-keyed; user library writes are
-            // independent of the built-in folder).
+            // independent of the built-in folder). Fold the wrapper's
+            // attribution onto the snapshot before serialising so the
+            // recipient's disk preserves the original author + pack lineage
+            // (per-snapshot fields beat the wrapper to keep authored
+            // attribution when both are present).
+            file.Snapshot.Author        = NullIfBlank(file.Snapshot.Author)        ?? NullIfBlank(file.Author);
+            file.Snapshot.Description   = NullIfBlank(file.Snapshot.Description)   ?? NullIfBlank(file.Description);
+            file.Snapshot.AuthorVersion = NullIfBlank(file.Snapshot.AuthorVersion) ?? NullIfBlank(file.AuthorVersion);
+            file.Snapshot.PackName      = NullIfBlank(file.Snapshot.PackName)      ?? NullIfBlank(file.PackName);
             string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                 file.Snapshot, Newtonsoft.Json.Formatting.Indented);
             // Never clobber an existing user preset of the same name.
@@ -8184,10 +8362,24 @@ namespace TrueforceForAll.Plugin
             // the carId. IsBuiltin is force-cleared regardless of source.
             string desired = string.IsNullOrEmpty(file.PresetName) ? file.CarId : file.PresetName;
             string presetName = MakeUniqueCarPresetName(file.CarId, desired);
-            _carStore.Save(file.CarId, presetName, file.GameName ?? "", file.Override, isBuiltin: false);
+            // Preserve the source file's attribution + pack identity on disk.
+            // Without this the row would land unattributed, the manager's
+            // Source column would read "Local", and the original author's
+            // credit would be silently erased on first re-save.
+            _carStore.Save(file.CarId, presetName, file.GameName ?? "", file.Override, isBuiltin: false,
+                packName:      NullIfBlank(file.PackName),
+                author:        NullIfBlank(file.Author),
+                description:   NullIfBlank(file.Description),
+                authorVersion: NullIfBlank(file.AuthorVersion));
 
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             Settings.CarDefaults[file.CarId] = presetName;
+            // Persist through to the user library's car-defaults.json so the
+            // binding survives Init's rebuild (Settings.CarDefaults is a
+            // runtime cache post-V2 migration; ShouldSerializeCarDefaults
+            // returns false then, so the in-memory write alone would silently
+            // revert on next plugin start).
+            BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, file.CarId, presetName);
             this.SaveCommonSettings("GeneralSettings", Settings);
 
             if (file.CarId == _activeCarId) ReloadActiveCarOverrideFromStore();
@@ -8319,14 +8511,23 @@ namespace TrueforceForAll.Plugin
                         if (kv.Value == null) continue;
 
                         string entryName = "presets/" + SanitizeForZip(kv.Key) + ".tfpreset";
+                        // PackName at the per-preset level = the pack-level
+                        // PackName (tags every entry as belonging to this
+                        // pack so a later "delete pack" knows which entries
+                        // it owns). But Author/Description/AuthorVersion
+                        // PRESERVE the source preset's own metadata when
+                        // present — a curator can't strip an original
+                        // contributor's credit by adding their work to a pack.
+                        // Only when the source has no Author do we fall back
+                        // to the curator's pack-level Author.
                         var file = new PresetFile
                         {
                             PresetName    = kv.Key,
                             Snapshot      = kv.Value,
                             PackName      = normPack,
-                            Author        = normAuthor,
-                            Description   = normDesc,
-                            AuthorVersion = normVer,
+                            Author        = NullIfBlank(kv.Value.Author)        ?? normAuthor,
+                            Description   = NullIfBlank(kv.Value.Description)   ?? normDesc,
+                            AuthorVersion = NullIfBlank(kv.Value.AuthorVersion) ?? normVer,
                         };
                         WriteJsonZipEntry(zip, entryName, file);
                         manifest.Presets.Add(entryName);
@@ -8348,16 +8549,22 @@ namespace TrueforceForAll.Plugin
 
                             string entryName = "cars/" + SanitizeForZip(entry.CarId) + "~"
                                 + SanitizeForZip(entry.PresetName) + ".tfcar.json";
+                            // Per-row attribution preserves the source car
+                            // preset's own metadata (so a curator can't strip
+                            // credit by adding someone else's preset to their
+                            // pack). PackName at the per-row level = the
+                            // pack-level tag so "delete pack" knows which
+                            // entries it owns.
                             var file = new CarPresetFile
                             {
                                 GameName      = entry.GameName ?? "",
                                 CarId         = entry.CarId,
                                 PresetName    = entry.PresetName,
-                                IsBuiltin     = false, // shareable copies are user-tier
+                                IsBuiltin     = false,
                                 PackName      = normPack,
-                                Author        = normAuthor,
-                                Description   = normDesc,
-                                AuthorVersion = normVer,
+                                Author        = NullIfBlank(entry.Author)        ?? normAuthor,
+                                Description   = NullIfBlank(entry.Description)   ?? normDesc,
+                                AuthorVersion = NullIfBlank(entry.AuthorVersion) ?? normVer,
                                 Override      = entry.Override,
                             };
                             WriteJsonZipEntry(zip, entryName, file);
@@ -8425,147 +8632,124 @@ namespace TrueforceForAll.Plugin
             return sb.ToString();
         }
 
-        // README written next to loose-exported files. Same step-by-step
-        // install instructions as the pack README, plus the recommendation
-        // to use Export as Pack for sharing a curated set with metadata.
-        private static string BuildLooseExportReadme()
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("Trueforce For All - loose preset files");
-            sb.AppendLine();
-            sb.AppendLine("These .tfpreset.json / .tfcar.json files are individual presets exported");
-            sb.AppendLine("from the Trueforce For All plugin. Each carries optional author /");
-            sb.AppendLine("description / version metadata in its own JSON.");
-            sb.AppendLine();
-            sb.AppendLine("To install:");
-            sb.AppendLine("  1. Open SimHub.");
-            sb.AppendLine("  2. Left sidebar -> Trueforce For All plugin.");
-            sb.AppendLine("  3. Click the Presets tab.");
-            sb.AppendLine("  4. Click Import (top right of the preset list).");
-            sb.AppendLine("  5. Navigate into this folder, select the files (Ctrl+A picks them");
-            sb.AppendLine("     all; the README.txt is filtered out), and click Open.");
-            sb.AppendLine();
-            sb.AppendLine("Sharing tip: if you want recipients to see these presets as a curated");
-            sb.AppendLine("group (so they can apply, filter, set as defaults, or remove them as a");
-            sb.AppendLine("unit), use Export as Pack instead. A pack carries a name and a single");
-            sb.AppendLine("set of author / version metadata that the manager keeps together.");
-            return sb.ToString();
-        }
+        // ExportLoose + BuildLooseExportReadme used to live here. They wrote
+        // a folder of .tfpreset.json / .tfcar.json plus a README explaining
+        // how to import them. Retired by the count-based export rule (single
+        // picked = single loose file; multi picked = always a pack), which
+        // gives the same affordance with simpler attribution preservation.
+        // The originals had stricter author preservation than ExportPack and
+        // would have been a foot-gun if some future code path called them
+        // again, so they were deleted rather than left as dead code. If
+        // "bulk loose export" comes back, build it on the same source-Author-
+        // preserves pattern as ExportSinglePreset.
 
-        /// <summary>Export the selected presets as loose .tfpreset / .tfcar.json
-        /// files into <paramref name="folderPath"/>. No manifest, no PackName
-        /// (these are loose by definition). Author / Description / AuthorVersion
-        /// still flow into each file's metadata when supplied. Filenames are
-        /// sanitized the same way as pack entries; collisions overwrite.
-        /// Returns (presetsExported, carsExported).</summary>
-        public (int presetsExported, int carsExported, string exportFolder) ExportLoose(
-            string folderPath,
-            IEnumerable<string> presetNames,
-            IEnumerable<(string CarId, string PresetName)> carPresets,
+        /// <summary>Write a single game preset to a .tfpreset.json file at
+        /// the user-chosen path. Author / Description / AuthorVersion come
+        /// from the export-metadata dialog (the curator); per-preset author
+        /// already stamped on the snapshot is preserved when present so the
+        /// original contributor keeps credit.</summary>
+        public void ExportSinglePreset(string path, string presetName,
             string author = null, string description = null, string authorVersion = null)
         {
-            if (Settings == null) return (0, 0, null);
-            if (string.IsNullOrEmpty(folderPath)) return (0, 0, null);
+            if (string.IsNullOrEmpty(path)) throw new ArgumentException("Output path is empty.", nameof(path));
+            if (string.IsNullOrEmpty(presetName)) throw new ArgumentException("Preset name is empty.", nameof(presetName));
+            if (Settings?.Presets == null || !Settings.Presets.TryGetValue(presetName, out var snap) || snap == null)
+                throw new InvalidOperationException($"Preset '{presetName}' no longer exists in the library.");
 
-            // Create a timestamped subfolder inside the picked location so
-            // each export is self-contained: the README and all loose files
-            // share one folder, multiple exports into the same parent don't
-            // collide, and the folder name itself signals "this is a
-            // Trueforce export" to recipients who see it on disk.
-            string stamp = DateTime.Now.ToString("yyyy-MM-dd-HHmmss");
-            string outDir = System.IO.Path.Combine(folderPath, $"TF4ALL-export-{stamp}");
-            System.IO.Directory.CreateDirectory(outDir);
-            folderPath = outDir;
+            // Per-preset author: keep the snapshot's own when present; only
+            // fall back to the curator's author for unattributed presets.
+            string finalAuthor  = NullIfBlank(snap.Author)        ?? NullIfBlank(author);
+            string finalDesc    = NullIfBlank(snap.Description)   ?? NullIfBlank(description);
+            string finalVer     = NullIfBlank(snap.AuthorVersion) ?? NullIfBlank(authorVersion);
 
-            var pickedPresets = presetNames != null
-                ? new HashSet<string>(presetNames, StringComparer.Ordinal)
-                : null;
-            var pickedCars = carPresets != null
-                ? new HashSet<(string, string)>(carPresets)
-                : null;
-
-            string normAuthor = NullIfBlank(author);
-            string normDesc   = NullIfBlank(description);
-            string normVer    = NullIfBlank(authorVersion);
-
-            int presetsCount = 0, carsCount = 0;
-            if (Settings.Presets != null)
+            var file = new PresetFile
             {
-                foreach (var kv in Settings.Presets)
-                {
-                    if (pickedPresets != null && !pickedPresets.Contains(kv.Key)) continue;
-                    if (kv.Value == null) continue;
-                    string path = System.IO.Path.Combine(folderPath,
-                        SanitizeForZip(kv.Key) + ".tfpreset.json");
-                    var file = new PresetFile
-                    {
-                        PresetName    = kv.Key,
-                        Snapshot      = kv.Value,
-                        Author        = normAuthor,
-                        Description   = normDesc,
-                        AuthorVersion = normVer,
-                    };
-                    System.IO.File.WriteAllText(path,
-                        Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-                    presetsCount++;
-                }
-            }
-            if (_carStore != null)
-            {
-                var loaded = _carStore.LoadAll();
-                foreach (var carKv in loaded)
-                {
-                    foreach (var pKv in carKv.Value)
-                    {
-                        var entry = pKv.Value;
-                        var key = (entry.CarId, entry.PresetName);
-                        if (pickedCars != null && !pickedCars.Contains(key)) continue;
-                        string path = System.IO.Path.Combine(folderPath,
-                            SanitizeForZip(entry.CarId) + "~"
-                            + SanitizeForZip(entry.PresetName) + ".tfcar.json");
-                        var file = new CarPresetFile
-                        {
-                            GameName      = entry.GameName ?? "",
-                            CarId         = entry.CarId,
-                            PresetName    = entry.PresetName,
-                            IsBuiltin     = false,
-                            Author        = normAuthor,
-                            Description   = normDesc,
-                            AuthorVersion = normVer,
-                            Override      = entry.Override,
-                        };
-                        System.IO.File.WriteAllText(path,
-                            Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-                        carsCount++;
-                    }
-                }
-            }
-            // Drop a README so a recipient who finds the folder understands
-            // what the files are AND knows the better path (Export as Pack)
-            // for sharing a curated set. Zipping this folder would NOT make
-            // it a real pack: there's no manifest.json, so ImportPack would
-            // just walk the contents as loose imports. The README sets the
-            // expectation up front.
-            try
-            {
-                System.IO.File.WriteAllText(
-                    System.IO.Path.Combine(folderPath, "README.txt"),
-                    BuildLooseExportReadme());
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Warn($"[Trueforce] Couldn't write loose-export README: {ex.Message}");
-            }
+                PresetName    = presetName,
+                Snapshot      = snap,
+                Author        = finalAuthor,
+                Description   = finalDesc,
+                AuthorVersion = finalVer,
+            };
+            System.IO.File.WriteAllText(path,
+                Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
+            SimHub.Logging.Current.Info($"[Trueforce] Exported single preset '{presetName}' to {path}.");
+        }
 
-            SimHub.Logging.Current.Info(
-                $"[Trueforce] Exported loose files to {folderPath}: {presetsCount} game preset(s), {carsCount} car preset(s).");
-            return (presetsCount, carsCount, folderPath);
+        /// <summary>Write a single car preset to a .tfcar.json file at the
+        /// user-chosen path. Preserves the source car preset's PackName /
+        /// Author / Description / AuthorVersion when present (so a curator
+        /// can't redistribute someone else's preset stripped of credit),
+        /// falling back to the export-metadata dialog values only when the
+        /// source itself was unattributed.</summary>
+        public void ExportSingleCarPreset(string path, string carId, string presetName,
+            string author = null, string description = null, string authorVersion = null)
+        {
+            if (_carStore == null) throw new InvalidOperationException("Car preset store is not initialised.");
+            if (string.IsNullOrEmpty(path))       throw new ArgumentException("Output path is empty.", nameof(path));
+            if (string.IsNullOrEmpty(carId))      throw new ArgumentException("CarId is empty.", nameof(carId));
+            if (string.IsNullOrEmpty(presetName)) throw new ArgumentException("Preset name is empty.", nameof(presetName));
+
+            var loaded = _carStore.LoadAll();
+            if (!loaded.TryGetValue(carId, out var perCar)
+                || !perCar.TryGetValue(presetName, out var entry)
+                || entry == null || entry.Override == null)
+                throw new InvalidOperationException($"Car preset '{carId}/{presetName}' no longer exists in the library.");
+
+            string finalAuthor = NullIfBlank(entry.Author)        ?? NullIfBlank(author);
+            string finalDesc   = NullIfBlank(entry.Description)   ?? NullIfBlank(description);
+            string finalVer    = NullIfBlank(entry.AuthorVersion) ?? NullIfBlank(authorVersion);
+            string finalPack   = NullIfBlank(entry.PackName);   // preserve source pack tag; no curator override
+
+            var file = new CarPresetFile
+            {
+                GameName      = entry.GameName ?? "",
+                CarId         = entry.CarId,
+                PresetName    = ToDiskName(entry.PresetName),
+                IsBuiltin     = false,
+                PackName      = finalPack,
+                Author        = finalAuthor,
+                Description   = finalDesc,
+                AuthorVersion = finalVer,
+                Override      = entry.Override,
+            };
+            System.IO.File.WriteAllText(path,
+                Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
+            SimHub.Logging.Current.Info($"[Trueforce] Exported single car preset '{carId}/{presetName}' to {path}.");
         }
 
         /// <summary>Read every preset and car-preset file in the pack zip.
         /// Game presets land in Settings.Presets (overwriting any with the
         /// same name); car presets go through MakeUniqueCarPresetName so a
         /// name collision keeps both. Returns a (presets, cars) count.</summary>
+        /// <summary>Open a .tfpack / .zip read-only and return its manifest +
+        /// the list of contained items WITHOUT writing anything to disk. Used
+        /// by the import preview to show pack metadata + a checklist before
+        /// the user commits. Returns null when the file isn't a zip or has
+        /// no manifest.json (caller treats those as "loose multi-file bundle"
+        /// rather than a structured pack).</summary>
+        public PresetPackManifest PeekPackManifest(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+            try
+            {
+                using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+                using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
+                {
+                    var manifestEntry = zip.GetEntry("manifest.json");
+                    if (manifestEntry == null) return null;
+                    var manifest = ReadJsonZipEntry<PresetPackManifest>(manifestEntry);
+                    if (manifest == null) return null;
+                    if (!string.IsNullOrEmpty(manifest.Type) && manifest.Type != PresetPackManifest.FileType) return null;
+                    return manifest;
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] PeekPackManifest({path}) failed: {ex.Message}");
+                return null;
+            }
+        }
+
         public ImportPackResult ImportPack(string path)
         {
             if (Settings == null) return default(ImportPackResult);
@@ -8622,6 +8806,16 @@ namespace TrueforceForAll.Plugin
                         // entries are user presets, not factory built-ins).
                         try
                         {
+                            // Fold wrapper attribution onto the snapshot so
+                            // each preset's on-disk file carries its own
+                            // author + pack lineage. Per-snapshot fields
+                            // beat the wrapper (preserve original credit
+                            // when the curator stamped over a community
+                            // contributor's work).
+                            pf.Snapshot.Author        = NullIfBlank(pf.Snapshot.Author)        ?? NullIfBlank(pf.Author)        ?? packAuthor;
+                            pf.Snapshot.Description   = NullIfBlank(pf.Snapshot.Description)   ?? NullIfBlank(pf.Description)   ?? packDesc;
+                            pf.Snapshot.AuthorVersion = NullIfBlank(pf.Snapshot.AuthorVersion) ?? NullIfBlank(pf.AuthorVersion) ?? packVer;
+                            pf.Snapshot.PackName      = NullIfBlank(pf.Snapshot.PackName)      ?? NullIfBlank(pf.PackName)      ?? packName;
                             string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                                 pf.Snapshot, Newtonsoft.Json.Formatting.Indented);
                             string gName = MakeUniqueGamePresetName(pf.PresetName, importedGameNames);
@@ -8711,6 +8905,190 @@ namespace TrueforceForAll.Plugin
             };
         }
 
+        /// <summary>Import only the selected entries from a .tfpack / .zip,
+        /// and optionally bind a per-row entry as the game-default or
+        /// car-default in the same pass. Behaves like ImportPack for entries
+        /// the user kept; entries not in the include sets are skipped with no
+        /// disk write. Mirrors ImportPack's installed-packs sidecar registration
+        /// + unique-naming so a partial pack still attributes its rows.
+        ///
+        /// <paramref name="includedGamePresets"/> = pack-side preset names to
+        /// import. <paramref name="includedCarPresets"/> = (CarId, PresetName)
+        /// tuples to import (tuple as written in the pack, NOT post-uniquing).
+        /// <paramref name="setGameDefaultFor"/> = subset of pack-side game
+        /// preset names that should be bound as the default for the
+        /// PresetFile.Snapshot.GameName inside the pack entry. <paramref
+        /// name="setCarDefaultFor"/> = subset of (CarId, PresetName) tuples
+        /// that should be bound as CarDefaults[CarId]=postUniquingName.</summary>
+        public ImportPackResult ImportPackSelective(string path,
+            HashSet<string> includedGamePresets,
+            HashSet<(string CarId, string PresetName)> includedCarPresets,
+            HashSet<string> setGameDefaultFor,
+            HashSet<(string CarId, string PresetName)> setCarDefaultFor)
+        {
+            if (Settings == null) return default(ImportPackResult);
+            if (includedGamePresets == null) includedGamePresets = new HashSet<string>(StringComparer.Ordinal);
+            if (includedCarPresets  == null) includedCarPresets  = new HashSet<(string, string)>();
+            if (setGameDefaultFor   == null) setGameDefaultFor   = new HashSet<string>(StringComparer.Ordinal);
+            if (setCarDefaultFor    == null) setCarDefaultFor    = new HashSet<(string, string)>();
+            // No-op short-circuit: if a future caller passes both include sets
+            // empty (CLI script, automated reseed) we'd otherwise open the zip,
+            // walk it, write nothing, and still register a phantom empty
+            // InstalledPack. Cheap to skip.
+            if (includedGamePresets.Count == 0 && includedCarPresets.Count == 0)
+                return default(ImportPackResult);
+
+            string packAuthor = null, packDesc = null, packVer = null, packName = null;
+            int presetsImported = 0, carsImported = 0;
+            int carDefaultsSet = 0;
+            var packEntries = new List<InstalledPackEntry>();
+
+            using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+            using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
+            {
+                var manifestEntry = zip.GetEntry("manifest.json");
+                if (manifestEntry != null)
+                {
+                    var manifest = ReadJsonZipEntry<PresetPackManifest>(manifestEntry);
+                    if (manifest != null)
+                    {
+                        if (!string.IsNullOrEmpty(manifest.Type) && manifest.Type != PresetPackManifest.FileType)
+                            throw new System.IO.InvalidDataException(
+                                $"Wrong pack type '{manifest.Type}'. Expected '{PresetPackManifest.FileType}'.");
+                        packAuthor = manifest.Author;
+                        packDesc   = manifest.Description;
+                        packVer    = manifest.AuthorVersion;
+                        packName   = manifest.PackName;
+                    }
+                }
+
+                if (Settings.Presets == null)
+                    Settings.Presets = new Dictionary<string, GameSettingsSnapshot>();
+                if (Settings.GameDefaults == null)
+                    Settings.GameDefaults = new Dictionary<string, string>();
+                if (Settings.CarDefaults  == null)
+                    Settings.CarDefaults  = new Dictionary<string, string>();
+
+                var importedGameNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var entry in zip.Entries)
+                {
+                    if (entry.FullName.StartsWith("presets/", StringComparison.OrdinalIgnoreCase)
+                        && entry.FullName.EndsWith(".tfpreset", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var pf = ReadJsonZipEntry<PresetFile>(entry);
+                        if (pf == null || pf.Snapshot == null || string.IsNullOrEmpty(pf.PresetName)) continue;
+                        if (pf.Type != PresetFile.FileType) continue;
+                        if (!includedGamePresets.Contains(pf.PresetName)) continue;
+                        try
+                        {
+                            // Fold wrapper attribution onto the snapshot
+                            // (same rule as full ImportPack).
+                            pf.Snapshot.Author        = NullIfBlank(pf.Snapshot.Author)        ?? NullIfBlank(pf.Author)        ?? packAuthor;
+                            pf.Snapshot.Description   = NullIfBlank(pf.Snapshot.Description)   ?? NullIfBlank(pf.Description)   ?? packDesc;
+                            pf.Snapshot.AuthorVersion = NullIfBlank(pf.Snapshot.AuthorVersion) ?? NullIfBlank(pf.AuthorVersion) ?? packVer;
+                            pf.Snapshot.PackName      = NullIfBlank(pf.Snapshot.PackName)      ?? NullIfBlank(pf.PackName)      ?? packName;
+                            string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+                                pf.Snapshot, Newtonsoft.Json.Formatting.Indented);
+                            string gName = MakeUniqueGamePresetName(pf.PresetName, importedGameNames);
+                            importedGameNames.Add(gName);
+                            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, gName, snapJson);
+                            packEntries.Add(new InstalledPackEntry { Kind = InstalledPackEntry.KindGame, Name = gName });
+                            presetsImported++;
+
+                            // Set-as-default for game presets requires a
+                            // (preset -> game) mapping that the bare
+                            // PresetFile + GameSettingsSnapshot doesn't carry.
+                            // The preview modal disables the toggle for game
+                            // rows accordingly; this branch stays for the day
+                            // we add a Defaults hint to PresetPackManifest.
+                            if (setGameDefaultFor.Contains(pf.PresetName))
+                            {
+                                SimHub.Logging.Current.Info(
+                                    $"[Trueforce] Selective pack import: set-as-default for game preset '{gName}' requested but not yet supported (data model doesn't carry preset->game mapping).");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Selective pack import of preset '{pf.PresetName}' failed: {ex.Message}");
+                        }
+                    }
+                    else if (entry.FullName.StartsWith("cars/", StringComparison.OrdinalIgnoreCase)
+                        && entry.FullName.EndsWith(".tfcar.json", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var cf = ReadJsonZipEntry<CarPresetFile>(entry);
+                        if (cf == null || cf.Override == null || string.IsNullOrEmpty(cf.CarId)) continue;
+                        if (cf.Type != CarPresetFile.FileType) continue;
+
+                        string desired = string.IsNullOrEmpty(cf.PresetName) ? cf.CarId : cf.PresetName;
+                        var packKey = (cf.CarId, desired);
+                        if (!includedCarPresets.Contains(packKey)) continue;
+
+                        string presetName = MakeUniqueCarPresetName(cf.CarId, desired);
+                        _carStore?.Save(cf.CarId, presetName, cf.GameName ?? "", cf.Override, isBuiltin: false,
+                            packName:      cf.PackName      ?? packName,
+                            author:        cf.Author        ?? packAuthor,
+                            description:   cf.Description    ?? packDesc,
+                            authorVersion: cf.AuthorVersion ?? packVer);
+                        packEntries.Add(new InstalledPackEntry
+                        {
+                            Kind       = InstalledPackEntry.KindCar,
+                            CarId      = cf.CarId,
+                            PresetName = presetName,
+                        });
+                        carsImported++;
+
+                        // Set-as-default for this car. Settings.CarDefaults
+                        // is a runtime cache (ShouldSerializeCarDefaults is
+                        // false post-V2 migration), so the in-memory write
+                        // alone would silently revert on next Init. Persist
+                        // through to the user library's car-defaults.json
+                        // (BuiltinPresetWriter.SetCarDefault) so the binding
+                        // survives restarts.
+                        if (setCarDefaultFor.Contains(packKey))
+                        {
+                            Settings.CarDefaults[cf.CarId] = presetName;
+                            BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, cf.CarId, presetName);
+                            carDefaultsSet++;
+                        }
+                    }
+                }
+            }
+
+            if (packEntries.Count > 0)
+            {
+                string label = NullIfBlank(packName) ?? NullIfBlank(packAuthor) ?? "Imported pack";
+                _installedPacks?.AddPack(new InstalledPack
+                {
+                    PackName      = label,
+                    Author        = packAuthor,
+                    AuthorVersion = packVer,
+                    Description   = packDesc,
+                    ImportedAt    = DateTime.Now,
+                    Entries       = packEntries,
+                });
+            }
+
+            if (presetsImported > 0)
+            {
+                UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+            }
+            this.SaveCommonSettings("GeneralSettings", Settings);
+            if (!string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
+
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] Selective pack import from {path}: {presetsImported}/{includedGamePresets.Count} game preset(s), {carsImported}/{includedCarPresets.Count} car preset(s), {carDefaultsSet} car default(s) set.");
+            return new ImportPackResult
+            {
+                PresetsImported = presetsImported,
+                CarsImported    = carsImported,
+                Author          = packAuthor,
+                Description     = packDesc,
+                AuthorVersion   = packVer,
+            };
+        }
+
         // Replace anything not-safe-in-a-zip-entry-name with '_'. Zip handles
         // most chars fine, but '/' and '\\' would create unintended directory
         // structure and a few oddballs trip up some unzip tools.
@@ -8762,6 +9140,226 @@ namespace TrueforceForAll.Plugin
             string json = Newtonsoft.Json.JsonConvert.SerializeObject(Settings, Newtonsoft.Json.Formatting.Indented);
             System.IO.File.WriteAllText(path, json);
             SimHub.Logging.Current.Info($"[Trueforce] Settings exported to {path}.");
+        }
+
+        /// <summary>Bundle ALL user-owned Trueforce data into one zip archive
+        /// for moving to another machine. Contents:
+        ///   GeneralSettings.json (the plugin's settings JSON)
+        ///   user/                 (every preset, default, and metadata file
+        ///                          the user owns; factory/ is intentionally
+        ///                          excluded because the plugin ships with it).
+        /// No customization, no per-preset metadata dialog. Conceptually
+        /// different from ExportPack / ExportSinglePreset: backup is a
+        /// snapshot of state, not a curated share.</summary>
+        public (int fileCount, long totalBytes) BackupAllToZip(string zipPath)
+        {
+            if (string.IsNullOrEmpty(zipPath)) return (0, 0);
+            int fileCount = 0;
+            long totalBytes = 0;
+
+            using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+            using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                // 1) Plugin settings JSON. Re-serialize live Settings so the
+                // backup matches the running state, not whatever's on disk
+                // (which lags an unflushed in-memory change).
+                if (Settings != null)
+                {
+                    string settingsJson = Newtonsoft.Json.JsonConvert.SerializeObject(Settings, Newtonsoft.Json.Formatting.Indented);
+                    var entry = zip.CreateEntry("GeneralSettings.json", System.IO.Compression.CompressionLevel.Optimal);
+                    using (var ws = entry.Open())
+                    using (var sw = new System.IO.StreamWriter(ws, new System.Text.UTF8Encoding(false)))
+                        sw.Write(settingsJson);
+                    fileCount++;
+                    totalBytes += settingsJson.Length;
+                }
+
+                // 2) Everything under user/ — preset files, defaults files,
+                // installed-packs sidecar, README. Skip .cleanup-<timestamp>/
+                // backup directories produced by the legacy-builtin migration.
+                string userRoot = UserPresets.CurrentFolder;
+                if (!string.IsNullOrEmpty(userRoot) && System.IO.Directory.Exists(userRoot))
+                {
+                    foreach (var path in System.IO.Directory.GetFiles(userRoot, "*", System.IO.SearchOption.AllDirectories))
+                    {
+                        if (path.IndexOf($"{System.IO.Path.DirectorySeparatorChar}.cleanup-", StringComparison.Ordinal) >= 0)
+                            continue;
+                        string rel = "user/" + path.Substring(userRoot.Length).TrimStart('\\', '/').Replace('\\', '/');
+                        try
+                        {
+                            var bytes = System.IO.File.ReadAllBytes(path);
+                            var entry = zip.CreateEntry(rel, System.IO.Compression.CompressionLevel.Optimal);
+                            using (var ws = entry.Open())
+                                ws.Write(bytes, 0, bytes.Length);
+                            fileCount++;
+                            totalBytes += bytes.LongLength;
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] Backup: couldn't add '{path}': {ex.Message}");
+                        }
+                    }
+                }
+            }
+            SimHub.Logging.Current.Info($"[Trueforce] Backup wrote {fileCount} entries ({totalBytes} bytes) to {zipPath}.");
+            return (fileCount, totalBytes);
+        }
+
+        /// <summary>Replace ALL user-owned Trueforce data with the contents of
+        /// a backup zip produced by BackupAllToZip. Wipes the user/ folder
+        /// (after backing it up to a sibling .pre-restore-<timestamp>/ folder
+        /// for safety), extracts the archive in its place, restores
+        /// GeneralSettings.json into Settings, and reloads everything from
+        /// disk. Returns the number of files restored.
+        ///
+        /// Destructive: the caller must have confirmed with the user.</summary>
+        public int RestoreAllFromZip(string zipPath)
+        {
+            if (string.IsNullOrEmpty(zipPath) || !System.IO.File.Exists(zipPath)) return 0;
+
+            string userRoot = UserPresets.CurrentFolder;
+            if (string.IsNullOrEmpty(userRoot)) throw new InvalidOperationException("User library folder is not set.");
+            // Trim any trailing path separator so the .pre-restore-<stamp>
+            // sibling computation produces a sibling rather than a child path
+            // (e.g. "C:\path\user\.pre-restore-..." instead of the intended
+            // "C:\path\user.pre-restore-...").
+            userRoot = userRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+
+            // Snapshot live Settings + the previous-user-folder path BEFORE
+            // mutating disk, so we can roll back to byte-identical pre-state
+            // if extraction or ImportSettings fails. The confirmation dialog
+            // promised a safety net; this is the implementation.
+            TrueforceSettings preState = null;
+            try
+            {
+                preState = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(
+                    Newtonsoft.Json.JsonConvert.SerializeObject(Settings));
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[Trueforce] Restore: couldn't snapshot live Settings (will continue without rollback safety net): {ex.Message}");
+            }
+
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            string safeDir = userRoot + ".pre-restore-" + stamp;
+            bool movedAside = false;
+            if (System.IO.Directory.Exists(userRoot))
+            {
+                try
+                {
+                    System.IO.Directory.Move(userRoot, safeDir);
+                    movedAside = true;
+                }
+                catch (Exception ex)
+                {
+                    // Abort: continuing with extract would overwrite live
+                    // data without a safety net, breaking the confirmation
+                    // dialog's promise.
+                    throw new InvalidOperationException(
+                        $"Could not move the existing user library out of the way ({ex.Message}). Close any open file handles in the folder and try again. No changes were made.", ex);
+                }
+            }
+            System.IO.Directory.CreateDirectory(userRoot);
+
+            int restored = 0;
+            string settingsJson = null;
+            try
+            {
+                using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+                using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
+                {
+                    foreach (var entry in zip.Entries)
+                    {
+                        if (string.IsNullOrEmpty(entry.Name)) continue;   // directory entry
+                        string name = entry.FullName.Replace('\\', '/');
+                        if (name == "GeneralSettings.json")
+                        {
+                            using (var es = entry.Open())
+                            using (var sr = new System.IO.StreamReader(es))
+                                settingsJson = sr.ReadToEnd();
+                            continue;
+                        }
+                        if (name.StartsWith("user/", StringComparison.Ordinal))
+                        {
+                            string rel = name.Substring("user/".Length);
+                            string dest = System.IO.Path.Combine(userRoot, rel.Replace('/', System.IO.Path.DirectorySeparatorChar));
+                            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest));
+                            using (var es = entry.Open())
+                            using (var ws = System.IO.File.Create(dest))
+                                es.CopyTo(ws);
+                            restored++;
+                        }
+                    }
+                }
+
+                // Apply settings JSON via the existing ImportSettings path so
+                // all the live-effect plumbing + re-cache + active-car reload
+                // runs. Any failure here will be caught + rolled back below.
+                if (!string.IsNullOrEmpty(settingsJson))
+                {
+                    string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"tf4all-restore-{stamp}.json");
+                    System.IO.File.WriteAllText(tmp, settingsJson);
+                    try { ImportSettings(tmp); }
+                    finally { try { System.IO.File.Delete(tmp); } catch { } }
+
+                    // The extracted user/ is already in post-V3 shape (every
+                    // user/games file is a wrapped or bare snapshot, every
+                    // car file is a CarPresetFile, every defaults file is in
+                    // the new location). Force-flag the migrations as done so
+                    // a backup from an older plugin version doesn't trigger
+                    // the cleanup-migrations again on next Init and silently
+                    // archive presets the user considers theirs.
+                    if (Settings != null)
+                    {
+                        Settings.PresetsMigratedV2      = true;
+                        Settings.CarsMigratedV2         = true;
+                        Settings.LegacyBuiltinsCleanedV1 = true;
+                        Settings.FoldersRestructuredV3  = true;
+                    }
+                }
+                else
+                {
+                    UserPresets.Reload();
+                    RebuildPresetCacheFromFolders();
+                    LoadAndMigrateCarPresets();
+                }
+            }
+            catch (Exception ex)
+            {
+                // Roll back: delete the partial extract, move the original
+                // user folder back, restore the live Settings snapshot.
+                try
+                {
+                    if (System.IO.Directory.Exists(userRoot)) System.IO.Directory.Delete(userRoot, recursive: true);
+                }
+                catch (Exception delEx)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Restore rollback: couldn't delete partial extract: {delEx.Message}");
+                }
+                if (movedAside && System.IO.Directory.Exists(safeDir))
+                {
+                    try { System.IO.Directory.Move(safeDir, userRoot); }
+                    catch (Exception mvEx)
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] Restore rollback: couldn't move original user library back: {mvEx.Message}. Original is preserved at {safeDir}.");
+                    }
+                }
+                if (preState != null)
+                {
+                    Settings = preState;
+                    try
+                    {
+                        UserPresets.Reload();
+                        RebuildPresetCacheFromFolders();
+                        LoadAndMigrateCarPresets();
+                    }
+                    catch { /* swallow; the user is being shown an error already */ }
+                }
+                throw new InvalidOperationException($"Restore failed and was rolled back: {ex.Message}", ex);
+            }
+
+            SimHub.Logging.Current.Info($"[Trueforce] Restore extracted {restored} user file(s) from {zipPath} (previous library archived at {safeDir}).");
+            return restored;
         }
 
         /// <summary>Replace settings from a JSON file; live effects are re-derived from the new settings.</summary>

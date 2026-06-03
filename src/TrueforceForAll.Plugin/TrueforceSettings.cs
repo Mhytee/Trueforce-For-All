@@ -352,6 +352,13 @@ namespace TrueforceForAll.Plugin
         // Persisted so it stays on across restarts on a dev machine.
         public bool DevModeUnlocked { get; set; } = false;
 
+        // Escape hatch for the import preview modal. Toggled by the PREVIEWOFF
+        // access code. When true, RunImportFlow falls back to today's silent
+        // commit-on-pick path (per-file dispatch + summary MessageBox) so a
+        // user can recover if the modal breaks on a specific file. Default
+        // false: preview is on for everyone.
+        public bool ImportPreviewBypass { get; set; } = false;
+
         // Author name auto-stamped onto exported presets / car presets / packs.
         // Set once via the Backup & sync section; the export-info dialog
         // pre-fills it and writes back any edits the user makes there. Blank
@@ -559,6 +566,17 @@ namespace TrueforceForAll.Plugin
         public AirborneSettings     Airborne     { get; set; }
 
         public Dictionary<string, CarOverride> CarOverrides { get; set; }
+
+        // Attribution fields. Null on legacy snapshots; populated by the
+        // local-save path from Settings.SharingAuthor (and on import from
+        // the PresetFile/PresetPackManifest wrapper). The Preset Manager's
+        // Source column reads Author + PackName for user-created presets
+        // when there's no InstalledPacks sidecar entry to attribute the
+        // row. Mirrors the shape on CarPresetFile.
+        public string Author        { get; set; }
+        public string AuthorVersion { get; set; }
+        public string PackName      { get; set; }
+        public string Description   { get; set; }
     }
 
     public sealed class AudioCaptureSettings

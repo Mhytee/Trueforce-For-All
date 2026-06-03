@@ -245,6 +245,9 @@ namespace TrueforceForAll.Plugin
                     ? "Choice is auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."
                     : $"Auto-remembered for '{game}'. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel.";
 
+                if (AuthorNameBox != null)
+                    AuthorNameBox.Text = _plugin.Settings?.SharingAuthor ?? "";
+
                 MasterGainSlider.Value = _plugin.Settings?.MasterGain ?? 1.0;
                 MasterGainText.Text    = MasterGainSlider.Value.ToString("F2");
                 MasterGainStepSlider.Value = _plugin.MasterGainStep;
@@ -4399,6 +4402,53 @@ namespace TrueforceForAll.Plugin
 
         private void AccessCode_Changed(object sender, RoutedEventArgs e) => CommitAccessCode();
 
+        // Author name field handlers. Commit on Enter or LostFocus. Both
+        // delegate to CommitAuthorName which trims, persists to
+        // Settings.SharingAuthor, and on the first blank-to-set transition
+        // prompts the user about backfilling existing presets.
+        private void AuthorName_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) CommitAuthorName();
+        }
+
+        private void AuthorName_Changed(object sender, RoutedEventArgs e) => CommitAuthorName();
+
+        private void CommitAuthorName()
+        {
+            if (_suppressEvents || _plugin?.Settings == null || AuthorNameBox == null) return;
+            string newAuthor = (AuthorNameBox.Text ?? "").Trim();
+            string oldAuthor = (_plugin.Settings.SharingAuthor ?? "").Trim();
+            if (string.Equals(newAuthor, oldAuthor, System.StringComparison.Ordinal))
+            {
+                if (AuthorNameStatus != null) AuthorNameStatus.Text = "";
+                return;
+            }
+            _plugin.Settings.SharingAuthor = newAuthor;
+            try { _plugin.PersistSettings(); } catch { }
+
+            // Blank-to-set transition: offer to backfill existing local
+            // presets the user authored before setting the name. Stays
+            // opt-in. Only acts on files whose Author AND PackName are
+            // both blank (so community packs are never relabeled).
+            if (string.IsNullOrEmpty(oldAuthor) && !string.IsNullOrEmpty(newAuthor))
+            {
+                var msg = $"Stamp \"{newAuthor}\" on the presets you've already saved? "
+                        + "This updates presets that don't have an author yet (your own work) and leaves community-pack presets alone.";
+                var resp = MessageBox.Show(Window.GetWindow(this), msg, "Trueforce For All",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (resp == MessageBoxResult.Yes)
+                {
+                    int n = _plugin.BackfillAuthorOnLocalPresets(newAuthor);
+                    if (AuthorNameStatus != null)
+                        AuthorNameStatus.Text = n == 0
+                            ? "Saved. Nothing needed backfilling."
+                            : $"Saved. Stamped {n} existing preset(s).";
+                    return;
+                }
+            }
+            if (AuthorNameStatus != null) AuthorNameStatus.Text = "Saved.";
+        }
+
         // Single source of truth for the HELP / CODES listing. When you add a
         // new access code in CommitAccessCode below, add a line here too so
         // HELP stays accurate as the set of codes grows.
@@ -4426,7 +4476,8 @@ namespace TrueforceForAll.Plugin
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
+            "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).\n" +
+            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.";
 
         private void CommitAccessCode()
         {
@@ -4793,6 +4844,21 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Home Feedback gain tile ON (persists). Open SimHub's home screen; a 'Trueforce' box appears next to Motors/Wind. If it doesn't show, the home tab may not be open yet, switch to it. Type HOMEBOX again to turn it off."
                         : "Home Feedback gain tile OFF. Removed from the home screen.";
+                return;
+            }
+
+            // Escape hatch for the import preview modal. Off by default; flip
+            // on to fall back to today's silent commit-on-pick path if the
+            // modal breaks on a specific file. Persists.
+            if (code.Equals("PREVIEWOFF", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.ImportPreviewBypass = !_plugin.Settings.ImportPreviewBypass;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = _plugin.Settings.ImportPreviewBypass
+                        ? "Import preview OFF. Picks commit silently on Import. Type PREVIEWOFF again to re-enable."
+                        : "Import preview ON. Import shows a confirmation modal before committing.";
                 return;
             }
 
@@ -5757,13 +5823,16 @@ namespace TrueforceForAll.Plugin
         // its own Window context.
         internal static bool PromptForExportMetadata(Window owner, TrueforcePlugin plugin,
             string title, string subjectKind,
-            out string author, out string description, out string authorVersion)
+            out string author, out string description, out string authorVersion,
+            out string packName,
+            bool includePackName = false)
         {
-            author = description = authorVersion = null;
+            author = description = authorVersion = packName = null;
             if (plugin?.Settings == null) return false;
 
             var dlg = new PresetMetadataDialog(title, subjectKind,
-                plugin.Settings.SharingAuthor, "", "")
+                plugin.Settings.SharingAuthor, "", "",
+                includePackName: includePackName, defaultPackName: null)
             {
                 Owner = owner,
             };
@@ -5773,6 +5842,7 @@ namespace TrueforceForAll.Plugin
             author        = dlg.Author;
             description   = dlg.Description;
             authorVersion = dlg.AuthorVersion;
+            packName      = dlg.PackName;
 
             string newAuthor = author?.Trim() ?? "";
             if (newAuthor != (plugin.Settings.SharingAuthor ?? ""))
@@ -5782,6 +5852,16 @@ namespace TrueforceForAll.Plugin
             }
             return true;
         }
+
+        // Back-compat overload (no packName out / no Pack Name field).
+        // Lets ManagePresetsDialog's per-row Export buttons keep their
+        // 4-arg signature without bringing in the new pack-name plumbing.
+        internal static bool PromptForExportMetadata(Window owner, TrueforcePlugin plugin,
+            string title, string subjectKind,
+            out string author, out string description, out string authorVersion)
+            => PromptForExportMetadata(owner, plugin, title, subjectKind,
+                out author, out description, out authorVersion, out _,
+                includePackName: false);
 
         /// <summary>Tiny inline name-prompt dialog. WPF has no built-in
         /// InputBox; this draws a 360x140 modal with TextBox + OK/Cancel.</summary>
@@ -5832,6 +5912,73 @@ namespace TrueforceForAll.Plugin
 
         // Export: opens the pack picker (built-ins hidden, active car
         // preset pre-checked) and saves the selection as a .tfpack.
+        // Backup: zip everything Trueforce-owned (Settings + user/) for moving
+        // to another machine. Distinct from preset Import/Export which lives
+        // in the Preset Manager.
+        private void Backup_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter   = "Zip (*.zip)|*.zip",
+                FileName = $"TF4ALL-backup-{DateTime.Now:yyyy-MM-dd}.zip",
+                Title    = "Backup all Trueforce data",
+            };
+            if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
+            try
+            {
+                var (count, bytes) = _plugin.BackupAllToZip(dlg.FileName);
+                MessageBox.Show(Window.GetWindow(this),
+                    $"Backed up {count} file(s) ({bytes:N0} bytes) to:\n{dlg.FileName}",
+                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this), $"Backup failed:\n{ex.Message}",
+                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // Restore: destructive. Replaces ALL current state with archive
+        // contents. Confirm before running; existing user/ folder is moved
+        // aside to .pre-restore-<timestamp>/ as a safety net.
+        private void Restore_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var open = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Trueforce backup (*.zip)|*.zip|All files (*.*)|*.*",
+                Title  = "Restore from backup",
+            };
+            if (open.ShowDialog(Window.GetWindow(this)) != true) return;
+
+            var confirm = MessageBox.Show(Window.GetWindow(this),
+                "Restore will REPLACE all current Trueforce settings, presets, defaults, and car tunings with the backup's contents.\n\nYour current data will be moved to a .pre-restore-<timestamp> folder next to the user library as a safety net, but the live state will be the backup's.\n\nContinue?",
+                "Trueforce For All", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            try
+            {
+                int n = _plugin.RestoreAllFromZip(open.FileName);
+                ClearDirty();
+                RefreshFromPlugin();
+                MessageBox.Show(Window.GetWindow(this),
+                    n == 0
+                        ? "Restore completed but the archive contained no user files. The settings JSON (if any) was applied."
+                        : $"Restored {n} file(s) from:\n{open.FileName}\n\nThe previous user library has been preserved at user.pre-restore-<timestamp> next to it.",
+                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this), $"Restore failed:\n{ex.Message}",
+                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // Legacy handlers retained for static RunExportFlow / RunImportFlow's
+        // co-location; not wired from XAML anymore (preset I/O moved to the
+        // Preset Manager). Keeps ManagePresetsDialog's call to the static
+        // bodies working without recompiling the public API.
         private void Export_Click(object sender, RoutedEventArgs e)
         {
             RunExportFlow(Window.GetWindow(this), _plugin);
@@ -5904,48 +6051,85 @@ namespace TrueforceForAll.Plugin
             var pickedCars    = picker.SelectedCarPresets;
             if (pickedPresets.Count == 0 && pickedCars.Count == 0) return;
 
-            // Pack mode prompts for author/desc/version + writes a .tfpack
-            // archive tagged with the picker's Pack Name. Folder-of-files
-            // mode keeps the same author/desc/version prompt (each loose
-            // file still carries those) but skips Pack Name and writes
-            // .tfpreset.json / .tfcar.json + a README.txt into a folder.
-            if (!PromptForExportMetadata(owner, plugin, "Export", "pack",
-                out string author, out string desc, out string ver)) return;
+            // Output type is decided by the count of picked items:
+            //   1 picked → single loose .tfpreset.json / .tfcar.json file
+            //   2+ picked → .tfpack archive with pack identity
+            // No mode toggle; the rule keeps a pack from ever being a single
+            // preset masquerading as a curated bundle.
+            int totalPicked = pickedPresets.Count + pickedCars.Count;
+            bool isPack = totalPicked > 1;
 
-            if (picker.SelectedOutputMode == PackPickerWindow.ExportOutputMode.FolderOfFiles)
+            // Capture metadata in one dialog. Pack mode requires Pack Name;
+            // single-file mode doesn't show it.
+            if (!PromptForExportMetadata(owner, plugin, "Export",
+                isPack ? "pack" : "preset",
+                out string author, out string desc, out string ver,
+                out string packName,
+                includePackName: isPack)) return;
+
+            if (!isPack)
             {
-                var folderDlg = new System.Windows.Forms.FolderBrowserDialog
+                // Single loose file: pick one .tfpreset.json or .tfcar.json
+                // depending on what the user picked, write it directly to
+                // the user-chosen path.
+                if (pickedPresets.Count == 1)
                 {
-                    Description = "Pick a folder to drop the loose preset files into. A README.txt will be added explaining how to share them.",
-                    ShowNewFolderButton = true,
-                };
-                if (folderDlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-                try
-                {
-                    var (p, c, outFolder) = plugin.ExportLoose(
-                        folderDlg.SelectedPath,
-                        pickedPresets,
-                        pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)),
-                        author, desc, ver);
-                    MessageBox.Show(owner,
-                        $"Exported {p} preset(s) and {c} car preset(s) as loose files to:\n{outFolder}",
-                        "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                    string nm = pickedPresets[0];
+                    var dlg1 = new Microsoft.Win32.SaveFileDialog
+                    {
+                        Filter     = "TF4ALL preset (*.tfpreset.json)|*.tfpreset.json",
+                        FileName   = MakeFileSafe(nm) + ".tfpreset.json",
+                        DefaultExt = "tfpreset.json",
+                        Title      = "Export preset",
+                    };
+                    if (dlg1.ShowDialog(owner) != true) return;
+                    try
+                    {
+                        plugin.ExportSinglePreset(dlg1.FileName, nm, author, desc, ver);
+                        MessageBox.Show(owner, $"Exported preset '{nm}' to:\n{dlg1.FileName}",
+                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(owner, $"Export failed:\n{ex.Message}",
+                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
                 }
-                catch (Exception ex)
+                else if (pickedCars.Count == 1)
                 {
-                    MessageBox.Show(owner, $"Export failed:\n{ex.Message}",
-                        "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                    var car = pickedCars[0];
+                    var dlg2 = new Microsoft.Win32.SaveFileDialog
+                    {
+                        Filter     = "TF4ALL car preset (*.tfcar.json)|*.tfcar.json",
+                        FileName   = MakeFileSafe($"{car.CarId}~{car.PresetName}") + ".tfcar.json",
+                        DefaultExt = "tfcar.json",
+                        Title      = "Export car preset",
+                    };
+                    if (dlg2.ShowDialog(owner) != true) return;
+                    try
+                    {
+                        plugin.ExportSingleCarPreset(dlg2.FileName, car.CarId, car.PresetName, author, desc, ver);
+                        MessageBox.Show(owner, $"Exported car preset '{car.PresetName}' for '{car.CarId}' to:\n{dlg2.FileName}",
+                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(owner, $"Export failed:\n{ex.Message}",
+                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
                 }
                 return;
             }
 
-            // Pack mode: archive output.
+            // Pack: archive output. Pack-level author = the user (curator);
+            // per-preset authors are preserved by ExportPack so original
+            // contributors keep credit.
             string defaultName = $"TF4ALL-pack-{DateTime.Now:yyyy-MM-dd}.tfpack";
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Filter   = "TF4ALL pack (*.tfpack)|*.tfpack|Zip (*.zip)|*.zip",
                 FileName = defaultName,
-                Title    = "Export",
+                Title    = "Export pack",
             };
             if (dlg.ShowDialog(owner) != true) return;
             try
@@ -5954,7 +6138,7 @@ namespace TrueforceForAll.Plugin
                     dlg.FileName,
                     pickedPresets,
                     pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)),
-                    author, desc, ver, picker.PackName);
+                    author, desc, ver, packName);
                 MessageBox.Show(owner, $"Exported {p} preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
                                 "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -5995,62 +6179,161 @@ namespace TrueforceForAll.Plugin
             int filesSkipped     = 0;
             var failures         = new List<string>();
 
+            // Classify every picked path into an ImportCandidate (peeks
+            // manifest / type / inner fields without writing). Then if any
+            // candidate has previewable content, route through the preview
+            // modal so the user can deselect rows + toggle set-as-default
+            // before committing. Settings-backup + classify-failure
+            // candidates skip the modal (they need their own confirmation
+            // path or have nothing to choose), but their dispatch still
+            // happens in the same loop afterward so the summary at the end
+            // covers the whole batch.
+            //
+            // PREVIEWOFF access code bypasses the preview entirely
+            // (commit-on-pick path), kept as an escape hatch while the
+            // modal stabilizes.
+            bool previewBypass = plugin.Settings != null && plugin.Settings.ImportPreviewBypass;
+            var candidates = new List<ImportCandidate>(paths.Length);
             foreach (var path in paths)
+                candidates.Add(BuildImportCandidate(plugin, path));
+
+            bool anyPreviewable = candidates.Any(c =>
+                (c.Kind == ImportCandidateKind.Pack
+                 || c.Kind == ImportCandidateKind.GamePreset
+                 || c.Kind == ImportCandidateKind.CarPreset)
+                && c.Items != null && c.Items.Count > 0);
+
+            if (anyPreviewable && !previewBypass)
             {
-                string ext = (System.IO.Path.GetExtension(path) ?? "").ToLowerInvariant();
+                var previewable = candidates
+                    .Where(c => c.Kind == ImportCandidateKind.Pack
+                             || c.Kind == ImportCandidateKind.GamePreset
+                             || c.Kind == ImportCandidateKind.CarPreset)
+                    .ToList();
+                var preview = new ImportPreviewWindow(previewable) { Owner = owner };
+                if (preview.Owner == null) preview.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                if (preview.ShowDialog() != true) return false;
+                // The dialog mutates IsChecked / SetAsDefault on each
+                // PreviewItem; the dispatch loop below reads those flags.
+            }
+
+            foreach (var c in candidates)
+            {
                 try
                 {
-                    if (ext == ".tfpack" || ext == ".zip")
+                    switch (c.Kind)
                     {
-                        var r = plugin.ImportPack(path);
-                        presetsImported += r.PresetsImported;
-                        carsImported    += r.CarsImported;
-                        packsImported++;
-                        continue;
-                    }
+                        case ImportCandidateKind.Pack:
+                        {
+                            if (previewBypass)
+                            {
+                                // Full-pack import via the old commit-on-pick
+                                // path. Bypasses BuildImportCandidate's
+                                // manifest-shaped enumeration so even
+                                // manifest-incomplete zips import the full
+                                // set of zip entries.
+                                var r0 = plugin.ImportPack(c.Path);
+                                if (r0.PresetsImported > 0 || r0.CarsImported > 0)
+                                {
+                                    presetsImported += r0.PresetsImported;
+                                    carsImported    += r0.CarsImported;
+                                    packsImported++;
+                                }
+                                else
+                                {
+                                    filesSkipped++;
+                                }
+                                continue;
+                            }
+                            // Preview path: collect the user's per-row choices.
+                            // Skip the candidate when every item got unchecked
+                            // in the modal — nothing to commit and we'd
+                            // register a phantom empty pack.
+                            var keptGames = c.Items
+                                .Where(i => i.Kind == "game" && i.IsChecked)
+                                .Select(i => i.Name).ToList();
+                            var keptCars = c.Items
+                                .Where(i => i.Kind == "car" && i.IsChecked)
+                                .Select(i => (i.CarId, i.Name)).ToList();
+                            if (keptGames.Count == 0 && keptCars.Count == 0) { filesSkipped++; continue; }
 
-                    string json = System.IO.File.ReadAllText(path);
-                    string type = PeekJsonType(json);
-                    if (type == PresetFile.FileType)
-                    {
-                        plugin.ImportPreset(path);
-                        presetsImported++;
-                        continue;
-                    }
-                    if (type == CarPresetFile.FileType)
-                    {
-                        plugin.ImportCarPreset(path);
-                        carsImported++;
-                        continue;
-                    }
+                            var setCarDefault = new HashSet<(string, string)>(
+                                c.Items
+                                    .Where(i => i.Kind == "car" && i.IsChecked && i.SetAsDefault)
+                                    .Select(i => (i.CarId, i.Name)));
+                            var setGameDefault = new HashSet<string>(StringComparer.Ordinal);   // V1: empty
+                            var r = plugin.ImportPackSelective(c.Path,
+                                new HashSet<string>(keptGames, StringComparer.Ordinal),
+                                new HashSet<(string, string)>(keptCars),
+                                setGameDefault, setCarDefault);
+                            if (r.PresetsImported > 0 || r.CarsImported > 0)
+                            {
+                                presetsImported += r.PresetsImported;
+                                carsImported    += r.CarsImported;
+                                packsImported++;
+                            }
+                            else
+                            {
+                                filesSkipped++;
+                            }
+                            continue;
+                        }
 
-                    // No recognised Type marker. Only offer the destructive
-                    // "replace all settings" path if the file actually looks
-                    // like a settings backup (it has the settings' top-level
-                    // fields). An unrecognized or malformed file must NOT be
-                    // mistaken for a backup and risk wiping everything.
-                    if (!LooksLikeSettingsBackup(json))
-                    {
-                        filesSkipped++;
-                        failures.Add($"{System.IO.Path.GetFileName(path)}: unrecognized file (not a TF4ALL preset, car preset, pack, or settings backup)");
-                        continue;
-                    }
-                    var confirm = MessageBox.Show(owner,
-                        $"'{System.IO.Path.GetFileName(path)}' looks like a full TF4ALL settings backup. Importing replaces all current settings (master, audio, every effect, all per-car overrides). Continue with this file?",
-                        "Trueforce For All", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (confirm == MessageBoxResult.Yes)
-                    {
-                        plugin.ImportSettings(path);
-                        settingsImported++;
-                    }
-                    else
-                    {
-                        filesSkipped++;
+                        case ImportCandidateKind.GamePreset:
+                        {
+                            // Loose game preset is a single item: skip if
+                            // the user unchecked it in the modal.
+                            var only = c.Items?.FirstOrDefault();
+                            if (only != null && !only.IsChecked) { filesSkipped++; continue; }
+                            plugin.ImportPreset(c.Path);
+                            presetsImported++;
+                            continue;
+                        }
+
+                        case ImportCandidateKind.CarPreset:
+                        {
+                            var only = c.Items?.FirstOrDefault();
+                            if (only != null && !only.IsChecked) { filesSkipped++; continue; }
+                            var result = plugin.ImportCarPreset(c.Path);
+                            carsImported++;
+                            // ImportCarPreset already sets CarDefaults[carId]=presetName
+                            // unconditionally as part of its existing behavior,
+                            // so the user's set-as-default toggle is honored by
+                            // default. Nothing extra to wire here for V1.
+                            continue;
+                        }
+
+                        case ImportCandidateKind.SettingsBackup:
+                        {
+                            // Destructive: prompt per file, outside the
+                            // per-item-checkbox model.
+                            var confirm = MessageBox.Show(owner,
+                                $"'{System.IO.Path.GetFileName(c.Path)}' looks like a full TF4ALL settings backup. Importing replaces all current settings (master, audio, every effect, all per-car overrides). Continue with this file?",
+                                "Trueforce For All", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                            if (confirm == MessageBoxResult.Yes)
+                            {
+                                plugin.ImportSettings(c.Path);
+                                settingsImported++;
+                            }
+                            else
+                            {
+                                filesSkipped++;
+                            }
+                            continue;
+                        }
+
+                        case ImportCandidateKind.Unknown:
+                        default:
+                        {
+                            filesSkipped++;
+                            failures.Add($"{System.IO.Path.GetFileName(c.Path)}: {c.FailureMessage ?? "unrecognized file"}");
+                            continue;
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    failures.Add($"{System.IO.Path.GetFileName(path)}: {ex.Message}");
+                    failures.Add($"{System.IO.Path.GetFileName(c.Path)}: {ex.Message}");
                 }
             }
 
@@ -6105,6 +6388,178 @@ namespace TrueforceForAll.Plugin
                 return jo["MasterGain"] != null && (jo["Performance"] != null || jo["Forza"] != null);
             }
             catch { return false; }
+        }
+
+        // ---------- Import preview types ----------
+        // ImportCandidate + ImportPreviewItem describe what one picked file
+        // contributes to the preview modal. RunImportFlow builds one
+        // ImportCandidate per picked path via BuildImportCandidate, the modal
+        // surfaces them with per-row include + set-as-default checkboxes,
+        // and on OK the candidates are dispatched (selective for packs,
+        // existing ImportPreset/ImportCarPreset for loose).
+
+        internal enum ImportCandidateKind { Pack, GamePreset, CarPreset, SettingsBackup, Unknown }
+
+        internal sealed class ImportPreviewItem
+        {
+            public string Kind { get; set; }            // "game" or "car"
+            public string Name { get; set; }            // game preset name OR car preset name
+            public string CarId { get; set; }           // populated for car rows
+            public string GameName { get; set; }        // game the preset/car belongs to (display + default-resolution hint)
+            public bool   IsChecked { get; set; }       // include in import
+            public bool   SetAsDefault { get; set; }    // bind as game/car default in same pass
+        }
+
+        internal sealed class ImportCandidate
+        {
+            public string Path { get; set; }
+            public ImportCandidateKind Kind { get; set; }
+            public string LooseJson { get; set; }       // cached JSON for loose files (Preset/Car/SettingsBackup), null for packs
+            public PresetPackManifest Manifest { get; set; }   // populated for Kind=Pack
+            public List<ImportPreviewItem> Items { get; set; } = new List<ImportPreviewItem>();
+            public string FailureMessage { get; set; }  // populated when classification itself failed (read-error, unsupported)
+        }
+
+        // Classify one picked path into an ImportCandidate. Reads (peeks) the
+        // file's metadata WITHOUT writing anything. For packs, opens the zip
+        // and peeks manifest.json to enumerate contained items. For loose
+        // JSONs, peeks the top-level Type marker + the inner PresetName /
+        // CarId / GameName so the preview row has something to show. Never
+        // throws on bad input; returns a candidate with Kind=Unknown and a
+        // populated FailureMessage instead.
+        internal static ImportCandidate BuildImportCandidate(TrueforcePlugin plugin, string path)
+        {
+            var c = new ImportCandidate { Path = path, Kind = ImportCandidateKind.Unknown };
+            try
+            {
+                string ext = (System.IO.Path.GetExtension(path) ?? "").ToLowerInvariant();
+                if (ext == ".tfpack" || ext == ".zip")
+                {
+                    var manifest = plugin.PeekPackManifest(path);
+                    if (manifest == null)
+                    {
+                        c.FailureMessage = "Not a TF4ALL pack (no manifest.json inside).";
+                        return c;
+                    }
+                    c.Kind = ImportCandidateKind.Pack;
+                    c.Manifest = manifest;
+                    // Read the REAL PresetName from each .tfpreset entry's
+                    // PresetFile.PresetName field rather than deriving it
+                    // from the (sanitized) zip entry path. ExportPack runs
+                    // SanitizeForZip(presetName) on the entry filename but
+                    // keeps the original name inside the file, so any preset
+                    // whose name contained '/ \\ : * ? " < > |' would
+                    // mismatch ImportPackSelective's include-set lookup and
+                    // silently drop. Reading the inner field also gives us
+                    // the right display name in the modal.
+                    try
+                    {
+                        using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+                        using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
+                        {
+                            foreach (var entry in zip.Entries)
+                            {
+                                if (entry.FullName.StartsWith("presets/", StringComparison.OrdinalIgnoreCase)
+                                    && entry.FullName.EndsWith(".tfpreset", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        using (var es = entry.Open())
+                                        using (var sr = new System.IO.StreamReader(es))
+                                        {
+                                            var jo = Newtonsoft.Json.Linq.JObject.Parse(sr.ReadToEnd());
+                                            string realName = (string)jo["PresetName"];
+                                            if (string.IsNullOrEmpty(realName))
+                                                realName = System.IO.Path.GetFileNameWithoutExtension(entry.Name);
+                                            c.Items.Add(new ImportPreviewItem
+                                            {
+                                                Kind = "game", Name = realName,
+                                                IsChecked = true, SetAsDefault = false,
+                                            });
+                                        }
+                                    }
+                                    catch { /* malformed entry; skip */ }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[Trueforce] BuildImportCandidate: peek of pack presets failed: {ex.Message}");
+                    }
+                    if (manifest.Cars != null)
+                    {
+                        foreach (var packed in manifest.Cars)
+                        {
+                            if (packed == null || string.IsNullOrEmpty(packed.CarId)) continue;
+                            c.Items.Add(new ImportPreviewItem
+                            {
+                                Kind = "car",
+                                CarId = packed.CarId,
+                                Name = string.IsNullOrEmpty(packed.PresetName) ? packed.CarId : packed.PresetName,
+                                GameName = packed.GameName,
+                                IsChecked = true, SetAsDefault = false,
+                            });
+                        }
+                    }
+                    return c;
+                }
+
+                // Loose JSON. Read once, peek Type + a few inner fields.
+                string json = System.IO.File.ReadAllText(path);
+                c.LooseJson = json;
+                string type = PeekJsonType(json);
+                if (type == PresetFile.FileType)
+                {
+                    c.Kind = ImportCandidateKind.GamePreset;
+                    try
+                    {
+                        var jo = Newtonsoft.Json.Linq.JObject.Parse(json);
+                        string presetName = (string)jo["PresetName"] ?? System.IO.Path.GetFileNameWithoutExtension(path);
+                        string gameName   = (string)(jo["Snapshot"]?["GameName"]);
+                        c.Items.Add(new ImportPreviewItem
+                        {
+                            Kind = "game", Name = presetName, GameName = gameName,
+                            IsChecked = true, SetAsDefault = false,
+                        });
+                    }
+                    catch { /* keep the candidate, fall back to filename */ }
+                    return c;
+                }
+                if (type == CarPresetFile.FileType)
+                {
+                    c.Kind = ImportCandidateKind.CarPreset;
+                    try
+                    {
+                        var jo = Newtonsoft.Json.Linq.JObject.Parse(json);
+                        string presetName = (string)jo["PresetName"];
+                        string carId      = (string)jo["CarId"];
+                        string gameName   = (string)jo["GameName"];
+                        c.Items.Add(new ImportPreviewItem
+                        {
+                            Kind = "car",
+                            CarId = carId,
+                            Name = string.IsNullOrEmpty(presetName) ? carId : presetName,
+                            GameName = gameName,
+                            IsChecked = true, SetAsDefault = false,
+                        });
+                    }
+                    catch { /* keep the candidate, fall back to filename */ }
+                    return c;
+                }
+                if (LooksLikeSettingsBackup(json))
+                {
+                    c.Kind = ImportCandidateKind.SettingsBackup;
+                    return c;
+                }
+                c.FailureMessage = "Unrecognized file (not a TF4ALL preset, car preset, pack, or settings backup).";
+                return c;
+            }
+            catch (Exception ex)
+            {
+                c.FailureMessage = ex.Message;
+                return c;
+            }
         }
 
         // ---------- Performance tab ----------
