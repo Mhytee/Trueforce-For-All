@@ -598,6 +598,21 @@ namespace TrueforceForAll.Plugin
         /// (e.g. AC's CarSettings_RedLineRPM). Treated as the truth and
         /// never persisted — the apply path reads it live each time.</summary>
         GameTelemetry,
+        /// <summary>Synthesized at lookup time from BuiltinCarCylinders (the
+        /// in-DLL curated table covering AC + FH5). Never persisted to disk:
+        /// the variant is constructed on the fly so future bake updates flow
+        /// automatically. Conceptually a curated baseline that any stored
+        /// User / Community correction can override.</summary>
+        Baked,
+        /// <summary>A Baked variant whose cylinder + config came from the
+        /// AC swap-override pass: BuiltinCarCylinders had the chassis as
+        /// (say) 4-cyl Inline, but the car's ui_car.json description carried
+        /// a "swap" marker plus a known engine codename (LS / 2JZ / RB26),
+        /// and CarCylinderResolver's TryAcSwapOverride rewrote the layout
+        /// to match the swap. Surfaced as its own source so the diagnostic
+        /// label tells you the refinement fired (and a wrong swap-override
+        /// can be reported / corrected separately from a wrong base bake).</summary>
+        SwapOverride,
     }
 
     /// <summary>One engine configuration for a (game, carId). For most cars

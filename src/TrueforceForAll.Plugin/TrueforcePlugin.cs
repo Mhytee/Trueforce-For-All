@@ -2449,19 +2449,13 @@ namespace TrueforceForAll.Plugin
                         && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
                         RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
 
-                    // Layout: prefer the variant when cylinders are valid, but
-                    // defer to the legacy resolver when the variant is a Scanner
-                    // seed (Confirmations=0) AND the bake now knows this car.
-                    // This preserves the bake-wins-over-cache invariant that
-                    // existed pre-CarFacts so future bake additions reach users
-                    // who had the car cached at migration time.
+                    // Layout: use the variant when cylinders are valid. The
+                    // bake-wins-over-stale-cache invariant is now handled
+                    // inside TryResolveActiveVariant: an unconfirmed Scanner
+                    // seed yields to the virtual Baked variant for any car
+                    // BuiltinCarCylinders knows about.
                     bool variantUsableForLayout = haveVariant
                         && v.Cylinders >= 1 && v.Cylinders <= 16;
-                    if (variantUsableForLayout
-                        && v.Source == CarFactSource.Scanner
-                        && v.Confirmations == 0
-                        && BuiltinCarCylinders.TryGet(_activeGame, carId, out _))
-                        variantUsableForLayout = false;
 
                     if (variantUsableForLayout)
                     {
@@ -6733,42 +6727,112 @@ namespace TrueforceForAll.Plugin
                     $"[Trueforce] Seeded {seeded} car-fact variant(s) from the cylinder cache.");
         }
 
-        // CarFacts lookup at apply time. Pick the active EngineVariant for
-        // (game, carId) using the variant-selection rules:
-        //   1. Single variant → use it.
-        //   2. CarFactsSelection[(game,carId)] set → use that variant by Id.
-        //   3. Highest-Confirmations variant (deterministic tiebreak: first
-        //      seen).
-        // Returns false when no bundle exists or the bundle has no variants.
-        // (Telemetry-based "unambiguous match" disambiguation is Stage 3 —
-        // this just covers the same-as-cache day-one path.)
+        // CarFacts lookup at apply time. Resolution order:
+        //   1. Authoritative stored variant for (game,carId) — User, Community,
+        //      or Scanner with Confirmations > 0 — wins outright (user-
+        //      confirmed local truth or community-vetted data).
+        //   2. Else if BuiltinCarCylinders has an entry, synthesize a virtual
+        //      "Baked" variant (Source=Baked, Id="baked:{game}/{carId}"). The
+        //      bake is the curated baseline shipped in the DLL (~890 AC cars
+        //      + ~840 FH5 cars); we surface it through CarFacts so the apply
+        //      cascade, the future Stage 2 variant picker, and submission
+        //      flows all see one unified source of car facts.
+        //   3. Else if an unconfirmed Scanner-seed stored variant exists (the
+        //      legacy CarCylinderCache migration cohort), use it as last
+        //      resort.
+        //   4. Otherwise no variant; caller falls through to the heuristic
+        //      tokenizer / telemetry paths.
+        // (Telemetry-based "unambiguous match" disambiguation is Stage 3.)
         private bool TryResolveActiveVariant(string game, string carId, out EngineVariant variant)
         {
             variant = null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
-            if (Settings?.CarFacts == null) return false;
-            string key = game + "/" + carId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return false;
-            var variants = bundle.EngineVariants;
-            if (variants == null || variants.Count == 0) return false;
 
-            if (variants.Count == 1)
+            EngineVariant storedPick = PickStoredVariant(game, carId);
+            bool storedIsAuthoritative = storedPick != null
+                && !(storedPick.Source == CarFactSource.Scanner && storedPick.Confirmations == 0);
+            if (storedIsAuthoritative)
             {
-                variant = variants[0];
-                return variant != null;
+                variant = storedPick;
+                return true;
             }
 
-            // User's chosen default for this car, if set.
+            // Bake-class hit: defer to CarCylinderResolver which applies AC
+            // swap-override + DetectEngineConfig refinements on top of the
+            // raw bake values. Gating on BuiltinCarCylinders.TryGet first
+            // means we only enter this branch for cars the bake knows about
+            // (resolver heuristic-tokenizer hits are NOT surfaced here as
+            // Baked: they stay in the legacy fallback path with Source
+            // labels like "cylword" / "tag" / "codename").
+            // EV special case: bake's IsElectric flag has no first-class
+            // representation in EngineVariant yet, and a stale ICE Scanner
+            // seed shouldn't shadow a known-electric bake entry. Return
+            // false so the caller drops into the legacy resolver branch,
+            // which handles EngineLayout.Electric correctly.
+            if (BuiltinCarCylinders.TryGet(game, carId, out var rawBake))
+            {
+                if (rawBake.IsElectric) return false;
+                if (CarCylinderResolver.TryResolve(game, carId, out var refined)
+                    && refined != null
+                    && !refined.IsElectric
+                    && refined.Cylinders >= 1 && refined.Cylinders <= 16)
+                {
+                    // Preserve the AC swap-override attribution when the
+                    // refinement pass changed the layout: lets the diagnostic
+                    // banner read "(heuristic: swap-override)" instead of
+                    // "(from built-in car list)" so a wrong swap-override
+                    // is distinguishable from a wrong base bake entry.
+                    var resolvedSource = string.Equals(refined.Source,
+                        "swap-override", StringComparison.OrdinalIgnoreCase)
+                        ? CarFactSource.SwapOverride
+                        : CarFactSource.Baked;
+                    variant = new EngineVariant
+                    {
+                        Id            = "baked:" + game + "/" + carId,
+                        Label         = "Stock",
+                        Cylinders     = refined.Cylinders,
+                        EngineConfig  = refined.EngineConfig,
+                        RedlineRpm    = null,
+                        Source        = resolvedSource,
+                        Confirmations = 0,
+                    };
+                    return true;
+                }
+            }
+
+            if (storedPick != null)
+            {
+                variant = storedPick;
+                return true;
+            }
+
+            return false;
+        }
+
+        // Picks one variant from the stored CarFacts bundle (if any), or null
+        // when no stored data exists. Selection rules within the bundle:
+        //   - Single variant → use it.
+        //   - CarFactsSelection set → use that variant by Id.
+        //   - Else highest-Confirmations variant (first-seen breaks ties).
+        private EngineVariant PickStoredVariant(string game, string carId)
+        {
+            if (Settings?.CarFacts == null) return null;
+            string key = game + "/" + carId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return null;
+            var variants = bundle.EngineVariants;
+            if (variants == null || variants.Count == 0) return null;
+
+            if (variants.Count == 1) return variants[0];
+
             if (Settings.CarFactsSelection != null
                 && Settings.CarFactsSelection.TryGetValue(key, out var chosenId)
                 && !string.IsNullOrEmpty(chosenId))
             {
                 for (int i = 0; i < variants.Count; i++)
                     if (variants[i] != null && variants[i].Id == chosenId)
-                    { variant = variants[i]; return true; }
+                        return variants[i];
             }
 
-            // Highest-confirmation wins; first-seen breaks ties.
             EngineVariant best = null;
             int bestConf = int.MinValue;
             for (int i = 0; i < variants.Count; i++)
@@ -6781,8 +6845,7 @@ namespace TrueforceForAll.Plugin
                     bestConf = cand.Confirmations;
                 }
             }
-            variant = best;
-            return variant != null;
+            return best;
         }
 
         // Map CarFactSource onto the source-label vocabulary the engine-layout
@@ -6802,6 +6865,8 @@ namespace TrueforceForAll.Plugin
                 case CarFactSource.Community:     return "community";
                 case CarFactSource.User:          return "user-set";
                 case CarFactSource.GameTelemetry: return "telemetry";
+                case CarFactSource.Baked:         return "baked";
+                case CarFactSource.SwapOverride:  return "swap-override";
                 default:                          return s.ToString().ToLowerInvariant();
             }
         }
