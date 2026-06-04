@@ -6995,6 +6995,17 @@ namespace TrueforceForAll.Plugin
             return null;
         }
 
+        /// <summary>The variant the resolution cascade picked for this car at
+        /// apply time, regardless of source (User correction / Community /
+        /// Scanner / Baked virtual). Used by the Correct dialog so its
+        /// pre-fill reflects what the plugin currently thinks the car is,
+        /// not a hardcoded default. Null when no variant resolves and we'd
+        /// be in the telemetry / heuristic fallback path.</summary>
+        public EngineVariant GetActiveResolvedVariant(string game, string carId)
+        {
+            return TryResolveActiveVariant(game, carId, out var v) ? v : null;
+        }
+
         // Map CarFactSource onto the source-label vocabulary the engine-layout
         // status renderer (SettingsControl.xaml.cs EngineLayoutAutoText)
         // already understands. Without this mapping the raw enum-name lowercase
@@ -7574,6 +7585,8 @@ namespace TrueforceForAll.Plugin
                 && EqF2(a.DutyCycle, b.DutyCycle)
                 && EqF2(a.ActiveAmp, b.ActiveAmp)
                 && EqF2(a.Threshold, b.Threshold)
+                && EqI (a.RedlineOffsetRpm, b.RedlineOffsetRpm)
+                && a.EngageMode == b.EngageMode
                 && a.Waveform == b.Waveform;
         }
         private static bool Eq(AudioCaptureSettings a, AudioCaptureSettings b)

@@ -3293,6 +3293,14 @@ namespace TrueforceForAll.Plugin
 
             string carDisplay = _plugin.ActiveCarDisplayName;
             var existing = _plugin.GetUserCarFactsCorrection(game, carId);
+            // When the user has no prior correction on file, pre-fill from
+            // whatever the resolver picked (Baked virtual / Community /
+            // Scanner) so the dialog opens showing what the plugin currently
+            // thinks the car is - not a stale 8 / Auto. Skipped when an
+            // existing correction will drive the pre-fill anyway.
+            var prefillSeed = existing == null
+                ? _plugin.GetActiveResolvedVariant(game, carId)
+                : null;
 
             string autoSummary = null;
             var ep = _plugin.EnginePulse;
@@ -3317,7 +3325,7 @@ namespace TrueforceForAll.Plugin
                             + srcSuffix;
             }
 
-            var dialog = new CarFactsCorrectionWindow(carDisplay, carId, autoSummary, existing)
+            var dialog = new CarFactsCorrectionWindow(carDisplay, carId, autoSummary, existing, prefillSeed)
             {
                 Owner = Window.GetWindow(this),
             };

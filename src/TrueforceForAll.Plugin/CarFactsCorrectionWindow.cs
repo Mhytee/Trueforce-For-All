@@ -56,10 +56,17 @@ namespace TrueforceForAll.Plugin
         /// AutoLayoutSource. Null hides the line.</param>
         /// <param name="existingCorrection">User-source variant already on
         /// file, or null when the user is creating a fresh correction. Pre-
-        /// fills the inputs and enables the Remove button.</param>
+        /// fills the inputs (when non-null) and enables the Remove button.</param>
+        /// <param name="prefillSeed">When <paramref name="existingCorrection"/>
+        /// is null, fall back to this variant's cyl + EngineConfig for the
+        /// pre-fill so the dialog opens showing what the plugin currently
+        /// thinks the car is. Null falls through to the hardcoded 8/Auto
+        /// default. Does NOT enable Remove (only User-source corrections
+        /// can be removed).</param>
         public CarFactsCorrectionWindow(
             string carDisplayName, string carId, string autoDetectedSummary,
-            EngineVariant existingCorrection)
+            EngineVariant existingCorrection,
+            EngineVariant prefillSeed = null)
         {
             Title           = "Correct engine layout";
             Width           = 460;
@@ -157,18 +164,26 @@ namespace TrueforceForAll.Plugin
 
             // Pre-fill from the existing correction (edit mode) or sensible
             // defaults (new mode).
+            // Pre-fill source priority:
+            //   1. existingCorrection (the user's prior User-source correction)
+            //      so editing-then-saving doesn't lose what they last typed.
+            //   2. prefillSeed (whatever the resolver currently picked: Baked
+            //      virtual variant, Community, Scanner) so a first-time
+            //      correction starts from what the plugin shows, not from a
+            //      stale 8 / Auto.
+            //   3. Hardcoded 8 / Auto as last resort when neither is set.
+            // Custom is coerced to Auto everywhere since the dialog doesn't
+            // author firing patterns.
             int defaultCyl = 8;
             EngineConfig defaultCfg = EngineConfig.Auto;
-            if (existingCorrection != null
-                && existingCorrection.Cylinders >= 1 && existingCorrection.Cylinders <= 16)
+            EngineVariant seed = existingCorrection ?? prefillSeed;
+            if (seed != null
+                && seed.Cylinders >= 1 && seed.Cylinders <= 16)
             {
-                defaultCyl = existingCorrection.Cylinders;
-                // If a stale persisted Custom slipped in (Stage 1 migration
-                // didn't have this guard), coerce to Auto so the combo
-                // pre-fill lands on a fulfillable value.
-                defaultCfg = existingCorrection.EngineConfig == EngineConfig.Custom
+                defaultCyl = seed.Cylinders;
+                defaultCfg = seed.EngineConfig == EngineConfig.Custom
                     ? EngineConfig.Auto
-                    : existingCorrection.EngineConfig;
+                    : seed.EngineConfig;
             }
             _cylCombo.SelectedIndex = defaultCyl - 1;
             for (int i = 0; i < _configCombo.Items.Count; i++)

@@ -264,6 +264,9 @@ begin
     exception when others then v_hdrs := null;
     end;
     if v_hdrs is null then return 'unknown'; end if;
+    -- nullif is SQL conditional-expression syntax (must stay unqualified);
+    -- btrim is a real pg_catalog function and the schema-pinned helpers
+    -- below qualify it explicitly.
     v_ip := nullif(v_hdrs ->> 'cf-connecting-ip', '');
     if v_ip is null then return 'unknown'; end if;
     v_ip := btrim(v_ip);
@@ -311,26 +314,64 @@ declare
     sticky_margin      int;
 begin
     -- A suppressed consensus row is moderator-frozen. Skip.
-    select is_suppressed, payload, supporting_submissions, wilson_score
-        into v_suppressed, v_current_payload, v_current_distinct, v_current_wilson
+    -- v_current_distinct is filled later from the latest-per-submitter
+    -- model below; the stored supporting_submissions is rebuilt each call
+    -- and isn't the source of truth at recompute time.
+    select is_suppressed, payload, wilson_score
+        into v_suppressed, v_current_payload, v_current_wilson
       from car_fact_consensus
      where game = p_game and car_id = p_car_id and fact_type = p_fact_type;
     if coalesce(v_suppressed, false) then return; end if;
 
-    -- Most-distinct-submitter payload across all submissions is the *candidate*.
-    -- Wilson never reads this; it's just the proposition votes attach to.
-    select payload, count(distinct submitter_id)
+    -- Most-distinct-submitter payload is the *candidate*. A submitter's
+    -- LATEST submission per (game, car_id, fact_type) counts as their
+    -- current endorsement; earlier submissions get superseded so a user
+    -- who changes their mind doesn't double-count. Tiebreak picks the
+    -- most-recently-active payload (latest_activity desc) rather than the
+    -- earliest, so a community gradually migrating to a new value doesn't
+    -- get stuck on the original. Wilson never reads this; it's the
+    -- proposition votes attach to.
+    with latest_per_submitter as (
+        select distinct on (submitter_id) submitter_id, payload, created_at
+          from car_fact_submissions
+         where game = p_game and car_id = p_car_id and fact_type = p_fact_type
+         order by submitter_id, created_at desc
+    ),
+    payload_supports as (
+        select payload,
+               count(*)::int   as distinct_supporters,
+               max(created_at) as latest_activity
+          from latest_per_submitter
+         group by payload
+    )
+    select payload, distinct_supporters
       into top_payload, top_distinct
-      from car_fact_submissions
-     where game = p_game and car_id = p_car_id and fact_type = p_fact_type
-     group by payload
-     order by count(distinct submitter_id) desc, min(created_at) asc
+      from payload_supports
+     order by distinct_supporters desc, latest_activity desc
      limit 1;
 
     if top_payload is null then
         delete from car_fact_consensus
          where game = p_game and car_id = p_car_id and fact_type = p_fact_type;
         return;
+    end if;
+
+    -- Incumbent's CURRENT endorser count (not the stored value), computed
+    -- under the same latest-per-submitter model. Drops to zero when every
+    -- submitter who originally endorsed the incumbent has since moved on,
+    -- letting the stickiness check correctly allow the migration.
+    if v_current_payload is not null then
+        with latest_per_submitter as (
+            select distinct on (submitter_id) submitter_id, payload
+              from car_fact_submissions
+             where game = p_game and car_id = p_car_id and fact_type = p_fact_type
+             order by submitter_id, created_at desc
+        )
+        select count(*)::int into v_current_distinct
+          from latest_per_submitter
+         where payload = v_current_payload;
+    else
+        v_current_distinct := 0;
     end if;
 
     -- Stickiness: scaled by incumbent support and Wilson score. Low-support
