@@ -525,7 +525,15 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Game"   FontSize="12" Opacity="0.6"/>
                         <TextBlock Grid.Row="0" Grid.Column="1" x:Name="HeaderGameText"   Text="(none)" FontSize="12" TextTrimming="CharacterEllipsis"/>
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="Car"    FontSize="12" Opacity="0.6" Margin="0,2,0,0"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="HeaderCarText"    Text="(none)" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock x:Name="HeaderCarText" Text="(none)" FontSize="12"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button x:Name="HeaderCarRenameBtn" Content="Rename" Margin="8,0,0,0"
+                                    Padding="6,0,6,0" FontSize="10" Height="18"
+                                    VerticalAlignment="Center" Visibility="Collapsed"
+                                    Click="HeaderCarRename_Click"
+                                    ToolTip="Give this car a human-readable name. Saved locally and (if community is on) shared so other drivers see it too."/>
+                        </StackPanel>
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Game preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
                             <ComboBox x:Name="HeaderPresetCombo" SelectionChanged="HeaderPresetCombo_Changed"
@@ -1084,22 +1092,13 @@
                         </Grid>
                         <!-- Auto-detect indicator: shows the layout the resolver
                              chose for the active car when the user has Auto
-                             selected. Empty otherwise (explicit Layout in effect). -->
-                        <!-- Auto-detected indicator + inline "Correct" affordance.
-                             The button is shown only when a car is loaded AND
-                             EngineLayoutAutoText is non-empty (something was
-                             detected to disagree with). Opens
-                             CarFactsCorrectionWindow which writes a User-source
-                             CarFacts variant for the (game, carId) and re-applies
-                             resolution live. -->
-                        <StackPanel Orientation="Horizontal" Margin="140,0,0,8">
-                            <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}"
-                                       Text="" VerticalAlignment="Center"/>
-                            <Button x:Name="CorrectCarFactButton" Margin="8,0,0,0" Padding="6,1,6,1"
-                                    Click="CorrectCarFactButton_Click" Visibility="Collapsed"
-                                    Content="Correct..."
-                                    ToolTip="Save what's actually in this car. Outranks the built-in and heuristic detection; applies on every preset you use with this car. Tracked per car ID."/>
-                        </StackPanel>
+                             selected. Empty otherwise. The Community context
+                             line below surfaces what other drivers said for
+                             this car (plus thumbs up/down voting) so the
+                             user can confirm/refute upfront rather than only
+                             after a save. -->
+                        <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,4" Text=""/>
+                        <TextBlock x:Name="EngineCommunityText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="" Visibility="Collapsed"/>
                         <!-- Active pattern readout: shows what's being synthesized
                              for the currently selected engine type. Read-only.
                              Authoring custom engines happens in the Custom...
@@ -1111,29 +1110,6 @@
                             <TextBox   Grid.Column="1" x:Name="EngineFiringPatternText"
                                        FontFamily="Consolas" IsReadOnly="True"/>
                         </Grid>
-                        <!-- Submit/report engine-data button. Opens a Google
-                             Form pre-filled with what the plugin auto-detected
-                             and what the user has selected. Code sets label
-                             and visibility per the EngineSubmitState classifier:
-                               * no detection, user has tuned: "Submit engine
-                                 data for this car..." (CONTRIB).
-                               * detection present, user's committed values
-                                 disagree: "Report wrong engine data for this
-                                 car..." (CORRECTION).
-                               * detection agrees / nothing tuned / engine
-                                 section dirty: hidden.
-                             Hiding while the engine section is dirty means
-                             submissions reflect committed values, not
-                             mid-tweak slider positions. -->
-                        <Grid Margin="140,4,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <Button x:Name="ReportEngineDataButton"
-                                    HorizontalAlignment="Left" Padding="8,3"
-                                    Click="ReportEngineDataButton_Click"
-                                    Content="Submit engine data for this car..."
-                                    ToolTip="Opens a Google Form pre-filled with what's auto-detected and what you've selected in the dropdowns / slider. Just hit Submit on the form, no typing needed and no account required."/>
-                        </Grid>
-
                         <!-- High-RPM perceptibility helpers. On by default;
                              keep the engine feel present where the wheel
                              motor naturally rolls off the firing pulse. -->
@@ -2361,6 +2337,12 @@
                       ToolTip="Adds a Trueforce master + audio gain box to SimHub's home 'Feedback' section, next to Motors and Wind, for quick access without opening this panel."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
                        Text="Quick master + audio gain control from SimHub's home screen. Turn off to remove the tile."/>
+
+            <CheckBox x:Name="CommunityEnabledCheck" Content="Use community car data"
+                      Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
+                      ToolTip="When you save engine data that disagrees with what's detected, the plugin asks if you want to share it. When community data exists for a car you load, the plugin uses it. Turn off to keep everything local: nothing leaves your machine and community values are ignored."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
+                       Text="Anonymous data exchange to help everyone tune cars faster. Turn off to stay local-only."/>
 
             <!-- Diagnostics moved into the Advanced Settings modal. See
                  AdvancedSettingsHost near the bottom. -->

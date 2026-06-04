@@ -50,6 +50,44 @@ namespace TrueforceForAll.Plugin.Effects
         /// change; surfaced in the settings UI for transparency.</summary>
         public string AutoLayoutSource { get; set; }
 
+        /// <summary>The layout that would resolve if Community injection
+        /// were SKIPPED on this car. Populated only when <see
+        /// cref="AutoLayoutSource"/> == "community" AND a non-community
+        /// rung of the cascade would actually resolve to something
+        /// concrete (Baked / Scanner). Drives the "Use built-in instead"
+        /// affordance: when null, there's no alternative worth offering.
+        /// Telemetry-pending alternatives are NOT surfaced here (no
+        /// concrete preview value).</summary>
+        public EngineLayout? NonCommunityAutoLayout { get; set; }
+
+        /// <summary>Companion source label for <see
+        /// cref="NonCommunityAutoLayout"/>: "baked" / "cache" /
+        /// "swap-override" etc. Lets the UI render an accurate
+        /// "Use &lt;source&gt; instead" link.</summary>
+        public string NonCommunityAutoLayoutSource { get; set; }
+
+        /// <summary>Live cylinder count observed from telemetry this car
+        /// session (most-recent valid frame value). For Forza this changes
+        /// across in-game engine swaps even when carId stays the same -
+        /// the primary signal we use to identify variants for community
+        /// submissions. Null when the active source doesn't report
+        /// cylinders (AC, iRacing, generic SimHub).</summary>
+        public int? ObservedCyl { get; set; }
+
+        /// <summary>Latest valid <see cref="TelemetryFrame.MaxRpm"/> the
+        /// active source reported. Latest-not-peak so an in-session swap
+        /// that LOWERS the rev ceiling (V8 stock → economy V6) still
+        /// flips the signature; a peak tracker would miss it. 0 = the
+        /// game hasn't surfaced a usable MaxRpm yet (or never does).</summary>
+        public double ObservedMaxRpm { get; set; }
+
+        /// <summary>Latest valid <see cref="TelemetryFrame.RedlineRpm"/>
+        /// the active source reported. Same latest-not-peak rationale as
+        /// <see cref="ObservedMaxRpm"/>. AC ships this distinctly from
+        /// MaxRpm; some games only ship one or neither. 0 = no usable
+        /// value yet.</summary>
+        public double ObservedRedlineRpm { get; set; }
+
         /// <summary>Cylinder count the catalog reported for the current car
         /// (set by plugin from CarCylinderResolver.Result.Cylinders on car
         /// change). Lets OnTelemetry distinguish "telemetry matches stock"

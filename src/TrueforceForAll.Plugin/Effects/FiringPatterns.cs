@@ -418,6 +418,42 @@ namespace TrueforceForAll.Plugin.Effects
             }
         }
 
+        /// <summary>Inverse of <see cref="LayoutFromLegacy"/> for the layouts
+        /// that have a clean (cylinders, EngineConfig) representation. Used by
+        /// the community-injection path (synthesizing a CarFacts variant from
+        /// a flat layout enum) and by the share-flow prompt. Returns false
+        /// for Custom / Electric / Auto / unknown - the caller treats those
+        /// as unsubmittable.</summary>
+        public static bool TryLayoutToCylAndConfig(EngineLayout layout,
+            out int cyl, out EngineConfig cfg)
+        {
+            switch (layout)
+            {
+                case EngineLayout.Single:        cyl = 1;  cfg = EngineConfig.Single;       return true;
+                case EngineLayout.Twin:          cyl = 2;  cfg = EngineConfig.Inline;       return true;
+                case EngineLayout.Inline3:       cyl = 3;  cfg = EngineConfig.Inline;       return true;
+                case EngineLayout.Inline4:       cyl = 4;  cfg = EngineConfig.Inline;       return true;
+                case EngineLayout.Inline5:       cyl = 5;  cfg = EngineConfig.Inline;       return true;
+                case EngineLayout.Inline6:       cyl = 6;  cfg = EngineConfig.Inline;       return true;
+                case EngineLayout.Boxer4:        cyl = 4;  cfg = EngineConfig.Boxer;        return true;
+                case EngineLayout.Boxer6:        cyl = 6;  cfg = EngineConfig.Boxer;        return true;
+                case EngineLayout.V6_60Even:     cyl = 6;  cfg = EngineConfig.V60;          return true;
+                case EngineLayout.V6_OddFire:    cyl = 6;  cfg = EngineConfig.V6OddFire;    return true;
+                case EngineLayout.V8CrossPlane:  cyl = 8;  cfg = EngineConfig.V8CrossPlane; return true;
+                case EngineLayout.V8FlatPlane:   cyl = 8;  cfg = EngineConfig.V8FlatPlane;  return true;
+                case EngineLayout.V10_72:        cyl = 10; cfg = EngineConfig.V90Even;      return true;
+                case EngineLayout.V12_60:        cyl = 12; cfg = EngineConfig.V60;          return true;
+                case EngineLayout.W12_W16:       cyl = 16; cfg = EngineConfig.V90Even;      return true;
+                case EngineLayout.VTwin90:       cyl = 2;  cfg = EngineConfig.VTwin90;      return true;
+                case EngineLayout.VTwin45:       cyl = 2;  cfg = EngineConfig.VTwin45;      return true;
+                case EngineLayout.Rotary1:       cyl = 2;  cfg = EngineConfig.Rotary;       return true;
+                case EngineLayout.Rotary2:       cyl = 4;  cfg = EngineConfig.Rotary;       return true;
+                case EngineLayout.Rotary3:       cyl = 6;  cfg = EngineConfig.Rotary;       return true;
+                case EngineLayout.Rotary4:       cyl = 8;  cfg = EngineConfig.Rotary;       return true;
+                default: cyl = 0; cfg = EngineConfig.Auto; return false;
+            }
+        }
+
         // ---------- public pattern builders for the custom-engine authoring UI ----------
 
         /// <summary>Pattern shape used by the custom-engine authoring dialog.

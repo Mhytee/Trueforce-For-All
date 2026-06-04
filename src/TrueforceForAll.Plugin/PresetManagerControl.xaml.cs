@@ -247,6 +247,11 @@ namespace TrueforceForAll.Plugin
             // map key and the default-match key); the Source column now shows
             // "Built-In", so the suffix in the column would just be redundant.
             public string DisplayName { get; set; }
+            // Human-readable car name surfaced by the CarFacts layer
+            // (CarFactsBundle.CarName). Empty when no name is on file for
+            // this car_id; the grid column then renders blank so the row
+            // doesn't pretend a name exists.
+            public string CarName { get; set; }
             public string GameName { get; set; }
             public string GameLabel => string.IsNullOrEmpty(GameName) ? "" : GameName;
             public bool   Builtin { get; set; }
@@ -592,6 +597,7 @@ namespace TrueforceForAll.Plugin
                         CarId       = carId,
                         PresetName  = entry.PresetName,
                         DisplayName = carDisplayName,
+                        CarName     = ResolveCarNameForRow(entry.GameName, carId),
                         GameName    = entry.GameName,
                         Builtin     = entry.IsBuiltin,
                         Source      = _plugin.ResolveCarPresetSource(carId, entry.PresetName, entry.IsBuiltin,
@@ -1260,6 +1266,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             bool carSelEditable = selUserPreset || (_devMode && anySelected);
             CarEditBtn.IsEnabled      = anySelected    && checkedCount <= 1;
             CarRenameBtn.IsEnabled    = carSelEditable && checkedCount <= 1;
+            // Rename-car is per-car, not per-preset: anyone with a row
+            // selected can name the car (built-in vs user, dev mode or
+            // not). The CarFacts write is local to the user, the community
+            // submission opts in via the Settings toggle.
+            CarRenameCarBtn.IsEnabled = anySelected    && checkedCount <= 1;
             CarDuplicateBtn.IsEnabled = anySelected    && checkedCount <= 1;
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelEditable;
             // Set-as-default: bulk supported (one row per car). Enabled if any
@@ -1472,6 +1483,65 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         }
 
         // ===================== Car preset actions =====================
+
+        // Read the human-readable CarName fact for (game, carId) from
+        // Settings.CarFacts. Used to populate the "Car name" column in the
+        // car-presets grid. Empty string when no fact is on file so the
+        // grid renders a blank cell instead of inventing a value.
+        private string ResolveCarNameForRow(string game, string carId)
+        {
+            if (_plugin?.Settings?.CarFacts == null) return "";
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return "";
+            string key = game + "/" + carId;
+            return (_plugin.Settings.CarFacts.TryGetValue(key, out var bundle)
+                    && bundle != null && !string.IsNullOrEmpty(bundle.CarName))
+                ? bundle.CarName
+                : "";
+        }
+
+        // Per-car (not per-preset) rename: opens the styled
+        // CarNameInputWindow, writes the result to the CarFacts bundle
+        // (variant-blind, chassis-level), and fires the community
+        // submission. Multiple presets for the same car share one name.
+        // Operates on the SELECTED row's CarId.
+        private void CarRenameCar_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCar;
+            if (sel == null || _plugin == null) return;
+            string game  = sel.GameName;
+            string carId = sel.CarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+
+            string currentName = sel.CarName ?? "";
+            var dialog = new CarNameInputWindow(carId, currentName)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            if (ok != true) return;
+            string newName = dialog.EnteredName;
+            if (string.IsNullOrEmpty(newName)) return;
+
+            _plugin.WriteCarNameFact(game, carId, newName);
+            _plugin.SubmitCarNameToCommunity(game, carId, newName);
+            // Optimistically inject the new community name when the
+            // edited car IS the active one - otherwise the resolver
+            // would briefly attribute the change to whatever the prior
+            // community consensus said.
+            if (string.Equals(game, _plugin.ActiveGame, StringComparison.Ordinal)
+                && string.Equals(carId, _plugin.ActiveCarId, StringComparison.Ordinal))
+            {
+                _plugin.NotifyCarNameConsensus(game, carId, new CarNameConsensus
+                {
+                    Name                  = newName,
+                    SupportingSubmissions = 1,
+                    Confirmations         = 0,
+                    PayloadHash           = null,
+                });
+            }
+            ReloadCars();
+            SelectCarRow(sel.CarId, sel.PresetName);
+        }
 
         private void CarRename_Click(object sender, RoutedEventArgs e)
         {

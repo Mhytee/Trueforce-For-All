@@ -66,6 +66,30 @@ namespace TrueforceForAll.Plugin
         // land) to fire-and-forget submit User-source corrections.
         private CommunityClient _community;
 
+        // In-memory community-consensus injection for the active car. Set by
+        // NotifyCommunityConsensus when SettingsControl's per-car fetch
+        // returns, cleared when the active car changes. TryResolveActiveVariant
+        // synthesizes a CarFactSource.Community variant from this at the top
+        // of the resolver cascade so Auto-detect prefers community over
+        // Baked/Scanner/Telemetry. Not persisted - re-fetched each session.
+        private string _activeCarCommunityKey;
+        private EngineLayoutConsensus _activeCarCommunityConsensus;
+
+        // Sibling community-name cache. Same shape + same lifecycle as the
+        // engine-layout cache: populated by SettingsControl after a per-car
+        // fetch, consumed by the resolver to seat the community CarName at
+        // the top of the display-name cascade. Cleared on car change.
+        private string _activeCarCommunityNameKey;
+        private CarNameConsensus _activeCarCommunityNameConsensus;
+
+        // Sibling community-redline cache. Variant-aware - the key includes
+        // the variant_signature so a Forza swap with a different rev
+        // ceiling doesn't read the stock variant's consensus row. The
+        // synthesized community variant in TrySynthesizeCommunityVariant
+        // picks RedlineRpm up from here.
+        private string _activeCarCommunityRedlineKey;
+        private RedlineConsensus _activeCarCommunityRedlineConsensus;
+
         // Snapshot of each car's override AS OF its last save / load. Used
         // by IsSectionDirty to tell whether an override section has been
         // edited since the last save, without re-reading the file. Updated
@@ -409,6 +433,15 @@ namespace TrueforceForAll.Plugin
         // instead of an opaque ordinal ("3445"). Null when no catalog hit.
         private string _activeCarDisplayName;
         public string ActiveCarDisplayName => _activeCarDisplayName;
+
+        // Alternate name to surface alongside ActiveCarDisplayName when the
+        // community consensus has a name that differs from the user's
+        // local rename. Null when there's no divergence (community matches
+        // local, or the user hasn't renamed and is already seeing the
+        // community name as ActiveCarDisplayName). Drives the
+        // disambiguation suffix in the header + preset manager.
+        private string _activeCarCommunityDisplayName;
+        public string ActiveCarCommunityDisplayName => _activeCarCommunityDisplayName;
 
         // Active game + active preset tracking. Presets are a named library
         // (Settings.Presets) that the user can apply to any game. GameDefaults
@@ -2399,6 +2432,26 @@ namespace TrueforceForAll.Plugin
                 // override to the persisted baseline before we move on.
                 DiscardUnsavedCarDraft(_activeCarId);
                 _activeCarId = carId;
+                // Drop the prior car's community consensus so the resolver
+                // doesn't briefly attribute it to the new car. The
+                // SettingsControl will re-fetch and re-notify for the new
+                // (game, carId) momentarily.
+                _activeCarCommunityKey = null;
+                _activeCarCommunityConsensus = null;
+                _activeCarCommunityNameKey = null;
+                _activeCarCommunityNameConsensus = null;
+                _activeCarCommunityRedlineKey = null;
+                _activeCarCommunityRedlineConsensus = null;
+                // Reset EnginePulse observation fields here (not in
+                // ResolveAndApplyCarFactsForActiveCar) so the variant
+                // signature gets a clean slate for the new car. Next
+                // telemetry frames repopulate.
+                if (EnginePulse != null)
+                {
+                    EnginePulse.ObservedCyl = null;
+                    EnginePulse.ObservedMaxRpm = 0.0;
+                    EnginePulse.ObservedRedlineRpm = 0.0;
+                }
                 // Clear any per-car edge-detected / IIR state on the effects and
                 // the device's FFB filter chain so the new car's first frames
                 // don't get blended with the previous car's last sample (e.g. a
@@ -2663,6 +2716,23 @@ namespace TrueforceForAll.Plugin
                         SimHub.Logging.Current.Error($"[Trueforce] {_effects[i].Name} telemetry error", ex);
                     }
                 }
+            }
+
+            // Update telemetry-derived inputs to the community variant
+            // signature. Latest-valid (not peak): an in-session engine
+            // swap that LOWERS the rev ceiling has to be visible, and a
+            // peak tracker would silently retain the stock value.
+            // Threshold (>100) filters out the "engine off / source
+            // hasn't populated yet" zero frames so we don't clobber a
+            // known value with a noise dip. Cyl, MaxRpm, and RedlineRpm
+            // are tracked independently because games surface different
+            // subsets - signature reflects what THIS game gives us.
+            if (EnginePulse != null)
+            {
+                if (frame.NumCylinders is int liveCyl && liveCyl >= 1 && liveCyl <= 16)
+                    EnginePulse.ObservedCyl = liveCyl;
+                if (frame.MaxRpm > 100)     EnginePulse.ObservedMaxRpm     = frame.MaxRpm;
+                if (frame.RedlineRpm > 100) EnginePulse.ObservedRedlineRpm = frame.RedlineRpm;
             }
 
             // Rim rev/shift LEDs. Gated to iRacing (where MAIRA users lose
@@ -6660,6 +6730,17 @@ namespace TrueforceForAll.Plugin
             variant = null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
 
+            // Community consensus is the top of the cascade when present for
+            // the active car. We synthesize a transient EngineVariant from
+            // the in-memory consensus (set by NotifyCommunityConsensus) so
+            // the rest of the apply path treats it like any other variant.
+            // Not persisted - re-fetched every session.
+            if (TrySynthesizeCommunityVariant(game, carId, out var commVar))
+            {
+                variant = commVar;
+                return true;
+            }
+
             EngineVariant storedPick = PickStoredVariant(game, carId);
             bool storedIsAuthoritative = storedPick != null
                 && !(storedPick.Source == CarFactSource.Scanner && storedPick.Confirmations == 0);
@@ -6743,24 +6824,40 @@ namespace TrueforceForAll.Plugin
             var variants = bundle.EngineVariants;
             if (variants == null || variants.Count == 0) return null;
 
-            if (variants.Count == 1) return variants[0];
+            // User-source variants are no longer part of the auto-detect
+            // cascade. A Share submission goes to the community DB; the
+            // local CarFact is no longer written. Existing User-source
+            // variants from prior versions are ignored here so they don't
+            // silently override the new Community / Baked / Scanner order
+            // ("auto means auto"). Per-car explicit picks live in the
+            // dropdown / car preset, not in CarFacts.
+            // Use a fresh filtered list so any single-variant fast-path
+            // below sees the right element.
+            var pool = new List<EngineVariant>(variants.Count);
+            for (int i = 0; i < variants.Count; i++)
+            {
+                var cand = variants[i];
+                if (cand != null && cand.Source != CarFactSource.User)
+                    pool.Add(cand);
+            }
+            if (pool.Count == 0) return null;
+            if (pool.Count == 1) return pool[0];
 
             if (Settings.CarFactsSelection != null
                 && Settings.CarFactsSelection.TryGetValue(key, out var chosenId)
                 && !string.IsNullOrEmpty(chosenId))
             {
-                for (int i = 0; i < variants.Count; i++)
-                    if (variants[i] != null && variants[i].Id == chosenId)
-                        return variants[i];
+                for (int i = 0; i < pool.Count; i++)
+                    if (pool[i].Id == chosenId)
+                        return pool[i];
             }
 
             EngineVariant best = null;
             int bestPriority = int.MinValue;
             int bestConf = int.MinValue;
-            for (int i = 0; i < variants.Count; i++)
+            for (int i = 0; i < pool.Count; i++)
             {
-                var cand = variants[i];
-                if (cand == null) continue;
+                var cand = pool[i];
                 int prio = SourcePriority(cand.Source);
                 if (prio > bestPriority
                     || (prio == bestPriority && cand.Confirmations > bestConf))
@@ -6772,6 +6869,132 @@ namespace TrueforceForAll.Plugin
             }
             return best;
         }
+
+        // Synthesizes a transient CarFactSource.Community variant from the
+        // in-memory consensus stash if it matches (game, carId). Used by
+        // TryResolveActiveVariant to seat Community at the top of the
+        // cascade WITHOUT persisting anything to Settings.CarFacts (which
+        // would conflate ephemeral consensus with durable user data).
+        private bool TrySynthesizeCommunityVariant(
+            string game, string carId, out EngineVariant variant)
+        {
+            variant = null;
+            var c = _activeCarCommunityConsensus;
+            if (c == null) return false;
+            if (_activeCarCommunityKey != game + "/" + carId) return false;
+            if (string.IsNullOrEmpty(c.Layout)) return false;
+            // Map the stored enum-name string back to (cyl, EngineConfig)
+            // for the legacy apply path. The schema whitelists only valid
+            // EngineLayout enum names, so the parse should succeed.
+            if (!Enum.TryParse<Effects.EngineLayout>(c.Layout, true, out var layout))
+                return false;
+            if (!Effects.FiringPatternDb.TryLayoutToCylAndConfig(layout, out int cyl, out var cfg))
+                return false;
+            // Redline rides on the same synthesized variant when the
+            // community has a redline consensus matching the current
+            // variant signature. Without this, a community-resolved layout
+            // would still let a stale local CarFacts redline win or fall
+            // through to the heuristic - and a redline correction
+            // submission wouldn't actually drive the rev-limiter buzz.
+            int? communityRedline = null;
+            if (_activeCarCommunityRedlineConsensus != null
+                && _activeCarCommunityRedlineKey == game + "/" + carId
+                && _activeCarCommunityRedlineConsensus.Rpm >= 500
+                && _activeCarCommunityRedlineConsensus.Rpm <= 25000)
+                communityRedline = _activeCarCommunityRedlineConsensus.Rpm;
+
+            variant = new EngineVariant
+            {
+                Id            = "community:" + game + "/" + carId,
+                Label         = "Community",
+                Cylinders     = cyl,
+                EngineConfig  = cfg,
+                RedlineRpm    = communityRedline,
+                Source        = CarFactSource.Community,
+                Confirmations = c.SupportingSubmissions,
+            };
+            return true;
+        }
+
+        // Called by SettingsControl after a per-car community fetch returns
+        // (success or null). Stores the consensus in memory and re-runs the
+        // CarFacts cascade so the engine-pulse panel updates immediately.
+        // Pass null consensus when the fetch returned no data; the resolver
+        // then falls through to Baked / Scanner / Telemetry.
+        internal void NotifyCommunityConsensus(
+            string game, string carId, EngineLayoutConsensus consensus)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            // Only relevant when the fetch matches the still-active car;
+            // a stale fetch from a previous car must not overwrite the
+            // cache.
+            if (game != _activeGame || carId != _activeCarId) return;
+            _activeCarCommunityKey = game + "/" + carId;
+            _activeCarCommunityConsensus = consensus;
+            ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
+            ApplyActiveCarOverride();
+        }
+
+        /// <summary>Sibling of <see cref="NotifyCommunityConsensus"/> for the
+        /// car_name fact. Pushes a community-name consensus result into the
+        /// in-memory cache and re-runs the resolver so the header /
+        /// presets show the canonical name. Pass null to drop the cache
+        /// (e.g. when the per-car fetch returned no row).</summary>
+        internal void NotifyCarNameConsensus(
+            string game, string carId, CarNameConsensus consensus)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            if (game != _activeGame || carId != _activeCarId) return;
+            _activeCarCommunityNameKey = game + "/" + carId;
+            _activeCarCommunityNameConsensus = consensus;
+            ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
+            ApplyActiveCarOverride();
+        }
+
+        /// <summary>Synchronous fetch of the community CarName consensus for
+        /// (game, carId). Public passthrough so SettingsControl can hit
+        /// this without exposing CommunityClient. Mirrors <see
+        /// cref="FetchEngineLayoutConsensus"/>.</summary>
+        internal CarNameConsensus FetchCarNameConsensus(string game, string carId)
+        {
+            return _community?.FetchCarNameConsensus(game, carId);
+        }
+
+        /// <summary>Variant-aware fetch of the community redline consensus
+        /// for (game, carId). Plumbed through the current EnginePulse
+        /// signature so the row matching THIS variant is what comes
+        /// back.</summary>
+        internal RedlineConsensus FetchRedlineConsensus(string game, string carId)
+        {
+            return _community?.FetchRedlineConsensus(game, carId,
+                ComputeActiveCarVariantSignature(game, carId));
+        }
+
+        /// <summary>Sibling of <see cref="NotifyCommunityConsensus"/> for the
+        /// redline fact. Cache + re-resolve so RevLimiter.CarFactsRedline
+        /// picks up the new value on the same tick. Pass null to drop the
+        /// cache (e.g. when the fetch returned no row).</summary>
+        internal void NotifyRedlineConsensus(
+            string game, string carId, RedlineConsensus consensus)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            if (game != _activeGame || carId != _activeCarId) return;
+            _activeCarCommunityRedlineKey = game + "/" + carId;
+            _activeCarCommunityRedlineConsensus = consensus;
+            ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
+            ApplyActiveCarOverride();
+        }
+
+        /// <summary>Fire-and-forget submission of a redline correction.
+        /// Mirrors <see cref="SubmitEngineLayoutToCommunity"/>: gated by
+        /// CommunityEnabled, plumbs the active car's variant signature
+        /// through so Forza swaps don't all share one redline row.</summary>
+        public void SubmitRedlineToCommunity(string game, string carId, int rpm)
+        {
+            _community?.SubmitRedlineAsync(game, carId, rpm,
+                ComputeActiveCarVariantSignature(game, carId));
+        }
+
 
         // Rank for variant selection: bigger wins. User (local correction) is
         // top: a user who clicked Correct knows what's actually in this car
@@ -6810,8 +7033,17 @@ namespace TrueforceForAll.Plugin
 
             EnginePulse.AutoLayout = null;
             EnginePulse.AutoLayoutSource = null;
+            EnginePulse.NonCommunityAutoLayout = null;
+            EnginePulse.NonCommunityAutoLayoutSource = null;
+            // Observed* fields are NOT reset here - they belong to the
+            // active car's live observations and are cleared only on car
+            // change (in the active-car-change handler). Resetting on
+            // every resolver pass would wipe the variant signature each
+            // time a community fetch returns, briefly emptying it until
+            // the next telemetry frame.
             EnginePulse.CatalogCyl = null;
             _activeCarDisplayName = null;
+            _activeCarCommunityDisplayName = null;
 
             if (string.IsNullOrEmpty(carId)) return;
 
@@ -6823,19 +7055,59 @@ namespace TrueforceForAll.Plugin
             // contribute without forcing a cylinder count.
             bool haveVariant = TryResolveActiveVariant(_activeGame, carId, out var v);
 
-            // CarName from the bundle (chassis-level, variant-independent).
+            // CarName cascade (chassis-level, variant-independent):
+            //   1. Local CarFacts bundle CarName (from a prior Rename
+            //      action). Local wins so the user's explicit rename is
+            //      respected - silently overriding it with the community
+            //      consensus would defeat the purpose of renaming. The UI
+            //      surfaces the community name alongside when they differ.
+            //   2. Community consensus (fetched name for this car). Used
+            //      when the user hasn't renamed locally.
+            //   3. CarCylinderResolver's catalog-derived display name
+            //      (set later when the resolver hits a catalog entry).
             string ck = _activeGame + "/" + carId;
+            _activeCarCommunityDisplayName = null;
+            string localName = null;
             if (Settings?.CarFacts != null
                 && Settings.CarFacts.TryGetValue(ck, out var bundle)
                 && bundle != null
                 && !string.IsNullOrEmpty(bundle.CarName))
-                _activeCarDisplayName = bundle.CarName;
+                localName = bundle.CarName;
+            string communityName = (_activeCarCommunityNameConsensus != null
+                && _activeCarCommunityNameKey == ck
+                && !string.IsNullOrEmpty(_activeCarCommunityNameConsensus.Name))
+                ? _activeCarCommunityNameConsensus.Name : null;
+            if (!string.IsNullOrEmpty(localName))
+            {
+                _activeCarDisplayName = localName;
+                // Stash the community name so the UI can show a "community
+                // says: X" affordance when it differs from the local pick.
+                if (!string.IsNullOrEmpty(communityName)
+                    && !string.Equals(communityName, localName, StringComparison.Ordinal))
+                    _activeCarCommunityDisplayName = communityName;
+            }
+            else if (!string.IsNullOrEmpty(communityName))
+                _activeCarDisplayName = communityName;
 
             // RedlineRpm rides any usable variant, even one with Cylinders=0
             // (the "unknown / use heuristic" sentinel).
             if (haveVariant && RevLimiter != null
                 && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
                 RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
+
+            // Community-only redline path: covers the case where the user
+            // (or community) has confirmed a redline but NOT a layout for
+            // this car. TrySynthesizeCommunityVariant only fires when
+            // layout consensus exists, so a redline-only consensus would
+            // otherwise never reach RevLimiter. Override what the resolved
+            // variant gave us when the community has a higher-priority
+            // redline for the current variant signature.
+            if (_activeCarCommunityRedlineConsensus != null
+                && _activeCarCommunityRedlineKey == ck
+                && _activeCarCommunityRedlineConsensus.Rpm >= 500
+                && _activeCarCommunityRedlineConsensus.Rpm <= 25000
+                && RevLimiter != null)
+                RevLimiter.CarFactsRedline = _activeCarCommunityRedlineConsensus.Rpm;
 
             bool variantUsableForLayout = haveVariant
                 && v.Cylinders >= 1 && v.Cylinders <= 16;
@@ -6886,6 +7158,90 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     $"[Trueforce] Car '{carId}' not auto-resolved, user can set engine layout manually.");
             }
+
+            // Preview the non-community auto value when community is the
+            // current source AND the user might want to switch away from it.
+            // Drives the "Use built-in instead" affordance label. Skipped
+            // when source isn't community (no alternative needed) or no
+            // concrete next-best resolves (Baked / Scanner empty + telemetry
+            // pending - we don't preview "(pending)" since there's no value
+            // to show).
+            if (string.Equals(EnginePulse.AutoLayoutSource, "community",
+                              StringComparison.OrdinalIgnoreCase))
+            {
+                if (TryResolveNonCommunityVariant(_activeGame, carId, out var nv)
+                    && nv.Cylinders >= 1 && nv.Cylinders <= 16)
+                {
+                    EnginePulse.NonCommunityAutoLayout =
+                        Effects.FiringPatternDb.LayoutFromLegacy(
+                            nv.Cylinders, nv.EngineConfig, false);
+                    EnginePulse.NonCommunityAutoLayoutSource =
+                        MapCarFactSourceToUiLabel(nv.Source);
+                }
+                else if (BuiltinCarCylinders.TryGet(_activeGame, carId, out var rawBakeCheck)
+                         && rawBakeCheck.IsElectric)
+                {
+                    // Electric fallback: show the EV pick under the Use-
+                    // built-in instead link so the user gets the same alt
+                    // option the resolver would land on if community were
+                    // suppressed.
+                    EnginePulse.NonCommunityAutoLayout = Effects.EngineLayout.Electric;
+                    EnginePulse.NonCommunityAutoLayoutSource = "baked";
+                }
+            }
+        }
+
+        // Same shape as TryResolveActiveVariant but with the Community rung
+        // explicitly skipped. Used by the engine-pulse panel to preview what
+        // "Use built-in instead" would resolve to, and to drive the
+        // user-action's downstream re-resolution.
+        private bool TryResolveNonCommunityVariant(
+            string game, string carId, out EngineVariant variant)
+        {
+            variant = null;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
+
+            EngineVariant storedPick = PickStoredVariant(game, carId);
+            bool storedIsAuthoritative = storedPick != null
+                && !(storedPick.Source == CarFactSource.Scanner && storedPick.Confirmations == 0);
+            if (storedIsAuthoritative)
+            {
+                variant = storedPick;
+                return true;
+            }
+
+            if (BuiltinCarCylinders.TryGet(game, carId, out var rawBake))
+            {
+                if (rawBake.IsElectric) return false;
+                if (CarCylinderResolver.TryResolve(game, carId, out var refined)
+                    && refined != null
+                    && !refined.IsElectric
+                    && refined.Cylinders >= 1 && refined.Cylinders <= 16)
+                {
+                    var resolvedSource = string.Equals(refined.Source,
+                        "swap-override", StringComparison.OrdinalIgnoreCase)
+                        ? CarFactSource.SwapOverride
+                        : CarFactSource.Baked;
+                    variant = new EngineVariant
+                    {
+                        Id            = "baked:" + game + "/" + carId,
+                        Label         = "Stock",
+                        Cylinders     = refined.Cylinders,
+                        EngineConfig  = refined.EngineConfig,
+                        RedlineRpm    = null,
+                        Source        = resolvedSource,
+                        Confirmations = 0,
+                    };
+                    return true;
+                }
+            }
+
+            if (storedPick != null)
+            {
+                variant = storedPick;
+                return true;
+            }
+            return false;
         }
 
         /// <summary>Write or update a User-source CarFacts correction for the
@@ -6938,11 +7294,11 @@ namespace TrueforceForAll.Plugin
                 ApplyActiveCarOverride();
             }
 
-            // Fire-and-forget community submission. No-op when Community is
-            // off / unconfigured. Runs on a thread-pool task; the local save
-            // above already succeeded so the user doesn't care about the
-            // network result.
-            _community?.SubmitEngineLayoutAsync(game, carId, cylinders, config);
+            // Community submission is the SettingsControl save-prompt
+            // handler's responsibility now (it knows which fields the user
+            // ticked vs un-ticked). This method writes the local variant
+            // only; the prompt fires SubmitEngineCylindersToCommunity /
+            // SubmitEngineConfigToCommunity separately as needed.
             return true;
         }
 
@@ -6997,13 +7353,149 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The variant the resolution cascade picked for this car at
         /// apply time, regardless of source (User correction / Community /
-        /// Scanner / Baked virtual). Used by the Correct dialog so its
-        /// pre-fill reflects what the plugin currently thinks the car is,
-        /// not a hardcoded default. Null when no variant resolves and we'd
-        /// be in the telemetry / heuristic fallback path.</summary>
+        /// Scanner / Baked virtual). Null when no variant resolves and we'd
+        /// be in the telemetry / heuristic fallback path. Public so future
+        /// UI surfaces can read what the plugin currently thinks the car
+        /// is; today's seamless save-prompt flow uses ActiveEngine.Layout
+        /// + TryLayoutToCylAndConfig instead.</summary>
         public EngineVariant GetActiveResolvedVariant(string game, string carId)
         {
             return TryResolveActiveVariant(game, carId, out var v) ? v : null;
+        }
+
+        /// <summary>Persist the community-data toggle. Off = submissions are
+        /// suppressed inside CommunityClient + (post Backend Phase 2) the
+        /// consensus pull is skipped. SimHub's autosave catches this on
+        /// plugin teardown, but writing through here makes the change
+        /// immediately durable so it survives a SimHub crash.</summary>
+        public void SetCommunityEnabled(bool on)
+        {
+            if (Settings == null) return;
+            Settings.CommunityEnabled = on;
+            this.SaveCommonSettings("GeneralSettings", Settings);
+        }
+
+        /// <summary>Fire-and-forget submission of an engine-layout
+        /// correction to the community backend. No-op when CommunityEnabled
+        /// is false OR no backend URL / anon key is configured.
+        /// CommunityClient is internal to the plugin assembly, so callers
+        /// outside this class (the SettingsControl save-prompt handler) go
+        /// through this passthrough.</summary>
+        public void SubmitEngineLayoutToCommunity(string game, string carId, EngineLayout layout)
+        {
+            _community?.SubmitEngineLayoutAsync(game, carId, layout,
+                ComputeActiveCarVariantSignature(game, carId));
+        }
+
+        /// <summary>Blocking fetch of the current community consensus for
+        /// (game, carId)'s engine layout. Used by the share-prompt to render
+        /// accurate "first / confirming / alternative" copy. Bounded
+        /// timeout (default 2s) so a slow network doesn't stall the UI.
+        /// Returns null on disabled / not configured / timeout / no row.
+        /// EngineLayoutConsensus is internal to the plugin assembly; the
+        /// payload bag is opaque enough that internal exposure is fine
+        /// (no public clients of TrueforcePlugin look at it).</summary>
+        internal EngineLayoutConsensus FetchEngineLayoutConsensus(string game, string carId)
+        {
+            return _community?.FetchEngineLayoutConsensus(game, carId,
+                ComputeActiveCarVariantSignature(game, carId));
+        }
+
+        /// <summary>Build the per-variant fingerprint we attach to community
+        /// submissions / votes / fetches so games that reuse the same car_id
+        /// across in-game engine swaps (Forza) get one consensus row per
+        /// variant instead of submitters silently overwriting each other.
+        ///
+        /// Three independent signals contribute when present, joined by
+        /// ";" in fixed order so the same engine produces the same string
+        /// across users:
+        ///   cyl=N         - Forza is the primary cohort. Strongest single
+        ///                   signal: a swap that changes the cylinder count
+        ///                   is unambiguously a different engine.
+        ///   maxrpm=BAND   - Hard rev ceiling. Banded to nearest 500 to
+        ///                   ride out per-frame jitter / per-game variance.
+        ///   redline=BAND  - Engaged rev-limiter point. Often equals or is
+        ///                   close to maxrpm; banded too. When present and
+        ///                   distinct from maxrpm it adds discrimination
+        ///                   (sport vs race rev-limiter modes).
+        /// All three are optional. Empty string when nothing is observed
+        /// (sentinel for "no variant discriminator" - matches the server's
+        /// default and the pre-variant single-row behavior).</summary>
+        internal string ComputeActiveCarVariantSignature(string game, string carId)
+        {
+            if (EnginePulse == null) return string.Empty;
+            if (game != _activeGame || carId != _activeCarId) return string.Empty;
+            var parts = new List<string>(3);
+            int? cyl = EnginePulse.ObservedCyl;
+            if (cyl.HasValue && cyl.Value >= 1 && cyl.Value <= 16)
+                parts.Add("cyl=" + cyl.Value);
+            int maxBand = BandRpm(EnginePulse.ObservedMaxRpm);
+            if (maxBand > 0) parts.Add("maxrpm=" + maxBand);
+            int redBand = BandRpm(EnginePulse.ObservedRedlineRpm);
+            if (redBand > 0) parts.Add("redline=" + redBand);
+            return parts.Count == 0 ? string.Empty : string.Join(";", parts);
+        }
+
+        // 500-RPM banding: same engine across users lands in the same band
+        // even when telemetry differs by tens of RPM. Returns 0 for
+        // sub-500 / unset values so the caller drops the component.
+        private static int BandRpm(double rpm)
+        {
+            if (rpm < 500) return 0;
+            return (int)Math.Round(rpm / 500.0) * 500;
+        }
+
+        /// <summary>Write a User-source CarName fact onto the local CarFacts
+        /// bundle for (game, carId). Updates the displayed name immediately
+        /// (re-runs the resolution cascade) and persists settings. Returns
+        /// false on invalid input.</summary>
+        public bool WriteCarNameFact(string game, string carId, string name)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            name = name.Trim();
+            if (name.Length < 2 || name.Length > 96) return false;
+            if (Settings == null) return false;
+            if (Settings.CarFacts == null)
+                Settings.CarFacts = new Dictionary<string, CarFactsBundle>();
+
+            string key = game + "/" + carId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null)
+            {
+                bundle = new CarFactsBundle();
+                Settings.CarFacts[key] = bundle;
+            }
+            bundle.CarName = name;
+            bundle.CarNameSource = CarFactSource.User;
+            bundle.CarNameConfirmations = 0;
+
+            this.SaveCommonSettings("GeneralSettings", Settings);
+
+            if (game == _activeGame && carId == _activeCarId)
+                ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
+            return true;
+        }
+
+        /// <summary>Fire-and-forget submission of a car-name correction.
+        /// Same gating as the engine_layout submission: no-op when
+        /// CommunityEnabled is false OR backend isn't configured.</summary>
+        public void SubmitCarNameToCommunity(string game, string carId, string name)
+        {
+            _community?.SubmitCarNameAsync(game, carId, name);
+        }
+
+        /// <summary>Fire-and-forget vote on the current community engine-
+        /// layout consensus. direction +1 = confirm, -1 = refute.
+        /// expectedPayloadHash is the consensus row's payload_hash captured
+        /// at fetch time; the server's CAS guard raises if it doesn't match
+        /// the current consensus (consensus changed between display and
+        /// click). UI should refetch and re-render in that case.</summary>
+        public void VoteEngineLayoutToCommunity(string game, string carId,
+            int direction, string expectedPayloadHash)
+        {
+            _community?.VoteEngineLayoutAsync(game, carId, direction,
+                expectedPayloadHash,
+                ComputeActiveCarVariantSignature(game, carId));
         }
 
         // Map CarFactSource onto the source-label vocabulary the engine-layout
@@ -7489,6 +7981,70 @@ namespace TrueforceForAll.Plugin
                 && EqF2(a.LoadLayerGain,      b.LoadLayerGain)
                 && a.HighRpmBoostEnabled == b.HighRpmBoostEnabled
                 && EqF2(a.HighRpmBoostAmount, b.HighRpmBoostAmount);
+        }
+
+        // Same as Eq(EnginePulseSettings) but ignores the Layout field.
+        // Used by IsEngineSectionOnlyLayoutDirty so the save-flow popover
+        // can skip the car-vs-game choice when the user only changed the
+        // car-fact axis (game default is meaningless for "what's actually
+        // in this car").
+        private static bool EqIgnoringLayout(EnginePulseSettings a, EnginePulseSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain,      b.Gain)
+                && EqF2(a.Pitch,     b.Pitch)
+                && EqI (a.LowpassHz, b.LowpassHz)
+                && a.Waveform == b.Waveform
+                && a.ElectricMode == b.ElectricMode
+                // Layout intentionally skipped
+                && string.Equals(a.CustomEngineId ?? "", b.CustomEngineId ?? "", System.StringComparison.Ordinal)
+                && string.Equals(a.CustomFiringPattern ?? "", b.CustomFiringPattern ?? "", System.StringComparison.Ordinal)
+                && string.Equals(a.CustomFiringPatternName ?? "", b.CustomFiringPatternName ?? "", System.StringComparison.Ordinal)
+                && a.LoadLayerEnabled    == b.LoadLayerEnabled
+                && EqF2(a.LoadLayerGain,      b.LoadLayerGain)
+                && a.HighRpmBoostEnabled == b.HighRpmBoostEnabled
+                && EqF2(a.HighRpmBoostAmount, b.HighRpmBoostAmount);
+        }
+
+        /// <summary>True iff the Engine section is dirty AND the ONLY thing
+        /// that's different from the saved baseline is the Layout field.
+        /// Lets the save-flow popover skip the car-vs-game-default choice in
+        /// the common car-fact-only case: when you just picked a different
+        /// engine type, the only sensible save target is the car. Mirrors
+        /// IsSectionDirty's two-branch baseline lookup so the comparison
+        /// uses the same anchor.</summary>
+        public bool IsEngineSectionOnlyLayoutDirty()
+        {
+            if (!IsSectionDirty(SectionKind.Engine)) return false;
+            var live = EnginePulse == null ? null : ActiveEngine;
+            if (live == null) return false;
+
+            EnginePulseSettings baseline = null;
+
+            // Branch 1 (matches IsSectionDirty's hasGamePreset path): compare
+            // live ActiveEngine against the game preset's EnginePulse.
+            if (!string.IsNullOrEmpty(_activePresetName)
+                && Settings?.Presets != null
+                && Settings.Presets.TryGetValue(_activePresetName, out var snap)
+                && snap != null)
+            {
+                baseline = snap.EnginePulse;
+            }
+            // Branch 2: per-car override case (no game preset).
+            else if (!string.IsNullOrEmpty(_activeCarId)
+                     && Settings?.CarOverrides != null
+                     && Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo)
+                     && liveCo?.EnginePulse != null)
+            {
+                _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var savedCo);
+                live = liveCo.EnginePulse;
+                baseline = savedCo?.EnginePulse;
+            }
+            if (baseline == null) return false;
+
+            // Only Layout differs iff non-Layout fields match AND Layout doesn't.
+            return EqIgnoringLayout(live, baseline) && live.Layout != baseline.Layout;
         }
         private static bool Eq(RoadBumpsSettings a, RoadBumpsSettings b)
         {
@@ -8273,6 +8829,44 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        /// <summary>Variant of <see cref="ExitOfflineEditSaveAs"/> used by the
+        /// "silent fork on save of a built-in" path: persists the new preset,
+        /// keeps the new preset as the active one (skipping the restore-prior
+        /// step), and binds it as the default for the active game so future
+        /// car loads pick it up. The user sees a no-friction "saved" outcome
+        /// where the fork they just made is the live + default preset for
+        /// the game they're driving.</summary>
+        public bool ExitOfflineEditSaveAsAndApply(string newName)
+        {
+            if (!IsOfflineEditing || string.IsNullOrEmpty(newName)) return false;
+            if (Settings.Presets != null && Settings.Presets.ContainsKey(newName)) return false;
+
+            SavePresetAs(newName);   // sets _activePresetName = newName + persists
+
+            // Clear offline-edit state but do NOT restore the prior live
+            // state; the new preset stays the active one.
+            _offlineEditPresetName    = null;
+            _preEditSnapshot          = null;
+            _preEditActivePresetName  = null;
+
+            // Bind as the game default so future loads of this game pick it.
+            if (!string.IsNullOrEmpty(_activeGame))
+            {
+                if (Settings.GameDefaults == null)
+                    Settings.GameDefaults = new Dictionary<string, string>();
+                Settings.GameDefaults[_activeGame] = newName;
+                this.SaveCommonSettings("GeneralSettings", Settings);
+            }
+
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] Silent-forked to '{newName}'"
+                + (!string.IsNullOrEmpty(_activeGame)
+                    ? $" + bound as default for {_activeGame}"
+                    : "")
+                + ".");
+            return true;
+        }
+
         /// <summary>Exit offline edit mode and restore the previously-active
         /// preset (dropping any unsaved edits). Used by the banner's Done (when
         /// nothing's unsaved) and the discard path.</summary>
@@ -8437,6 +9031,27 @@ namespace TrueforceForAll.Plugin
             if (!IsOfflineEditingCar || string.IsNullOrEmpty(newName)) return false;
             if (!SaveActiveCarPresetAs(newName)) return false;
             RestorePreEditCarState();
+            return true;
+        }
+
+        /// <summary>Variant of <see cref="ExitOfflineEditCarSaveAs"/> for the
+        /// silent fork on save flow: persists the new car preset, keeps it
+        /// applied to the active car, and skips the restore-prior step.
+        /// SaveActiveCarPresetAs already updates CarDefaults[_activeCarId]
+        /// so the bind side is handled there; this method's job is just to
+        /// tear down the offline-edit state without re-applying the prior
+        /// snapshot.</summary>
+        public bool ExitOfflineEditCarSaveAsAndApply(string newName)
+        {
+            if (!IsOfflineEditingCar || string.IsNullOrEmpty(newName)) return false;
+            if (!SaveActiveCarPresetAs(newName)) return false;
+
+            _preEditCarSnapshot         = null;
+            _preEditCarActiveId         = null;
+            _preEditCarActivePresetName = null;
+
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] Silent-forked car preset to '{newName}' for '{_activeCarId}'.");
             return true;
         }
 

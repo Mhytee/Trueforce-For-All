@@ -19,6 +19,21 @@ namespace TrueforceForAll.Plugin
         private readonly TrueforcePlugin _plugin;
         private readonly DispatcherTimer _meterTimer;
         private bool _suppressEvents;
+
+        // Community-context cache for the engine-pulse panel. Keyed by
+        // "{game}/{carId}" so a car change triggers exactly one fetch.
+        // _engineCommunityCache holds the consensus we'll display + use
+        // for the vote CAS guard; null means "no consensus" (display the
+        // 'first' affordance). _engineCommunityFetchInFlight prevents
+        // duplicate fetches when the per-tick UI refresh fires before the
+        // first fetch returns.
+        private string _engineCommunityFetchedKey;
+        private bool   _engineCommunityFetchInFlight;
+        private EngineLayoutConsensus _engineCommunityCache;
+        // Sibling redline cache, populated by the same per-car fetch loop.
+        // Drives the engine-pulse panel's "Car's redline" line + the
+        // optimistic-injection path in the Correct dialog handler.
+        private RedlineConsensus _engineRedlineCache;
         private string _lastShownCarId;
         private string _lastShownGame;
 
@@ -44,8 +59,10 @@ namespace TrueforceForAll.Plugin
         private int _forceUdpSetupBanner;
         // CarIds we've already prompted to submit engine data for in this
         // SimHub session. The save-time prompt only fires for cars with no
-        // resolver-cached engine info AND only once per car so a user who
-        // declines isn't badgered every save. Cleared on plugin reload.
+        // Keyed on "{carId}|{layoutEnum}" so each distinct layout pick gets
+        // exactly one prompt per session - if the user dismisses or shares
+        // for V8 then later picks Inline 6, that's a new pick worth
+        // re-prompting. Cleared on plugin reload.
         private readonly HashSet<string> _enginePromptedThisSession
             = new HashSet<string>(StringComparer.Ordinal);
         // Dirty = current tuning has drifted from the active preset's saved
@@ -254,6 +271,8 @@ namespace TrueforceForAll.Plugin
                 MasterGainStepText.Text    = _plugin.MasterGainStep.ToString("F2");
                 if (ShowFeedbackBoxCheck != null)
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
+                if (CommunityEnabledCheck != null)
+                    CommunityEnabledCheck.IsChecked = _plugin.Settings?.CommunityEnabled == true;
 
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
                 FfbScaleText.Text      = FfbScaleSlider.Value.ToString("F2");
@@ -361,9 +380,24 @@ namespace TrueforceForAll.Plugin
                     !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName) ? _plugin.ActiveCarDisplayName
                     : !string.IsNullOrEmpty(_plugin.ActiveCarId)        ? _plugin.ActiveCarId
                     : "(none)";
+                // Append the community alternative when the user has a
+                // local rename that disagrees - so a renamed car still
+                // surfaces the canonical community name as context.
+                string communityAlt = _plugin.ActiveCarCommunityDisplayName;
+                if (!string.IsNullOrEmpty(communityAlt))
+                    headerCar += $"   (community: {communityAlt})";
                 HeaderCarText.Text  = headerCar;
 
                 bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+
+                // Rename affordance: only meaningful when a car is detected.
+                // Available regardless of CommunityEnabled - rename is a
+                // local-first action; community submission rides along when
+                // the user opts in inside the rename modal.
+                if (HeaderCarRenameBtn != null)
+                    HeaderCarRenameBtn.Visibility = carDetected
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
 
                 // Skip-passthrough makes the FFB tuning controls (scale/smooth/invert/
                 // safety limiters) irrelevant (game writes the wheel directly). Grey
@@ -703,14 +737,37 @@ namespace TrueforceForAll.Plugin
 
             // DEV mode: save the built-in in place (the plugin write-throughs
             // to the factory folder). Non-dev: fork into a new user preset.
+            // The user-friendly fork drops the " (Built-In)" suffix and
+            // saves silently when the resulting name is free, so saving an
+            // edit to a built-in feels like "saved" instead of "answer a
+            // dialog every time." Only when the stripped name is already
+            // taken by a user preset do we fall back to the rename prompt.
             if (car)
             {
                 if (_plugin.IsActiveCarPresetBuiltin() && !_plugin.DevMode)
                 {
-                    PromptAndSaveAsNewCar(_plugin.OfflineEditingCarPresetName);
-                    return;
+                    string carFull = _plugin.OfflineEditingCarPresetName;
+                    string carClean = TrueforcePlugin.ToDiskName(carFull);
+                    string carId = _plugin.OfflineEditingCarId;
+                    var existing = _plugin.GetCarPresets(carId);
+                    bool carClash = existing != null && existing.ContainsKey(carClean);
+                    if (!carClash)
+                    {
+                        // Silent fork: keep the new preset applied + bound
+                        // as the car's default (built into SaveActiveCarPresetAs).
+                        if (!_plugin.ExitOfflineEditCarSaveAsAndApply(carClean))
+                        {
+                            MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        PromptAndSaveAsNewCar(carFull);
+                        return;
+                    }
                 }
-                if (!_plugin.ExitOfflineEditCarSave())
+                else if (!_plugin.ExitOfflineEditCarSave())
                 {
                     MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
@@ -721,10 +778,25 @@ namespace TrueforceForAll.Plugin
                 string name = _plugin.OfflineEditingPresetName;
                 if (_plugin.IsBuiltinPreset(name) && !_plugin.DevMode)
                 {
-                    PromptAndSaveAsNew(name);
-                    return;
+                    string clean = TrueforcePlugin.ToDiskName(name);
+                    bool clash = _plugin.Settings?.Presets?.ContainsKey(clean) == true;
+                    if (!clash)
+                    {
+                        // Silent fork: keep the new preset active + bound as
+                        // the game default.
+                        if (!_plugin.ExitOfflineEditSaveAsAndApply(clean))
+                        {
+                            MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        PromptAndSaveAsNew(name);
+                        return;
+                    }
                 }
-                if (!_plugin.ExitOfflineEditSave())
+                else if (!_plugin.ExitOfflineEditSave())
                 {
                     MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
@@ -735,11 +807,16 @@ namespace TrueforceForAll.Plugin
         }
 
         // Car variant of PromptAndSaveAsNew: prompt for a name and fork the car
-        // edits into a new preset for the edited car.
+        // edits into a new preset for the edited car. Strips the
+        // " (Built-In)" suffix from the suggested name so a fork from a
+        // built-in doesn't pre-fill "X (Built-In) (edited)".
         private void PromptAndSaveAsNewCar(string suggestedBaseName)
         {
             string carId = _plugin.OfflineEditingCarId;
-            string suggested = string.IsNullOrEmpty(suggestedBaseName) ? "My preset" : suggestedBaseName + " (edited)";
+            string baseName = TrueforcePlugin.HasBuiltinSuffix(suggestedBaseName ?? "")
+                ? TrueforcePlugin.ToDiskName(suggestedBaseName)
+                : suggestedBaseName;
+            string suggested = string.IsNullOrEmpty(baseName) ? "My preset" : baseName + " (edited)";
             string newName = PromptForName("Save as new car preset", "New preset name:", suggested);
             if (string.IsNullOrWhiteSpace(newName)) return;
             newName = newName.Trim();
@@ -761,9 +838,15 @@ namespace TrueforceForAll.Plugin
 
         private void PromptAndSaveAsNew(string suggestedBaseName)
         {
-            string suggested = string.IsNullOrEmpty(suggestedBaseName)
+            // Strip " (Built-In)" before composing the suggestion so a
+            // built-in fork pre-fills "X (edited)" instead of
+            // "X (Built-In) (edited)".
+            string baseName = TrueforcePlugin.HasBuiltinSuffix(suggestedBaseName ?? "")
+                ? TrueforcePlugin.ToDiskName(suggestedBaseName)
+                : suggestedBaseName;
+            string suggested = string.IsNullOrEmpty(baseName)
                 ? "My preset"
-                : suggestedBaseName + " (edited)";
+                : baseName + " (edited)";
             string newName = PromptForName("Save as new preset", "New preset name:", suggested);
             if (string.IsNullOrWhiteSpace(newName)) return;
             newName = newName.Trim();
@@ -928,13 +1011,49 @@ namespace TrueforceForAll.Plugin
                         else if (string.Equals(detectSrc, "community", StringComparison.OrdinalIgnoreCase))
                             srcSuffix = " (community-confirmed)";
                         else if (string.Equals(detectSrc, "user-set", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (you set this)";
+                            // User-source variants are no longer in the
+                            // resolver cascade (Share writes to community
+                            // only). This branch is only reachable from
+                            // stale settings written by older versions;
+                            // hide the suffix entirely so the line reads
+                            // as plain Auto-detected output. Existing
+                            // User-source variants in CarFacts are filtered
+                            // by PickStoredVariant; this label path will
+                            // disappear once those settings are migrated.
+                            srcSuffix = "";
                         else if (!string.IsNullOrEmpty(detectSrc))
                             srcSuffix = $" (heuristic: {detectSrc})";
                         else
                             srcSuffix = "";
-                        EngineLayoutAutoText.Text =
-                            $"Auto-detected: {Effects.FiringPatternDb.LayoutDisplayName(autoL)}{srcSuffix}";
+                        string autoLine = $"Auto-detected: {Effects.FiringPatternDb.LayoutDisplayName(autoL)}{srcSuffix}";
+                        // When community is the source AND the resolver could
+                        // also reach a concrete non-community value, surface
+                        // it as passive context. Lets the user see what
+                        // they'd get from the built-in path and decide
+                        // whether to pick that value in the Layout dropdown
+                        // (which then triggers the existing save -> share
+                        // flow). No inline action - corrections come through
+                        // save, not a "switch source" click.
+                        if (string.Equals(detectSrc, "community", StringComparison.OrdinalIgnoreCase)
+                            && ep.NonCommunityAutoLayout is Effects.EngineLayout altLayout
+                            && altLayout != autoL)
+                        {
+                            string altSrcLabel = ep.NonCommunityAutoLayoutSource;
+                            string altSrcWord;
+                            if (string.Equals(altSrcLabel, "baked", StringComparison.OrdinalIgnoreCase))
+                                altSrcWord = "built-in";
+                            else if (string.Equals(altSrcLabel, "cache", StringComparison.OrdinalIgnoreCase))
+                                altSrcWord = "cache";
+                            else if (string.Equals(altSrcLabel, "swap-override", StringComparison.OrdinalIgnoreCase))
+                                altSrcWord = "swap data";
+                            else
+                                altSrcWord = altSrcLabel;
+                            autoLine += string.IsNullOrEmpty(altSrcWord)
+                                ? $". Alternative: {Effects.FiringPatternDb.LayoutDisplayName(altLayout)}"
+                                : $". {char.ToUpper(altSrcWord[0])}{altSrcWord.Substring(1)} says: "
+                                  + Effects.FiringPatternDb.LayoutDisplayName(altLayout);
+                        }
+                        EngineLayoutAutoText.Text = autoLine;
                     }
                     else if (ep != null && userIsAuto
                              && string.IsNullOrEmpty(ep.AutoLayoutSource)
@@ -963,77 +1082,22 @@ namespace TrueforceForAll.Plugin
                         EngineLayoutAutoText.Text = "";
                     }
 
-                    // Report/submit engine-data button. The save-time popup
-                    // is the primary submission path; this button is a
-                    // persistent fallback for: (a) users who declined the
-                    // popup and changed their mind later in the session,
-                    // (b) users who clicked Yes but never actually hit
-                    // Submit on the Google Form (we can't detect form
-                    // submission, so the button stays available as a resume
-                    // path), and (c) cars loaded with prior-session
-                    // overrides where no save event has fired this session.
-                    //
-                    // Visibility + label are driven by the shared classifier:
-                    //   * Hidden if no car is loaded, the engine section is
-                    //     mid-tweak (dirty), or there's nothing worth
-                    //     submitting (CONFIRM / no data).
-                    //   * "Submit engine data for this car..." in CONTRIB
-                    //     mode (no detection, user has tuned).
-                    //   * "Report wrong engine data for this car..." in
-                    //     CORRECTION mode (detection present, user's
-                    //     committed values disagree).
-                    // Gating on !engineDirty ensures submissions reflect
-                    // committed values, not mid-tweak slider positions.
-                    // No popup-shown gate: the popup is modal so it visually
-                    // takes priority at the save moment, and dropping the
-                    // gate means prior-session overrides have an immediate
-                    // entry point without needing to re-save.
-                    if (ReportEngineDataButton != null)
-                    {
-                        var submitState = GetEngineSubmitState();
-                        bool engineDirty = _effectDirty[(int)EffectKind.Engine];
-                        bool show = !string.IsNullOrEmpty(activeCar)
-                                 && !engineDirty
-                                 && submitState != EngineSubmitState.None;
-                        ReportEngineDataButton.Visibility = show
-                            ? System.Windows.Visibility.Visible
-                            : System.Windows.Visibility.Collapsed;
-                        if (show)
-                        {
-                            ReportEngineDataButton.Content =
-                                submitState == EngineSubmitState.Contribute
-                                    ? "Submit engine data for this car..."
-                                    : "Report wrong engine data for this car...";
-                        }
-                    }
+                    // Engine-data submission is driven by the save-flow
+                    // prompt (MaybePromptToSubmitEngineData) directly, not
+                    // by a panel button. The Engine type combo + cyl is the
+                    // correction surface; saving and diverging from auto-
+                    // detect fires the per-field share prompt.
 
-                    // CarFacts "Correct..." button: visible whenever a car is
-                    // loaded and engine layout was auto-detected (i.e., the
-                    // banner above shows an Auto-detected line) OR when an
-                    // existing User-correction is already on file for this
-                    // car (so users can edit/remove it even after disabling
-                    // auto-detect by switching layout manually). Tracked per
-                    // (game, carId) so it works for any car in any game.
-                    if (CorrectCarFactButton != null)
-                    {
-                        // Only show next to a NON-EMPTY banner so the button
-                        // isn't visually orphaned (left margin with no
-                        // adjacent text) when EngineLayoutAutoText.Text is
-                        // blanked by one of its else branches. When a user
-                        // correction exists, the button stays visible so
-                        // the user can edit/remove it even from branches
-                        // that would otherwise hide the banner.
-                        bool hasAutoBanner = ep != null && ep.AutoLayout.HasValue
-                            && !string.IsNullOrEmpty(ep.AutoLayoutSource)
-                            && !string.IsNullOrEmpty(EngineLayoutAutoText.Text);
-                        bool hasUserCorrection = _plugin != null && !string.IsNullOrEmpty(activeCar)
-                            && _plugin.GetUserCarFactsCorrection(_plugin.ActiveGame, activeCar) != null;
-                        bool show = !string.IsNullOrEmpty(activeCar)
-                                 && (hasAutoBanner || hasUserCorrection);
-                        CorrectCarFactButton.Visibility = show
-                            ? System.Windows.Visibility.Visible
-                            : System.Windows.Visibility.Collapsed;
-                    }
+                    // Community context: surface what other drivers said
+                    // for THIS car upfront so the user can confirm/refute
+                    // before any save. Debounced on (game, carId) so we
+                    // only fetch when the car actually changes. The
+                    // render call reflects the latest auto-detect state
+                    // each tick - Confirm button shows up as soon as an
+                    // auto-detected layout is available, even before the
+                    // community fetch returns.
+                    MaybeRefreshEngineCommunityContext(_plugin.ActiveGame, activeCar);
+                    RenderEngineCommunityRow();
                 }
 
                 // Set by the Forza block below; drives the persistent
@@ -3258,103 +3322,104 @@ namespace TrueforceForAll.Plugin
         // Engine-data submission target: a Google Form with a single
         // long-answer field. We URL-encode the structured markdown body
         // and prefill the field via &entry.<id>=<body>. No GitHub account
-        // required; submissions land in a Google Sheet for batch triage.
-        // Form: TF4ALL Engine Data (https://forms.gle/yeQ8CNNyp7QRBxnj9).
-        private const string EngineDataFormUrl =
-            "https://docs.google.com/forms/d/e/1FAIpQLSfgNM3AfFV9uIGYhajQtAxpE_e1Lo34-mFtsGrbP1u-nH60ng/viewform";
-        private const string EngineDataFormEntry = "entry.551133954";
-
-        // Submit engine data for the active car. Captures both what the bake/
-        // resolver auto-detected AND what the user has selected via the
-        // dropdowns / slider. No "FILL IN" placeholders; the user's UI
-        // values ARE the proposed values; submission is one click on the
-        // form. Maintainers read the response sheet to find diffs.
-        private void ReportEngineDataButton_Click(object sender, RoutedEventArgs e)
-        {
-            OpenEngineDataForm();
-        }
-
-        // CarFacts inline "Correct..." affordance. Opens the correction
-        // dialog pre-filled with any existing User-source variant for this
-        // car, then writes/removes the variant via the plugin's helpers.
-        // Resolution re-runs live so the new layout takes effect immediately
-        // without a car swap or SimHub restart.
-        private void CorrectCarFactButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string game  = _plugin.ActiveGame;
-            string carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId))
-            {
-                MessageBox.Show("Load a car first, then correct its engine layout.",
-                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            string carDisplay = _plugin.ActiveCarDisplayName;
-            var existing = _plugin.GetUserCarFactsCorrection(game, carId);
-            // When the user has no prior correction on file, pre-fill from
-            // whatever the resolver picked (Baked virtual / Community /
-            // Scanner) so the dialog opens showing what the plugin currently
-            // thinks the car is - not a stale 8 / Auto. Skipped when an
-            // existing correction will drive the pre-fill anyway.
-            var prefillSeed = existing == null
-                ? _plugin.GetActiveResolvedVariant(game, carId)
-                : null;
-
-            string autoSummary = null;
-            var ep = _plugin.EnginePulse;
-            if (ep != null && ep.AutoLayout.HasValue && !string.IsNullOrEmpty(ep.AutoLayoutSource))
-            {
-                string srcSuffix;
-                string src = ep.AutoLayoutSource;
-                if (string.Equals(src, "telemetry", StringComparison.OrdinalIgnoreCase))
-                    srcSuffix = " (from telemetry)";
-                else if (string.Equals(src, "baked", StringComparison.OrdinalIgnoreCase))
-                    srcSuffix = " (from built-in car list)";
-                else if (string.Equals(src, "cache", StringComparison.OrdinalIgnoreCase))
-                    srcSuffix = " (cached from earlier session)";
-                else if (string.Equals(src, "community", StringComparison.OrdinalIgnoreCase))
-                    srcSuffix = " (community-confirmed)";
-                else if (string.Equals(src, "user-set", StringComparison.OrdinalIgnoreCase))
-                    srcSuffix = " (you set this)";
-                else
-                    srcSuffix = $" (heuristic: {src})";
-                autoSummary = $"Currently detected: "
-                            + Effects.FiringPatternDb.LayoutDisplayName(ep.AutoLayout.Value)
-                            + srcSuffix;
-            }
-
-            var dialog = new CarFactsCorrectionWindow(carDisplay, carId, autoSummary, existing, prefillSeed)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            bool? ok = dialog.ShowDialog();
-            if (ok != true) return;
-
-            if (dialog.Action == CarFactsCorrectionWindow.CorrectionAction.Save)
-            {
-                _plugin.WriteUserCarFactsCorrection(game, carId, dialog.Cylinders, dialog.Config);
-            }
-            else if (dialog.Action == CarFactsCorrectionWindow.CorrectionAction.Remove)
-            {
-                _plugin.RemoveUserCarFactsCorrection(game, carId);
-            }
-        }
-
-        // Save-time prompt: nudges the user to submit their committed engine
-        // tuning. Fires after a car-preset save (or an Engine-section save)
-        // because the values just written to disk are, by definition, the
-        // user's settled answer for this car. That's a much higher-signal
-        // moment than catching a click on a discoverable button while values
-        // are still being tweaked.
+        // Save-flow prompt: when the user just saved their preset and the
+        // committed engine layout diverges from auto-detect, open a small
+        // modal showing one checkbox per FIELD that differs (cylinders,
+        // engine type) with a "from X -> to Y" description. Whichever boxes
+        // they leave ticked get submitted as separate community facts; un-
+        // ticking lets the user assert only what they're sure about.
         //
-        // Fires for both submission states the form actually wants:
-        //   Contribute: no detection, user added data. "Submit engine data".
-        //   Correct: detection present, user's saved values disagree.
-        //            "Report wrong engine data".
-        // CONFIRM cases (user agrees with detection) and "no data" cases
-        // skip the prompt: those add noise without info.
+        // Local CarFacts is written whenever the user clicks Submit, using
+        // (cyl, config) snapped from the user's Layout choice. We don't
+        // try to write a half-correction locally (e.g. cyl only, leave
+        // config from auto-detect) - CarFacts variants are atomic and a
+        // partial local write would conflict with future community pulls.
+        //
+        // Classifier (GetEngineSubmitState) is reused unchanged:
+        //   Contribute: no detection, user added data.
+        //   Correct:    detection present, user's saved values disagree.
+        // Same shape as MaybePromptToSubmitEngineData but for the redline
+        // fact. We derive an "implied redline" from the active RevLimiter
+        // settings and the live telemetry, then compare to the current
+        // community/variant value. Gated by TELEMETRY SHAPE, not by game:
+        // any source that reports MaxRpm but no usable redline puts us on
+        // the percentage path, and the user's Threshold is then their
+        // implicit claim about the rev ceiling (engagement at MaxRpm *
+        // Threshold). When the source DOES report a redline (AC,
+        // iRacing) the game itself is the source of truth and Offset is
+        // personal shift-cue preference, not a redline claim - so the
+        // prompt stays silent.
+        private void MaybePromptToSubmitRedlineData(string carId)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(carId)) return;
+            string game = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(game)) return;
+            var rl = _plugin.ActiveRevLimiter;
+            var ep = _plugin.EnginePulse;
+            if (rl == null || ep == null) return;
+
+            // Only the percentage path carries a redline claim. When the
+            // game ships a sane redline the game itself is the source of
+            // truth - no community correction needed.
+            if (rl.EngageMode != Effects.RevLimiterEngageMode.Auto
+                && rl.EngageMode != Effects.RevLimiterEngageMode.Percentage)
+                return;
+            if (ep.ObservedRedlineRpm >= 500) return;  // game has a real redline
+            if (ep.ObservedMaxRpm < 500)      return;  // no MaxRpm to derive from
+            if (rl.Threshold < 0.5f || rl.Threshold > 1.0f) return;
+
+            // Implied redline = where the engagement actually fires on the
+            // percentage path. Banded to nearest 100 RPM so users with
+            // very-close thresholds don't fragment the consensus.
+            int impliedRedline = (int)Math.Round(
+                (ep.ObservedMaxRpm * rl.Threshold) / 100.0) * 100;
+            if (impliedRedline < 500 || impliedRedline > 25000) return;
+
+            // Dedupe per (carId, value) so we don't badger on repeat saves
+            // of the same threshold; a different threshold re-engages the
+            // prompt. Uses the existing engine-prompt set so the two
+            // share-flows feel coherent.
+            string dedupeKey = carId + "|redline|" + impliedRedline;
+            if (!_enginePromptedThisSession.Add(dedupeKey)) return;
+
+            // Skip when the user's implied redline already matches what
+            // the resolver is using (community-confirmed or otherwise).
+            int? effectiveRedline = null;
+            if (_engineRedlineCache != null && _engineRedlineCache.Rpm > 0)
+                effectiveRedline = _engineRedlineCache.Rpm;
+            else if (_plugin.RevLimiter?.CarFactsRedline is int cf && cf > 0)
+                effectiveRedline = cf;
+            if (effectiveRedline.HasValue
+                && Math.Abs(effectiveRedline.Value - impliedRedline) <= 100)
+                return;
+
+            string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
+            string body = effectiveRedline.HasValue
+                ? $"You're claiming the redline of '{carDisplay}' is {impliedRedline} RPM. "
+                  + $"The community currently says {effectiveRedline.Value} RPM. "
+                  + "Submit your value as a correction?"
+                : $"You're claiming the redline of '{carDisplay}' is {impliedRedline} RPM. "
+                  + "No one's recorded it yet. Submit yours as the first answer?";
+            var result = MessageBox.Show(Window.GetWindow(this), body,
+                "Help the community", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result != MessageBoxResult.Yes) return;
+
+            _plugin.SubmitRedlineToCommunity(game, carId, impliedRedline);
+
+            // Optimistic injection so RevLimiter.CarFactsRedline lines up
+            // with the submission immediately. Next per-car refetch
+            // reconciles server-side stickiness.
+            _engineRedlineCache = new RedlineConsensus
+            {
+                Rpm                   = impliedRedline,
+                SupportingSubmissions = (_engineRedlineCache?.SupportingSubmissions ?? 0) + 1,
+                Confirmations         = 0,
+                PayloadHash           = null,
+            };
+            _plugin.NotifyRedlineConsensus(game, carId, _engineRedlineCache);
+        }
+
+        // CONFIRM cases (agrees with detection) and "no data" skip the prompt.
         //
         // Dedupes per car per session so a user who declines isn't badgered
         // on every subsequent save of the same car.
@@ -3363,141 +3428,224 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
             var state = GetEngineSubmitState();
             if (state == EngineSubmitState.None) return;
-            if (!_enginePromptedThisSession.Add(carId)) return;
 
-            string ask;
-            if (state == EngineSubmitState.Contribute)
+            string game = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(game)) return;
+            var es = _plugin.ActiveEngine;
+            var ep = _plugin.EnginePulse;
+            if (es == null) return;
+
+            // User's layout pick. Unsubmittable variants (Custom, Electric,
+            // Auto) short-circuit - they don't fit the engine_layout enum
+            // whitelist. Custom in particular is contributable in PRINCIPLE
+            // (a user-authored pattern that's correct for a car), but its
+            // schema needs name + pattern + cyl, not just an enum value;
+            // dedicated pipeline TBD as a Stage 3 follow-up.
+            var userLayout = es.Layout;
+            if (!TryLayoutToCylAndConfig(userLayout, out int userCyl, out var userCfg)) return;
+
+            // Per-session dedupe scoped to BOTH the car AND the layout pick.
+            // Saves of the same value after dismissal don't badger; picking a
+            // different layout re-engages the prompt so the user can still
+            // submit corrections after an initial Not-now.
+            string dedupeKey = carId + "|" + userLayout.ToString();
+            if (!_enginePromptedThisSession.Add(dedupeKey)) return;
+
+            // Skip the prompt entirely when the user's pick matches the
+            // auto-detect: nothing to share.
+            if (ep != null && ep.AutoLayout.HasValue && ep.AutoLayout.Value == userLayout) return;
+
+            string layoutText = Effects.FiringPatternDb.LayoutDisplayName(userLayout);
+
+            // Fetch current consensus (best-effort, 2s timeout) so the
+            // share window can frame the contribution as First / Confirming
+            // / Alternative based on what the community already has. Null
+            // result -> First state.
+            var consensus = _plugin.FetchEngineLayoutConsensus(game, carId);
+            string userLayoutEnum = userLayout.ToString().ToUpperInvariant();
+            CarFactsShareWindow.ShareState shareState;
+            string consensusDisplay = null;
+            int supportingSubs = 0;
+            if (consensus == null)
             {
-                ask = $"We don't have engine data for '{carId}' yet.\n\n"
-                    + "Submit your settings to help other users? Opens a Google form "
-                    + "pre-filled with your tuning. Just hit Submit on the form, no account needed.";
+                shareState = CarFactsShareWindow.ShareState.First;
             }
             else
             {
-                ask = $"You've corrected the auto-detected engine data for '{carId}'.\n\n"
-                    + "Submit your correction to help other users? Opens a Google form "
-                    + "pre-filled with your tuning. Just hit Submit on the form, no account needed.";
+                supportingSubs = consensus.SupportingSubmissions;
+                bool sameAsConsensus = string.Equals(consensus.Layout,
+                    userLayoutEnum, System.StringComparison.OrdinalIgnoreCase);
+                if (sameAsConsensus)
+                {
+                    shareState = CarFactsShareWindow.ShareState.Confirming;
+                    consensusDisplay = layoutText;
+                }
+                else
+                {
+                    shareState = CarFactsShareWindow.ShareState.Alternative;
+                    // Map consensus enum-name back to a friendly display by
+                    // round-tripping through Effects.EngineLayout enum.
+                    consensusDisplay = consensus.Layout;
+                    if (Enum.TryParse<Effects.EngineLayout>(consensus.Layout, true, out var consLayout))
+                        consensusDisplay = Effects.FiringPatternDb.LayoutDisplayName(consLayout);
+                }
             }
 
-            var r = MessageBox.Show(
-                ask,
-                "Trueforce: share engine data?",
-                MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (r == MessageBoxResult.Yes) OpenEngineDataForm();
+            var dialog = new CarFactsShareWindow(
+                _plugin.ActiveCarDisplayName, carId, layoutText,
+                shareState, consensusDisplay, supportingSubs)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            if (ok != true) return;
+
+            // Share = submit to community ONLY. The local CarFacts User-
+            // source write was removed because writing it made Auto-detect
+            // permanently shadow the resolver cascade for this car
+            // ("locked correction" - user couldn't go back to auto).
+            // The user's submission seeds the consensus row server-side;
+            // the next per-car community fetch returns it as the
+            // Community-source value, which the resolver picks at the top
+            // of the cascade with a "community-confirmed" label.
+            _plugin.SubmitEngineLayoutToCommunity(game, carId, userLayout);
+
+            // Optimistic local injection: pretend the community already
+            // reflects this submission so the resolver flips the
+            // auto-detect label to "(community-confirmed)" without waiting
+            // for the next car-change refetch. Server stickiness might keep
+            // a prior consensus instead, but the user sees that their
+            // action took effect right now. Next refetch reconciles.
+            if (_engineCommunityCache == null
+                || !string.Equals(_engineCommunityCache.Layout, userLayoutEnum,
+                                  StringComparison.OrdinalIgnoreCase))
+            {
+                _engineCommunityCache = new EngineLayoutConsensus
+                {
+                    Layout                = userLayoutEnum,
+                    SupportingSubmissions = (_engineCommunityCache?.SupportingSubmissions ?? 0) + 1,
+                    Confirmations         = 0,
+                    PayloadHash           = null,
+                };
+            }
+            else
+            {
+                _engineCommunityCache.SupportingSubmissions += 1;
+            }
+            _plugin.NotifyCommunityConsensus(game, carId, _engineCommunityCache);
+            RenderEngineCommunityRow();
         }
 
-        private void OpenEngineDataForm()
+        // ---------- Community context row on the Engine pulse panel ----------
+
+        // Fetch the current community consensus for (game, carId) at most
+        // once per car change, then render the community-context row with
+        // either a "first to share" prompt or the consensus + vote buttons.
+        // Called every UI tick from the engine-pulse refresh branch; the
+        // _engineCommunityFetchedKey guard makes it a no-op until the
+        // active car changes.
+        private void MaybeRefreshEngineCommunityContext(string game, string carId)
         {
-            if (_plugin == null) return;
-            string carId  = _plugin.ActiveCarId ?? "(no car loaded)";
-            string game   = _plugin.ActiveGame  ?? "(unknown)";
-            var ep        = _plugin.EnginePulse;
-            var es        = _plugin.ActiveEngine;
-            string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
-
-            // What the bake / resolver said.
-            string layoutSrc   = ep?.AutoLayoutSource ?? "";
-            var autoLayout     = ep?.AutoLayout;
-            bool layoutDetected = autoLayout.HasValue && !string.IsNullOrEmpty(layoutSrc);
-
-            // What the user has on the panel (their committed preset values).
-            // ElectricMode (silent / muted hum) is intentionally not collected:
-            // it's a per-user response-curve preference, not a fact about the
-            // car, so it doesn't help the bake even on EV submissions.
-            var userLayout    = es?.Layout ?? Effects.EngineLayout.Auto;
-            string customRaw  = es?.CustomFiringPattern ?? "";
-            string customName = (es?.CustomFiringPatternName ?? "").Trim();
-
-            // Build the proposed-changes block as "before -> after" lines.
-            // Plain text only -- Google Forms long-answer fields don't render
-            // markdown, so any **bold** or `code` ticks would just show as
-            // literal characters in the response sheet.
-            string LayoutDetectedDisplay()   =>
-                !layoutDetected ? "not detected"
-                                : Effects.FiringPatternDb.LayoutDisplayName(autoLayout.Value);
-
-            var diff = new System.Collections.Generic.List<string>();
-            if (userLayout != Effects.EngineLayout.Auto
-                && (!layoutDetected || userLayout != autoLayout.Value))
+            if (EngineCommunityText == null) return;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)
+                || _plugin == null
+                || _plugin.Settings?.CommunityEnabled != true)
             {
-                diff.Add($"Engine type: {LayoutDetectedDisplay()} -> "
-                       + $"{Effects.FiringPatternDb.LayoutDisplayName(userLayout)}");
-            }
-            if (userLayout == Effects.EngineLayout.Custom && !string.IsNullOrEmpty(customName))
-                diff.Add($"Custom pattern name: {customName}");
-            if (userLayout == Effects.EngineLayout.Custom && !string.IsNullOrEmpty(customRaw))
-                diff.Add($"Custom firing pattern: {customRaw}");
-
-            // CONFIRM is unreachable under the new UX (button hidden + popup
-            // skipped when state is None), so the two real categories are:
-            //   CORRECTION = resolver had detection, user is changing it
-            //   CONTRIB    = no detection, user filled in from scratch
-            string category = !string.IsNullOrEmpty(layoutSrc) ? "CORRECTION" : "CONTRIB";
-
-            // Header line with the sortable bits, then the diff lines as a
-            // plain list, then a one-line source attribution (only for
-            // CORRECTION -- CONTRIB has nothing to reference), then Notes.
-            // No "Reference" dump: every value we'd have shown is either
-            // already on the arrow's left side or duplicated from the
-            // user's panel settings.
-            //
-            // Two version stamps: plugin assembly version covers the bake
-            // list + resolver code; CarCylinderResolver.CurrentCacheVersion
-            // is bumped whenever heuristics change and forces the
-            // persistent cache to rebuild. Together they let the maintainer
-            // tell exactly which detection generation produced the values
-            // the user is correcting (e.g. "plugin v1.5 (data v3)" came
-            // from a build that shipped v3 heuristics).
-            string body = $"[{category}] {carId}  |  {game}  |  plugin v{version} (data v{CarCylinderResolver.CurrentCacheVersion})\n\n";
-
-            if (diff.Count > 0)
-            {
-                body += string.Join("\n", diff) + "\n\n";
+                EngineCommunityText.Visibility = System.Windows.Visibility.Collapsed;
+                _engineCommunityFetchedKey = null;
+                _engineCommunityCache = null;
+                return;
             }
 
-            // Source attribution: tells the maintainer how confident the
-            // pre-existing detection was (baked = curated list, heuristic =
-            // pattern-matched, telemetry = sim-supplied, ev = electric tag).
-            // Only meaningful when something WAS detected, so it's skipped
-            // for CONTRIB.
-            if (!string.IsNullOrEmpty(layoutSrc))
-            {
-                body += $"Detection source: {layoutSrc}\n\n";
-            }
+            string key = game + "/" + carId;
+            if (_engineCommunityFetchedKey == key) return;
 
-            body += "Notes (engine codename, mod page link, anything else):\n\n";
+            _engineCommunityFetchedKey = key;
+            _engineCommunityCache = null;
+            // Hide the community line during fetch; the Confirm button
+            // visibility is owned by RenderEngineCommunityRow (which we
+            // call once the fetch returns) and the periodic UI refresh.
+            EngineCommunityText.Visibility = System.Windows.Visibility.Collapsed;
 
-            string url = EngineDataFormUrl
-                       + "?usp=pp_url&" + EngineDataFormEntry + "="
-                       + Uri.EscapeDataString(body);
-            try
+            if (_engineCommunityFetchInFlight) return;
+            _engineCommunityFetchInFlight = true;
+
+            string capturedGame = game;
+            string capturedCar  = carId;
+            System.Threading.Tasks.Task.Run(() =>
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
+                // All three fact-types share a per-car cadence, so they
+                // ride on the same background task to fan out wakeups
+                // tightly.
+                EngineLayoutConsensus layoutResult  = null;
+                CarNameConsensus      nameResult    = null;
+                RedlineConsensus      redlineResult = null;
+                try { layoutResult  = _plugin.FetchEngineLayoutConsensus(capturedGame, capturedCar); }
+                catch { /* swallowed; render the no-data fallback */ }
+                try { nameResult    = _plugin.FetchCarNameConsensus(capturedGame, capturedCar); }
+                catch { /* same */ }
+                try { redlineResult = _plugin.FetchRedlineConsensus(capturedGame, capturedCar); }
+                catch { /* same */ }
+                Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    UseShellExecute = true,
-                });
-            }
-            catch (Exception ex)
-            {
-                // Browser launch failed (rare). Try to copy the prefilled
-                // URL to the clipboard so the user can paste it instead of
-                // having to retype the whole submission. Fall back to the
-                // bare form URL if clipboard access is also unavailable.
-                string clipboardNote;
-                try
-                {
-                    Clipboard.SetText(url);
-                    clipboardNote = "The full prefilled URL has been copied to your clipboard. Paste it into your browser.";
-                }
-                catch
-                {
-                    clipboardNote = "Open this URL manually:\n" + EngineDataFormUrl;
-                }
-                MessageBox.Show(
-                    $"Couldn't open browser:\n{ex.Message}\n\n{clipboardNote}",
-                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
+                    _engineCommunityFetchInFlight = false;
+                    if (_engineCommunityFetchedKey != capturedGame + "/" + capturedCar) return;
+                    _engineCommunityCache = layoutResult;
+                    _engineRedlineCache   = redlineResult;
+                    // Push the car-name consensus into the resolver too so
+                    // the header / preset rows immediately reflect the
+                    // canonical name. Null is a valid signal here (means
+                    // "no community name yet" - resolver falls back to
+                    // local CarFacts or the catalog).
+                    _plugin.NotifyCarNameConsensus(capturedGame, capturedCar, nameResult);
+                    // Push the redline consensus too - same null-clears
+                    // semantics. The resolver picks it up immediately for
+                    // RevLimiter.CarFactsRedline so the buzz engagement
+                    // aligns with the canonical redline for this variant.
+                    _plugin.NotifyRedlineConsensus(capturedGame, capturedCar, redlineResult);
+                    // Push the consensus into the plugin's resolver cache
+                    // so Auto-detect uses it as the top of the cascade
+                    // ("auto means auto, sourced from community"). Pass
+                    // even when null - that tells the plugin to clear any
+                    // stale community entry for this car.
+                    _plugin.NotifyCommunityConsensus(capturedGame, capturedCar, layoutResult);
+                    RenderEngineCommunityRow();
+                }));
+            });
         }
+
+        // Render the passive community-context line under the auto-detect
+        // row. Shown only when a consensus actually exists for this car
+        // (a "no data" line would be noise). Corrections happen through
+        // the dropdown -> save -> share-modal flow, not here.
+        private void RenderEngineCommunityRow()
+        {
+            if (EngineCommunityText == null) return;
+
+            if (_engineCommunityCache == null)
+            {
+                EngineCommunityText.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+
+            string layoutDisplay = _engineCommunityCache.Layout;
+            if (Enum.TryParse<Effects.EngineLayout>(_engineCommunityCache.Layout, true, out var consLayout))
+                layoutDisplay = Effects.FiringPatternDb.LayoutDisplayName(consLayout);
+
+            int supporters = _engineCommunityCache.SupportingSubmissions;
+            string countTag = supporters > 0 ? $" ({supporters})" : "";
+            EngineCommunityText.Text = $"Community: {layoutDisplay}{countTag}";
+            EngineCommunityText.Visibility = System.Windows.Visibility.Visible;
+        }
+
+
+        // Thin local alias for Effects.FiringPatternDb.TryLayoutToCylAndConfig
+        // so existing callers in this file keep their unqualified call sites.
+        private static bool TryLayoutToCylAndConfig(Effects.EngineLayout layout,
+            out int cyl, out Effects.EngineConfig cfg)
+            => Effects.FiringPatternDb.TryLayoutToCylAndConfig(layout, out cyl, out cfg);
+
+
         private void EnginePitchSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -3803,6 +3951,17 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetShowFeedbackBox(ShowFeedbackBoxCheck.IsChecked == true);
+        }
+
+        // Single umbrella toggle: off = no submissions out (CommunityClient
+        // returns from ShouldSubmit), and once Backend Phase 2's consensus
+        // pull lands, no pulls in either. The flag already gates the submit
+        // path today; tying the future pull to the same flag keeps the user
+        // model simple ("Use community car data" means both directions).
+        private void CommunityEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetCommunityEnabled(CommunityEnabledCheck.IsChecked == true);
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the
@@ -5203,6 +5362,17 @@ namespace TrueforceForAll.Plugin
             // so the car override is the one valid save target. Save this section
             // straight to the car instead of offering the game-scope popover.
             if (_plugin.IsOfflineEditingCar) { ApplyEffectSaveForCar(which); return; }
+            // Engine-section save where the ONLY change is the layout (car
+            // fact). Skip the car-vs-game-default popover: game-default is
+            // meaningless for "what's actually in this car". The user can
+            // still use the popover when they touch preference fields too.
+            if (which == EffectKind.Engine
+                && !string.IsNullOrEmpty(_plugin.ActiveCarId)
+                && _plugin.IsEngineSectionOnlyLayoutDirty())
+            {
+                ApplyEffectSaveForCar(which);
+                return;
+            }
             ShowEffectSavePopover(which);
         }
 
@@ -5495,16 +5665,32 @@ namespace TrueforceForAll.Plugin
                 // captures every section the user has tuned, since the
                 // preset IS the snapshot of the user's intent at fork time.
                 _plugin.SnapshotSectionToCarOverride((TrueforcePlugin.SectionKind)(int)which);
-                string suggestion = onBuiltin ? StripDefaultSuffix(activeName) : carId;
-                string newName = PromptForCarPresetName(
-                    title: "Save as new car preset",
-                    body: onBuiltin
-                        ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{carId}':"
-                        : $"Save the current tuning as a new user preset for '{carId}':",
-                    initial: suggestion,
-                    existing: _plugin.GetCarPresets(carId));
-                if (string.IsNullOrEmpty(newName)) return;
-                _plugin.SaveActiveCarPresetAs(newName);
+                // Strip the " (Built-In)" suffix from the suggested name
+                // (NOT " (default)" - that's the legacy preset-default
+                // suffix, different concept). Without this the suggestion
+                // includes "(Built-In)" and collides with the merged-dict
+                // key for the factory entry, so silentOk always falls
+                // false and the rename prompt fires.
+                string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : carId;
+                var existing = _plugin.GetCarPresets(carId);
+                bool silentOk = !string.IsNullOrEmpty(suggestion)
+                                && (existing == null || !existing.ContainsKey(suggestion));
+                if (silentOk)
+                {
+                    _plugin.SaveActiveCarPresetAs(suggestion);
+                }
+                else
+                {
+                    string newName = PromptForCarPresetName(
+                        title: "Save as new car preset",
+                        body: onBuiltin
+                            ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{carId}':"
+                            : $"Save the current tuning as a new user preset for '{carId}':",
+                        initial: suggestion,
+                        existing: existing);
+                    if (string.IsNullOrEmpty(newName)) return;
+                    _plugin.SaveActiveCarPresetAs(newName);
+                }
             }
             else
             {
@@ -5523,11 +5709,13 @@ namespace TrueforceForAll.Plugin
                 }
             }
             RefreshFromPlugin();
-            // Prompt only on Engine-section saves (that's where the user
-            // committed cylinder/layout values worth submitting). Saves on
-            // other sections (Bumps, Traction, etc.) shouldn't trigger a
-            // form-submission ask; their data isn't what we're collecting.
+            // Prompt only on the sections whose values carry a per-car
+            // fact (Engine -> layout, RevLimiter -> implied redline from
+            // Threshold). Saves on other sections (Bumps, Traction, etc.)
+            // shouldn't trigger a form-submission ask; their data is
+            // personal preference.
             if (which == EffectKind.Engine) MaybePromptToSubmitEngineData(carId);
+            else if (which == EffectKind.RevLimiter) MaybePromptToSubmitRedlineData(carId);
         }
 
         /// <summary>Update active preset in place. Whole-snapshot save.
@@ -5777,23 +5965,45 @@ namespace TrueforceForAll.Plugin
             // (which write-throughs to factory). Non-dev: fork.
             if (string.IsNullOrEmpty(activeName) || (onBuiltin && !_plugin.DevMode))
             {
-                string suggestion = onBuiltin ? StripDefaultSuffix(activeName) : carId;
-                string newName = PromptForCarPresetName(
-                    title: "Save unsaved car-preset changes",
-                    body: onBuiltin
-                        ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{carId}':"
-                        : $"Save the current tuning as a new user preset for '{carId}':",
-                    initial: suggestion,
-                    existing: _plugin.GetCarPresets(carId));
-                if (string.IsNullOrEmpty(newName)) return false; // cancelled
-                _plugin.SaveActiveCarPresetAs(newName);
+                // ToDiskName strips " (Built-In)" (NOT " (default)" which is
+                // a separate legacy suffix). Without this the suggestion
+                // collides with the merged-dict key for the factory entry.
+                string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : carId;
+                var existing = _plugin.GetCarPresets(carId);
+                // Silent fork: suggest the stripped builtin name (or the
+                // carId when forking fresh). When that name is free, save
+                // without a dialog. The user clicked Save with intent to
+                // save THIS car's tuning - asking them to type a name they
+                // can't really disagree with is friction.
+                bool silentOk = !string.IsNullOrEmpty(suggestion)
+                                && (existing == null || !existing.ContainsKey(suggestion));
+                if (silentOk)
+                {
+                    _plugin.SaveActiveCarPresetAs(suggestion);
+                }
+                else
+                {
+                    string newName = PromptForCarPresetName(
+                        title: "Save unsaved car-preset changes",
+                        body: onBuiltin
+                            ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{carId}':"
+                            : $"Save the current tuning as a new user preset for '{carId}':",
+                        initial: suggestion,
+                        existing: existing);
+                    if (string.IsNullOrEmpty(newName)) return false; // cancelled
+                    _plugin.SaveActiveCarPresetAs(newName);
+                }
                 ok = true;
             }
             else
             {
                 ok = _plugin.PersistActiveCarOverride();
             }
-            if (ok) MaybePromptToSubmitEngineData(carId);
+            if (ok)
+            {
+                MaybePromptToSubmitEngineData(carId);
+                MaybePromptToSubmitRedlineData(carId);
+            }
             return ok;
         }
 
@@ -5872,7 +6082,11 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null || string.IsNullOrEmpty(_plugin.ActiveCarId)) return;
             string carId      = _plugin.ActiveCarId;
             string activeName = _plugin.GetActiveCarPresetName(carId);
-            string suggestion = string.IsNullOrEmpty(activeName) ? carId : StripDefaultSuffix(activeName);
+            // Strip the " (Built-In)" suffix so the "Save as new" dialog
+            // doesn't pre-fill a name that would immediately collide with
+            // the factory entry (StripDefaultSuffix targets " (default)",
+            // a separate legacy suffix).
+            string suggestion = string.IsNullOrEmpty(activeName) ? carId : TrueforcePlugin.ToDiskName(activeName);
             string newName = PromptForCarPresetName(
                 title: "Save as new car preset",
                 body:  $"Save the current tuning as a new user preset for '{carId}':",
@@ -5883,6 +6097,7 @@ namespace TrueforceForAll.Plugin
             ClearDirty();
             RefreshFromPlugin();
             MaybePromptToSubmitEngineData(carId);
+            MaybePromptToSubmitRedlineData(carId);
         }
 
         // Per-preset Delete and Clear-default live in the preset manager (Presets
@@ -5896,6 +6111,62 @@ namespace TrueforceForAll.Plugin
             string name = SelectedPresetName;
             if (_plugin == null || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(_plugin.ActiveGame)) return;
             _plugin.SetDefaultPresetForActiveGame(name);
+            RefreshFromPlugin();
+        }
+
+        // Header car-rename affordance. Opens the styled modal, writes the
+        // entered name to local CarFacts on confirm, and pipes through to
+        // the community submission API. When community is OFF the
+        // submission is a no-op (the plugin gate handles that) and only
+        // the local rename takes effect - users still get the per-car
+        // label without participating in the shared name pool.
+        private void HeaderCarRename_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string game  = _plugin.ActiveGame;
+            string carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+
+            // Pre-fill with whatever's currently displayed (community name,
+            // a prior local rename, or empty). The display name resolves
+            // through the same cascade the header reads, so this matches
+            // what the user sees right above the button.
+            string currentName = _plugin.ActiveCarDisplayName ?? "";
+            // If the current display name is just the carId (the fallback
+            // for unnamed cars), start the field empty - editing "Car_242"
+            // into a real name is unnecessary friction.
+            if (string.Equals(currentName, carId, StringComparison.Ordinal))
+                currentName = "";
+
+            var dialog = new CarNameInputWindow(carId, currentName)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            if (ok != true) return;
+            string newName = dialog.EnteredName;
+            if (string.IsNullOrEmpty(newName)) return;
+
+            // Local first: header re-renders to the new name on the next
+            // tick. Community submission is fire-and-forget; failures
+            // don't roll back the local change.
+            _plugin.WriteCarNameFact(game, carId, newName);
+            _plugin.SubmitCarNameToCommunity(game, carId, newName);
+
+            // Optimistic community-name injection. Without this, a prior
+            // community consensus for THIS car ("1997 Mazda RX-7") would
+            // keep winning the display-name cascade over our just-written
+            // local CarFacts entry, and the rename would visually no-op
+            // until the next refetch. Pretend the community now reflects
+            // the submission; the next car-change refetch reconciles
+            // server-side stickiness.
+            _plugin.NotifyCarNameConsensus(game, carId, new CarNameConsensus
+            {
+                Name                  = newName,
+                SupportingSubmissions = 1,
+                Confirmations         = 0,
+                PayloadHash           = null,
+            });
             RefreshFromPlugin();
         }
 
