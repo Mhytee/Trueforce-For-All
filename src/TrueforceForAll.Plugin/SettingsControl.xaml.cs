@@ -3446,7 +3446,9 @@ namespace TrueforceForAll.Plugin
                     ElectricMode = modeStr,
                 },
             };
-            _plugin.NotifyCommunityConsensus(game, carId, _engineCommunityCache);
+            _plugin.NotifyCommunityConsensus(game, carId,
+                _plugin.ComputeActiveCarVariantSignatureForActive(),
+                _engineCommunityCache);
             RenderEngineCommunityRow();
         }
 
@@ -3528,7 +3530,9 @@ namespace TrueforceForAll.Plugin
                 Confirmations         = 0,
                 PayloadHash           = null,
             };
-            _plugin.NotifyRedlineConsensus(game, carId, _engineRedlineCache);
+            _plugin.NotifyRedlineConsensus(game, carId,
+                _plugin.ComputeActiveCarVariantSignatureForActive(),
+                _engineRedlineCache);
         }
 
         // CONFIRM cases (agrees with detection) and "no data" skip the prompt.
@@ -3648,7 +3652,9 @@ namespace TrueforceForAll.Plugin
             {
                 _engineCommunityCache.SupportingSubmissions += 1;
             }
-            _plugin.NotifyCommunityConsensus(game, carId, _engineCommunityCache);
+            _plugin.NotifyCommunityConsensus(game, carId,
+                _plugin.ComputeActiveCarVariantSignatureForActive(),
+                _engineCommunityCache);
             RenderEngineCommunityRow();
         }
 
@@ -3673,11 +3679,17 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            string key = game + "/" + carId;
+            // Cache key embeds the variant signature so an in-session
+            // engine swap (Forza) invalidates the layout + redline cache
+            // and re-fetches with the new signature without waiting for
+            // a car change.
+            string capturedSignature = _plugin.ComputeActiveCarVariantSignatureForActive() ?? "";
+            string key = game + "/" + carId + "/" + capturedSignature;
             if (_engineCommunityFetchedKey == key) return;
 
             _engineCommunityFetchedKey = key;
             _engineCommunityCache = null;
+            _engineRedlineCache   = null;
             // Hide the community line during fetch; the Confirm button
             // visibility is owned by RenderEngineCommunityRow (which we
             // call once the fetch returns) and the periodic UI refresh.
@@ -3692,7 +3704,10 @@ namespace TrueforceForAll.Plugin
             {
                 // All three fact-types share a per-car cadence, so they
                 // ride on the same background task to fan out wakeups
-                // tightly.
+                // tightly. The signature was captured at fetch-trigger
+                // time; it gets stamped into the cache key + the Notify
+                // call so a swap that lands mid-fetch is correctly
+                // recognized as stale.
                 EngineLayoutConsensus layoutResult  = null;
                 CarNameConsensus      nameResult    = null;
                 RedlineConsensus      redlineResult = null;
@@ -3705,7 +3720,7 @@ namespace TrueforceForAll.Plugin
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     _engineCommunityFetchInFlight = false;
-                    if (_engineCommunityFetchedKey != capturedGame + "/" + capturedCar) return;
+                    if (_engineCommunityFetchedKey != capturedGame + "/" + capturedCar + "/" + capturedSignature) return;
                     _engineCommunityCache = layoutResult;
                     _engineRedlineCache   = redlineResult;
                     // Push the car-name consensus into the resolver too so
@@ -3718,13 +3733,13 @@ namespace TrueforceForAll.Plugin
                     // semantics. The resolver picks it up immediately for
                     // RevLimiter.CarFactsRedline so the buzz engagement
                     // aligns with the canonical redline for this variant.
-                    _plugin.NotifyRedlineConsensus(capturedGame, capturedCar, redlineResult);
+                    _plugin.NotifyRedlineConsensus(capturedGame, capturedCar, capturedSignature, redlineResult);
                     // Push the consensus into the plugin's resolver cache
                     // so Auto-detect uses it as the top of the cascade
                     // ("auto means auto, sourced from community"). Pass
                     // even when null - that tells the plugin to clear any
                     // stale community entry for this car.
-                    _plugin.NotifyCommunityConsensus(capturedGame, capturedCar, layoutResult);
+                    _plugin.NotifyCommunityConsensus(capturedGame, capturedCar, capturedSignature, layoutResult);
                     RenderEngineCommunityRow();
                 }));
             });

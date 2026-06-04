@@ -6881,7 +6881,14 @@ namespace TrueforceForAll.Plugin
             variant = null;
             var c = _activeCarCommunityConsensus;
             if (c == null) return false;
-            if (_activeCarCommunityKey != game + "/" + carId) return false;
+            // Cache key is variant-aware so an in-session swap (Forza)
+            // doesn't keep applying the stock variant's consensus after
+            // telemetry has moved to a new signature. When the key
+            // mismatches, the resolver falls through to non-community
+            // sources and SettingsControl's per-tick refresh will
+            // re-fetch with the new signature on the next pass.
+            string currentSig = ComputeActiveCarVariantSignature(game, carId);
+            if (_activeCarCommunityKey != game + "/" + carId + "/" + (currentSig ?? "")) return false;
             if (string.IsNullOrEmpty(c.Layout)) return false;
             // Map the stored enum-name string back to (cyl, EngineConfig)
             // for the legacy apply path. The schema whitelists only valid
@@ -6936,14 +6943,17 @@ namespace TrueforceForAll.Plugin
         // Pass null consensus when the fetch returned no data; the resolver
         // then falls through to Baked / Scanner / Telemetry.
         internal void NotifyCommunityConsensus(
-            string game, string carId, EngineLayoutConsensus consensus)
+            string game, string carId, string variantSignature,
+            EngineLayoutConsensus consensus)
         {
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
             // Only relevant when the fetch matches the still-active car;
             // a stale fetch from a previous car must not overwrite the
-            // cache.
+            // cache. The signature rides into the cache key too so the
+            // resolver only honors this consensus while telemetry is
+            // still on the variant the fetch targeted.
             if (game != _activeGame || carId != _activeCarId) return;
-            _activeCarCommunityKey = game + "/" + carId;
+            _activeCarCommunityKey = game + "/" + carId + "/" + (variantSignature ?? "");
             _activeCarCommunityConsensus = consensus;
             ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
             ApplyActiveCarOverride();
@@ -6989,11 +6999,12 @@ namespace TrueforceForAll.Plugin
         /// picks up the new value on the same tick. Pass null to drop the
         /// cache (e.g. when the fetch returned no row).</summary>
         internal void NotifyRedlineConsensus(
-            string game, string carId, RedlineConsensus consensus)
+            string game, string carId, string variantSignature,
+            RedlineConsensus consensus)
         {
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
             if (game != _activeGame || carId != _activeCarId) return;
-            _activeCarCommunityRedlineKey = game + "/" + carId;
+            _activeCarCommunityRedlineKey = game + "/" + carId + "/" + (variantSignature ?? "");
             _activeCarCommunityRedlineConsensus = consensus;
             ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
             ApplyActiveCarOverride();
@@ -7116,8 +7127,9 @@ namespace TrueforceForAll.Plugin
             // otherwise never reach RevLimiter. Override what the resolved
             // variant gave us when the community has a higher-priority
             // redline for the current variant signature.
+            string currentSigForRedline = ComputeActiveCarVariantSignature(_activeGame, carId);
             if (_activeCarCommunityRedlineConsensus != null
-                && _activeCarCommunityRedlineKey == ck
+                && _activeCarCommunityRedlineKey == ck + "/" + (currentSigForRedline ?? "")
                 && _activeCarCommunityRedlineConsensus.Rpm >= 500
                 && _activeCarCommunityRedlineConsensus.Rpm <= 25000
                 && RevLimiter != null)
@@ -7487,6 +7499,17 @@ namespace TrueforceForAll.Plugin
         /// All three are optional. Empty string when nothing is observed
         /// (sentinel for "no variant discriminator" - matches the server's
         /// default and the pre-variant single-row behavior).</summary>
+        /// <summary>Public shortcut for <see
+        /// cref="ComputeActiveCarVariantSignature"/> against the currently
+        /// active car. Used by SettingsControl to stamp the in-flight
+        /// fetch with the live signature so an in-session swap can
+        /// invalidate the cache and trigger a re-fetch without waiting
+        /// for a car change.</summary>
+        public string ComputeActiveCarVariantSignatureForActive()
+        {
+            return ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
+        }
+
         internal string ComputeActiveCarVariantSignature(string game, string carId)
         {
             if (EnginePulse == null) return string.Empty;
