@@ -184,7 +184,7 @@ begin
            or jsonb_typeof(p_payload->'config') <> 'string'
         then return null; end if;
         v_int  := (p_payload->>'cyl')::int;
-        v_text := upper(trim(p_payload->>'config'));
+        v_text := upper(btrim(p_payload->>'config'));
         if v_int < 1 or v_int > 16 then return null; end if;
         if v_text not in ('AUTO','SINGLE','INLINE','BOXER','V60','V90EVEN',
                           'V8CROSSPLANE','V8FLATPLANE','V6ODDFIRE',
@@ -195,7 +195,7 @@ begin
 
     elsif p_fact_type = 'car_name' then
         if jsonb_typeof(p_payload->'name') <> 'string' then return null; end if;
-        v_text := trim(p_payload->>'name');
+        v_text := btrim(p_payload->>'name');
         if length(v_text) < 2 or length(v_text) > 96 then return null; end if;
         return jsonb_build_object('name', v_text);
 
@@ -220,7 +220,7 @@ returns text
 language plpgsql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 declare
     v_salt text;
@@ -266,7 +266,7 @@ begin
     if v_hdrs is null then return 'unknown'; end if;
     v_ip := nullif(v_hdrs ->> 'cf-connecting-ip', '');
     if v_ip is null then return 'unknown'; end if;
-    v_ip := trim(v_ip);
+    v_ip := btrim(v_ip);
     if v_ip = '' then return 'unknown'; end if;
     return v_ip;
 end;
@@ -295,7 +295,7 @@ create or replace function _recompute_car_fact_consensus(
 ) returns void
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 declare
     top_payload      jsonb;
@@ -414,7 +414,7 @@ create or replace function submit_car_fact(
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 declare
     v_canonical jsonb;
@@ -482,7 +482,7 @@ create or replace function vote_car_fact(
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 declare
     v_ip text;
