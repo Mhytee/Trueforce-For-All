@@ -59,6 +59,13 @@ namespace TrueforceForAll.Plugin
         // Preset Manager's Source column reads it to attribute imported rows.
         private InstalledPacksStore _installedPacks;
 
+        // Community backend HTTP client (see CommunityClient.cs +
+        // supabase/README.md). Inert until Settings.CommunityEnabled is true
+        // and the URL + anon key are configured. Used by
+        // WriteUserCarFactsCorrection (and Stage 2.1/2.2 helpers when they
+        // land) to fire-and-forget submit User-source corrections.
+        private CommunityClient _community;
+
         // Snapshot of each car's override AS OF its last save / load. Used
         // by IsSectionDirty to tell whether an override section has been
         // edited since the last save, without re-reading the file. Updated
@@ -1493,6 +1500,16 @@ namespace TrueforceForAll.Plugin
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
             LoadAndMigrateCarPresets();
+
+            // Community backend HTTP client. Inert until
+            // Settings.CommunityEnabled is true and a URL + anon key are
+            // configured (see supabase/README.md). Identity (submitter_id)
+            // is derived server-side from the client IP + a rotating salt,
+            // so the plugin holds no persistent submitter id.
+            _community = new CommunityClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString());
 
             // One-time cleanup: walk user/games + user/cars looking for
             // files that are leftovers from before the file-based factory
@@ -6920,6 +6937,12 @@ namespace TrueforceForAll.Plugin
                 ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
                 ApplyActiveCarOverride();
             }
+
+            // Fire-and-forget community submission. No-op when Community is
+            // off / unconfigured. Runs on a thread-pool task; the local save
+            // above already succeeded so the user doesn't care about the
+            // network result.
+            _community?.SubmitEngineLayoutAsync(game, carId, cylinders, config);
             return true;
         }
 

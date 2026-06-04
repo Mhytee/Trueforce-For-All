@@ -105,6 +105,28 @@ namespace TrueforceForAll.Plugin
         // CarFacts dict above. Migrate-once + idempotent.
         public bool CarFactsMigratedV1 { get; set; } = false;
 
+        // Community backend settings. Defaults are inert: CommunityEnabled
+        // is off, no HTTP calls are made. Enabling it activates fire-and-
+        // forget submission of User-source CarFacts corrections + (later)
+        // pulls of trusted consensus entries on startup. See
+        // supabase/README.md for the schema and setup.
+        //
+        // Identity (submitter_id) is derived server-side from a hash of the
+        // client IP and a rotating salt, so the plugin holds no persistent
+        // submitter id and cannot frame another user. Anti-spam is enforced
+        // server-side via a per-IP rate limit. The anon API key shipped to
+        // the backend is treated as PUBLIC by the schema design - the only
+        // operations it can perform are: SELECT from car_fact_consensus,
+        // and CALL the two RPC functions submit_car_fact + vote_car_fact.
+        //
+        // Backend URL + anon key are blank by default. For release builds
+        // they get baked in as CommunityClient constants and the toggle is
+        // the only switch users see. For dev builds the user can override
+        // via these fields to point at a staging project.
+        public bool   CommunityEnabled         { get; set; } = false;
+        public string CommunityBackendUrl     { get; set; } = "";
+        public string CommunityBackendAnonKey { get; set; } = "";
+
         public float MasterGain { get; set; } = 1.0f;
 
         // Step master gain moves on each press of a bound Controls-tab action
