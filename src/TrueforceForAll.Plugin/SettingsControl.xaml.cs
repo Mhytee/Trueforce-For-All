@@ -273,6 +273,7 @@ namespace TrueforceForAll.Plugin
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
                 if (CommunityEnabledCheck != null)
                     CommunityEnabledCheck.IsChecked = _plugin.Settings?.CommunityEnabled == true;
+                RefreshCommunityAuthRow();
 
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
                 FfbScaleText.Text      = FfbScaleSlider.Value.ToString("F2");
@@ -4093,6 +4094,56 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetCommunityEnabled(CommunityEnabledCheck.IsChecked == true);
+            RefreshCommunityAuthRow();
+        }
+
+        // Sync the sign-in row state with whatever the plugin currently
+        // thinks. Visible only when Community is on (no point signing in
+        // when uploads/edits aren't going out). Label flips between
+        // "Sign in to manage your shared presets" and
+        // "Signed in as <email>" + button text "Sign in" / "Sign out".
+        private void RefreshCommunityAuthRow()
+        {
+            if (CommunityAuthRow == null || _plugin == null) return;
+            bool communityOn = _plugin.Settings?.CommunityEnabled == true;
+            CommunityAuthRow.Visibility = communityOn
+                ? System.Windows.Visibility.Visible
+                : System.Windows.Visibility.Collapsed;
+            if (!communityOn) return;
+            if (_plugin.AuthIsSignedIn)
+            {
+                string email = _plugin.AuthSignedInEmail ?? "(unknown email)";
+                CommunityAuthStatus.Text = "Signed in as " + email + ".";
+                CommunityAuthBtn.Content = "Sign out";
+            }
+            else
+            {
+                CommunityAuthStatus.Text = "Sign in to manage your shared presets.";
+                CommunityAuthBtn.Content = "Sign in";
+            }
+        }
+
+        private void CommunityAuth_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (_plugin.AuthIsSignedIn)
+            {
+                var confirm = System.Windows.MessageBox.Show(
+                    System.Windows.Window.GetWindow(this),
+                    "Sign out of the community? You'll need to sign in again to edit or delete your shared presets.",
+                    "Sign out", System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Question);
+                if (confirm != System.Windows.MessageBoxResult.Yes) return;
+                _plugin.AuthSignOut();
+                RefreshCommunityAuthRow();
+                return;
+            }
+            var dialog = new SignInWindow(_plugin)
+            {
+                Owner = System.Windows.Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            if (ok == true) RefreshCommunityAuthRow();
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the

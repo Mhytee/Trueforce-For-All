@@ -385,6 +385,10 @@
                                 ToolTip="Mark this preset as not useful. Flippable."/>
                         <Button x:Name="CommunityReportBtn"   Content="Report"   Style="{StaticResource RowButton}" Click="CommunityReport_Click"   IsEnabled="False"
                                 ToolTip="Flag inappropriate content for moderator review."/>
+                        <Button x:Name="CommunityEditBtn"     Content="Edit…"    Style="{StaticResource RowButton}" Click="CommunityEdit_Click"     IsEnabled="False" Visibility="Collapsed"
+                                ToolTip="Edit one of your own uploads (name + description). Visible only on rows you uploaded while signed in."/>
+                        <Button x:Name="CommunityDeleteBtn"   Content="Delete"   Style="{StaticResource RowButton}" Click="CommunityDelete_Click"   IsEnabled="False" Visibility="Collapsed"
+                                ToolTip="Soft-delete one of your own uploads. Visible only on rows you uploaded while signed in."/>
                         <Button x:Name="CommunityDownloadBtn" Content="Download" Style="{StaticResource RowButton}" Click="CommunityDownload_Click" IsEnabled="False"
                                 ToolTip="Pick which sections to apply, then import into your library."/>
                     </StackPanel>

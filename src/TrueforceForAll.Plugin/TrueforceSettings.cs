@@ -410,6 +410,13 @@ namespace TrueforceForAll.Plugin
         // by default; users who never set it just produce anonymous exports.
         public string SharingAuthor { get; set; } = "";
 
+        // Supabase Auth session (email OTP). Persisted so a signed-in
+        // user stays signed in across plugin restarts. Null when not
+        // signed in; on access, the auth client refreshes the token if
+        // it's within the refresh window. The session unlocks edit/delete
+        // on the user's own preset uploads.
+        public CommunityAuthSession AuthSession { get; set; }
+
         // ---- Per-effect "NEW" badges + changelog banner (see EffectChangelog) ----
 
         // Effect IDs the user has acknowledged. An ID present here means

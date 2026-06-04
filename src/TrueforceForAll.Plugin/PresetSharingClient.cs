@@ -42,6 +42,11 @@ namespace TrueforceForAll.Plugin
         // Set by the post-fetch pass that joins against preset_votes for
         // the local voter_id: -1 / 0 / +1 for downvoted / no-vote / upvoted.
         public int    MyVote        { get; set; }
+        // Stable uuid of the signed-in user who uploaded this preset.
+        // Null when the upload was anonymous (no auth.uid() at upload
+        // time). The browser shows Edit/Delete only when this matches
+        // the local signed-in user's id.
+        public string OwnerUserId   { get; set; }
     }
 
     /// <summary>Detail row: summary + full body. Returned by FetchPresetBody
@@ -75,17 +80,32 @@ namespace TrueforceForAll.Plugin
             NullValueHandling = NullValueHandling.Ignore,
         };
 
-        private readonly Func<TrueforceSettings> _settingsProvider;
-        private readonly Action<string>          _log;
-        private readonly string                  _pluginVersion;
+        private readonly Func<TrueforceSettings>     _settingsProvider;
+        private readonly Action<string>              _log;
+        private readonly string                      _pluginVersion;
+        // When non-null, an authenticated bearer-token provider. Awaited
+        // before each auth-gated RPC so token refresh happens lazily.
+        // Null in unit-test / no-auth contexts; PresetSharingClient gracefully
+        // falls back to the anon key only (uploads still succeed, but the
+        // server stamps owner_user_id NULL = unmanageable forever).
+        private readonly Func<Task<string>>          _accessTokenProvider;
 
         public PresetSharingClient(Func<TrueforceSettings> settingsProvider,
-            Action<string> log, string pluginVersion)
+            Action<string> log, string pluginVersion,
+            Func<Task<string>> accessTokenProvider = null)
         {
             _settingsProvider = settingsProvider
                 ?? throw new ArgumentNullException(nameof(settingsProvider));
             _log = log;
             _pluginVersion = pluginVersion ?? "";
+            _accessTokenProvider = accessTokenProvider;
+        }
+
+        private async Task<string> GetAccessTokenOrNullAsync()
+        {
+            if (_accessTokenProvider == null) return null;
+            try { return await _accessTokenProvider().ConfigureAwait(false); }
+            catch { return null; }
         }
 
         // ---- Upload --------------------------------------------------------
@@ -130,6 +150,11 @@ namespace TrueforceForAll.Plugin
 
             string capturedKey = anonKey;
             string fullUrl = url.TrimEnd('/') + UploadRpcPath;
+            // Pass the authenticated bearer token when signed in so the
+            // server can stamp owner_user_id from auth.uid(). Anonymous
+            // uploads still succeed (owner_user_id stays NULL = read-only
+            // forever); the modal can warn but doesn't block.
+            string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
 
             try
             {
@@ -137,7 +162,7 @@ namespace TrueforceForAll.Plugin
                 using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                 {
                     req.Headers.Add("apikey", capturedKey);
-                    req.Headers.Add("Authorization", "Bearer " + capturedKey);
+                    req.Headers.Add("Authorization", "Bearer " + (bearer ?? capturedKey));
                     req.Headers.Add("Prefer", "return=representation");
                     req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
                     using (var resp = await _http.SendAsync(req,
@@ -153,9 +178,6 @@ namespace TrueforceForAll.Plugin
                                 + $"{(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             return null;
                         }
-                        // upload_preset returns jsonb_build_object('id',..,'submitter_id',..);
-                        // PostgREST wraps function results so the body comes back as
-                        // either the bare JSON object or a single-element array.
                         var root = JToken.Parse(respBody);
                         var obj = root.Type == JTokenType.Array ? root[0] : root;
                         return obj?["id"]?.ToString();
@@ -166,6 +188,125 @@ namespace TrueforceForAll.Plugin
             {
                 _log?.Invoke($"[Trueforce] Preset upload exception: {ex.Message}");
                 return null;
+            }
+        }
+
+        // ---- Update (auth-gated) -------------------------------------------
+
+        /// <summary>Edit an owned preset's metadata + body. Requires a
+        /// signed-in session (server gates on auth.uid() = owner_user_id).
+        /// Returns true on success, false on any failure (rate limit,
+        /// permission denied, network).</summary>
+        public async Task<bool> UpdatePresetAsync(string id,
+            string name, string description, JObject body, List<string> effectTags,
+            int? bodyVersion = null, int timeoutMs = 15000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return false;
+            if (string.IsNullOrWhiteSpace(id)) return false;
+            string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer))
+            {
+                _log?.Invoke("[Trueforce] Update preset attempted while signed out.");
+                return false;
+            }
+
+            string requestBody;
+            try
+            {
+                requestBody = JsonConvert.SerializeObject(new
+                {
+                    p_preset_id    = id,
+                    p_name         = string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
+                    p_description  = description,  // null is fine; "" clears
+                    p_body         = (object)body,
+                    p_effect_tags  = effectTags,
+                    p_body_version = bodyVersion,
+                }, _jsonSettings);
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Update preset serialize failed: {ex.Message}");
+                return false;
+            }
+
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/update_preset";
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cts.Token).ConfigureAwait(false))
+                    {
+                        if (resp.IsSuccessStatusCode) return true;
+                        string detail = resp.Content != null
+                            ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
+                            : "";
+                        _log?.Invoke($"[Trueforce] Update preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Update preset exception: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ---- Delete (auth-gated) -------------------------------------------
+
+        /// <summary>Soft-delete an owned preset. Server sets
+        /// is_suppressed=true so vote history stays for moderation. Returns
+        /// true on success, false on any failure.</summary>
+        public async Task<bool> DeletePresetAsync(string id, int timeoutMs = 10000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return false;
+            if (string.IsNullOrWhiteSpace(id)) return false;
+            string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer))
+            {
+                _log?.Invoke("[Trueforce] Delete preset attempted while signed out.");
+                return false;
+            }
+
+            string requestBody;
+            try
+            {
+                requestBody = JsonConvert.SerializeObject(new { p_preset_id = id }, _jsonSettings);
+            }
+            catch { return false; }
+
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/delete_preset";
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cts.Token).ConfigureAwait(false))
+                    {
+                        if (resp.IsSuccessStatusCode) return true;
+                        string detail = resp.Content != null
+                            ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
+                            : "";
+                        _log?.Invoke($"[Trueforce] Delete preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Delete preset exception: {ex.Message}");
+                return false;
             }
         }
 
@@ -196,7 +337,7 @@ namespace TrueforceForAll.Plugin
             string qs = "?game=eq."   + Uri.EscapeDataString(game)
                       + "&car_id=eq." + Uri.EscapeDataString(carId)
                       + "&select=id,name,author,description,game,car_id,effect_tags,"
-                      + "upvotes,downvotes,wilson_score,downloads,created_at"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id"
                       + "&order=" + orderClause
                       + "&limit=" + Math.Max(1, Math.Min(limit, 100));
             string fullUrl = url.TrimEnd('/') + PresetsPath + qs;
@@ -397,6 +538,7 @@ namespace TrueforceForAll.Plugin
                 WilsonScore = row["wilson_score"]?.ToObject<double>() ?? 0,
                 Downloads   = row["downloads"]?.ToObject<int>() ?? 0,
                 CreatedAt   = created,
+                OwnerUserId = row["owner_user_id"]?.ToString(),
             };
         }
 

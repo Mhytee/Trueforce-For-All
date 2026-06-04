@@ -73,6 +73,12 @@ namespace TrueforceForAll.Plugin
         // stay readable. Same gating contract via Settings.CommunityEnabled.
         private PresetSharingClient _presetSharing;
 
+        // Email-OTP auth client. Owns the Supabase Auth session lifecycle
+        // (send_otp -> verify_otp -> refresh -> sign_out). PresetSharingClient
+        // reads tokens from this when sending auth-gated RPCs (upload,
+        // update, delete).
+        private CommunityAuth _auth;
+
         // In-memory community-consensus injection for the active car. Set by
         // NotifyCommunityConsensus when SettingsControl's per-car fetch
         // returns, cleared when the active car changes. TryResolveActiveVariant
@@ -1550,10 +1556,15 @@ namespace TrueforceForAll.Plugin
                 () => Settings,
                 msg => SimHub.Logging.Current.Info(msg),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString());
+            _auth = new CommunityAuth(
+                () => Settings,
+                () => this.SaveCommonSettings("GeneralSettings", Settings),
+                msg => SimHub.Logging.Current.Info(msg));
             _presetSharing = new PresetSharingClient(
                 () => Settings,
                 msg => SimHub.Logging.Current.Info(msg),
-                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString());
+                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
 
             // One-time cleanup: walk user/games + user/cars looking for
             // files that are leftovers from before the file-based factory
@@ -7514,6 +7525,34 @@ namespace TrueforceForAll.Plugin
         {
             _presetSharing?.ReportPresetAsync(id);
         }
+
+        internal async Task<bool> UpdateCommunityPresetAsync(string id,
+            string name, string description, JObject body, List<string> effectTags,
+            int? bodyVersion = null)
+        {
+            if (_presetSharing == null) return false;
+            return await _presetSharing.UpdatePresetAsync(id, name, description, body, effectTags, bodyVersion);
+        }
+
+        internal async Task<bool> DeleteCommunityPresetAsync(string id)
+        {
+            if (_presetSharing == null) return false;
+            return await _presetSharing.DeletePresetAsync(id);
+        }
+
+        // ---- Community auth passthroughs ----------------------------------
+
+        public bool   AuthIsSignedIn  => _auth?.IsSignedIn  == true;
+        public string AuthSignedInEmail => _auth?.SignedInEmail;
+        public string AuthSignedInUserId => _auth?.SignedInUserId;
+
+        internal Task<AuthCallResult> AuthSendOtpAsync(string email)
+            => _auth?.SendOtpAsync(email) ?? Task.FromResult(AuthCallResult.NetworkFailure);
+
+        internal Task<AuthCallResult> AuthVerifyOtpAsync(string email, string code)
+            => _auth?.VerifyOtpAsync(email, code) ?? Task.FromResult(AuthCallResult.NetworkFailure);
+
+        public void AuthSignOut() => _auth?.SignOut();
 
         /// <summary>Merge community-supplied custom engine defs into the
         /// local library. Reuses the file-based MergeImportedCustomEngines

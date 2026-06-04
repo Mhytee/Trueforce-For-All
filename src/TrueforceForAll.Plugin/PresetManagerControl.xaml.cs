@@ -2138,6 +2138,123 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (CommunityVoteDownBtn != null) CommunityVoteDownBtn.IsEnabled = has;
             if (CommunityReportBtn   != null) CommunityReportBtn.IsEnabled   = has;
             if (CommunityDownloadBtn != null) CommunityDownloadBtn.IsEnabled = has;
+
+            // Edit + Delete visible only when the signed-in user owns the
+            // row. Anonymous uploads (OwnerUserId null) never get the
+            // affordance; signed-out viewers don't either even on rows
+            // they uploaded - they have to sign back in first.
+            bool ownsRow = has
+                && _plugin?.AuthIsSignedIn == true
+                && !string.IsNullOrEmpty(sel.Summary.OwnerUserId)
+                && string.Equals(sel.Summary.OwnerUserId,
+                                 _plugin.AuthSignedInUserId,
+                                 StringComparison.Ordinal);
+            if (CommunityEditBtn != null)
+            {
+                CommunityEditBtn.Visibility = ownsRow ? Visibility.Visible : Visibility.Collapsed;
+                CommunityEditBtn.IsEnabled  = ownsRow;
+            }
+            if (CommunityDeleteBtn != null)
+            {
+                CommunityDeleteBtn.Visibility = ownsRow ? Visibility.Visible : Visibility.Collapsed;
+                CommunityDeleteBtn.IsEnabled  = ownsRow;
+            }
+        }
+
+        private async void CommunityEdit_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCommunity;
+            if (sel?.Summary == null || _plugin == null) return;
+            if (!_plugin.AuthIsSignedIn) return;
+
+            // Pre-fill with current name + description; body edits land in
+            // a follow-up. Phase 1.5 ships metadata-only edit to keep
+            // scope small while unblocking the common "I uploaded with a
+            // bad name" case.
+            var dlg = new TwoLineEditWindow(
+                title:      "Edit preset",
+                line1Label: "Name",
+                line1Init:  sel.Summary.Name ?? "",
+                line2Label: "Description (optional)",
+                line2Init:  sel.Summary.Description ?? "",
+                line2Lines: 4)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dlg.ShowDialog();
+            if (ok != true) return;
+            string newName = (dlg.Line1Result ?? "").Trim();
+            string newDesc = (dlg.Line2Result ?? "").Trim();
+            if (newName.Length < 2 || newName.Length > 96)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Name must be 2-96 characters.", "Edit preset",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Updating...";
+            bool success;
+            try
+            {
+                success = await _plugin.UpdateCommunityPresetAsync(
+                    sel.Summary.Id, newName, newDesc, null, null);
+            }
+            catch (Exception ex)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Update exception: " + ex.Message;
+                return;
+            }
+            if (!success)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Update failed (sign in expired or permission denied).";
+                return;
+            }
+            // Reflect locally + refresh from server next car-change.
+            sel.Summary.Name = newName;
+            sel.Summary.Description = string.IsNullOrEmpty(newDesc) ? null : newDesc;
+            int idx = _communityRows.IndexOf(sel);
+            if (idx >= 0)
+            {
+                _communityRows.RemoveAt(idx);
+                _communityRows.Insert(idx, sel);
+                CommunityList.SelectedIndex = idx;
+            }
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = "Updated.";
+        }
+
+        private async void CommunityDelete_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCommunity;
+            if (sel?.Summary == null || _plugin == null) return;
+            if (!_plugin.AuthIsSignedIn) return;
+
+            var confirm = MessageBox.Show(Window.GetWindow(this),
+                $"Delete '{sel.Summary.Name}'? Other drivers won't see it anymore. Vote history stays for moderation review.",
+                "Delete preset", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Deleting...";
+            bool success;
+            try { success = await _plugin.DeleteCommunityPresetAsync(sel.Summary.Id); }
+            catch (Exception ex)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Delete exception: " + ex.Message;
+                return;
+            }
+            if (!success)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Delete failed (sign in expired or permission denied).";
+                return;
+            }
+            _communityRows.Remove(sel);
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = "Deleted.";
         }
 
         private void CommunityVoteUp_Click(object sender, RoutedEventArgs e)

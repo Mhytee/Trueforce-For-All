@@ -2341,8 +2341,21 @@
             <CheckBox x:Name="CommunityEnabledCheck" Content="Use community car data"
                       Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
                       ToolTip="When you save engine data that disagrees with what's detected, the plugin asks if you want to share it. When community data exists for a car you load, the plugin uses it. Turn off to keep everything local: nothing leaves your machine and community values are ignored."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8" FontSize="12"
                        Text="Anonymous data exchange to help everyone tune cars faster. Turn off to stay local-only."/>
+            <!-- Sign-in row. Hidden when Community is off (nothing to manage).
+                 Shows current state + a single button that flips between
+                 'Sign in' and 'Sign out' based on whether a session is
+                 present. The auth flow is optional - anonymous users can
+                 still upload, they just can't edit or delete later. -->
+            <StackPanel x:Name="CommunityAuthRow" Orientation="Horizontal" Margin="22,0,0,12" Visibility="Collapsed">
+                <TextBlock x:Name="CommunityAuthStatus" VerticalAlignment="Center" FontSize="12"
+                           Foreground="#FFB0B0B0" Text="Sign in to manage your shared presets." MaxWidth="320" TextWrapping="Wrap"/>
+                <Button x:Name="CommunityAuthBtn" Content="Sign in"
+                        Margin="10,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
+                        Click="CommunityAuth_Click"
+                        ToolTip="Sign in with email so the server can stamp owner_user_id on uploads. Required for edit + delete on your own presets."/>
+            </StackPanel>
 
             <!-- Diagnostics moved into the Advanced Settings modal. See
                  AdvancedSettingsHost near the bottom. -->
