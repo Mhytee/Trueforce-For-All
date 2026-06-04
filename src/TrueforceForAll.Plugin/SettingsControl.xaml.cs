@@ -1006,6 +1006,34 @@ namespace TrueforceForAll.Plugin
                                     : "Report wrong engine data for this car...";
                         }
                     }
+
+                    // CarFacts "Correct..." button: visible whenever a car is
+                    // loaded and engine layout was auto-detected (i.e., the
+                    // banner above shows an Auto-detected line) OR when an
+                    // existing User-correction is already on file for this
+                    // car (so users can edit/remove it even after disabling
+                    // auto-detect by switching layout manually). Tracked per
+                    // (game, carId) so it works for any car in any game.
+                    if (CorrectCarFactButton != null)
+                    {
+                        // Only show next to a NON-EMPTY banner so the button
+                        // isn't visually orphaned (left margin with no
+                        // adjacent text) when EngineLayoutAutoText.Text is
+                        // blanked by one of its else branches. When a user
+                        // correction exists, the button stays visible so
+                        // the user can edit/remove it even from branches
+                        // that would otherwise hide the banner.
+                        bool hasAutoBanner = ep != null && ep.AutoLayout.HasValue
+                            && !string.IsNullOrEmpty(ep.AutoLayoutSource)
+                            && !string.IsNullOrEmpty(EngineLayoutAutoText.Text);
+                        bool hasUserCorrection = _plugin != null && !string.IsNullOrEmpty(activeCar)
+                            && _plugin.GetUserCarFactsCorrection(_plugin.ActiveGame, activeCar) != null;
+                        bool show = !string.IsNullOrEmpty(activeCar)
+                                 && (hasAutoBanner || hasUserCorrection);
+                        CorrectCarFactButton.Visibility = show
+                            ? System.Windows.Visibility.Visible
+                            : System.Windows.Visibility.Collapsed;
+                    }
                 }
 
                 // Set by the Forza block below; drives the persistent
@@ -3244,6 +3272,66 @@ namespace TrueforceForAll.Plugin
         private void ReportEngineDataButton_Click(object sender, RoutedEventArgs e)
         {
             OpenEngineDataForm();
+        }
+
+        // CarFacts inline "Correct..." affordance. Opens the correction
+        // dialog pre-filled with any existing User-source variant for this
+        // car, then writes/removes the variant via the plugin's helpers.
+        // Resolution re-runs live so the new layout takes effect immediately
+        // without a car swap or SimHub restart.
+        private void CorrectCarFactButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string game  = _plugin.ActiveGame;
+            string carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId))
+            {
+                MessageBox.Show("Load a car first, then correct its engine layout.",
+                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string carDisplay = _plugin.ActiveCarDisplayName;
+            var existing = _plugin.GetUserCarFactsCorrection(game, carId);
+
+            string autoSummary = null;
+            var ep = _plugin.EnginePulse;
+            if (ep != null && ep.AutoLayout.HasValue && !string.IsNullOrEmpty(ep.AutoLayoutSource))
+            {
+                string srcSuffix;
+                string src = ep.AutoLayoutSource;
+                if (string.Equals(src, "telemetry", StringComparison.OrdinalIgnoreCase))
+                    srcSuffix = " (from telemetry)";
+                else if (string.Equals(src, "baked", StringComparison.OrdinalIgnoreCase))
+                    srcSuffix = " (from built-in car list)";
+                else if (string.Equals(src, "cache", StringComparison.OrdinalIgnoreCase))
+                    srcSuffix = " (cached from earlier session)";
+                else if (string.Equals(src, "community", StringComparison.OrdinalIgnoreCase))
+                    srcSuffix = " (community-confirmed)";
+                else if (string.Equals(src, "user-set", StringComparison.OrdinalIgnoreCase))
+                    srcSuffix = " (you set this)";
+                else
+                    srcSuffix = $" (heuristic: {src})";
+                autoSummary = $"Currently detected: "
+                            + Effects.FiringPatternDb.LayoutDisplayName(ep.AutoLayout.Value)
+                            + srcSuffix;
+            }
+
+            var dialog = new CarFactsCorrectionWindow(carDisplay, carId, autoSummary, existing)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            if (ok != true) return;
+
+            if (dialog.Action == CarFactsCorrectionWindow.CorrectionAction.Save)
+            {
+                _plugin.WriteUserCarFactsCorrection(game, carId, dialog.Cylinders, dialog.Config);
+            }
+            else if (dialog.Action == CarFactsCorrectionWindow.CorrectionAction.Remove)
+            {
+                _plugin.RemoveUserCarFactsCorrection(game, carId);
+            }
         }
 
         // Save-time prompt: nudges the user to submit their committed engine

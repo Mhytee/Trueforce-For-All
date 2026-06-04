@@ -2397,113 +2397,8 @@ namespace TrueforceForAll.Plugin
                 _device?.ResetFfbFilters();
                 // New car, discard the previous car's auto-detected layout so
                 // the next resolver hit (or first telemetry frame) populates
-                // fresh.
-                // CarFacts redline for this car: cleared every car change,
-                // populated below when an active variant has a RedlineRpm.
-                // Lives outside the EnginePulse block since RevLimiter has
-                // its own lifecycle and may exist before EnginePulse hits
-                // the layout cascade.
-                if (RevLimiter != null) RevLimiter.CarFactsRedline = null;
-
-                if (EnginePulse != null)
-                {
-                    EnginePulse.AutoLayout = null;
-                    EnginePulse.AutoLayoutSource = null;
-                    EnginePulse.CatalogCyl = null;
-                    _activeCarDisplayName = null;
-
-                    // Seed AutoLayout from baked lookup / heuristic for games
-                    // that don't ship cylinder count in telemetry (AC, etc.).
-                    // Forza populates NumCylinders directly each frame and
-                    // OnTelemetry converts that to AutoLayout, they agree on
-                    // any car in both lookups. The user's saved Layout
-                    // (when not Auto) always wins via EffectiveLayout, so this
-                    // is purely the auto-default cascade.
-                    // CarFacts (the community-vetted layer) feeds variants for
-                    // this car. Two separable contributions:
-                    //   1. Cylinders + EngineConfig → AutoLayout
-                    //   2. RedlineRpm + CarName     → applied independently
-                    // The CarCylinderCache migration seeded Stock variants for
-                    // cars the user has already driven, so on day one (1) hits
-                    // the same set the legacy resolver used to. (2) is largely
-                    // dormant until community submissions arrive in later
-                    // stages. The split apply lets a redline-only or name-only
-                    // bundle still contribute without forcing a cylinder count.
-                    bool haveVariant = TryResolveActiveVariant(_activeGame, carId, out var v);
-
-                    // CarName from the bundle (chassis-level, variant-
-                    // independent) wins when set.
-                    string ck = _activeGame + "/" + carId;
-                    if (Settings.CarFacts != null
-                        && Settings.CarFacts.TryGetValue(ck, out var bundle)
-                        && bundle != null
-                        && !string.IsNullOrEmpty(bundle.CarName))
-                        _activeCarDisplayName = bundle.CarName;
-
-                    // RedlineRpm rides any usable variant, even one with
-                    // Cylinders=0 (the "unknown / use heuristic" sentinel from
-                    // the EngineVariant contract). The RevLimiter substitutes
-                    // it for a missing telemetry redline; if a layout fallback
-                    // runs below, the redline survives.
-                    if (haveVariant && RevLimiter != null
-                        && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
-                        RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
-
-                    // Layout: use the variant when cylinders are valid. The
-                    // bake-wins-over-stale-cache invariant is now handled
-                    // inside TryResolveActiveVariant: an unconfirmed Scanner
-                    // seed yields to the virtual Baked variant for any car
-                    // BuiltinCarCylinders knows about.
-                    bool variantUsableForLayout = haveVariant
-                        && v.Cylinders >= 1 && v.Cylinders <= 16;
-
-                    if (variantUsableForLayout)
-                    {
-                        EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
-                            v.Cylinders, v.EngineConfig, false);
-                        EnginePulse.AutoLayoutSource = MapCarFactSourceToUiLabel(v.Source);
-                        EnginePulse.CatalogCyl = v.Cylinders;
-                        // CarName fallback when the bundle didn't set one:
-                        // resolver still knows AC's ui_car.json etc.
-                        if (string.IsNullOrEmpty(_activeCarDisplayName)
-                            && CarCylinderResolver.TryResolve(_activeGame, carId, out var ds))
-                            _activeCarDisplayName = ds.DisplayName;
-                        SimHub.Logging.Current.Info(
-                            $"[Trueforce] Car '{carId}' resolved from CarFacts: "
-                            + $"variant='{v.Label}', cyl={v.Cylinders}, config={v.EngineConfig}, "
-                            + $"redline={(v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-")}, "
-                            + $"source={v.Source} -> layout={EnginePulse.AutoLayout}");
-                    }
-                    else if (CarCylinderResolver.TryResolve(_activeGame, carId, out var carSpec))
-                    {
-                        EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
-                            carSpec.Cylinders, carSpec.EngineConfig, carSpec.IsElectric);
-                        EnginePulse.AutoLayoutSource = carSpec.Source;
-                        EnginePulse.CatalogCyl = carSpec.Cylinders;
-                        if (string.IsNullOrEmpty(_activeCarDisplayName))
-                            _activeCarDisplayName = carSpec.DisplayName;
-                        SimHub.Logging.Current.Info(
-                            $"[Trueforce] Car '{carId}' resolved: cyl={carSpec.Cylinders}, "
-                            + $"electric={carSpec.IsElectric}, source={carSpec.Source}, "
-                            + $"engineConfig={carSpec.EngineConfig} ({carSpec.EngineConfigSource ?? "auto"}), "
-                            + $"name={carSpec.DisplayName ?? "(none)"}"
-                            + $" -> layout={EnginePulse.AutoLayout}");
-                    }
-                    else if (_telemetrySource?.ProvidesNumCylinders == true)
-                    {
-                        // Resolver missed but the active source will populate
-                        // NumCylinders shortly (Forza UDP). Label the source
-                        // now so the UI doesn't briefly show "couldn't detect"
-                        // between car-change and first frame. AutoLayout
-                        // itself stays null until OnTelemetry runs.
-                        EnginePulse.AutoLayoutSource = "telemetry";
-                    }
-                    else if (!string.IsNullOrEmpty(carId))
-                    {
-                        SimHub.Logging.Current.Info(
-                            $"[Trueforce] Car '{carId}' not auto-resolved, user can set engine layout manually.");
-                    }
-                }
+                // fresh. Then re-run the CarFacts cascade for the new carId.
+                ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
                 // Re-resolve the new car's preset from disk so the applied
                 // tuning always MATCHES the car you just switched to, and so a
                 // car you cleared to "None" earlier in the session re-resolves
@@ -6812,8 +6707,17 @@ namespace TrueforceForAll.Plugin
         // Picks one variant from the stored CarFacts bundle (if any), or null
         // when no stored data exists. Selection rules within the bundle:
         //   - Single variant → use it.
-        //   - CarFactsSelection set → use that variant by Id.
-        //   - Else highest-Confirmations variant (first-seen breaks ties).
+        //   - CarFactsSelection set (explicit picker choice) → use that
+        //     variant by Id.
+        //   - Else rank by SourcePriority then by Confirmations (higher
+        //     wins); first-seen breaks ties at the lowest level.
+        // Source priority codifies the docs' "User wins over Community wins
+        // over Scanner-confirmed wins over Scanner-unconfirmed" rule, so a
+        // User correction always beats a higher-Confirmations Community or
+        // migrated Scanner variant. Without this, a fresh User correction
+        // (Confirmations=0) would lose to anything pre-existing - which
+        // silently no-ops the entire Correct... flow on any car that already
+        // had a bundle.
         private EngineVariant PickStoredVariant(string game, string carId)
         {
             if (Settings?.CarFacts == null) return null;
@@ -6834,18 +6738,238 @@ namespace TrueforceForAll.Plugin
             }
 
             EngineVariant best = null;
+            int bestPriority = int.MinValue;
             int bestConf = int.MinValue;
             for (int i = 0; i < variants.Count; i++)
             {
                 var cand = variants[i];
                 if (cand == null) continue;
-                if (cand.Confirmations > bestConf)
+                int prio = SourcePriority(cand.Source);
+                if (prio > bestPriority
+                    || (prio == bestPriority && cand.Confirmations > bestConf))
                 {
                     best = cand;
+                    bestPriority = prio;
                     bestConf = cand.Confirmations;
                 }
             }
             return best;
+        }
+
+        // Rank for variant selection: bigger wins. User (local correction) is
+        // top: a user who clicked Correct knows what's actually in this car
+        // and that overrides everything we sourced elsewhere. Community sits
+        // mid: it's vetted but generic, the user can still override. Scanner
+        // (heuristic) is the lowest stored tier; below it the caller's
+        // Baked / resolver fallback takes over.
+        private static int SourcePriority(CarFactSource s)
+        {
+            switch (s)
+            {
+                case CarFactSource.User:         return 50;
+                case CarFactSource.Community:    return 40;
+                case CarFactSource.SwapOverride: return 30;
+                case CarFactSource.Baked:        return 20;
+                case CarFactSource.Scanner:      return 10;
+                case CarFactSource.GameTelemetry: return 0;
+                default:                         return 0;
+            }
+        }
+
+        // Re-resolve and apply the CarFacts cascade for the active car. Called
+        // by the car-change handler and by post-correction flows (so a user
+        // correction takes effect live without forcing a car swap). Mutates
+        // the EnginePulse + RevLimiter slots that the apply-path reads:
+        //   EnginePulse.AutoLayout / AutoLayoutSource / CatalogCyl
+        //   RevLimiter.CarFactsRedline
+        //   _activeCarDisplayName
+        // Idempotent: safe to call repeatedly. logResolution=true emits an Info
+        // log line summarizing which source won; the post-correction caller
+        // passes true to leave a trace of the new resolved state.
+        public void ResolveAndApplyCarFactsForActiveCar(string carId, bool logResolution)
+        {
+            if (RevLimiter != null) RevLimiter.CarFactsRedline = null;
+            if (EnginePulse == null) return;
+
+            EnginePulse.AutoLayout = null;
+            EnginePulse.AutoLayoutSource = null;
+            EnginePulse.CatalogCyl = null;
+            _activeCarDisplayName = null;
+
+            if (string.IsNullOrEmpty(carId)) return;
+
+            // CarFacts (the community-vetted layer) feeds variants for this
+            // car. Two separable contributions:
+            //   1. Cylinders + EngineConfig → AutoLayout
+            //   2. RedlineRpm + CarName     → applied independently
+            // The split apply lets a redline-only or name-only bundle still
+            // contribute without forcing a cylinder count.
+            bool haveVariant = TryResolveActiveVariant(_activeGame, carId, out var v);
+
+            // CarName from the bundle (chassis-level, variant-independent).
+            string ck = _activeGame + "/" + carId;
+            if (Settings?.CarFacts != null
+                && Settings.CarFacts.TryGetValue(ck, out var bundle)
+                && bundle != null
+                && !string.IsNullOrEmpty(bundle.CarName))
+                _activeCarDisplayName = bundle.CarName;
+
+            // RedlineRpm rides any usable variant, even one with Cylinders=0
+            // (the "unknown / use heuristic" sentinel).
+            if (haveVariant && RevLimiter != null
+                && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
+                RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
+
+            bool variantUsableForLayout = haveVariant
+                && v.Cylinders >= 1 && v.Cylinders <= 16;
+
+            if (variantUsableForLayout)
+            {
+                EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
+                    v.Cylinders, v.EngineConfig, false);
+                EnginePulse.AutoLayoutSource = MapCarFactSourceToUiLabel(v.Source);
+                EnginePulse.CatalogCyl = v.Cylinders;
+                if (string.IsNullOrEmpty(_activeCarDisplayName)
+                    && CarCylinderResolver.TryResolve(_activeGame, carId, out var ds))
+                    _activeCarDisplayName = ds.DisplayName;
+                if (logResolution)
+                    SimHub.Logging.Current.Info(
+                        $"[Trueforce] Car '{carId}' resolved from CarFacts: "
+                        + $"variant='{v.Label}', cyl={v.Cylinders}, config={v.EngineConfig}, "
+                        + $"redline={(v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-")}, "
+                        + $"source={v.Source} -> layout={EnginePulse.AutoLayout}");
+            }
+            else if (CarCylinderResolver.TryResolve(_activeGame, carId, out var carSpec))
+            {
+                EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
+                    carSpec.Cylinders, carSpec.EngineConfig, carSpec.IsElectric);
+                EnginePulse.AutoLayoutSource = carSpec.Source;
+                EnginePulse.CatalogCyl = carSpec.Cylinders;
+                if (string.IsNullOrEmpty(_activeCarDisplayName))
+                    _activeCarDisplayName = carSpec.DisplayName;
+                if (logResolution)
+                    SimHub.Logging.Current.Info(
+                        $"[Trueforce] Car '{carId}' resolved: cyl={carSpec.Cylinders}, "
+                        + $"electric={carSpec.IsElectric}, source={carSpec.Source}, "
+                        + $"engineConfig={carSpec.EngineConfig} ({carSpec.EngineConfigSource ?? "auto"}), "
+                        + $"name={carSpec.DisplayName ?? "(none)"}"
+                        + $" -> layout={EnginePulse.AutoLayout}");
+            }
+            else if (_telemetrySource?.ProvidesNumCylinders == true)
+            {
+                // Resolver missed but the active source will populate
+                // NumCylinders shortly (Forza UDP). Label the source so the
+                // UI doesn't briefly show "couldn't detect" between
+                // car-change and first frame. AutoLayout itself stays null
+                // until OnTelemetry runs.
+                EnginePulse.AutoLayoutSource = "telemetry";
+            }
+            else if (logResolution)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[Trueforce] Car '{carId}' not auto-resolved, user can set engine layout manually.");
+            }
+        }
+
+        /// <summary>Write or update a User-source CarFacts correction for the
+        /// given (game, carId). Replaces any prior User-source variant in the
+        /// bundle (one user-correction per car keeps the picker simple).
+        /// Authoritative stored variants from User wins over Baked/Scanner in
+        /// TryResolveActiveVariant's ordering, so the correction applies on
+        /// the next resolution pass. Saves Settings to disk and re-runs the
+        /// resolution for the active car if it matches. Returns true on success.</summary>
+        public bool WriteUserCarFactsCorrection(string game, string carId,
+            int cylinders, EngineConfig config)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
+            if (cylinders < 1 || cylinders > 16) return false;
+            if (Settings == null) return false;
+            if (Settings.CarFacts == null)
+                Settings.CarFacts = new Dictionary<string, CarFactsBundle>();
+
+            string key = game + "/" + carId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null)
+            {
+                bundle = new CarFactsBundle();
+                Settings.CarFacts[key] = bundle;
+            }
+            if (bundle.EngineVariants == null)
+                bundle.EngineVariants = new List<EngineVariant>();
+
+            // Replace any existing User-source variant for this car. Multiple
+            // User-source entries would be ambiguous: the user only ever sees
+            // one Correct dialog at a time.
+            bundle.EngineVariants.RemoveAll(v =>
+                v != null && v.Source == CarFactSource.User);
+
+            bundle.EngineVariants.Add(new EngineVariant
+            {
+                Id            = Guid.NewGuid().ToString("N"),
+                Label         = "Correction",
+                Cylinders     = cylinders,
+                EngineConfig  = config,
+                RedlineRpm    = null,
+                Source        = CarFactSource.User,
+                Confirmations = 0,
+            });
+
+            this.SaveCommonSettings("GeneralSettings", Settings);
+
+            if (game == _activeGame && carId == _activeCarId)
+            {
+                ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
+                ApplyActiveCarOverride();
+            }
+            return true;
+        }
+
+        /// <summary>Remove the User-source CarFacts correction for (game,
+        /// carId). No-op if no correction exists. Saves Settings to disk and
+        /// re-runs resolution for the active car if it matches. Returns true
+        /// when a correction was actually removed.</summary>
+        public bool RemoveUserCarFactsCorrection(string game, string carId)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
+            if (Settings?.CarFacts == null) return false;
+            string key = game + "/" + carId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return false;
+            if (bundle.EngineVariants == null) return false;
+            int removed = bundle.EngineVariants.RemoveAll(v =>
+                v != null && v.Source == CarFactSource.User);
+            if (removed == 0) return false;
+
+            // Drop the bundle entirely if nothing meaningful remains, so the
+            // settings file stays clean.
+            if (bundle.EngineVariants.Count == 0 && string.IsNullOrEmpty(bundle.CarName))
+                Settings.CarFacts.Remove(key);
+
+            this.SaveCommonSettings("GeneralSettings", Settings);
+
+            if (game == _activeGame && carId == _activeCarId)
+            {
+                ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
+                ApplyActiveCarOverride();
+            }
+            return true;
+        }
+
+        /// <summary>Reads the current User-source CarFacts correction for
+        /// (game, carId), or null if none. Used by the Correct dialog to
+        /// pre-fill its fields and surface a Remove affordance when an
+        /// existing correction is being edited.</summary>
+        public EngineVariant GetUserCarFactsCorrection(string game, string carId)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
+            if (Settings?.CarFacts == null) return null;
+            string key = game + "/" + carId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return null;
+            if (bundle.EngineVariants == null) return null;
+            for (int i = 0; i < bundle.EngineVariants.Count; i++)
+            {
+                var v = bundle.EngineVariants[i];
+                if (v != null && v.Source == CarFactSource.User) return v;
+            }
+            return null;
         }
 
         // Map CarFactSource onto the source-label vocabulary the engine-layout

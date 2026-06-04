@@ -1085,7 +1085,21 @@
                         <!-- Auto-detect indicator: shows the layout the resolver
                              chose for the active car when the user has Auto
                              selected. Empty otherwise (explicit Layout in effect). -->
-                        <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text=""/>
+                        <!-- Auto-detected indicator + inline "Correct" affordance.
+                             The button is shown only when a car is loaded AND
+                             EngineLayoutAutoText is non-empty (something was
+                             detected to disagree with). Opens
+                             CarFactsCorrectionWindow which writes a User-source
+                             CarFacts variant for the (game, carId) and re-applies
+                             resolution live. -->
+                        <StackPanel Orientation="Horizontal" Margin="140,0,0,8">
+                            <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}"
+                                       Text="" VerticalAlignment="Center"/>
+                            <Button x:Name="CorrectCarFactButton" Margin="8,0,0,0" Padding="6,1,6,1"
+                                    Click="CorrectCarFactButton_Click" Visibility="Collapsed"
+                                    Content="Correct..."
+                                    ToolTip="Save what's actually in this car. Outranks the built-in and heuristic detection; applies on every preset you use with this car. Tracked per car ID."/>
+                        </StackPanel>
                         <!-- Active pattern readout: shows what's being synthesized
                              for the currently selected engine type. Read-only.
                              Authoring custom engines happens in the Custom...
