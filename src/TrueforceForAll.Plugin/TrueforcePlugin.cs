@@ -17,7 +17,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Controls;
+using Newtonsoft.Json.Linq;
 using System.Windows.Media;
 using GameReaderCommon;
 using SimHub.Plugins;
@@ -65,6 +67,11 @@ namespace TrueforceForAll.Plugin
         // WriteUserCarFactsCorrection (and Stage 2.1/2.2 helpers when they
         // land) to fire-and-forget submit User-source corrections.
         private CommunityClient _community;
+
+        // Preset-sharing HTTP client (companion to _community). Distinct
+        // file + class so per-car fact ops and whole-preset upload/browse
+        // stay readable. Same gating contract via Settings.CommunityEnabled.
+        private PresetSharingClient _presetSharing;
 
         // In-memory community-consensus injection for the active car. Set by
         // NotifyCommunityConsensus when SettingsControl's per-car fetch
@@ -1540,6 +1547,10 @@ namespace TrueforceForAll.Plugin
             // is derived server-side from the client IP + a rotating salt,
             // so the plugin holds no persistent submitter id.
             _community = new CommunityClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString());
+            _presetSharing = new PresetSharingClient(
                 () => Settings,
                 msg => SimHub.Logging.Current.Info(msg),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString());
@@ -7465,6 +7476,73 @@ namespace TrueforceForAll.Plugin
                 ComputeActiveCarVariantSignature(game, carId));
         }
 
+        // ---- Preset sharing passthroughs (PresetSharingClient is internal
+        //      to the assembly; these wrap it for the UI layers). ----
+
+        internal async Task<string> UploadCarPresetToCommunityAsync(
+            string name, string game, string carId, JObject body,
+            string author, string description, List<string> effectTags,
+            int bodyVersion = 1)
+        {
+            if (_presetSharing == null) return null;
+            return await _presetSharing.UploadCarPresetAsync(
+                name, game, carId, body, author, description, effectTags, bodyVersion);
+        }
+
+        internal List<PresetSummary> FetchCommunityPresetsForCar(
+            string game, string carId, string sort = "wilson", int limit = 20)
+        {
+            return _presetSharing?.FetchPresetsForCar(game, carId, sort, limit);
+        }
+
+        internal PresetFull FetchCommunityPresetBody(string id)
+        {
+            return _presetSharing?.FetchPresetBody(id);
+        }
+
+        public void VoteCommunityPreset(string id, int value)
+        {
+            _presetSharing?.VotePresetAsync(id, value);
+        }
+
+        public void RecordCommunityPresetDownload(string id)
+        {
+            _presetSharing?.RecordPresetDownloadAsync(id);
+        }
+
+        public void ReportCommunityPreset(string id)
+        {
+            _presetSharing?.ReportPresetAsync(id);
+        }
+
+        /// <summary>Merge community-supplied custom engine defs into the
+        /// local library. Reuses the file-based MergeImportedCustomEngines
+        /// (Id-keyed dedup, local wins on collision with logging when
+        /// content differs).</summary>
+        public void ImportCommunityCustomEngines(List<CustomEngineDef> incoming)
+        {
+            if (incoming == null || incoming.Count == 0) return;
+            MergeImportedCustomEngines(incoming);
+            this.SaveCommonSettings("GeneralSettings", Settings);
+        }
+
+        /// <summary>Persist a freshly-downloaded community car preset into
+        /// the user's library under the supplied preset name. Wraps
+        /// CarPresetStore.Save with the curator's author + description so
+        /// the row stays attributed in the preset manager Source column.</summary>
+        public void SaveImportedCommunityCarPreset(string carId, string presetName,
+            string gameName, CarOverride ovr, string author, string description)
+        {
+            if (_carStore == null || string.IsNullOrEmpty(carId)
+                || string.IsNullOrEmpty(presetName) || ovr == null) return;
+            _carStore.Save(carId, presetName, gameName, ovr, isBuiltin: false,
+                packName: "Community",
+                author: author, description: description,
+                authorVersion: null,
+                defaultAuthor: null);
+        }
+
+
         /// <summary>Blocking fetch of the current community consensus for
         /// (game, carId)'s engine layout. Used by the share-prompt to render
         /// accurate "first / confirming / alternative" copy. Bounded
@@ -9387,7 +9465,7 @@ namespace TrueforceForAll.Plugin
         // Mhytee sees the credit.
         //
         // Pass either or both collections; nulls are tolerated.
-        private List<CustomEngineDef> CollectReferencedCustomEngines(
+        internal List<CustomEngineDef> CollectReferencedCustomEngines(
             IEnumerable<GameSettingsSnapshot> snapshots,
             IEnumerable<CarOverride> carOverrides)
         {

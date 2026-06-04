@@ -16,6 +16,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -324,8 +325,9 @@ namespace TrueforceForAll.Plugin
         {
             InitializeComponent();
             GameList.ItemsSource   = _gameRows;
-            CarList.ItemsSource    = _carRows;
-            CustomList.ItemsSource = _customRows;
+            CarList.ItemsSource       = _carRows;
+            CustomList.ItemsSource    = _customRows;
+            CommunityList.ItemsSource = _communityRows;
             // Wire the filter predicates onto each list's default view.
             CollectionViewSource.GetDefaultView(_gameRows).Filter   = GameRowFilter;
             CollectionViewSource.GetDefaultView(_carRows).Filter    = CarRowFilter;
@@ -501,10 +503,17 @@ namespace TrueforceForAll.Plugin
         // exist (initial visibility is set in XAML instead).
         private void Segment_Checked(object sender, RoutedEventArgs e)
         {
-            if (GamePanel == null || CarPanel == null || CustomPanel == null) return;
-            GamePanel.Visibility   = SegGame.IsChecked   == true ? Visibility.Visible : Visibility.Collapsed;
-            CarPanel.Visibility    = SegCar.IsChecked    == true ? Visibility.Visible : Visibility.Collapsed;
-            CustomPanel.Visibility = SegCustom.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            if (GamePanel == null || CarPanel == null || CustomPanel == null
+                || CommunityPanel == null) return;
+            GamePanel.Visibility      = SegGame.IsChecked      == true ? Visibility.Visible : Visibility.Collapsed;
+            CarPanel.Visibility       = SegCar.IsChecked       == true ? Visibility.Visible : Visibility.Collapsed;
+            CustomPanel.Visibility    = SegCustom.IsChecked    == true ? Visibility.Visible : Visibility.Collapsed;
+            CommunityPanel.Visibility = SegCommunity.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            // Lazy-load the community list the first time the user opens
+            // the segment so the panel-open isn't tied to plugin startup.
+            if (SegCommunity.IsChecked == true && _communityRows.Count == 0
+                && !_communityFetchInFlight)
+                _ = CommunityRefreshAsync();
         }
 
         // Last preset the user clicked Edit on. Kept for reference; the actual
@@ -1272,6 +1281,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // submission opts in via the Settings toggle.
             CarRenameCarBtn.IsEnabled = anySelected    && checkedCount <= 1;
             CarDuplicateBtn.IsEnabled = anySelected    && checkedCount <= 1;
+            // Share-to-community: needs CommunityEnabled and a row. The
+            // upload itself also gates on the backend URL + anon key being
+            // present, but at the UI layer the toggle is the visible
+            // contract.
+            bool communityOn = _plugin?.Settings?.CommunityEnabled == true;
+            CarShareBtn.IsEnabled = anySelected && checkedCount <= 1 && communityOn;
+            CarShareBtn.ToolTip = communityOn
+                ? "Upload this car preset to the community so other drivers can find it."
+                : "Enable Community Contributions in Settings to share presets.";
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelEditable;
             // Set-as-default: bulk supported (one row per car). Enabled if any
             // checked row isn't already its car's active default, else the
@@ -1497,6 +1515,81 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     && bundle != null && !string.IsNullOrEmpty(bundle.CarName))
                 ? bundle.CarName
                 : "";
+        }
+
+        // Open the upload modal for the selected car preset. Reads the
+        // on-disk CarOverride via the plugin's GetCarPresets helper (user
+        // + factory built-ins both fair game), bundles any custom-engine
+        // defs the override references, computes effect_tags from the
+        // non-null section list, and hands off to PresetShareWindow. The
+        // upload itself happens inside that modal so we can show progress
+        // / error state inline.
+        private async void CarShare_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCar;
+            if (sel == null || _plugin == null) return;
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Enable Community Contributions in Settings to share presets.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Resolve the CarOverride from the preset library (user + builtins).
+            var perCar = _plugin.GetCarPresets(sel.CarId);
+            if (perCar == null
+                || !perCar.TryGetValue(sel.PresetName, out var entry)
+                || entry == null
+                || entry.Override == null)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    $"Could not load preset '{sel.PresetName}' for car '{sel.CarId}'.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var customs = _plugin.CollectReferencedCustomEngines(
+                null, new[] { entry.Override });
+
+            // Serialize as JObject so the upload RPC sees pure JSON. The
+            // server doesn't crack the body; receivers parse it back into
+            // CarOverride + List<CustomEngineDef> on download.
+            var body = new Newtonsoft.Json.Linq.JObject
+            {
+                ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(entry.Override),
+            };
+            if (customs != null && customs.Count > 0)
+                body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
+
+            // Effect tags from non-null sections on the override.
+            var tags = new List<string>(8);
+            if (entry.Override.EnginePulse  != null) tags.Add("engine");
+            if (entry.Override.RevLimiter   != null) tags.Add("revlimiter");
+            if (entry.Override.RoadBumps    != null) tags.Add("roadbumps");
+            if (entry.Override.TractionLoss != null) tags.Add("tractionloss");
+            if (entry.Override.GearShift    != null) tags.Add("gearshift");
+            if (entry.Override.AbsClick     != null) tags.Add("abs");
+            if (entry.Override.PitLimiter   != null) tags.Add("pitlimiter");
+            if (entry.Override.Drs          != null) tags.Add("drs");
+            if (entry.Override.Collision    != null) tags.Add("collision");
+            if (entry.Override.AudioCapture != null) tags.Add("audio");
+            if (entry.Override.Airborne     != null) tags.Add("airborne");
+
+            string carDisplay = ResolveCarNameForRow(sel.GameName, sel.CarId);
+            if (string.IsNullOrEmpty(carDisplay)) carDisplay = sel.CarId;
+
+            var dialog = new PresetShareWindow(
+                _plugin, sel.PresetName, sel.GameName ?? "",
+                sel.CarId, carDisplay, body, tags)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            // The modal handles its own success/failure messaging; nothing
+            // else needs to happen here on close. Keep the async signature
+            // so future hooks (e.g. refresh after upload) have a place.
+            await Task.CompletedTask;
         }
 
         // Per-car (not per-preset) rename: opens the styled
@@ -1892,6 +1985,314 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             ok.Click += (s, args) => { result = lb.SelectedItem as string; if (result != null) win.DialogResult = true; };
             lb.MouseDoubleClick += (s, args) => { result = lb.SelectedItem as string; if (result != null) win.DialogResult = true; };
             return win.ShowDialog() == true ? result : null;
+        }
+
+        // ===================== Community browser =====================
+
+        // Row in the Community list. Wraps a PresetSummary with the
+        // formatting the grid binds against. MyVote and the description
+        // ride along so the detail panel + Upvote/Downvote toggles can
+        // reflect what the user already submitted in earlier sessions.
+        private sealed class CommunityRow
+        {
+            public PresetSummary Summary { get; set; }
+            public string Name        => Summary?.Name ?? "";
+            public string Author      => string.IsNullOrEmpty(Summary?.Author) ? "(anonymous)" : Summary.Author;
+            public string VoteLabel   => $"{Summary?.Upvotes ?? 0} / {Summary?.Downvotes ?? 0}";
+            public int    Downloads   => Summary?.Downloads ?? 0;
+            public string TagsLabel   => Summary?.EffectTags == null || Summary.EffectTags.Count == 0
+                                          ? "" : string.Join(", ", Summary.EffectTags);
+            public string Description => Summary?.Description ?? "";
+        }
+
+        private readonly System.Collections.ObjectModel.ObservableCollection<CommunityRow> _communityRows =
+            new System.Collections.ObjectModel.ObservableCollection<CommunityRow>();
+        private bool _communityFetchInFlight;
+        private string _communitySort = "wilson";
+        // Tracks which (game, carId) the displayed list represents so we
+        // can repopulate when the active car changes.
+        private string _communityListedCarKey;
+
+        private CommunityRow SelectedCommunity =>
+            CommunityList?.SelectedItem as CommunityRow;
+
+        // Called from the host (SettingsControl) when active car changes
+        // so the community panel can show "Showing presets for: X" with
+        // the live name + refresh when visible.
+        public void OnActiveCarChanged()
+        {
+            UpdateCommunityActiveCarLabel();
+            // If the user is currently looking at the Community panel,
+            // immediately refresh so the list reflects the new car.
+            if (CommunityPanel != null && CommunityPanel.Visibility == Visibility.Visible
+                && _plugin != null)
+                _ = CommunityRefreshAsync();
+        }
+
+        private void UpdateCommunityActiveCarLabel()
+        {
+            if (CommunityCarLabel == null || _plugin == null) return;
+            string carId = _plugin.ActiveCarId;
+            string display = _plugin.ActiveCarDisplayName;
+            if (string.IsNullOrEmpty(carId))
+                CommunityCarLabel.Text = "(none - load a car in the game first)";
+            else
+                CommunityCarLabel.Text = string.IsNullOrEmpty(display) || display == carId
+                                         ? carId
+                                         : $"{display}   {carId}";
+        }
+
+        private void CommunitySort_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (CommunitySortCombo == null) return;
+            int idx = CommunitySortCombo.SelectedIndex;
+            string newSort = idx == 1 ? "newest" : idx == 2 ? "downloads" : "wilson";
+            if (newSort == _communitySort) return;
+            _communitySort = newSort;
+            if (CommunityPanel?.Visibility == Visibility.Visible)
+                _ = CommunityRefreshAsync();
+        }
+
+        private void CommunityRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            _ = CommunityRefreshAsync();
+        }
+
+        private async Task CommunityRefreshAsync()
+        {
+            if (_plugin == null || _communityFetchInFlight) return;
+            UpdateCommunityActiveCarLabel();
+            string game  = _plugin.ActiveGame;
+            string carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId))
+            {
+                _communityRows.Clear();
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Load a car in the game to see community presets.";
+                CommunityList_SelectionChanged(null, null);
+                return;
+            }
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                _communityRows.Clear();
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Community Contributions is off (toggle it in Settings).";
+                CommunityList_SelectionChanged(null, null);
+                return;
+            }
+
+            _communityFetchInFlight = true;
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = "Loading...";
+
+            string capturedGame = game;
+            string capturedCar  = carId;
+            string capturedSort = _communitySort;
+            List<PresetSummary> results = null;
+            try
+            {
+                results = await Task.Run(() =>
+                    _plugin.FetchCommunityPresetsForCar(capturedGame, capturedCar, capturedSort, 50));
+            }
+            catch (Exception ex)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Fetch failed: " + ex.Message;
+                _communityFetchInFlight = false;
+                return;
+            }
+            _communityFetchInFlight = false;
+
+            // If the user switched cars while the fetch was in flight,
+            // drop the stale result rather than render the wrong list.
+            if (_plugin.ActiveGame != capturedGame || _plugin.ActiveCarId != capturedCar)
+                return;
+
+            _communityListedCarKey = capturedGame + "/" + capturedCar;
+            _communityRows.Clear();
+            if (results == null)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Could not reach the community backend.";
+                CommunityList_SelectionChanged(null, null);
+                return;
+            }
+            foreach (var s in results)
+                _communityRows.Add(new CommunityRow { Summary = s });
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = _communityRows.Count == 0
+                    ? "No community presets for this car yet. Be the first to share."
+                    : $"{_communityRows.Count} preset(s) found.";
+            CommunityList_SelectionChanged(null, null);
+        }
+
+        private void CommunityList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var sel = SelectedCommunity;
+            bool has = sel != null && sel.Summary != null;
+            if (CommunityDescriptionText != null)
+                CommunityDescriptionText.Text = has && !string.IsNullOrWhiteSpace(sel.Summary.Description)
+                    ? sel.Summary.Description
+                    : "";
+            if (CommunityVoteUpBtn   != null) CommunityVoteUpBtn.IsEnabled   = has;
+            if (CommunityVoteDownBtn != null) CommunityVoteDownBtn.IsEnabled = has;
+            if (CommunityReportBtn   != null) CommunityReportBtn.IsEnabled   = has;
+            if (CommunityDownloadBtn != null) CommunityDownloadBtn.IsEnabled = has;
+        }
+
+        private void CommunityVoteUp_Click(object sender, RoutedEventArgs e)
+        {
+            CommunityVote(+1);
+        }
+
+        private void CommunityVoteDown_Click(object sender, RoutedEventArgs e)
+        {
+            CommunityVote(-1);
+        }
+
+        private void CommunityVote(int value)
+        {
+            var sel = SelectedCommunity;
+            if (sel?.Summary == null || _plugin == null) return;
+            _plugin.VoteCommunityPreset(sel.Summary.Id, value);
+            // Optimistic counter update; server is authoritative on the
+            // next refresh (the Wilson recompute might disagree if the
+            // user previously voted the other way).
+            if (value > 0) sel.Summary.Upvotes   += 1;
+            else            sel.Summary.Downvotes += 1;
+            int idx = _communityRows.IndexOf(sel);
+            if (idx >= 0)
+            {
+                _communityRows.RemoveAt(idx);
+                _communityRows.Insert(idx, sel);
+                CommunityList.SelectedIndex = idx;
+            }
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = value > 0 ? "Upvote recorded." : "Downvote recorded.";
+        }
+
+        private void CommunityReport_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCommunity;
+            if (sel?.Summary == null || _plugin == null) return;
+            var confirm = MessageBox.Show(Window.GetWindow(this),
+                $"Report '{sel.Summary.Name}' for moderator review?",
+                "Report preset", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+            _plugin.ReportCommunityPreset(sel.Summary.Id);
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = "Reported. Thanks for flagging.";
+        }
+
+        private async void CommunityDownload_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCommunity;
+            if (sel?.Summary == null || _plugin == null) return;
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = "Downloading...";
+
+            string capturedId = sel.Summary.Id;
+            PresetFull full = null;
+            try
+            {
+                full = await Task.Run(() => _plugin.FetchCommunityPresetBody(capturedId));
+            }
+            catch (Exception ex)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Download failed: " + ex.Message;
+                return;
+            }
+            if (full?.Body == null || full.Summary == null)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Download returned no body.";
+                return;
+            }
+
+            // The body JSON shape (set by PresetShareWindow): { override: {...}, custom_engines: [...] }
+            CarOverride ovr = null;
+            List<CustomEngineDef> customs = null;
+            try
+            {
+                var ovrToken = full.Body["override"];
+                if (ovrToken != null)
+                    ovr = ovrToken.ToObject<CarOverride>();
+                var ceToken = full.Body["custom_engines"];
+                if (ceToken is Newtonsoft.Json.Linq.JArray ja)
+                    customs = ja.ToObject<List<CustomEngineDef>>();
+            }
+            catch (Exception ex)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Body parse failed: " + ex.Message;
+                return;
+            }
+            if (ovr == null)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Body had no override section.";
+                return;
+            }
+
+            // Section-picker: list non-null sections, default to all
+            // checked; only checked sections get applied. Picker lives
+            // on the import path (CarOverride section selection) - we
+            // build it inline here as a small dialog.
+            var picker = new CommunitySectionPickerWindow(
+                full.Summary.Name, full.Summary.Author, ovr)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? pickerOk = picker.ShowDialog();
+            if (pickerOk != true) return;
+            var chosen = picker.ChosenSections;
+
+            // Apply: zero out non-chosen sections, save as a new user
+            // preset for the active car (or for full.Summary.CarId if
+            // distinct - we trust the user's active car for now).
+            var apply = new CarOverride();
+            if (chosen.Contains("engine"))       apply.EnginePulse  = ovr.EnginePulse;
+            if (chosen.Contains("revlimiter"))   apply.RevLimiter   = ovr.RevLimiter;
+            if (chosen.Contains("roadbumps"))    apply.RoadBumps    = ovr.RoadBumps;
+            if (chosen.Contains("tractionloss")) apply.TractionLoss = ovr.TractionLoss;
+            if (chosen.Contains("gearshift"))    apply.GearShift    = ovr.GearShift;
+            if (chosen.Contains("abs"))          apply.AbsClick     = ovr.AbsClick;
+            if (chosen.Contains("pitlimiter"))   apply.PitLimiter   = ovr.PitLimiter;
+            if (chosen.Contains("drs"))          apply.Drs          = ovr.Drs;
+            if (chosen.Contains("collision"))    apply.Collision    = ovr.Collision;
+            if (chosen.Contains("audio"))        apply.AudioCapture = ovr.AudioCapture;
+            if (chosen.Contains("airborne"))     apply.Airborne     = ovr.Airborne;
+
+            // Merge any referenced custom engines into the user's
+            // library so the imported EnginePulse.CustomEngineId
+            // resolves (same shape as the file-based import path).
+            if (customs != null && customs.Count > 0)
+                _plugin.ImportCommunityCustomEngines(customs);
+
+            // Save the preset under a community-distinct name. Append
+            // " (community)" so the preset manager row makes the
+            // source clear. If a same-named preset already exists for
+            // this car, append a numeric suffix.
+            string baseName = full.Summary.Name + " (community)";
+            string presetName = baseName;
+            int n = 2;
+            var existing = _plugin.GetCarPresets(_plugin.ActiveCarId);
+            while (existing != null && existing.ContainsKey(presetName))
+            {
+                presetName = baseName + " " + n;
+                n++;
+            }
+            _plugin.SaveImportedCommunityCarPreset(
+                _plugin.ActiveCarId, presetName, _plugin.ActiveGame, apply,
+                full.Summary.Author, full.Summary.Description);
+            _plugin.RecordCommunityPresetDownload(capturedId);
+
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text =
+                    $"Saved as '{presetName}'. Open it on the Car presets tab to use.";
+            ReloadCars();
+            LibraryChanged?.Invoke();
         }
     }
 }
