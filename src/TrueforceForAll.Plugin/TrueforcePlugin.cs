@@ -6888,7 +6888,21 @@ namespace TrueforceForAll.Plugin
             // EngineLayout enum names, so the parse should succeed.
             if (!Enum.TryParse<Effects.EngineLayout>(c.Layout, true, out var layout))
                 return false;
-            if (!Effects.FiringPatternDb.TryLayoutToCylAndConfig(layout, out int cyl, out var cfg))
+            int cyl; Effects.EngineConfig cfg;
+            if (layout == Effects.EngineLayout.Custom)
+            {
+                // CUSTOM rides a community-supplied def in c.Custom.
+                // Synthesize a variant with EngineConfig.Custom + cyl=0
+                // sentinel; the apply path detects this and routes
+                // synthesis through the community custom def directly
+                // (CustomPattern + ActiveCustomIsElectric set by the
+                // resolver instead of by ApplyEnginePulseSettings).
+                if (c.Custom == null || string.IsNullOrEmpty(c.Custom.Name))
+                    return false;
+                cyl = 0;
+                cfg = Effects.EngineConfig.Custom;
+            }
+            else if (!Effects.FiringPatternDb.TryLayoutToCylAndConfig(layout, out cyl, out cfg))
                 return false;
             // Redline rides on the same synthesized variant when the
             // community has a redline consensus matching the current
@@ -7108,6 +7122,44 @@ namespace TrueforceForAll.Plugin
                 && _activeCarCommunityRedlineConsensus.Rpm <= 25000
                 && RevLimiter != null)
                 RevLimiter.CarFactsRedline = _activeCarCommunityRedlineConsensus.Rpm;
+
+            // Community Custom: special apply path. The synthesized
+            // variant carries cyl=0 + EngineConfig.Custom; the firing
+            // pattern + electric flag come from the community def
+            // (_activeCarCommunityConsensus.Custom). Only honored when
+            // the user's preset is Layout=Auto - an explicit Custom +
+            // CustomEngineId already drives the path through
+            // ApplyEnginePulseSettings, which mustn't be overridden.
+            bool communityCustomAvailable =
+                   haveVariant
+                && v.Source == CarFactSource.Community
+                && v.EngineConfig == Effects.EngineConfig.Custom
+                && _activeCarCommunityConsensus?.Custom != null
+                && !string.IsNullOrEmpty(_activeCarCommunityConsensus.Custom.Name)
+                && ActiveEngine != null
+                && ActiveEngine.Layout == Effects.EngineLayout.Auto;
+            if (communityCustomAvailable)
+            {
+                var def = _activeCarCommunityConsensus.Custom;
+                EnginePulse.AutoLayout = Effects.EngineLayout.Custom;
+                EnginePulse.AutoLayoutSource = "community";
+                EnginePulse.CatalogCyl = null;
+                EnginePulse.ActiveCustomIsElectric = def.IsElectric;
+                EnginePulse.CustomPattern = !def.IsElectric
+                    && !string.IsNullOrWhiteSpace(def.Pattern)
+                    ? Effects.FiringPatternDb.ParseCustom(def.Pattern)
+                    : null;
+                if (string.Equals(def.ElectricMode, "SILENT",
+                                  StringComparison.OrdinalIgnoreCase))
+                    EnginePulse.ElectricMode = ElectricCarMode.Silent;
+                else
+                    EnginePulse.ElectricMode = ElectricCarMode.MutedHum;
+                if (logResolution)
+                    SimHub.Logging.Current.Info(
+                        $"[Trueforce] Car '{carId}' resolved to community custom "
+                        + $"'{def.Name}' (electric={def.IsElectric})");
+                return;
+            }
 
             bool variantUsableForLayout = haveVariant
                 && v.Cylinders >= 1 && v.Cylinders <= 16;
@@ -7384,6 +7436,20 @@ namespace TrueforceForAll.Plugin
         public void SubmitEngineLayoutToCommunity(string game, string carId, EngineLayout layout)
         {
             _community?.SubmitEngineLayoutAsync(game, carId, layout,
+                ComputeActiveCarVariantSignature(game, carId));
+        }
+
+        /// <summary>Submit a custom-engine assignment to the community.
+        /// Payload carries the full def so receivers can play it without
+        /// importing - the receiver's plugin synthesizes a transient
+        /// in-memory CustomEngineDef for the active car only. Same
+        /// gating + variant signature plumbing as the built-in
+        /// engine_layout path.</summary>
+        public void SubmitCustomEngineToCommunity(string game, string carId,
+            string name, string pattern, bool isElectric, string electricMode)
+        {
+            _community?.SubmitCustomEngineAsync(game, carId,
+                name, pattern, isElectric, electricMode,
                 ComputeActiveCarVariantSignature(game, carId));
         }
 

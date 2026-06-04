@@ -3338,6 +3338,118 @@ namespace TrueforceForAll.Plugin
         // Classifier (GetEngineSubmitState) is reused unchanged:
         //   Contribute: no detection, user added data.
         //   Correct:    detection present, user's saved values disagree.
+        // Custom-engine submission flow. Fires from the engine save path
+        // when ActiveEngine.Layout == Custom. Resolves the user's
+        // CustomEngineId to a CustomEngineDef in their library, frames
+        // the share modal as First / Confirming / Alternative based on
+        // what (if anything) the community currently has for this car,
+        // submits via SubmitCustomEngineAsync if they accept. Receivers
+        // synthesize the def transiently - no library import.
+        private void MaybePromptToSubmitCustomEngineData(string carId, string game)
+        {
+            if (_plugin == null) return;
+            var es = _plugin.ActiveEngine;
+            if (es == null || es.Layout != Effects.EngineLayout.Custom) return;
+            if (string.IsNullOrEmpty(es.CustomEngineId)) return;
+
+            // Look up the def in the user's library. If the preset
+            // references a Guid that no longer exists locally there's
+            // nothing to share (the engine wouldn't play anyway).
+            CustomEngineDef def = null;
+            if (_plugin.Settings?.CustomEngines != null)
+            {
+                foreach (var c in _plugin.Settings.CustomEngines)
+                {
+                    if (c != null && string.Equals(c.Id, es.CustomEngineId, StringComparison.Ordinal))
+                    { def = c; break; }
+                }
+            }
+            if (def == null) return;
+            string defName = (def.Name ?? "").Trim();
+            if (defName.Length < 2 || defName.Length > 96) return;
+
+            // Dedupe per (car, defId) so same-save-of-same-custom stays
+            // silent; swapping to a different custom or built-in
+            // re-engages the prompt.
+            string dedupeKey = carId + "|custom|" + def.Id;
+            if (!_enginePromptedThisSession.Add(dedupeKey)) return;
+
+            // Fetch current consensus to frame First / Confirming /
+            // Alternative copy in the share modal. Confirming is when
+            // the consensus is also CUSTOM with the same name (close-enough
+            // dedupe - different patterns with same name are still
+            // separate consensus rows server-side).
+            var consensus = _plugin.FetchEngineLayoutConsensus(game, carId);
+            CarFactsShareWindow.ShareState shareState;
+            string consensusDisplay = null;
+            int supportingSubs = 0;
+            if (consensus == null)
+            {
+                shareState = CarFactsShareWindow.ShareState.First;
+            }
+            else
+            {
+                supportingSubs = consensus.SupportingSubmissions;
+                bool sameCustom = string.Equals(consensus.Layout, "CUSTOM",
+                                                StringComparison.OrdinalIgnoreCase)
+                                  && consensus.Custom != null
+                                  && string.Equals(consensus.Custom.Name, defName,
+                                                   StringComparison.Ordinal);
+                if (sameCustom)
+                {
+                    shareState = CarFactsShareWindow.ShareState.Confirming;
+                    consensusDisplay = defName + " (custom)";
+                }
+                else
+                {
+                    shareState = CarFactsShareWindow.ShareState.Alternative;
+                    if (string.Equals(consensus.Layout, "CUSTOM",
+                                      StringComparison.OrdinalIgnoreCase)
+                        && consensus.Custom != null)
+                        consensusDisplay = consensus.Custom.Name + " (custom)";
+                    else if (Enum.TryParse<Effects.EngineLayout>(consensus.Layout, true,
+                                                                  out var consLayout))
+                        consensusDisplay = Effects.FiringPatternDb.LayoutDisplayName(consLayout);
+                    else
+                        consensusDisplay = consensus.Layout;
+                }
+            }
+
+            string userValueDisplay = defName + " (custom)";
+            var dialog = new CarFactsShareWindow(
+                _plugin.ActiveCarDisplayName, carId, userValueDisplay,
+                shareState, consensusDisplay, supportingSubs)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            if (ok != true) return;
+
+            string modeStr = def.ElectricMode.ToString().ToUpperInvariant();
+            _plugin.SubmitCustomEngineToCommunity(game, carId,
+                defName, def.Pattern ?? "", def.IsElectric, modeStr);
+
+            // Optimistic injection: pretend community now reflects the
+            // submission. Resolver picks it up immediately; next per-car
+            // refetch reconciles server stickiness.
+            _engineCommunityCache = new EngineLayoutConsensus
+            {
+                Layout                = "CUSTOM",
+                SupportingSubmissions = (_engineCommunityCache?.SupportingSubmissions ?? 0) + 1,
+                Confirmations         = 0,
+                PayloadHash           = null,
+                Custom                = new CommunityCustomEngine
+                {
+                    Name         = defName,
+                    Pattern      = def.Pattern ?? "",
+                    IsElectric   = def.IsElectric,
+                    ElectricMode = modeStr,
+                },
+            };
+            _plugin.NotifyCommunityConsensus(game, carId, _engineCommunityCache);
+            RenderEngineCommunityRow();
+        }
+
         // Same shape as MaybePromptToSubmitEngineData but for the redline
         // fact. We derive an "implied redline" from the active RevLimiter
         // settings and the live telemetry, then compare to the current
@@ -3435,13 +3547,17 @@ namespace TrueforceForAll.Plugin
             var ep = _plugin.EnginePulse;
             if (es == null) return;
 
-            // User's layout pick. Unsubmittable variants (Custom, Electric,
-            // Auto) short-circuit - they don't fit the engine_layout enum
-            // whitelist. Custom in particular is contributable in PRINCIPLE
-            // (a user-authored pattern that's correct for a car), but its
-            // schema needs name + pattern + cyl, not just an enum value;
-            // dedicated pipeline TBD as a Stage 3 follow-up.
+            // Custom layouts get a dedicated submit path: the def (name +
+            // pattern + electric) rides the payload so receivers can
+            // synthesize without having it in their library. Auto and
+            // Electric never submit - Auto is "I don't know" and Electric
+            // is a different feature.
             var userLayout = es.Layout;
+            if (userLayout == Effects.EngineLayout.Custom)
+            {
+                MaybePromptToSubmitCustomEngineData(carId, game);
+                return;
+            }
             if (!TryLayoutToCylAndConfig(userLayout, out int userCyl, out var userCfg)) return;
 
             // Per-session dedupe scoped to BOTH the car AND the layout pick.

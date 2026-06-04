@@ -54,6 +54,27 @@ namespace TrueforceForAll.Plugin
         // so a vote landing after a candidate flip raises instead of
         // silently re-attributing.
         public string PayloadHash { get; set; }
+        // Set only when Layout == "CUSTOM". Carries the full custom
+        // engine definition (name + firing pattern + electric flag) so
+        // the receiver can play it without having the def in their
+        // local CustomEngines library. Transient: the plugin synthesizes
+        // a one-car-only CustomEngineDef in memory and discards it on
+        // car change. Null for non-custom layouts.
+        public CommunityCustomEngine Custom { get; set; }
+    }
+
+    /// <summary>Snapshot of a community-submitted custom engine def,
+    /// rides on EngineLayoutConsensus when Layout=="CUSTOM". Mirrors the
+    /// fields of CustomEngineDef that are meaningful for synthesis. Not
+    /// imported into the receiver's library - the plugin's apply path
+    /// reads these fields directly when a community custom wins the
+    /// resolver cascade for the active car.</summary>
+    internal sealed class CommunityCustomEngine
+    {
+        public string Name         { get; set; }
+        public string Pattern      { get; set; }   // FiringPatternDb.ParseCustom format
+        public bool   IsElectric   { get; set; }
+        public string ElectricMode { get; set; }   // "MUTEDHUM" / "SILENT"
     }
 
     /// <summary>Snapshot of the community consensus for the car_name fact,
@@ -185,11 +206,52 @@ namespace TrueforceForAll.Plugin
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            // Custom + Electric submissions go through dedicated entry
+            // points (SubmitCustomEngineAsync); Auto is the no-claim
+            // sentinel. The built-in EngineLayout enums (V8CROSSPLANE,
+            // INLINE6, ...) are the only fact_type=engine_layout payloads
+            // submitted from this path.
             if (layout == EngineLayout.Auto
                 || layout == EngineLayout.Electric
                 || layout == EngineLayout.Custom) return;
 
             var payload = new { layout = layout.ToString().ToUpperInvariant() };
+            FireAndForgetRpc(url, anonKey, SubmitRpcPath,
+                BuildSubmitBody(game, carId, "engine_layout", payload, variantSignature));
+        }
+
+        /// <summary>Submit a custom-engine assignment for (game, carId).
+        /// The full def rides on the payload so the receiver can play the
+        /// pattern without having it in their library. fact_type stays
+        /// engine_layout so per-car consensus + voting + variant routing
+        /// all reuse the existing plumbing - layout=CUSTOM is just
+        /// another value in the whitelist server-side.</summary>
+        public void SubmitCustomEngineAsync(string game, string carId,
+            string name, string pattern, bool isElectric, string electricMode,
+            string variantSignature = "")
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            name = (name ?? "").Trim();
+            if (name.Length < 2 || name.Length > 96) return;
+            pattern = pattern ?? "";
+            if (pattern.Length > 512) return;
+            string modeUpper = string.IsNullOrEmpty(electricMode)
+                ? "MUTEDHUM"
+                : electricMode.Trim().ToUpperInvariant();
+            if (modeUpper != "MUTEDHUM" && modeUpper != "SILENT") modeUpper = "MUTEDHUM";
+
+            var payload = new
+            {
+                layout = "CUSTOM",
+                custom = new
+                {
+                    name,
+                    pattern,
+                    electric = isElectric,
+                    electric_mode = modeUpper,
+                },
+            };
             FireAndForgetRpc(url, anonKey, SubmitRpcPath,
                 BuildSubmitBody(game, carId, "engine_layout", payload, variantSignature));
         }
@@ -410,12 +472,31 @@ namespace TrueforceForAll.Plugin
                                 var row = arr[0];
                                 string layout = row?["payload"]?["layout"]?.ToString();
                                 if (string.IsNullOrEmpty(layout)) return (EngineLayoutConsensus)null;
+                                CommunityCustomEngine custom = null;
+                                if (string.Equals(layout, "CUSTOM", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var c = row["payload"]?["custom"];
+                                    if (c != null && c.Type == JTokenType.Object)
+                                    {
+                                        custom = new CommunityCustomEngine
+                                        {
+                                            Name         = c["name"]?.ToString(),
+                                            Pattern      = c["pattern"]?.ToString() ?? "",
+                                            IsElectric   = c["electric"]?.ToObject<bool>() ?? false,
+                                            ElectricMode = c["electric_mode"]?.ToString() ?? "MUTEDHUM",
+                                        };
+                                    }
+                                    // A CUSTOM layout with no def is malformed - treat as no consensus.
+                                    if (custom == null || string.IsNullOrEmpty(custom.Name))
+                                        return (EngineLayoutConsensus)null;
+                                }
                                 return new EngineLayoutConsensus
                                 {
                                     Layout                = layout,
                                     Confirmations         = row["confirmations"]?.ToObject<int>() ?? 0,
                                     SupportingSubmissions = row["supporting_submissions"]?.ToObject<int>() ?? 0,
                                     PayloadHash           = row["payload_hash"]?.ToString(),
+                                    Custom                = custom,
                                 };
                             }
                         }
