@@ -76,6 +76,11 @@ create table if not exists car_fact_submissions (
     id              uuid primary key default gen_random_uuid(),
     game            text not null,
     car_id          text not null,
+    -- engine_layout stores one EngineLayout name per fact (V8CROSSPLANE,
+    -- INLINE6, ROTARY2, etc.). Each EngineLayout uniquely encodes both
+    -- cylinder count and firing pattern variant, so splitting them would
+    -- give voting/Wilson surfaces for axes users can't independently
+    -- assert from the EngineLayoutCombo.
     fact_type       text not null check (fact_type in ('engine_layout','car_name','redline')),
     payload         jsonb not null,
     submitter_id    text not null,
@@ -180,18 +185,23 @@ begin
     if p_payload is null then return null; end if;
 
     if p_fact_type = 'engine_layout' then
-        if jsonb_typeof(p_payload->'cyl') <> 'number'
-           or jsonb_typeof(p_payload->'config') <> 'string'
-        then return null; end if;
-        v_int  := (p_payload->>'cyl')::int;
-        v_text := upper(btrim(p_payload->>'config'));
-        if v_int < 1 or v_int > 16 then return null; end if;
-        if v_text not in ('AUTO','SINGLE','INLINE','BOXER','V60','V90EVEN',
-                          'V8CROSSPLANE','V8FLATPLANE','V6ODDFIRE',
-                          'VTWIN90','VTWIN45','ROTARY') then
+        if jsonb_typeof(p_payload->'layout') <> 'string' then return null; end if;
+        v_text := upper(btrim(p_payload->>'layout'));
+        -- Whitelist matches the EngineLayout enum (FiringPatterns.cs)
+        -- excluding Auto / Electric / Custom: Auto is "I don't know",
+        -- Electric is a different feature (no firing pattern), Custom is
+        -- authored via the Custom Engine library, separate pipeline.
+        if v_text not in (
+            'SINGLE','TWIN','INLINE3','INLINE4','INLINE5','INLINE6',
+            'BOXER4','BOXER6',
+            'V6_60EVEN','V6_ODDFIRE','V8CROSSPLANE','V8FLATPLANE',
+            'V10_72','V12_60','W12_W16',
+            'VTWIN90','VTWIN45',
+            'ROTARY1','ROTARY2','ROTARY3','ROTARY4'
+        ) then
             return null;
         end if;
-        return jsonb_build_object('cyl', v_int, 'config', v_text);
+        return jsonb_build_object('layout', v_text);
 
     elsif p_fact_type = 'car_name' then
         if jsonb_typeof(p_payload->'name') <> 'string' then return null; end if;
