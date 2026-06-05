@@ -1566,6 +1566,36 @@ namespace TrueforceForAll.Plugin
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
                 async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
 
+            // Fire-and-forget plugin-load account sync. If a session was
+            // restored from Settings.AuthSession, refresh the profile so
+            // SharingAuthor matches whatever the server says
+            // profile.username is right now (catches renames done from a
+            // different machine). Non-blocking - the plugin keeps booting.
+            if (_auth != null && _auth.IsSignedIn)
+            {
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        var profile = await _auth.GetMyProfileAsync();
+                        if (profile.SignedIn && !string.IsNullOrEmpty(profile.Username)
+                            && Settings != null
+                            && !string.Equals(Settings.SharingAuthor, profile.Username,
+                                              StringComparison.Ordinal))
+                        {
+                            Settings.SharingAuthor = profile.Username;
+                            try { this.SaveCommonSettings("GeneralSettings", Settings); }
+                            catch { }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info(
+                            "[Trueforce] Plugin-load profile sync failed: " + ex.Message);
+                    }
+                });
+            }
+
             // One-time cleanup: walk user/games + user/cars looking for
             // files that are leftovers from before the file-based factory
             // (commit c89c3f7 era). Game match = IsFactoryBuiltinName

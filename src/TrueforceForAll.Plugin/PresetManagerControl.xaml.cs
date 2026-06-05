@@ -2231,6 +2231,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (CommunityVoteUpBtn   != null) CommunityVoteUpBtn.IsEnabled   = has;
             if (CommunityVoteDownBtn != null) CommunityVoteDownBtn.IsEnabled = has;
             if (CommunityReportBtn   != null) CommunityReportBtn.IsEnabled   = has;
+            if (CommunityPreviewBtn  != null) CommunityPreviewBtn.IsEnabled  = has;
             if (CommunityDownloadBtn != null) CommunityDownloadBtn.IsEnabled = has;
 
             // Edit + Delete visible only when the signed-in user owns the
@@ -2261,38 +2262,48 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (sel?.Summary == null || _plugin == null) return;
             if (!_plugin.AuthIsSignedIn) return;
 
-            // Pre-fill with current name + description; body edits land in
-            // a follow-up. Phase 1.5 ships metadata-only edit to keep
-            // scope small while unblocking the common "I uploaded with a
-            // bad name" case.
-            var dlg = new TwoLineEditWindow(
-                title:      "Edit preset",
-                line1Label: "Name",
-                line1Init:  sel.Summary.Name ?? "",
-                line2Label: "Description (optional)",
-                line2Init:  sel.Summary.Description ?? "",
-                line2Lines: 4)
+            // Build the list of the user's local car presets for the
+            // SAME car_id so the body-replacement picker only offers
+            // presets that make sense for this row's car.
+            var localPresets = new List<CarPresetEntry>();
+            if (!string.IsNullOrEmpty(sel.Summary.CarId))
+            {
+                var perCar = _plugin.GetCarPresets(sel.Summary.CarId);
+                if (perCar != null)
+                    foreach (var kv in perCar)
+                        if (kv.Value != null && kv.Value.Override != null)
+                            localPresets.Add(kv.Value);
+            }
+
+            var dlg = new EditCommunityPresetWindow(
+                sel.Summary.Name, sel.Summary.Description, sel.Summary.CarId,
+                localPresets,
+                bodyBuilder: ovr =>
+                {
+                    var customs = _plugin.CollectReferencedCustomEngines(
+                        null, new[] { ovr });
+                    var body = new Newtonsoft.Json.Linq.JObject
+                    {
+                        ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(ovr),
+                    };
+                    if (customs != null && customs.Count > 0)
+                        body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
+                    return body;
+                },
+                tagsBuilder: BuildEffectTags)
             {
                 Owner = Window.GetWindow(this),
             };
             bool? ok = dlg.ShowDialog();
             if (ok != true) return;
-            string newName = (dlg.Line1Result ?? "").Trim();
-            string newDesc = (dlg.Line2Result ?? "").Trim();
-            if (newName.Length < 2 || newName.Length > 96)
-            {
-                MessageBox.Show(Window.GetWindow(this),
-                    "Name must be 2-96 characters.", "Edit preset",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
 
             if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Updating...";
             bool success;
             try
             {
                 success = await _plugin.UpdateCommunityPresetAsync(
-                    sel.Summary.Id, newName, newDesc, null, null);
+                    sel.Summary.Id, dlg.NewName, dlg.NewDescription,
+                    dlg.NewBody, dlg.NewEffectTags);
             }
             catch (Exception ex)
             {
@@ -2307,8 +2318,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 return;
             }
             // Reflect locally + refresh from server next car-change.
-            sel.Summary.Name = newName;
-            sel.Summary.Description = string.IsNullOrEmpty(newDesc) ? null : newDesc;
+            sel.Summary.Name = dlg.NewName;
+            sel.Summary.Description = string.IsNullOrEmpty(dlg.NewDescription) ? null : dlg.NewDescription;
+            if (dlg.NewEffectTags != null) sel.Summary.EffectTags = dlg.NewEffectTags;
             int idx = _communityRows.IndexOf(sel);
             if (idx >= 0)
             {
@@ -2317,7 +2329,27 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CommunityList.SelectedIndex = idx;
             }
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = "Updated.";
+                CommunityStatusLabel.Text = dlg.NewBody != null ? "Updated (body replaced)." : "Updated.";
+        }
+
+        // Reusable: compute effect_tags from a CarOverride's non-null
+        // sections. Both upload + edit need it.
+        private static List<string> BuildEffectTags(CarOverride ovr)
+        {
+            var tags = new List<string>(11);
+            if (ovr == null) return tags;
+            if (ovr.EnginePulse  != null) tags.Add("engine");
+            if (ovr.RevLimiter   != null) tags.Add("revlimiter");
+            if (ovr.RoadBumps    != null) tags.Add("roadbumps");
+            if (ovr.TractionLoss != null) tags.Add("tractionloss");
+            if (ovr.GearShift    != null) tags.Add("gearshift");
+            if (ovr.AbsClick     != null) tags.Add("abs");
+            if (ovr.PitLimiter   != null) tags.Add("pitlimiter");
+            if (ovr.Drs          != null) tags.Add("drs");
+            if (ovr.Collision    != null) tags.Add("collision");
+            if (ovr.AudioCapture != null) tags.Add("audio");
+            if (ovr.Airborne     != null) tags.Add("airborne");
+            return tags;
         }
 
         private async void CommunityDelete_Click(object sender, RoutedEventArgs e)
@@ -2423,6 +2455,40 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _plugin.ReportCommunityPreset(sel.Summary.Id);
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = "Reported. Thanks for flagging.";
+        }
+
+        // Open the preview window: read-only view of the preset's
+        // sections + key values. If the user hits "Download…" inside the
+        // preview, route them straight through the normal download flow.
+        private async void CommunityPreview_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedCommunity;
+            if (sel?.Summary == null || _plugin == null) return;
+            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Loading preview...";
+
+            string capturedId = sel.Summary.Id;
+            PresetFull full = null;
+            try { full = await Task.Run(() => _plugin.FetchCommunityPresetBody(capturedId)); }
+            catch (Exception ex)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Preview failed: " + ex.Message;
+                return;
+            }
+            if (full?.Body == null)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Preview returned no body.";
+                return;
+            }
+            var win = new PresetPreviewWindow(full.Summary, full.Body)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = win.ShowDialog();
+            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "";
+            if (ok == true && win.DownloadRequested)
+                CommunityDownload_Click(this, e);  // re-fires the standard download path
         }
 
         private async void CommunityDownload_Click(object sender, RoutedEventArgs e)
