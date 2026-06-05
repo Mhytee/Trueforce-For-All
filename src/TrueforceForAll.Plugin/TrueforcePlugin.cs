@@ -7554,6 +7554,15 @@ namespace TrueforceForAll.Plugin
 
         public void AuthSignOut() => _auth?.SignOut();
 
+        internal Task<(bool SignedIn, string UserId, string Username)> AuthGetMyProfileAsync()
+            => _auth?.GetMyProfileAsync() ?? Task.FromResult((false, (string)null, (string)null));
+
+        internal Task<UsernameAvailability> AuthCheckUsernameAvailableAsync(string username)
+            => _auth?.CheckUsernameAvailableAsync(username) ?? Task.FromResult(UsernameAvailability.Network);
+
+        internal Task<UsernameAvailability> AuthSetUsernameAsync(string username)
+            => _auth?.SetUsernameAsync(username) ?? Task.FromResult(UsernameAvailability.Network);
+
         /// <summary>Merge community-supplied custom engine defs into the
         /// local library. Reuses the file-based MergeImportedCustomEngines
         /// (Id-keyed dedup, local wins on collision with logging when

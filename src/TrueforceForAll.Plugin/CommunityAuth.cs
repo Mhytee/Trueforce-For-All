@@ -48,6 +48,19 @@ namespace TrueforceForAll.Plugin
         Generic,
     }
 
+    /// <summary>Result of a check_username_available RPC. Mirrors the
+    /// server's reason vocabulary so the modal can pick specific copy.</summary>
+    internal enum UsernameAvailability
+    {
+        Unknown,
+        Available,
+        SelfOwned,    // Caller already owns this username (no-op rename)
+        Format,       // Failed [a-zA-Z0-9_]{3,32}
+        Reserved,     // Hardcoded reserved name (admin/root/etc.)
+        Taken,        // Someone else has it
+        Network,
+    }
+
     internal sealed class CommunityAuth
     {
         private const string OtpPath     = "/auth/v1/otp";
@@ -300,6 +313,154 @@ namespace TrueforceForAll.Plugin
                 }
             }
             finally { _refreshLock.Release(); }
+        }
+
+        // ---- Profile / username --------------------------------------------
+
+        /// <summary>Fetches the signed-in user's profile (id + username).
+        /// Returns (signedIn=false, ...) when no session is active. Used
+        /// by the post-sign-in flow to decide whether the user needs to
+        /// pick a username.</summary>
+        public async Task<(bool SignedIn, string UserId, string Username)> GetMyProfileAsync()
+        {
+            if (!ShouldRun(out var url, out var anonKey))
+                return (false, null, null);
+            string bearer = await GetAccessTokenAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer)) return (false, null, null);
+
+            string body = "{}";
+            try
+            {
+                using (var req = new HttpRequestMessage(HttpMethod.Post,
+                    url.TrimEnd('/') + "/rest/v1/rpc/get_my_profile"))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode) return (false, null, null);
+                        string respBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        var root = JToken.Parse(respBody);
+                        var obj = root.Type == JTokenType.Array ? root[0] : root;
+                        bool signedIn = obj?["signed_in"]?.ToObject<bool>() ?? false;
+                        string uid = obj?["user_id"]?.ToString();
+                        string uname = obj?["username"]?.ToString();
+                        return (signedIn, uid, uname);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Auth get-my-profile exception: {ex.Message}");
+                return (false, null, null);
+            }
+        }
+
+        /// <summary>Server-side availability check. Returns a categorized
+        /// reason so the modal can show "taken" vs "format invalid" vs
+        /// "reserved" without guessing.</summary>
+        public async Task<UsernameAvailability> CheckUsernameAvailableAsync(string username)
+        {
+            if (!ShouldRun(out var url, out var anonKey)) return UsernameAvailability.Network;
+            if (string.IsNullOrWhiteSpace(username)) return UsernameAvailability.Format;
+            // Bearer is optional - check_username_available returns
+            // self=true when the caller is signed in and owns the name.
+            string bearer = await GetAccessTokenAsync().ConfigureAwait(false);
+
+            string body;
+            try
+            {
+                body = JsonConvert.SerializeObject(new { p_username = username.Trim() });
+            }
+            catch { return UsernameAvailability.Network; }
+
+            try
+            {
+                using (var req = new HttpRequestMessage(HttpMethod.Post,
+                    url.TrimEnd('/') + "/rest/v1/rpc/check_username_available"))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + (bearer ?? anonKey));
+                    req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode) return UsernameAvailability.Network;
+                        string respBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        var root = JToken.Parse(respBody);
+                        var obj = root.Type == JTokenType.Array ? root[0] : root;
+                        bool available = obj?["available"]?.ToObject<bool>() ?? false;
+                        string reason = obj?["reason"]?.ToString();
+                        if (available)
+                            return string.Equals(reason, "self", StringComparison.OrdinalIgnoreCase)
+                                ? UsernameAvailability.SelfOwned
+                                : UsernameAvailability.Available;
+                        switch ((reason ?? "").ToLowerInvariant())
+                        {
+                            case "format":   return UsernameAvailability.Format;
+                            case "reserved": return UsernameAvailability.Reserved;
+                            case "taken":    return UsernameAvailability.Taken;
+                            default:         return UsernameAvailability.Format;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Auth check-username exception: {ex.Message}");
+                return UsernameAvailability.Network;
+            }
+        }
+
+        /// <summary>Claim a username. Auth required. Returns Ok on
+        /// success; Taken / Format / Reserved on validation failure;
+        /// NetworkFailure / Generic on transport issues.</summary>
+        public async Task<UsernameAvailability> SetUsernameAsync(string username)
+        {
+            if (!ShouldRun(out var url, out var anonKey)) return UsernameAvailability.Network;
+            if (string.IsNullOrWhiteSpace(username)) return UsernameAvailability.Format;
+            string bearer = await GetAccessTokenAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer)) return UsernameAvailability.Network;
+
+            string body;
+            try
+            {
+                body = JsonConvert.SerializeObject(new { p_username = username.Trim() });
+            }
+            catch { return UsernameAvailability.Network; }
+
+            try
+            {
+                using (var req = new HttpRequestMessage(HttpMethod.Post,
+                    url.TrimEnd('/') + "/rest/v1/rpc/set_username"))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
+                    {
+                        string respBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        if (resp.IsSuccessStatusCode) return UsernameAvailability.Available;
+                        // Map server errors back to categories. Postgres
+                        // 23505 = unique_violation -> Taken; otherwise
+                        // surface as Generic-via-Format.
+                        if (respBody.IndexOf("23505", StringComparison.Ordinal) >= 0
+                            || respBody.IndexOf("taken", StringComparison.OrdinalIgnoreCase) >= 0)
+                            return UsernameAvailability.Taken;
+                        if (respBody.IndexOf("reserved", StringComparison.OrdinalIgnoreCase) >= 0)
+                            return UsernameAvailability.Reserved;
+                        if (respBody.IndexOf("format", StringComparison.OrdinalIgnoreCase) >= 0)
+                            return UsernameAvailability.Format;
+                        _log?.Invoke($"[Trueforce] Auth set-username failed: {(int)resp.StatusCode} {respBody}");
+                        return UsernameAvailability.Network;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Auth set-username exception: {ex.Message}");
+                return UsernameAvailability.Network;
+            }
         }
 
         // ---- Sign out ------------------------------------------------------

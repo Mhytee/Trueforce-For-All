@@ -4161,32 +4161,109 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // After a successful first sign-in, if the user hasn't set an
-        // Author/username yet, default it to the email prefix (before
-        // the @). Their username == their Author name throughout the
-        // plugin; SharingAuthor is the single source of truth and is
-        // editable from either surface.
-        private void BootstrapUsernameAfterSignIn()
+        // Walk preferred -> preferred2 -> preferred3 ... until we find
+        // an available username (or hit the cap). Returns whatever's
+        // available, or the bare cleaned preferred when nothing in the
+        // first 100 variants is free.
+        private async Task<string> ResolveAvailableUsernameSeedAsync(string preferred)
+        {
+            if (string.IsNullOrWhiteSpace(preferred)) return "";
+            // Strip anything the username regex would reject so the
+            // server's first availability check doesn't fail on format.
+            var sb = new System.Text.StringBuilder();
+            foreach (var ch in preferred)
+                if (char.IsLetterOrDigit(ch) || ch == '_') sb.Append(ch);
+            string cleaned = sb.ToString();
+            if (cleaned.Length < 3) return cleaned;
+            if (cleaned.Length > 32) cleaned = cleaned.Substring(0, 32);
+
+            UsernameAvailability r;
+            try { r = await _plugin.AuthCheckUsernameAvailableAsync(cleaned); }
+            catch { return cleaned; }
+            if (r == UsernameAvailability.Available || r == UsernameAvailability.SelfOwned)
+                return cleaned;
+            // Only auto-suffix on collision; format / reserved / network
+            // failures fall through so the user picks manually.
+            if (r != UsernameAvailability.Taken) return cleaned;
+
+            for (int n = 2; n <= 99; n++)
+            {
+                string suffix = n.ToString();
+                string baseStr = cleaned;
+                if (baseStr.Length + suffix.Length > 32)
+                    baseStr = baseStr.Substring(0, 32 - suffix.Length);
+                string candidate = baseStr + suffix;
+                UsernameAvailability cr;
+                try { cr = await _plugin.AuthCheckUsernameAvailableAsync(candidate); }
+                catch { return cleaned; }
+                if (cr == UsernameAvailability.Available) return candidate;
+            }
+            return cleaned;
+        }
+
+        // After a successful sign-in, reconcile the local SharingAuthor
+        // with the user's server-side profile.username.
+        //   * If they already have a profile username -> sync into
+        //     SharingAuthor (their username always wins over the local
+        //     freeform value when signed in).
+        //   * If their profile is missing username -> open
+        //     PickUsernameWindow seeded from email prefix (or existing
+        //     SharingAuthor if it passes the format check). The server
+        //     enforces uniqueness; the modal renders live availability.
+        private async void BootstrapUsernameAfterSignIn()
         {
             if (_plugin?.Settings == null) return;
             if (!_plugin.AuthIsSignedIn) return;
-            if (!string.IsNullOrWhiteSpace(_plugin.Settings.SharingAuthor)) return;
-            string email = _plugin.AuthSignedInEmail;
-            if (string.IsNullOrEmpty(email)) return;
-            int at = email.IndexOf('@');
-            string prefix = at > 0 ? email.Substring(0, at) : email;
-            prefix = prefix.Trim();
-            if (string.IsNullOrEmpty(prefix)) return;
-            _plugin.Settings.SharingAuthor = prefix;
-            try { _plugin.PersistSettings(); } catch { }
-            if (AuthorNameBox    != null) AuthorNameBox.Text    = prefix;
-            if (AccountAuthorBox != null) AccountAuthorBox.Text = prefix;
+
+            (bool signedIn, string _, string username) = (false, null, null);
+            try { (signedIn, _, username) = await _plugin.AuthGetMyProfileAsync(); }
+            catch { /* fall through to prompt with seeded default */ }
+            if (!signedIn) return;
+
+            if (!string.IsNullOrWhiteSpace(username))
+            {
+                // Server has a username; make local Author match.
+                _plugin.Settings.SharingAuthor = username;
+                try { _plugin.PersistSettings(); } catch { }
+                if (AuthorNameBox    != null) AuthorNameBox.Text    = username;
+                if (AccountAuthorBox != null) AccountAuthorBox.Text = username;
+                return;
+            }
+
+            // No username yet - open the picker with an already-available
+            // default so the user can just hit Save. Prefer the email
+            // prefix; fall back to the existing freeform SharingAuthor.
+            // If the bare prefix is taken, try +2, +3, ... up to +99
+            // before giving up and seeding the picker with the bare
+            // prefix (user types something else manually).
+            string emailLocal = _plugin.AuthSignedInEmail ?? "";
+            int atIdx = emailLocal.IndexOf('@');
+            string preferred = atIdx > 0 ? emailLocal.Substring(0, atIdx) : emailLocal;
+            if (string.IsNullOrWhiteSpace(preferred)) preferred = _plugin.Settings.SharingAuthor ?? "";
+            string seed = await ResolveAvailableUsernameSeedAsync(preferred);
+
+            var picker = new PickUsernameWindow(_plugin, seed)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = picker.ShowDialog();
+            if (ok == true && !string.IsNullOrEmpty(picker.ChosenUsername))
+            {
+                _plugin.Settings.SharingAuthor = picker.ChosenUsername;
+                try { _plugin.PersistSettings(); } catch { }
+                if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
+                if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
+            }
         }
 
-        // Account-expander author edits. Stay in lock-step with the
-        // long-standing AuthorNameBox in the Backup & sync section by
-        // pushing through to its handler.
-        private void AccountAuthor_Changed(object sender, RoutedEventArgs e)
+        // Account-expander author / username edits. Two paths:
+        //   Signed out: behave like the legacy AuthorNameBox - free-text
+        //     SharingAuthor, persisted locally. No uniqueness check; the
+        //     value is the anonymous-upload alias.
+        //   Signed in: route through set_username RPC. Uniqueness is
+        //     server-enforced. On success the local SharingAuthor + both
+        //     boxes update. On failure the box reverts and a hint shows.
+        private async void AccountAuthor_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null || AccountAuthorBox == null) return;
             string newAuthor = (AccountAuthorBox.Text ?? "").Trim();
@@ -4196,12 +4273,65 @@ namespace TrueforceForAll.Plugin
                 if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
                 return;
             }
-            // Reuse the canonical commit path (handles persistence +
-            // backfill prompt). Mirror the text into AuthorNameBox first
-            // so the existing handler sees the new value.
-            if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
-            CommitAuthorName();
-            if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "Saved.";
+
+            if (!_plugin.AuthIsSignedIn)
+            {
+                // Anonymous path: legacy behavior (local persist + the
+                // existing CommitAuthorName backfill prompt).
+                if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
+                CommitAuthorName();
+                if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "Saved.";
+                return;
+            }
+
+            // Signed in: validate + claim server-side.
+            if (AccountAuthorStatus != null)
+            {
+                AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x9F, 0xB4, 0xD8));
+                AccountAuthorStatus.Text = "Saving...";
+            }
+            UsernameAvailability result;
+            try { result = await _plugin.AuthSetUsernameAsync(newAuthor); }
+            catch (Exception ex)
+            {
+                if (AccountAuthorStatus != null)
+                {
+                    AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
+                    AccountAuthorStatus.Text = "Save failed: " + ex.Message;
+                }
+                AccountAuthorBox.Text = oldAuthor;
+                return;
+            }
+            if (result == UsernameAvailability.Available
+                || result == UsernameAvailability.SelfOwned)
+            {
+                _plugin.Settings.SharingAuthor = newAuthor;
+                try { _plugin.PersistSettings(); } catch { }
+                if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
+                if (AccountAuthorStatus != null)
+                {
+                    AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0xCC, 0x88));
+                    AccountAuthorStatus.Text = "Saved.";
+                }
+                return;
+            }
+            // Revert + hint.
+            AccountAuthorBox.Text = oldAuthor;
+            if (AccountAuthorStatus != null)
+            {
+                AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
+                switch (result)
+                {
+                    case UsernameAvailability.Format:
+                        AccountAuthorStatus.Text = "3-32 chars; letters / numbers / underscore."; break;
+                    case UsernameAvailability.Reserved:
+                        AccountAuthorStatus.Text = "Reserved name. Pick another."; break;
+                    case UsernameAvailability.Taken:
+                        AccountAuthorStatus.Text = "Taken. Pick another."; break;
+                    default:
+                        AccountAuthorStatus.Text = "Could not save."; break;
+                }
+            }
         }
 
         private void AccountAuthor_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
