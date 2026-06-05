@@ -2362,22 +2362,27 @@
                               ToolTip="When you save engine data that disagrees with what's detected, the plugin asks if you want to share it. When community data exists for a car you load, the plugin uses it. Turn off to keep everything local: nothing leaves your machine and community values are ignored."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
                                Text="Anonymous data exchange to help everyone tune cars faster. Turn off to stay local-only."/>
-                    <!-- Username. Same value as the long-standing Author
-                         setting (Settings.SharingAuthor); your Author and
-                         your username are the same name across the
-                         plugin. Pre-fills from the email prefix on first
-                         sign-in when blank. Editable any time. -->
+                    <!-- Username. Read-only display - the only way to
+                         identify yourself on a community upload is to be
+                         signed in (your username) OR be anonymous. No
+                         freeform Author field; the server enforces this. -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <TextBlock Text="Username:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
-                        <TextBox x:Name="AccountAuthorBox" Width="220" Height="24"
-                                 VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="4,0"
-                                 Background="#FF2D2D30" Foreground="White" CaretBrush="White"
-                                 BorderBrush="#FF7A7A7A" BorderThickness="1"
-                                 LostFocus="AccountAuthor_Changed" KeyDown="AccountAuthor_KeyDown"/>
+                        <TextBlock x:Name="AccountUsernameDisplay" VerticalAlignment="Center" FontSize="13"
+                                   Foreground="#FFE0E0E0" Text="(anonymous)" MinWidth="180"/>
+                        <Button x:Name="AccountChangeUsernameBtn" Content="Change…"
+                                Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
+                                Click="AccountChangeUsername_Click" Visibility="Collapsed"
+                                ToolTip="Pick a new username. Checked against the community for uniqueness."/>
                         <TextBlock x:Name="AccountAuthorStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
+                        <!-- Hidden TextBox keeps the existing TextBoxBinding pattern
+                             working for parts of the code that still write to it
+                             during the transition; never shown to the user. -->
+                        <TextBox x:Name="AccountAuthorBox" Visibility="Collapsed" Width="0" Height="0"
+                                 LostFocus="AccountAuthor_Changed" KeyDown="AccountAuthor_KeyDown"/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="100,2,0,12" FontSize="11"
-                               Text="Shown as the Author on your shared presets. Pre-fills from your email when you sign in. Leave blank to stay anonymous."/>
+                               Text="Anything you share with the community is either anonymous or under your username. Sign in to claim a username."/>
                     <!-- Change email button. Only meaningful while signed in. -->
                     <StackPanel x:Name="AccountChangeEmailRow" Orientation="Horizontal" Margin="0,0,0,4" Visibility="Collapsed">
                         <TextBlock Text="Email:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
@@ -2422,21 +2427,13 @@
                 </StackPanel>
             </Expander>
 
-            <!-- Persistent author name. Stamped on every preset you save so the
-                 Preset Manager's Source column attributes your work, and
-                 pre-fills the Author field at export time. Blank = anonymous
-                 (Source column reads "Local"). -->
-            <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
-                <TextBlock Text="Author name:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                <TextBox x:Name="AuthorNameBox" Width="220" Height="24" Margin="8,0,0,0"
-                         VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="4,0"
-                         Background="#FF2D2D30" Foreground="White" CaretBrush="White"
-                         BorderBrush="#FF7A7A7A" BorderThickness="1"
-                         LostFocus="AuthorName_Changed" KeyDown="AuthorName_KeyDown"/>
-                <TextBlock x:Name="AuthorNameStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
-            </StackPanel>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,2,0,16"
-                       Text="Stamped on presets you save. Shown as the Source for your presets in the Preset Manager and pre-filled when you export. Leave blank to stay anonymous."/>
+            <!-- Author identity moved into the Account expander above. The
+                 hidden TextBox keeps the existing AuthorNameBox bindings
+                 working for parts of the code that read/write the text;
+                 user-facing edits happen via PickUsernameWindow only. -->
+            <TextBox x:Name="AuthorNameBox" Visibility="Collapsed" Width="0" Height="0"
+                     LostFocus="AuthorName_Changed" KeyDown="AuthorName_KeyDown"/>
+            <TextBlock x:Name="AuthorNameStatus" Visibility="Collapsed"/>
 
             <!-- Report-issue + repo link: separate from cylinder reporting; this
                  is for everything else (bugs, feature requests, weird behavior). -->

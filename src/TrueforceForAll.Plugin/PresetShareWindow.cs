@@ -78,23 +78,14 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0
                 ? "(none)" : string.Join(", ", _effectTags)));
 
-            // Author pre-filled from Settings.SharingAuthor. Editable here so
-            // the user can correct or anonymize before sending. Empty = no
-            // credit shown.
-            string seedAuthor = _plugin?.Settings?.SharingAuthor ?? "";
-            root.Children.Add(new TextBlock {
-                Text = "Author (optional, shows next to your preset):",
-                Foreground = MutedFg, FontSize = 11,
-                Margin = new Thickness(0, 12, 0, 2),
-            });
-            var authorInput = new TextBox {
-                Text = seedAuthor,
-                Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
-                Padding = new Thickness(6, 4, 6, 4),
-                FontSize = 13, MaxLength = 64,
-                Margin = new Thickness(0, 0, 0, 10),
-            };
-            root.Children.Add(authorInput);
+            // Identity is server-authoritative: signed-in users upload
+            // under their username, anonymous users upload as "Anonymous".
+            // No freeform Author field; read-only display so the user
+            // sees exactly how the upload will be credited.
+            string sharingAs = _plugin?.AuthIsSignedIn == true
+                ? (_plugin?.Settings?.SharingAuthor ?? "(your username)")
+                : "Anonymous";
+            root.Children.Add(MakeFactLine("Sharing as", sharingAs));
 
             root.Children.Add(new TextBlock {
                 Text = "Description (optional, what makes this tune feel good):",
@@ -143,23 +134,16 @@ namespace TrueforceForAll.Plugin
                 statusText.Foreground = MutedFg;
                 statusText.Text = "Uploading...";
 
-                string author = (authorInput.Text ?? "").Trim();
-                string desc   = (descInput.Text ?? "").Trim();
-                // Persist the curator's author choice so future shares
-                // pre-fill with what they last used.
-                if (_plugin?.Settings != null
-                    && !string.Equals(_plugin.Settings.SharingAuthor, author, StringComparison.Ordinal))
-                {
-                    _plugin.Settings.SharingAuthor = author;
-                    _plugin.PersistSettings();  // persistence failure is non-fatal for the upload
-                }
-
+                string desc = (descInput.Text ?? "").Trim();
+                // Author is server-authoritative now: profile.username if
+                // signed in, null otherwise. We pass null and the server
+                // stamps the right value.
                 string newId = null;
                 try
                 {
                     newId = await _plugin.UploadCarPresetToCommunityAsync(
                         _presetName, _game, _carId, _body,
-                        author, desc, _effectTags);
+                        null, desc, _effectTags);
                 }
                 catch (Exception ex)
                 {

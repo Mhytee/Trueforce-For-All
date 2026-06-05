@@ -4105,10 +4105,12 @@ namespace TrueforceForAll.Plugin
             RefreshAccountRow();
         }
 
-        // Sync the Account expander's sign-in status + email value to
-        // the current plugin auth state. Sign-in is independent of the
-        // Community toggle - users can have an account just to claim
-        // future uploads, even with community pull/push currently off.
+        // Sync the Account expander to the current plugin auth state.
+        // Sign-in is independent of the Community toggle - users can
+        // claim a username even with community pull/push off.
+        // Username is server-authoritative: SharingAuthor mirrors
+        // profile.username when signed in, or is blank for anonymous.
+        // Identity = signed-in username OR anonymous. No freeform.
         private void RefreshAccountRow()
         {
             if (AccountStatusLabel == null || _plugin == null) return;
@@ -4122,6 +4124,13 @@ namespace TrueforceForAll.Plugin
                     AccountChangeEmailRow.Visibility = System.Windows.Visibility.Visible;
                     if (AccountEmailValue != null) AccountEmailValue.Text = email;
                 }
+                string uname = _plugin.Settings?.SharingAuthor ?? "";
+                if (AccountUsernameDisplay != null)
+                    AccountUsernameDisplay.Text = string.IsNullOrEmpty(uname)
+                        ? "(not set yet)"
+                        : uname;
+                if (AccountChangeUsernameBtn != null)
+                    AccountChangeUsernameBtn.Visibility = System.Windows.Visibility.Visible;
             }
             else
             {
@@ -4129,9 +4138,46 @@ namespace TrueforceForAll.Plugin
                 AccountAuthBtn.Content = "Sign in";
                 if (AccountChangeEmailRow != null)
                     AccountChangeEmailRow.Visibility = System.Windows.Visibility.Collapsed;
+                if (AccountUsernameDisplay != null)
+                    AccountUsernameDisplay.Text = "(anonymous)";
+                if (AccountChangeUsernameBtn != null)
+                    AccountChangeUsernameBtn.Visibility = System.Windows.Visibility.Collapsed;
             }
-            // Always enabled - sign-in is independent of CommunityEnabled.
+            if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
             AccountAuthBtn.IsEnabled = true;
+        }
+
+        // Rename your username. Opens PickUsernameWindow seeded with
+        // the current value; server enforces uniqueness via set_username.
+        private async void AccountChangeUsername_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || !_plugin.AuthIsSignedIn) return;
+            string current = _plugin.Settings?.SharingAuthor ?? "";
+            // Pre-resolve a default in case the current username is null
+            // (rare; shouldn't happen post-signup but covers the edge).
+            string seed = string.IsNullOrEmpty(current)
+                ? await ResolveAvailableUsernameSeedAsync(EmailPrefix(_plugin.AuthSignedInEmail))
+                : current;
+            var picker = new PickUsernameWindow(_plugin, seed)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = picker.ShowDialog();
+            if (ok == true && !string.IsNullOrEmpty(picker.ChosenUsername))
+            {
+                _plugin.Settings.SharingAuthor = picker.ChosenUsername;
+                try { _plugin.PersistSettings(); } catch { }
+                if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
+                if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
+                RefreshAccountRow();
+            }
+        }
+
+        private static string EmailPrefix(string email)
+        {
+            if (string.IsNullOrEmpty(email)) return "";
+            int at = email.IndexOf('@');
+            return at > 0 ? email.Substring(0, at) : email;
         }
 
         // Compat shim for the original CommunityEnabled_Changed call site.
