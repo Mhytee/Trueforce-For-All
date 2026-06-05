@@ -417,6 +417,12 @@ namespace TrueforceForAll.Plugin
         // on the user's own preset uploads.
         public CommunityAuthSession AuthSession { get; set; }
 
+        // One-shot welcome modal latch. Stays false on fresh installs +
+        // on first upgrade to a build that introduces the community/auth
+        // features so the user sees the benefits + sign-in pitch once.
+        // Flips true on dismiss; never resets thereafter.
+        public bool HasSeenNetworkedWelcome { get; set; } = false;
+
         // ---- Per-effect "NEW" badges + changelog banner (see EffectChangelog) ----
 
         // Effect IDs the user has acknowledged. An ID present here means

@@ -207,6 +207,12 @@ namespace TrueforceForAll.Plugin
             Loaded   += (_, __) =>
             {
                 _meterTimer.Start();
+                // First-time welcome modal: shown once per (install,
+                // user) on first open of a build that introduced the
+                // community features. Defer via Dispatcher so the panel
+                // is fully composited before the modal pops on top.
+                Dispatcher.BeginInvoke(new Action(MaybeShowNetworkedWelcome),
+                    System.Windows.Threading.DispatcherPriority.Background);
                 if (_plugin != null)
                 {
                     _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
@@ -264,6 +270,8 @@ namespace TrueforceForAll.Plugin
 
                 if (AuthorNameBox != null)
                     AuthorNameBox.Text = _plugin.Settings?.SharingAuthor ?? "";
+                if (AccountAuthorBox != null)
+                    AccountAuthorBox.Text = _plugin.Settings?.SharingAuthor ?? "";
 
                 MasterGainSlider.Value = _plugin.Settings?.MasterGain ?? 1.0;
                 MasterGainText.Text    = MasterGainSlider.Value.ToString("F2");
@@ -4094,56 +4102,149 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetCommunityEnabled(CommunityEnabledCheck.IsChecked == true);
-            RefreshCommunityAuthRow();
+            RefreshAccountRow();
         }
 
-        // Sync the sign-in row state with whatever the plugin currently
-        // thinks. Visible only when Community is on (no point signing in
-        // when uploads/edits aren't going out). Label flips between
-        // "Sign in to manage your shared presets" and
-        // "Signed in as <email>" + button text "Sign in" / "Sign out".
-        private void RefreshCommunityAuthRow()
+        // Sync the Account expander's sign-in status + email value to
+        // the current plugin auth state. Called from RefreshFromPlugin
+        // and after each sign-in/sign-out action so the UI matches reality.
+        private void RefreshAccountRow()
         {
-            if (CommunityAuthRow == null || _plugin == null) return;
+            if (AccountStatusLabel == null || _plugin == null) return;
             bool communityOn = _plugin.Settings?.CommunityEnabled == true;
-            CommunityAuthRow.Visibility = communityOn
-                ? System.Windows.Visibility.Visible
-                : System.Windows.Visibility.Collapsed;
-            if (!communityOn) return;
             if (_plugin.AuthIsSignedIn)
             {
                 string email = _plugin.AuthSignedInEmail ?? "(unknown email)";
-                CommunityAuthStatus.Text = "Signed in as " + email + ".";
-                CommunityAuthBtn.Content = "Sign out";
+                AccountStatusLabel.Text = "Signed in as " + email + ".";
+                AccountAuthBtn.Content = "Sign out";
+                if (AccountChangeEmailRow != null)
+                {
+                    AccountChangeEmailRow.Visibility = System.Windows.Visibility.Visible;
+                    if (AccountEmailValue != null) AccountEmailValue.Text = email;
+                }
             }
             else
             {
-                CommunityAuthStatus.Text = "Sign in to manage your shared presets.";
-                CommunityAuthBtn.Content = "Sign in";
+                AccountStatusLabel.Text = communityOn
+                    ? "Not signed in. Sign in to manage your uploads, or stay anonymous."
+                    : "Sign in to manage uploads (turn on Community below first).";
+                AccountAuthBtn.Content = "Sign in";
+                if (AccountChangeEmailRow != null)
+                    AccountChangeEmailRow.Visibility = System.Windows.Visibility.Collapsed;
             }
+            // Disable sign-in when community is off - nothing to manage.
+            AccountAuthBtn.IsEnabled = communityOn || _plugin.AuthIsSignedIn;
         }
 
-        private void CommunityAuth_Click(object sender, RoutedEventArgs e)
+        // Compat shim for the original CommunityEnabled_Changed call site.
+        private void RefreshCommunityAuthRow() => RefreshAccountRow();
+
+        private void AccountAuth_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
             if (_plugin.AuthIsSignedIn)
             {
-                var confirm = System.Windows.MessageBox.Show(
-                    System.Windows.Window.GetWindow(this),
+                var confirm = MessageBox.Show(
+                    Window.GetWindow(this),
                     "Sign out of the community? You'll need to sign in again to edit or delete your shared presets.",
-                    "Sign out", System.Windows.MessageBoxButton.YesNo,
-                    System.Windows.MessageBoxImage.Question);
-                if (confirm != System.Windows.MessageBoxResult.Yes) return;
+                    "Sign out", MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.Yes) return;
                 _plugin.AuthSignOut();
-                RefreshCommunityAuthRow();
+                RefreshAccountRow();
                 return;
             }
-            var dialog = new SignInWindow(_plugin)
+            // Surface a hint if community is off; sign-in alone won't unlock
+            // edits if the user can't even send uploads through.
+            if (_plugin.Settings?.CommunityEnabled != true)
             {
-                Owner = System.Windows.Window.GetWindow(this),
-            };
+                MessageBox.Show(Window.GetWindow(this),
+                    "Turn on Community below first so uploads + edits actually go out.",
+                    "Sign in", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var dialog = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
             bool? ok = dialog.ShowDialog();
-            if (ok == true) RefreshCommunityAuthRow();
+            if (ok == true) RefreshAccountRow();
+        }
+
+        // Account-expander author edits. Stay in lock-step with the
+        // long-standing AuthorNameBox in the Backup & sync section by
+        // pushing through to its handler.
+        private void AccountAuthor_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null || AccountAuthorBox == null) return;
+            string newAuthor = (AccountAuthorBox.Text ?? "").Trim();
+            string oldAuthor = (_plugin.Settings.SharingAuthor ?? "").Trim();
+            if (string.Equals(newAuthor, oldAuthor, System.StringComparison.Ordinal))
+            {
+                if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
+                return;
+            }
+            // Reuse the canonical commit path (handles persistence +
+            // backfill prompt). Mirror the text into AuthorNameBox first
+            // so the existing handler sees the new value.
+            if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
+            CommitAuthorName();
+            if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "Saved.";
+        }
+
+        private void AccountAuthor_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter)
+                AccountAuthor_Changed(sender, null);
+        }
+
+        // Change-email button. Currently a stub: Supabase Auth's
+        // auth.update_user({email}) flow is supported but needs a
+        // dedicated modal + confirm-link UX. Keeping the affordance
+        // visible (when signed in) so users know it's coming.
+        private void AccountChangeEmail_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show(Window.GetWindow(this),
+                "Email change is coming soon. For now, sign out and sign back in with the new address; your past uploads will stay under your original account.",
+                "Change email", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        // One-shot welcome modal. Fires from OnPluginAttached the first
+        // time the user opens the panel on a build that has community
+        // features (Settings.HasSeenNetworkedWelcome was false at
+        // install / pre-upgrade). Routes through SignInWindow when the
+        // user opts in.
+        private void MaybeShowNetworkedWelcome()
+        {
+            if (_plugin?.Settings == null) return;
+            if (_plugin.Settings.HasSeenNetworkedWelcome) return;
+            // Skip when the backend isn't even configured - nothing to
+            // pitch yet.
+            if (string.IsNullOrEmpty(_plugin.Settings.CommunityBackendUrl)
+                || string.IsNullOrEmpty(_plugin.Settings.CommunityBackendAnonKey))
+                return;
+
+            var welcome = new WelcomeWindow { Owner = Window.GetWindow(this) };
+            bool? ok = welcome.ShowDialog();
+            _plugin.Settings.HasSeenNetworkedWelcome = true;
+            try { _plugin.PersistSettings(); } catch { }
+            if (ok == true && welcome.SignInRequested
+                && _plugin.Settings?.CommunityEnabled == true
+                && !_plugin.AuthIsSignedIn)
+            {
+                var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
+                bool? signedIn = signIn.ShowDialog();
+                if (signedIn == true) RefreshAccountRow();
+            }
+            else if (ok == true && welcome.SignInRequested
+                     && _plugin.Settings?.CommunityEnabled != true)
+            {
+                // Auto-enable Community + open sign-in: the user clicked
+                // "Sign in now" before flipping the toggle, so do both.
+                _plugin.SetCommunityEnabled(true);
+                CommunityEnabledCheck.IsChecked = true;
+                AccountExpander.IsExpanded = true;
+                var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
+                bool? signedIn = signIn.ShowDialog();
+                if (signedIn == true) RefreshAccountRow();
+            }
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the
