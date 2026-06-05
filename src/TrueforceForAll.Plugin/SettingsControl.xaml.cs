@@ -4386,15 +4386,74 @@ namespace TrueforceForAll.Plugin
                 AccountAuthor_Changed(sender, null);
         }
 
-        // Change-email button. Currently a stub: Supabase Auth's
-        // auth.update_user({email}) flow needs a dedicated modal +
-        // confirm-link UX. Wave 3+. Keeping the affordance visible so
-        // users know where it lives.
-        private void AccountChangeEmail_Click(object sender, RoutedEventArgs e)
+        // Change-email button. Real flow now: prompt for the new
+        // address, PUT it to Supabase Auth, server sends a confirmation
+        // link to the new inbox. Old address keeps working until they
+        // click the link.
+        private async void AccountChangeEmail_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show(Window.GetWindow(this),
-                "Email change is coming soon. For now, sign out and sign back in with the new address; your past uploads will stay under your original account.",
-                "Change email", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (_plugin == null || !_plugin.AuthIsSignedIn) return;
+            string current = _plugin.AuthSignedInEmail ?? "(unknown)";
+            var dlg = new TwoLineEditWindow(
+                title:      "Change email",
+                line1Label: "New email address",
+                line1Init:  "",
+                line2Label: "Notes (not sent anywhere)",
+                line2Init:  "",
+                line2Lines: 2)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dlg.ShowDialog();
+            if (ok != true) return;
+            string newEmail = (dlg.Line1Result ?? "").Trim();
+            if (!newEmail.Contains("@") || newEmail.IndexOf('.', newEmail.IndexOf('@')) <= newEmail.IndexOf('@'))
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Enter a valid email address.", "Change email",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (string.Equals(newEmail.ToLowerInvariant(), current.ToLowerInvariant(),
+                              StringComparison.Ordinal))
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "That's already your email.", "Change email",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            AuthCallResult result;
+            try { result = await _plugin.AuthUpdateEmailAsync(newEmail); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Email update failed: " + ex.Message,
+                    "Change email", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (result == AuthCallResult.Ok)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "We sent a confirmation link to " + newEmail + ". "
+                    + "Click it from that inbox to finish the change. "
+                    + "Your current address keeps working until then.",
+                    "Change email", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            string copy;
+            switch (result)
+            {
+                case AuthCallResult.RateLimited:
+                    copy = "Slow down a moment, then try again."; break;
+                case AuthCallResult.InvalidInput:
+                    copy = "That email isn't valid."; break;
+                case AuthCallResult.NetworkFailure:
+                    copy = "Could not reach the sign-in server."; break;
+                default:
+                    copy = "Could not update your email. The address may already be taken."; break;
+            }
+            MessageBox.Show(Window.GetWindow(this), copy, "Change email",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         private void AccountExpander_Expanded(object sender, RoutedEventArgs e)
@@ -4411,6 +4470,7 @@ namespace TrueforceForAll.Plugin
             if (!_plugin.AuthIsSignedIn)
             {
                 AccountStatsBox.Visibility = Visibility.Collapsed;
+                if (AccountSessionsBox != null) AccountSessionsBox.Visibility = Visibility.Collapsed;
                 if (AccountDangerZone != null) AccountDangerZone.Visibility = Visibility.Collapsed;
                 return;
             }
@@ -4450,6 +4510,23 @@ namespace TrueforceForAll.Plugin
             AccountStatsUploads.Text   = "Uploads: "   + uploads;
             AccountStatsDownloads.Text = "Downloads received: " + dls;
             AccountStatsVotes.Text     = "Votes received: +" + upvotes + " / -" + downvotes;
+
+            // Sessions card next to stats. JWT decode is local; no extra
+            // RPC. Just shows the current device's session info.
+            if (AccountSessionsBox != null)
+            {
+                AccountSessionsBox.Visibility = Visibility.Visible;
+                (DateTime? iat, DateTime? exp, string _) = _plugin.AuthGetSessionInfo();
+                string machine = Environment.MachineName ?? "this device";
+                AccountSessionDevice.Text  = "This device: " + machine;
+                AccountSessionStarted.Text = iat.HasValue
+                    ? "Signed in: " + iat.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                    : "Signed in: (unknown)";
+                AccountSessionExpires.Text = exp.HasValue
+                    ? "Token expires: " + exp.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                      + "  (refreshes automatically)"
+                    : "Token expires: (unknown)";
+            }
         }
 
         // Export-my-data button. Dumps the export_my_data jsonb to a

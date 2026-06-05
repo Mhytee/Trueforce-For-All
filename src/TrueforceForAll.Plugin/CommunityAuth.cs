@@ -463,6 +463,91 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // ---- Change email --------------------------------------------------
+
+        /// <summary>Initiate an email change via Supabase Auth's PUT
+        /// /auth/v1/user endpoint. Server sends a confirmation email to
+        /// the NEW address; the change takes effect after the user
+        /// clicks the confirmation link. Until then the old address keeps
+        /// working. Returns categorized result for UI copy.</summary>
+        public async Task<AuthCallResult> UpdateEmailAsync(string newEmail)
+        {
+            if (!ShouldRun(out var url, out var anonKey)) return AuthCallResult.NetworkFailure;
+            if (string.IsNullOrWhiteSpace(newEmail)) return AuthCallResult.InvalidInput;
+            newEmail = newEmail.Trim().ToLowerInvariant();
+            string bearer = await GetAccessTokenAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer)) return AuthCallResult.NetworkFailure;
+
+            string body;
+            try { body = JsonConvert.SerializeObject(new { email = newEmail }); }
+            catch { return AuthCallResult.Generic; }
+
+            try
+            {
+                using (var req = new HttpRequestMessage(new HttpMethod("PUT"), url.TrimEnd('/') + "/auth/v1/user"))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
+                    {
+                        if (resp.IsSuccessStatusCode) return AuthCallResult.Ok;
+                        string detail = resp.Content != null
+                            ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
+                            : "";
+                        _log?.Invoke($"[Trueforce] Auth update-email failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
+                        return ClassifyAuthError((int)resp.StatusCode, detail);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Auth update-email exception: {ex.Message}");
+                return AuthCallResult.NetworkFailure;
+            }
+        }
+
+        // ---- Session info from JWT ----------------------------------------
+
+        /// <summary>Decode the session JWT's claims for display in the
+        /// Account expander. Returns issued-at + expires-at + email +
+        /// session-id when available; nulls otherwise. No server
+        /// round-trip; reads the cached access_token payload.</summary>
+        public (DateTime? IssuedAt, DateTime? ExpiresAt, string SessionId) GetCurrentSessionInfo()
+        {
+            var s = _settingsProvider()?.AuthSession;
+            if (s == null || string.IsNullOrEmpty(s.AccessToken)) return (null, null, null);
+            try
+            {
+                // JWT format: header.payload.signature, payload is base64url-encoded JSON.
+                string[] parts = s.AccessToken.Split('.');
+                if (parts.Length < 2) return (null, null, null);
+                string payload = parts[1];
+                // base64url -> base64 padding fix
+                payload = payload.Replace('-', '+').Replace('_', '/');
+                switch (payload.Length % 4)
+                {
+                    case 2: payload += "=="; break;
+                    case 3: payload += "="; break;
+                }
+                byte[] decoded = Convert.FromBase64String(payload);
+                string json = Encoding.UTF8.GetString(decoded);
+                var claims = JObject.Parse(json);
+                long iat = claims["iat"]?.ToObject<long>() ?? 0;
+                long exp = claims["exp"]?.ToObject<long>() ?? 0;
+                string sessionId = claims["session_id"]?.ToString();
+                return (
+                    iat > 0 ? DateTimeOffset.FromUnixTimeSeconds(iat).UtcDateTime : (DateTime?)null,
+                    exp > 0 ? DateTimeOffset.FromUnixTimeSeconds(exp).UtcDateTime : (DateTime?)null,
+                    sessionId);
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Session info decode failed: {ex.Message}");
+                return (null, null, null);
+            }
+        }
+
         // ---- Sign out ------------------------------------------------------
 
         /// <summary>Drop the local session. Best-effort server logout

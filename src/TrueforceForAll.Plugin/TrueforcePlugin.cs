@@ -7610,6 +7610,12 @@ namespace TrueforceForAll.Plugin
         internal Task<UsernameAvailability> AuthSetUsernameAsync(string username)
             => _auth?.SetUsernameAsync(username) ?? Task.FromResult(UsernameAvailability.Network);
 
+        internal Task<AuthCallResult> AuthUpdateEmailAsync(string newEmail)
+            => _auth?.UpdateEmailAsync(newEmail) ?? Task.FromResult(AuthCallResult.NetworkFailure);
+
+        internal (DateTime? IssuedAt, DateTime? ExpiresAt, string SessionId) AuthGetSessionInfo()
+            => _auth?.GetCurrentSessionInfo() ?? (null, null, null);
+
         /// <summary>Merge community-supplied custom engine defs into the
         /// local library. Reuses the file-based MergeImportedCustomEngines
         /// (Id-keyed dedup, local wins on collision with logging when

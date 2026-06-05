@@ -2396,7 +2396,7 @@
                     <!-- Stats. Only meaningful while signed in. Refreshes
                          from get_account_stats on expander open. -->
                     <Border x:Name="AccountStatsBox" Background="#22FFFFFF" CornerRadius="3"
-                            Padding="10,6,10,6" Margin="0,8,0,12" Visibility="Collapsed">
+                            Padding="10,6,10,6" Margin="0,8,0,8" Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12"
                                        Text="Your stats" Margin="0,0,0,4"/>
@@ -2404,6 +2404,27 @@
                             <TextBlock x:Name="AccountStatsUploads"   Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
                             <TextBlock x:Name="AccountStatsDownloads" Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
                             <TextBlock x:Name="AccountStatsVotes"     Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Active sessions. The Supabase REST API doesn't expose
+                         multi-device session listing to the anon client, so
+                         this card shows just THIS device's session decoded
+                         from the JWT (signed-in-since + expires-at). When
+                         multi-device session listing becomes possible (via
+                         a custom RPC or future Supabase update) this block
+                         scales out to a list. -->
+                    <Border x:Name="AccountSessionsBox" Background="#22FFFFFF" CornerRadius="3"
+                            Padding="10,6,10,6" Margin="0,0,0,12" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12"
+                                       Text="Active sessions" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="AccountSessionDevice"  Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                            <TextBlock x:Name="AccountSessionStarted" Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                            <TextBlock x:Name="AccountSessionExpires" Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                            <TextBlock Foreground="#FF808080" FontSize="10"
+                                       Text="Other devices show up after a future update; for now sign out individually on each one."
+                                       Margin="0,4,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 
