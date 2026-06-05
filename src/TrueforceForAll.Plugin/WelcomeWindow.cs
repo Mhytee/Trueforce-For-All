@@ -59,7 +59,7 @@ namespace TrueforceForAll.Plugin
                 "Browse and download tunes other drivers have shared for the car you're driving. Take just the sections you want."));
             root.Children.Add(MakeBullet(
                 "Your contributions count",
-                "When you correct a redline or share a preset, your contribution flows to everyone else loading that car. Sign in once and your uploads stay yours to edit or delete later."));
+                "When you correct a redline or share a preset, your contribution flows to everyone else loading that car. Sign in to put your username on what you share and keep your uploads yours."));
             root.Children.Add(MakeBullet(
                 "Privacy by default",
                 "Anonymous if you stay signed out. Sign in with email - no password to remember, no signup form, just a one-time code."));

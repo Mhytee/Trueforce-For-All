@@ -67,7 +67,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "We'll email a 6-digit code. No password to remember. Signing in unlocks edit + delete on your own preset uploads.",
+                Text = "We'll email a 6-digit code. No password to remember. Signing in lets you use community features.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,

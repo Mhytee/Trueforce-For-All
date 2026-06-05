@@ -2350,11 +2350,11 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock x:Name="AccountStatusLabel" VerticalAlignment="Center" FontSize="12"
                                    Foreground="#FFE0E0E0" MaxWidth="360" TextWrapping="Wrap"
-                                   Text="Not signed in. Browse + contribute anonymously, or sign in to manage uploads."/>
+                                   Text="Not signed in. Sign in to use community features."/>
                         <Button x:Name="AccountAuthBtn" Content="Sign in"
                                 Margin="10,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
                                 Click="AccountAuth_Click"
-                                ToolTip="Email OTP. Required for editing and deleting your own preset uploads later."/>
+                                ToolTip="Sign in with email (one-time code, no password) to use community features."/>
                     </StackPanel>
                     <!-- Community master toggle -->
                     <CheckBox x:Name="CommunityEnabledCheck" Content="Use community car data"

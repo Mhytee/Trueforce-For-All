@@ -4125,7 +4125,7 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                AccountStatusLabel.Text = "Not signed in. Sign in to claim uploads you make so you can edit or delete them later.";
+                AccountStatusLabel.Text = "Not signed in. Sign in to use community features.";
                 AccountAuthBtn.Content = "Sign in";
                 if (AccountChangeEmailRow != null)
                     AccountChangeEmailRow.Visibility = System.Windows.Visibility.Collapsed;
@@ -4144,7 +4144,7 @@ namespace TrueforceForAll.Plugin
             {
                 var confirm = MessageBox.Show(
                     Window.GetWindow(this),
-                    "Sign out of your community account? You'll need to sign in again to edit or delete your shared presets.",
+                    "Sign out of your community account?",
                     "Sign out", MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
                 if (confirm != MessageBoxResult.Yes) return;
