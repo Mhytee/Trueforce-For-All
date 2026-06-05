@@ -2362,12 +2362,13 @@
                               ToolTip="When you save engine data that disagrees with what's detected, the plugin asks if you want to share it. When community data exists for a car you load, the plugin uses it. Turn off to keep everything local: nothing leaves your machine and community values are ignored."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
                                Text="Anonymous data exchange to help everyone tune cars faster. Turn off to stay local-only."/>
-                    <!-- Author name. Mirrors the AuthorNameBox in Backup &
-                         sync below; either surface persists the same setting.
-                         Surfaced here too because most users will look for
-                         it under Account first. -->
+                    <!-- Username. Same value as the long-standing Author
+                         setting (Settings.SharingAuthor); your Author and
+                         your username are the same name across the
+                         plugin. Pre-fills from the email prefix on first
+                         sign-in when blank. Editable any time. -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <TextBlock Text="Author name:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
+                        <TextBlock Text="Username:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
                         <TextBox x:Name="AccountAuthorBox" Width="220" Height="24"
                                  VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="4,0"
                                  Background="#FF2D2D30" Foreground="White" CaretBrush="White"
@@ -2376,7 +2377,7 @@
                         <TextBlock x:Name="AccountAuthorStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="100,2,0,12" FontSize="11"
-                               Text="Shown on your shared presets. Leave blank to stay anonymous."/>
+                               Text="Shown as the Author on your shared presets. Pre-fills from your email when you sign in. Leave blank to stay anonymous."/>
                     <!-- Change email button. Only meaningful while signed in. -->
                     <StackPanel x:Name="AccountChangeEmailRow" Orientation="Horizontal" Margin="0,0,0,4" Visibility="Collapsed">
                         <TextBlock Text="Email:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>

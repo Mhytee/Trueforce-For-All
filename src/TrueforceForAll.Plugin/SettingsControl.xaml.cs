@@ -4106,12 +4106,12 @@ namespace TrueforceForAll.Plugin
         }
 
         // Sync the Account expander's sign-in status + email value to
-        // the current plugin auth state. Called from RefreshFromPlugin
-        // and after each sign-in/sign-out action so the UI matches reality.
+        // the current plugin auth state. Sign-in is independent of the
+        // Community toggle - users can have an account just to claim
+        // future uploads, even with community pull/push currently off.
         private void RefreshAccountRow()
         {
             if (AccountStatusLabel == null || _plugin == null) return;
-            bool communityOn = _plugin.Settings?.CommunityEnabled == true;
             if (_plugin.AuthIsSignedIn)
             {
                 string email = _plugin.AuthSignedInEmail ?? "(unknown email)";
@@ -4125,15 +4125,13 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                AccountStatusLabel.Text = communityOn
-                    ? "Not signed in. Sign in to manage your uploads, or stay anonymous."
-                    : "Sign in to manage uploads (turn on Community below first).";
+                AccountStatusLabel.Text = "Not signed in. Sign in to claim uploads you make so you can edit or delete them later.";
                 AccountAuthBtn.Content = "Sign in";
                 if (AccountChangeEmailRow != null)
                     AccountChangeEmailRow.Visibility = System.Windows.Visibility.Collapsed;
             }
-            // Disable sign-in when community is off - nothing to manage.
-            AccountAuthBtn.IsEnabled = communityOn || _plugin.AuthIsSignedIn;
+            // Always enabled - sign-in is independent of CommunityEnabled.
+            AccountAuthBtn.IsEnabled = true;
         }
 
         // Compat shim for the original CommunityEnabled_Changed call site.
@@ -4146,7 +4144,7 @@ namespace TrueforceForAll.Plugin
             {
                 var confirm = MessageBox.Show(
                     Window.GetWindow(this),
-                    "Sign out of the community? You'll need to sign in again to edit or delete your shared presets.",
+                    "Sign out of your community account? You'll need to sign in again to edit or delete your shared presets.",
                     "Sign out", MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
                 if (confirm != MessageBoxResult.Yes) return;
@@ -4154,18 +4152,35 @@ namespace TrueforceForAll.Plugin
                 RefreshAccountRow();
                 return;
             }
-            // Surface a hint if community is off; sign-in alone won't unlock
-            // edits if the user can't even send uploads through.
-            if (_plugin.Settings?.CommunityEnabled != true)
-            {
-                MessageBox.Show(Window.GetWindow(this),
-                    "Turn on Community below first so uploads + edits actually go out.",
-                    "Sign in", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
             var dialog = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
             bool? ok = dialog.ShowDialog();
-            if (ok == true) RefreshAccountRow();
+            if (ok == true)
+            {
+                BootstrapUsernameAfterSignIn();
+                RefreshAccountRow();
+            }
+        }
+
+        // After a successful first sign-in, if the user hasn't set an
+        // Author/username yet, default it to the email prefix (before
+        // the @). Their username == their Author name throughout the
+        // plugin; SharingAuthor is the single source of truth and is
+        // editable from either surface.
+        private void BootstrapUsernameAfterSignIn()
+        {
+            if (_plugin?.Settings == null) return;
+            if (!_plugin.AuthIsSignedIn) return;
+            if (!string.IsNullOrWhiteSpace(_plugin.Settings.SharingAuthor)) return;
+            string email = _plugin.AuthSignedInEmail;
+            if (string.IsNullOrEmpty(email)) return;
+            int at = email.IndexOf('@');
+            string prefix = at > 0 ? email.Substring(0, at) : email;
+            prefix = prefix.Trim();
+            if (string.IsNullOrEmpty(prefix)) return;
+            _plugin.Settings.SharingAuthor = prefix;
+            try { _plugin.PersistSettings(); } catch { }
+            if (AuthorNameBox    != null) AuthorNameBox.Text    = prefix;
+            if (AccountAuthorBox != null) AccountAuthorBox.Text = prefix;
         }
 
         // Account-expander author edits. Stay in lock-step with the
@@ -4206,45 +4221,69 @@ namespace TrueforceForAll.Plugin
                 "Change email", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        // One-shot welcome modal. Fires from OnPluginAttached the first
-        // time the user opens the panel on a build that has community
-        // features (Settings.HasSeenNetworkedWelcome was false at
-        // install / pre-upgrade). Routes through SignInWindow when the
-        // user opts in.
+        // Number of days to wait before re-prompting after a "Maybe later"
+        // dismissal. Two declines total then we stop forever.
+        private const int WelcomeReshowDays = 14;
+
+        // Conditional welcome modal. Shown up to twice:
+        //   * First plugin load with backend configured + HasSeen=false +
+        //     NextShowAt==null
+        //   * After "Maybe later" + WelcomeReshowDays elapsed
+        // "Sign in now" or a second decline locks HasSeen=true and we
+        // never show again.
         private void MaybeShowNetworkedWelcome()
         {
             if (_plugin?.Settings == null) return;
             if (_plugin.Settings.HasSeenNetworkedWelcome) return;
-            // Skip when the backend isn't even configured - nothing to
-            // pitch yet.
+            // Backend not configured - nothing to pitch yet.
             if (string.IsNullOrEmpty(_plugin.Settings.CommunityBackendUrl)
                 || string.IsNullOrEmpty(_plugin.Settings.CommunityBackendAnonKey))
                 return;
+            // Re-show delay enforcement.
+            var nextAt = _plugin.Settings.WelcomeNextShowAt;
+            if (nextAt.HasValue && nextAt.Value > DateTime.UtcNow) return;
 
             var welcome = new WelcomeWindow { Owner = Window.GetWindow(this) };
             bool? ok = welcome.ShowDialog();
-            _plugin.Settings.HasSeenNetworkedWelcome = true;
+
+            if (ok == true && welcome.SignInRequested)
+            {
+                // User wants in - never pitch again, take them through
+                // sign-in. We auto-enable Community when needed because
+                // the user clicked the explicit "Sign in now" CTA.
+                _plugin.Settings.HasSeenNetworkedWelcome = true;
+                _plugin.Settings.WelcomeNextShowAt = null;
+                try { _plugin.PersistSettings(); } catch { }
+                if (_plugin.Settings.CommunityEnabled != true)
+                {
+                    _plugin.SetCommunityEnabled(true);
+                    if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
+                }
+                if (AccountExpander != null) AccountExpander.IsExpanded = true;
+                if (!_plugin.AuthIsSignedIn)
+                {
+                    var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
+                    bool? signedIn = signIn.ShowDialog();
+                    if (signedIn == true) BootstrapUsernameAfterSignIn();
+                }
+                RefreshAccountRow();
+                return;
+            }
+
+            // "Maybe later" path. Increment decline count; second
+            // decline ends the pitch permanently.
+            _plugin.Settings.WelcomeDeclineCount++;
+            if (_plugin.Settings.WelcomeDeclineCount >= 2)
+            {
+                _plugin.Settings.HasSeenNetworkedWelcome = true;
+                _plugin.Settings.WelcomeNextShowAt = null;
+            }
+            else
+            {
+                _plugin.Settings.WelcomeNextShowAt =
+                    DateTime.UtcNow.AddDays(WelcomeReshowDays);
+            }
             try { _plugin.PersistSettings(); } catch { }
-            if (ok == true && welcome.SignInRequested
-                && _plugin.Settings?.CommunityEnabled == true
-                && !_plugin.AuthIsSignedIn)
-            {
-                var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
-                bool? signedIn = signIn.ShowDialog();
-                if (signedIn == true) RefreshAccountRow();
-            }
-            else if (ok == true && welcome.SignInRequested
-                     && _plugin.Settings?.CommunityEnabled != true)
-            {
-                // Auto-enable Community + open sign-in: the user clicked
-                // "Sign in now" before flipping the toggle, so do both.
-                _plugin.SetCommunityEnabled(true);
-                CommunityEnabledCheck.IsChecked = true;
-                AccountExpander.IsExpanded = true;
-                var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
-                bool? signedIn = signIn.ShowDialog();
-                if (signedIn == true) RefreshAccountRow();
-            }
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the

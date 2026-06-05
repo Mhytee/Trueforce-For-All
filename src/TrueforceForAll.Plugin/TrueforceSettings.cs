@@ -5,6 +5,7 @@
 // settings panel, keep field names stable across versions so shared presets
 // stay valid.
 
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -417,11 +418,16 @@ namespace TrueforceForAll.Plugin
         // on the user's own preset uploads.
         public CommunityAuthSession AuthSession { get; set; }
 
-        // One-shot welcome modal latch. Stays false on fresh installs +
-        // on first upgrade to a build that introduces the community/auth
-        // features so the user sees the benefits + sign-in pitch once.
-        // Flips true on dismiss; never resets thereafter.
-        public bool HasSeenNetworkedWelcome { get; set; } = false;
+        // Welcome modal lifecycle. We show the pitch up to TWO times:
+        // first plugin load (DeclineCount==0, NextShowAt==null), then
+        // again after WelcomeReshowDays (~14 days) if the user picked
+        // "Maybe later". A second decline flips HasSeenNetworkedWelcome
+        // true and we never nag again. "Sign in now" (whether or not the
+        // sign-in flow completes) counts as action-taken and stops the
+        // pitch immediately.
+        public bool      HasSeenNetworkedWelcome { get; set; } = false;
+        public int       WelcomeDeclineCount     { get; set; } = 0;
+        public DateTime? WelcomeNextShowAt       { get; set; } = null;
 
         // ---- Per-effect "NEW" badges + changelog banner (see EffectChangelog) ----
 
