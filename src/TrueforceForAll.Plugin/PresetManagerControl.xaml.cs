@@ -1281,15 +1281,19 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // submission opts in via the Settings toggle.
             CarRenameCarBtn.IsEnabled = anySelected    && checkedCount <= 1;
             CarDuplicateBtn.IsEnabled = anySelected    && checkedCount <= 1;
-            // Share-to-community: needs CommunityEnabled and a row. The
-            // upload itself also gates on the backend URL + anon key being
-            // present, but at the UI layer the toggle is the visible
-            // contract.
+            // Share-to-community: needs CommunityEnabled, a signed-in
+            // session (server now requires it), and a row. The upload
+            // itself also checks the backend URL + anon key; at the UI
+            // layer the toggle + sign-in are the visible contract.
             bool communityOn = _plugin?.Settings?.CommunityEnabled == true;
-            CarShareBtn.IsEnabled = anySelected && checkedCount <= 1 && communityOn;
-            CarShareBtn.ToolTip = communityOn
-                ? "Upload this car preset to the community so other drivers can find it."
-                : "Enable Community Contributions in Settings to share presets.";
+            bool signedIn    = _plugin?.AuthIsSignedIn == true;
+            CarShareBtn.IsEnabled = anySelected && checkedCount <= 1 && communityOn && signedIn;
+            if (!communityOn)
+                CarShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
+            else if (!signedIn)
+                CarShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
+            else
+                CarShareBtn.ToolTip = "Upload this car preset to the community so other drivers can find it.";
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelEditable;
             // Set-as-default: bulk supported (one row per car). Enabled if any
             // checked row isn't already its car's active default, else the
@@ -1990,19 +1994,31 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // ===================== Community browser =====================
 
         // Row in the Community list. Wraps a PresetSummary with the
-        // formatting the grid binds against. MyVote and the description
-        // ride along so the detail panel + Upvote/Downvote toggles can
-        // reflect what the user already submitted in earlier sessions.
+        // formatting the grid binds against. MyVote is mirrored on the
+        // row so the Reddit-style up/down arrows can render a selected
+        // state and the click handler can toggle vs retract correctly.
         private sealed class CommunityRow
         {
             public PresetSummary Summary { get; set; }
             public string Name        => Summary?.Name ?? "";
             public string Author      => string.IsNullOrEmpty(Summary?.Author) ? "(anonymous)" : Summary.Author;
-            public string VoteLabel   => $"{Summary?.Upvotes ?? 0} / {Summary?.Downvotes ?? 0}";
+            public string Game        => Summary?.Game ?? "";
+            public string CarId       => Summary?.CarId ?? "";
+            public string ScoreLabel  => (((Summary?.Upvotes ?? 0) - (Summary?.Downvotes ?? 0))).ToString();
             public int    Downloads   => Summary?.Downloads ?? 0;
             public string TagsLabel   => Summary?.EffectTags == null || Summary.EffectTags.Count == 0
                                           ? "" : string.Join(", ", Summary.EffectTags);
             public string Description => Summary?.Description ?? "";
+            // -1 / 0 / +1. Drives arrow colors + click semantics.
+            public int    MyVote      { get; set; }
+            public System.Windows.Media.Brush UpArrowBrush =>
+                MyVote == 1
+                    ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x66, 0xCC, 0x88))
+                    : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x80, 0x80, 0x80));
+            public System.Windows.Media.Brush DownArrowBrush =>
+                MyVote == -1
+                    ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0x77, 0x77))
+                    : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x80, 0x80, 0x80));
         }
 
         private readonly System.Collections.ObjectModel.ObservableCollection<CommunityRow> _communityRows =
@@ -2012,6 +2028,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // Tracks which (game, carId) the displayed list represents so we
         // can repopulate when the active car changes.
         private string _communityListedCarKey;
+        // "for-car" (browse by active car) vs "mine" (signed-in user's
+        // own uploads, across every car/game).
+        private string _communityMode = "for-car";
 
         private CommunityRow SelectedCommunity =>
             CommunityList?.SelectedItem as CommunityRow;
@@ -2058,20 +2077,33 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _ = CommunityRefreshAsync();
         }
 
+        private void CommunityMode_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CommunityModeMine == null || _plugin == null) return;
+            string newMode = CommunityModeMine.IsChecked == true ? "mine" : "for-car";
+            if (newMode == _communityMode) return;
+            _communityMode = newMode;
+            // Label swap + refresh.
+            if (CommunityScopeLabel != null)
+                CommunityScopeLabel.Text = newMode == "mine" ? "Your uploads:" : "Active car:";
+            UpdateCommunityActiveCarLabel();
+            _ = CommunityRefreshAsync();
+        }
+
+        private string SortKey()
+        {
+            switch (_communitySort)
+            {
+                case "newest":    return "newest";
+                case "downloads": return "downloads";
+                default:          return "for-car" == _communityMode ? "wilson" : "top";
+            }
+        }
+
         private async Task CommunityRefreshAsync()
         {
             if (_plugin == null || _communityFetchInFlight) return;
             UpdateCommunityActiveCarLabel();
-            string game  = _plugin.ActiveGame;
-            string carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId))
-            {
-                _communityRows.Clear();
-                if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Load a car in the game to see community presets.";
-                CommunityList_SelectionChanged(null, null);
-                return;
-            }
             if (_plugin.Settings?.CommunityEnabled != true)
             {
                 _communityRows.Clear();
@@ -2081,18 +2113,41 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 return;
             }
 
+            // My uploads mode requires sign-in. For-car mode doesn't.
+            if (_communityMode == "mine" && !_plugin.AuthIsSignedIn)
+            {
+                _communityRows.Clear();
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Sign in (Account & community in Settings) to see your uploads.";
+                CommunityList_SelectionChanged(null, null);
+                return;
+            }
+
+            string game  = _plugin.ActiveGame;
+            string carId = _plugin.ActiveCarId;
+            if (_communityMode == "for-car" && (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)))
+            {
+                _communityRows.Clear();
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Load a car in the game to see community presets.";
+                CommunityList_SelectionChanged(null, null);
+                return;
+            }
+
             _communityFetchInFlight = true;
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = "Loading...";
 
+            string capturedMode = _communityMode;
             string capturedGame = game;
             string capturedCar  = carId;
-            string capturedSort = _communitySort;
+            string capturedSort = SortKey();
             List<PresetSummary> results = null;
             try
             {
-                results = await Task.Run(() =>
-                    _plugin.FetchCommunityPresetsForCar(capturedGame, capturedCar, capturedSort, 50));
+                results = await Task.Run(() => capturedMode == "mine"
+                    ? _plugin.FetchMyCommunityPresets(capturedSort, 100)
+                    : _plugin.FetchCommunityPresetsForCar(capturedGame, capturedCar, capturedSort, 50));
             }
             catch (Exception ex)
             {
@@ -2101,29 +2156,68 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _communityFetchInFlight = false;
                 return;
             }
-            _communityFetchInFlight = false;
 
-            // If the user switched cars while the fetch was in flight,
-            // drop the stale result rather than render the wrong list.
-            if (_plugin.ActiveGame != capturedGame || _plugin.ActiveCarId != capturedCar)
+            // Stale-fetch guard for for-car mode: if the user switched
+            // cars while the fetch was in flight, drop the result.
+            if (capturedMode == "for-car"
+                && (_plugin.ActiveGame != capturedGame || _plugin.ActiveCarId != capturedCar))
+            {
+                _communityFetchInFlight = false;
                 return;
+            }
+            // Drop result if mode changed mid-flight.
+            if (_communityMode != capturedMode)
+            {
+                _communityFetchInFlight = false;
+                return;
+            }
 
-            _communityListedCarKey = capturedGame + "/" + capturedCar;
+            _communityListedCarKey = capturedMode == "for-car" ? capturedGame + "/" + capturedCar : "mine";
             _communityRows.Clear();
             if (results == null)
             {
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Could not reach the community backend.";
                 CommunityList_SelectionChanged(null, null);
+                _communityFetchInFlight = false;
                 return;
             }
             foreach (var s in results)
                 _communityRows.Add(new CommunityRow { Summary = s });
+
+            // Bulk-pull the signed-in user's votes on these rows so the
+            // Reddit arrows can show selected state.
+            if (_plugin.AuthIsSignedIn && _communityRows.Count > 0)
+            {
+                var ids = new List<string>(_communityRows.Count);
+                foreach (var r in _communityRows)
+                    if (!string.IsNullOrEmpty(r.Summary?.Id)) ids.Add(r.Summary.Id);
+                Dictionary<string, int> map = null;
+                try { map = await Task.Run(() => _plugin.FetchMyCommunityVotes(ids)); }
+                catch { /* leave votes at 0 */ }
+                if (map != null)
+                {
+                    for (int i = 0; i < _communityRows.Count; i++)
+                    {
+                        var r = _communityRows[i];
+                        if (r.Summary?.Id != null && map.TryGetValue(r.Summary.Id, out int v))
+                            r.MyVote = v;
+                    }
+                    // Replace rows to force WPF to re-resolve the brush bindings.
+                    var snapshot = _communityRows.ToList();
+                    _communityRows.Clear();
+                    foreach (var r in snapshot) _communityRows.Add(r);
+                }
+            }
+
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = _communityRows.Count == 0
-                    ? "No community presets for this car yet. Be the first to share."
+                    ? (capturedMode == "mine"
+                        ? "You haven't uploaded any presets yet."
+                        : "No community presets for this car yet. Be the first to share.")
                     : $"{_communityRows.Count} preset(s) found.";
             CommunityList_SelectionChanged(null, null);
+            _communityFetchInFlight = false;
         }
 
         private void CommunityList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2257,35 +2351,65 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CommunityStatusLabel.Text = "Deleted.";
         }
 
+        // Legacy bottom-row handlers (still wired to existing buttons in
+        // XAML). Kept harmless - the per-row arrows are the primary
+        // surface now. They route through the selected row for backward
+        // compat.
         private void CommunityVoteUp_Click(object sender, RoutedEventArgs e)
         {
-            CommunityVote(+1);
+            ToggleVote(SelectedCommunity, +1);
         }
 
         private void CommunityVoteDown_Click(object sender, RoutedEventArgs e)
         {
-            CommunityVote(-1);
+            ToggleVote(SelectedCommunity, -1);
         }
 
-        private void CommunityVote(int value)
+        // Reddit-style per-row arrow handlers. Clicking the up arrow when
+        // you've already upvoted retracts (value=0); clicking the down
+        // arrow when upvoted flips. Sign-in required.
+        private void CommunityVoteUpCell_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            var sel = SelectedCommunity;
-            if (sel?.Summary == null || _plugin == null) return;
-            _plugin.VoteCommunityPreset(sel.Summary.Id, value);
-            // Optimistic counter update; server is authoritative on the
-            // next refresh (the Wilson recompute might disagree if the
-            // user previously voted the other way).
-            if (value > 0) sel.Summary.Upvotes   += 1;
-            else            sel.Summary.Downvotes += 1;
-            int idx = _communityRows.IndexOf(sel);
+            ToggleVote((sender as FrameworkElement)?.Tag as CommunityRow, +1);
+        }
+
+        private void CommunityVoteDownCell_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            ToggleVote((sender as FrameworkElement)?.Tag as CommunityRow, -1);
+        }
+
+        private void ToggleVote(CommunityRow row, int clicked)
+        {
+            if (row?.Summary == null || _plugin == null) return;
+            if (!_plugin.AuthIsSignedIn)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Sign in (Account & community in Settings) to vote.";
+                return;
+            }
+            int prev = row.MyVote;
+            int next = (prev == clicked) ? 0 : clicked;  // toggle off or flip/set
+            // Optimistic counter adjustment based on prev->next transition.
+            if (prev == 1)  row.Summary.Upvotes   = Math.Max(0, row.Summary.Upvotes   - 1);
+            if (prev == -1) row.Summary.Downvotes = Math.Max(0, row.Summary.Downvotes - 1);
+            if (next == 1)  row.Summary.Upvotes   += 1;
+            if (next == -1) row.Summary.Downvotes += 1;
+            row.MyVote = next;
+
+            _plugin.VoteCommunityPreset(row.Summary.Id, next);
+
+            // Force the row to repaint the arrow brushes + score.
+            int idx = _communityRows.IndexOf(row);
             if (idx >= 0)
             {
                 _communityRows.RemoveAt(idx);
-                _communityRows.Insert(idx, sel);
-                CommunityList.SelectedIndex = idx;
+                _communityRows.Insert(idx, row);
+                if (CommunityList != null) CommunityList.SelectedIndex = idx;
             }
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = value > 0 ? "Upvote recorded." : "Downvote recorded.";
+                CommunityStatusLabel.Text = next == 0
+                    ? "Vote retracted."
+                    : (next == 1 ? "Upvote recorded." : "Downvote recorded.");
         }
 
         private void CommunityReport_Click(object sender, RoutedEventArgs e)

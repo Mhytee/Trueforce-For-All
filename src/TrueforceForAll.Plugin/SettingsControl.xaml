@@ -2344,7 +2344,7 @@
                  management). Welcome modal triggers on first plugin load
                  when Settings.HasSeenNetworkedWelcome is false. -->
             <Expander x:Name="AccountExpander" Header="Account &amp; community"
-                      IsExpanded="False" Margin="0,4,0,12">
+                      IsExpanded="False" Margin="0,4,0,12" Expanded="AccountExpander_Expanded">
                 <StackPanel Margin="22,8,0,0">
                     <!-- Sign-in status + button -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -2391,6 +2391,33 @@
                                 Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
                                 Click="AccountChangeEmail_Click"
                                 ToolTip="Send a confirmation link to a new address. The current address keeps working until you confirm the new one."/>
+                    </StackPanel>
+
+                    <!-- Stats. Only meaningful while signed in. Refreshes
+                         from get_account_stats on expander open. -->
+                    <Border x:Name="AccountStatsBox" Background="#22FFFFFF" CornerRadius="3"
+                            Padding="10,6,10,6" Margin="0,8,0,12" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12"
+                                       Text="Your stats" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="AccountStatsCreated"   Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                            <TextBlock x:Name="AccountStatsUploads"   Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                            <TextBlock x:Name="AccountStatsDownloads" Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                            <TextBlock x:Name="AccountStatsVotes"     Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Data export + account delete. Both auth-gated. -->
+                    <StackPanel x:Name="AccountDangerZone" Orientation="Horizontal" Margin="0,0,0,4" Visibility="Collapsed">
+                        <Button x:Name="AccountExportBtn" Content="Export my data"
+                                Padding="10,3,10,3" Height="24" Margin="0,0,8,0"
+                                Click="AccountExport_Click"
+                                ToolTip="Save a JSON file with everything we have on your account (profile, uploads, votes, submissions)."/>
+                        <Button x:Name="AccountDeleteBtn" Content="Delete account"
+                                Padding="10,3,10,3" Height="24"
+                                Background="#FF6E2A2A" BorderBrush="#FF6E2A2A"
+                                Click="AccountDelete_Click"
+                                ToolTip="Permanently remove your account. Presets you uploaded stay available for people who downloaded them but lose your name."/>
                     </StackPanel>
                 </StackPanel>
             </Expander>

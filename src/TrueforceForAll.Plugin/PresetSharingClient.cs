@@ -13,6 +13,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -310,6 +311,250 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // ---- My presets (auth-required) ------------------------------------
+
+        /// <summary>List the signed-in user's own preset uploads. Sort
+        /// is one of "newest" / "top" / "downloads". Returns null on
+        /// network/auth failure; empty list when no uploads exist.</summary>
+        public List<PresetSummary> FetchMyPresets(
+            string sort = "newest", int limit = 100, int timeoutMs = 5000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            string bearer = GetAccessTokenOrNullAsync().GetAwaiter().GetResult();
+            if (string.IsNullOrEmpty(bearer)) return null;
+
+            string body;
+            try
+            {
+                body = JsonConvert.SerializeObject(new
+                {
+                    p_sort = sort ?? "newest",
+                    p_limit = limit,
+                }, _jsonSettings);
+            }
+            catch { return null; }
+
+            string capturedKey = anonKey;
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/get_my_presets";
+
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                {
+                    var task = Task.Run(async () =>
+                    {
+                        using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                        {
+                            req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
+                            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                            using (var resp = await _http.SendAsync(req,
+                                HttpCompletionOption.ResponseContentRead,
+                                cts.Token).ConfigureAwait(false))
+                            {
+                                if (!resp.IsSuccessStatusCode) return (List<PresetSummary>)null;
+                                string respBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                if (string.IsNullOrEmpty(respBody)) return new List<PresetSummary>();
+                                // get_my_presets returns SETOF jsonb; PostgREST
+                                // wraps each row as a single-key object.
+                                var arr = JArray.Parse(respBody);
+                                var list = new List<PresetSummary>(arr.Count);
+                                foreach (var row in arr)
+                                {
+                                    JToken inner = row;
+                                    // SETOF jsonb comes back as either a JObject
+                                    // directly OR wrapped under a key like "get_my_presets".
+                                    if (row is JObject ro && ro.Count == 1
+                                        && ro.Properties().First().Value is JObject inside)
+                                        inner = inside;
+                                    list.Add(ParseSummary(inner));
+                                }
+                                return list;
+                            }
+                        }
+                    }, cts.Token);
+                    if (!task.Wait(timeoutMs)) return null;
+                    return task.Result;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] My-presets fetch failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>Bulk-fetch the signed-in user's vote on each preset
+        /// id in the list. Returns a dictionary preset_id -> value
+        /// (-1/+1). Missing keys mean no vote. Returns null when not
+        /// signed in or on network failure.</summary>
+        public Dictionary<string, int> FetchMyVotes(
+            IList<string> presetIds, int timeoutMs = 4000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            if (presetIds == null || presetIds.Count == 0)
+                return new Dictionary<string, int>();
+            string bearer = GetAccessTokenOrNullAsync().GetAwaiter().GetResult();
+            if (string.IsNullOrEmpty(bearer)) return null;
+
+            string body;
+            try
+            {
+                body = JsonConvert.SerializeObject(new
+                {
+                    p_preset_ids = presetIds,
+                }, _jsonSettings);
+            }
+            catch { return null; }
+
+            string capturedKey = anonKey;
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/get_my_votes";
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                {
+                    var task = Task.Run(async () =>
+                    {
+                        using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                        {
+                            req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
+                            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                            using (var resp = await _http.SendAsync(req,
+                                HttpCompletionOption.ResponseContentRead,
+                                cts.Token).ConfigureAwait(false))
+                            {
+                                if (!resp.IsSuccessStatusCode) return (Dictionary<string, int>)null;
+                                string respBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                var map = new Dictionary<string, int>(presetIds.Count);
+                                if (string.IsNullOrEmpty(respBody)) return map;
+                                var arr = JArray.Parse(respBody);
+                                foreach (var row in arr)
+                                {
+                                    JToken inner = row;
+                                    if (row is JObject ro && ro.Count == 1
+                                        && ro.Properties().First().Value is JObject inside)
+                                        inner = inside;
+                                    string id = inner?["preset_id"]?.ToString();
+                                    int val = inner?["value"]?.ToObject<int>() ?? 0;
+                                    if (!string.IsNullOrEmpty(id)) map[id] = val;
+                                }
+                                return map;
+                            }
+                        }
+                    }, cts.Token);
+                    if (!task.Wait(timeoutMs)) return null;
+                    return task.Result;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] My-votes fetch failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        // ---- Account ops (auth-gated) --------------------------------------
+
+        public async Task<JObject> GetAccountStatsAsync(int timeoutMs = 5000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer)) return null;
+
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/get_account_stats";
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req,
+                        HttpCompletionOption.ResponseContentRead,
+                        cts.Token).ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode) return null;
+                        string respBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        var root = JToken.Parse(respBody);
+                        return (root.Type == JTokenType.Array ? root[0] : root) as JObject;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Account stats fetch failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>Returns the raw JSON blob from export_my_data so the
+        /// caller can dump it to a file. Null on failure.</summary>
+        public async Task<string> ExportMyDataRawAsync(int timeoutMs = 30000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer)) return null;
+
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/export_my_data";
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req,
+                        HttpCompletionOption.ResponseContentRead,
+                        cts.Token).ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode) return null;
+                        return await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Data export failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>Delete the signed-in user's account. Returns true on
+        /// success. Caller should clear the local session and surface a
+        /// confirmation to the user.</summary>
+        public async Task<bool> DeleteMyAccountAsync(int timeoutMs = 15000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return false;
+            string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer)) return false;
+
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/delete_my_account";
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cts.Token).ConfigureAwait(false))
+                    {
+                        return resp.IsSuccessStatusCode;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Delete account failed: {ex.Message}");
+                return false;
+            }
+        }
+
         // ---- Fetch list ----------------------------------------------------
 
         /// <summary>List presets for a (game, carId), sorted server-side.
@@ -437,14 +682,15 @@ namespace TrueforceForAll.Plugin
 
         // ---- Vote ----------------------------------------------------------
 
-        /// <summary>Fire-and-forget upvote / downvote. value = +1 or -1.
-        /// Caller updates the local row optimistically; server vote_preset
-        /// is idempotent on (preset_id, voter_id) - flipping is fine.</summary>
+        /// <summary>Fire-and-forget upvote / downvote / retract. value =
+        /// +1, -1, or 0 (retract). Caller updates the local row
+        /// optimistically; server vote_preset is idempotent on
+        /// (preset_id, voter_id) and supports the 0 case via row-delete.</summary>
         public void VotePresetAsync(string id, int value)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrWhiteSpace(id)) return;
-            if (value != 1 && value != -1) return;
+            if (value != 1 && value != -1 && value != 0) return;
 
             string body;
             try
@@ -460,7 +706,13 @@ namespace TrueforceForAll.Plugin
                 _log?.Invoke($"[Trueforce] Preset vote serialize failed: {ex.Message}");
                 return;
             }
-            FireAndForgetRpc(url, anonKey, VoteRpcPath, body);
+            // vote_preset is auth-gated now. Attach the bearer token if
+            // available; the server will reject without one.
+            Task.Run(async () =>
+            {
+                string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                FireAndForgetRpc(url, anonKey, VoteRpcPath, body, bearer);
+            });
         }
 
         // ---- Record download ----------------------------------------------
@@ -554,11 +806,12 @@ namespace TrueforceForAll.Plugin
         }
 
         private void FireAndForgetRpc(string baseUrl, string anonKey,
-            string rpcPath, string body)
+            string rpcPath, string body, string bearer = null)
         {
             if (body == null) return;
             string fullUrl = baseUrl.TrimEnd('/') + rpcPath;
             string capturedKey = anonKey;
+            string capturedBearer = bearer;
 
             Task.Run(async () =>
             {
@@ -567,7 +820,8 @@ namespace TrueforceForAll.Plugin
                     using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                     {
                         req.Headers.Add("apikey", capturedKey);
-                        req.Headers.Add("Authorization", "Bearer " + capturedKey);
+                        req.Headers.Add("Authorization", "Bearer "
+                            + (string.IsNullOrEmpty(capturedBearer) ? capturedKey : capturedBearer));
                         req.Headers.Add("Prefer", "return=minimal");
                         req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                         using (var resp = await _http.SendAsync(req,

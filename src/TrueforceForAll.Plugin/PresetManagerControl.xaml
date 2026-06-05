@@ -360,9 +360,20 @@
             <!-- ===================== Community Browser ===================== -->
             <DockPanel x:Name="CommunityPanel" Visibility="Collapsed">
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="Browse and download tunes other drivers have shared for the car you're driving. Pick a row and Download to import it; you'll get a section picker so you can take just the parts you want."/>
+                           Text="Browse + download community tunes for the car you're driving, or switch to your own uploads to manage them. Pick a row and Download to import; you'll get a section picker so you can take just the parts you want."/>
+                <!-- Mode switch: per-car browse vs your own uploads -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                    <RadioButton x:Name="CommunityModeForCar" GroupName="CommunityMode"
+                                 IsChecked="True" Margin="0,0,12,0"
+                                 Content="For this car" Checked="CommunityMode_Changed"
+                                 Foreground="#FFE0E0E0"/>
+                    <RadioButton x:Name="CommunityModeMine" GroupName="CommunityMode"
+                                 Content="My uploads" Checked="CommunityMode_Changed"
+                                 Foreground="#FFE0E0E0"
+                                 ToolTip="Show only presets you uploaded (across every game and car)."/>
+                </StackPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
+                    <TextBlock x:Name="CommunityScopeLabel" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
                                Foreground="#FFB0B0B0" FontSize="11" Text="Active car:"/>
                     <Button x:Name="CommunityRefreshBtn" DockPanel.Dock="Right" Width="80" Height="26"
                             Content="Refresh" Click="CommunityRefresh_Click" Margin="8,0,0,0"
@@ -409,11 +420,36 @@
                           HorizontalScrollBarVisibility="Auto"
                           SelectionChanged="CommunityList_SelectionChanged">
                     <DataGrid.Columns>
+                        <!-- Reddit-style vote column: up + score + down. Click
+                             on the same arrow you previously voted toggles it
+                             off (retraction). Tag carries the row reference. -->
+                        <DataGridTemplateColumn Header="Vote" Width="64" MinWidth="64" CanUserResize="False" CanUserReorder="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="▲" FontSize="13"
+                                                   Foreground="{Binding UpArrowBrush}"
+                                                   Cursor="Hand" Margin="0,0,4,0"
+                                                   MouseLeftButtonUp="CommunityVoteUpCell_Click"
+                                                   Tag="{Binding}"/>
+                                        <TextBlock Text="{Binding ScoreLabel}" FontSize="11" MinWidth="20"
+                                                   Foreground="#FFCFCFCF" VerticalAlignment="Center"
+                                                   TextAlignment="Center"/>
+                                        <TextBlock Text="▼" FontSize="13"
+                                                   Foreground="{Binding DownArrowBrush}"
+                                                   Cursor="Hand" Margin="4,0,0,0"
+                                                   MouseLeftButtonUp="CommunityVoteDownCell_Click"
+                                                   Tag="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="Name"      Width="*"   MinWidth="160" Binding="{Binding Name}"/>
-                        <DataGridTextColumn Header="Author"    Width="140" MinWidth="80"  Binding="{Binding Author}"/>
-                        <DataGridTextColumn Header="Votes"     Width="80"  MinWidth="60"  Binding="{Binding VoteLabel}"/>
-                        <DataGridTextColumn Header="Downloads" Width="90"  MinWidth="70"  Binding="{Binding Downloads}"/>
-                        <DataGridTextColumn Header="Sections"  Width="180" MinWidth="120" Binding="{Binding TagsLabel}"/>
+                        <DataGridTextColumn Header="Author"    Width="120" MinWidth="80"  Binding="{Binding Author}"/>
+                        <DataGridTextColumn Header="Game"      Width="100" MinWidth="70"  Binding="{Binding Game}"/>
+                        <DataGridTextColumn Header="Car ID"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
+                        <DataGridTextColumn Header="Downloads" Width="80"  MinWidth="60"  Binding="{Binding Downloads}"/>
+                        <DataGridTextColumn Header="Sections"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

@@ -4387,14 +4387,178 @@ namespace TrueforceForAll.Plugin
         }
 
         // Change-email button. Currently a stub: Supabase Auth's
-        // auth.update_user({email}) flow is supported but needs a
-        // dedicated modal + confirm-link UX. Keeping the affordance
-        // visible (when signed in) so users know it's coming.
+        // auth.update_user({email}) flow needs a dedicated modal +
+        // confirm-link UX. Wave 3+. Keeping the affordance visible so
+        // users know where it lives.
         private void AccountChangeEmail_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show(Window.GetWindow(this),
                 "Email change is coming soon. For now, sign out and sign back in with the new address; your past uploads will stay under your original account.",
                 "Change email", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void AccountExpander_Expanded(object sender, RoutedEventArgs e)
+        {
+            RefreshAccountStats();
+        }
+
+        // Pull account stats on demand. Cheap RPC; no caching here so
+        // edits made elsewhere (a fresh upload, a new vote) show up next
+        // time the expander opens.
+        private async void RefreshAccountStats()
+        {
+            if (_plugin == null || AccountStatsBox == null) return;
+            if (!_plugin.AuthIsSignedIn)
+            {
+                AccountStatsBox.Visibility = Visibility.Collapsed;
+                if (AccountDangerZone != null) AccountDangerZone.Visibility = Visibility.Collapsed;
+                return;
+            }
+            AccountStatsBox.Visibility = Visibility.Visible;
+            if (AccountDangerZone != null) AccountDangerZone.Visibility = Visibility.Visible;
+            // Initial copy while the RPC runs.
+            AccountStatsCreated.Text   = "Loading...";
+            AccountStatsUploads.Text   = "";
+            AccountStatsDownloads.Text = "";
+            AccountStatsVotes.Text     = "";
+
+            Newtonsoft.Json.Linq.JObject root = null;
+            try { root = await _plugin.FetchAccountStatsAsync(); }
+            catch { /* fall through */ }
+            if (root == null)
+            {
+                AccountStatsCreated.Text = "Could not load stats.";
+                return;
+            }
+            string createdRaw = root["created_at"]?.ToString();
+            DateTime created;
+            if (DateTime.TryParse(createdRaw, null,
+                System.Globalization.DateTimeStyles.RoundtripKind, out created))
+            {
+                int days = (int)Math.Max(0, (DateTime.UtcNow - created.ToUniversalTime()).TotalDays);
+                AccountStatsCreated.Text = "Joined " + created.ToLocalTime().ToString("yyyy-MM-dd")
+                                           + "  (" + days + " day" + (days == 1 ? "" : "s") + " ago)";
+            }
+            else
+            {
+                AccountStatsCreated.Text = "Joined: " + (createdRaw ?? "(unknown)");
+            }
+            int uploads   = root["upload_count"]?.ToObject<int>() ?? 0;
+            long dls      = root["downloads_received"]?.ToObject<long>() ?? 0;
+            long upvotes  = root["upvotes_received"]?.ToObject<long>() ?? 0;
+            long downvotes= root["downvotes_received"]?.ToObject<long>() ?? 0;
+            AccountStatsUploads.Text   = "Uploads: "   + uploads;
+            AccountStatsDownloads.Text = "Downloads received: " + dls;
+            AccountStatsVotes.Text     = "Votes received: +" + upvotes + " / -" + downvotes;
+        }
+
+        // Export-my-data button. Dumps the export_my_data jsonb to a
+        // .json file the user picks. Useful for GDPR-style review and
+        // for taking your contributions with you on account delete.
+        private async void AccountExport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || !_plugin.AuthIsSignedIn) return;
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = "trueforce-export-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json",
+                Filter = "JSON file (*.json)|*.json",
+                Title = "Export my data",
+            };
+            if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
+
+            string json = null;
+            try { json = await _plugin.ExportMyDataRawAsync(); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Export failed: " + ex.Message, "Export my data",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (string.IsNullOrEmpty(json))
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Export returned nothing.", "Export my data",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            try { System.IO.File.WriteAllText(dlg.FileName, json); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Could not save file: " + ex.Message, "Export my data",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            MessageBox.Show(Window.GetWindow(this),
+                "Saved to:\n" + dlg.FileName,
+                "Export my data", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        // Delete-account button. Two-step confirm because it's irreversible
+        // for the account record (presets stay; vote/submission history
+        // anonymizes). User must type DELETE to proceed.
+        private async void AccountDelete_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || !_plugin.AuthIsSignedIn) return;
+            string email = _plugin.AuthSignedInEmail ?? "(unknown)";
+            var confirm1 = MessageBox.Show(Window.GetWindow(this),
+                "Delete the account for " + email + "?\n\n"
+                + "Your presets stay - people who downloaded them keep them - but your name comes off them and your account is gone for good. Your vote + carfact contribution history is anonymized.",
+                "Delete account", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm1 != MessageBoxResult.Yes) return;
+
+            // Hard sanity gate: require the user to type DELETE.
+            var dlg = new TwoLineEditWindow(
+                title:      "Confirm account deletion",
+                line1Label: "Type DELETE to confirm",
+                line1Init:  "",
+                line2Label: "Notes (optional, not sent anywhere)",
+                line2Init:  "",
+                line2Lines: 2)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? typed = dlg.ShowDialog();
+            if (typed != true) return;
+            if (!string.Equals((dlg.Line1Result ?? "").Trim(), "DELETE", StringComparison.Ordinal))
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Cancelled. Type DELETE exactly to confirm next time.",
+                    "Delete account", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            bool ok = false;
+            try { ok = await _plugin.DeleteMyAccountAsync(); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Delete failed: " + ex.Message, "Delete account",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (!ok)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Delete failed. The server might be unreachable; try again.",
+                    "Delete account", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            // Server deleted the auth user; clear local session.
+            _plugin.AuthSignOut();
+            if (_plugin.Settings != null)
+            {
+                _plugin.Settings.SharingAuthor = "";
+                try { _plugin.PersistSettings(); } catch { }
+            }
+            if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
+            if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
+            RefreshAccountRow();
+            RefreshAccountStats();
+            MessageBox.Show(Window.GetWindow(this),
+                "Account deleted.",
+                "Delete account", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         // Number of days to wait before re-prompting after a "Maybe later"

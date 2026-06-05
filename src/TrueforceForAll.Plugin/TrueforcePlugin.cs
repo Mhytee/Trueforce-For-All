@@ -7540,6 +7540,23 @@ namespace TrueforceForAll.Plugin
             return await _presetSharing.DeletePresetAsync(id);
         }
 
+        // ---- My uploads / votes / account passthroughs -------------------
+
+        internal List<PresetSummary> FetchMyCommunityPresets(string sort = "newest", int limit = 100)
+            => _presetSharing?.FetchMyPresets(sort, limit);
+
+        internal Dictionary<string, int> FetchMyCommunityVotes(IList<string> presetIds)
+            => _presetSharing?.FetchMyVotes(presetIds);
+
+        internal Task<JObject> FetchAccountStatsAsync()
+            => _presetSharing?.GetAccountStatsAsync() ?? Task.FromResult<JObject>(null);
+
+        internal Task<string> ExportMyDataRawAsync()
+            => _presetSharing?.ExportMyDataRawAsync() ?? Task.FromResult<string>(null);
+
+        internal Task<bool> DeleteMyAccountAsync()
+            => _presetSharing?.DeleteMyAccountAsync() ?? Task.FromResult(false);
+
         // ---- Community auth passthroughs ----------------------------------
 
         public bool   AuthIsSignedIn  => _auth?.IsSignedIn  == true;
