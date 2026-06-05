@@ -429,6 +429,16 @@ namespace TrueforceForAll.Plugin
         public int       WelcomeDeclineCount     { get; set; } = 0;
         public DateTime? WelcomeNextShowAt       { get; set; } = null;
 
+        // Tracks community presets the user has downloaded so we can
+        // notify them when the upstream curator publishes a new
+        // version. Key = preset uuid (string), value = the local-side
+        // metadata we need to render "X has an update" and to compare
+        // versions on plugin-load. The "Skip" action in the update
+        // notification bumps SeenContentVersion to the latest so a
+        // single dismissal lasts until the NEXT real edit.
+        public Dictionary<string, DownloadedPresetRecord> DownloadedCommunityPresets { get; set; }
+            = new Dictionary<string, DownloadedPresetRecord>();
+
         // ---- Per-effect "NEW" badges + changelog banner (see EffectChangelog) ----
 
         // Effect IDs the user has acknowledged. An ID present here means
@@ -703,6 +713,21 @@ namespace TrueforceForAll.Plugin
         /// this variant. Drives the "community (N ✓)" line and is used as
         /// the tiebreaker when picking a default variant.</summary>
         public int Confirmations { get; set; }
+    }
+
+    /// <summary>Per-download bookkeeping for community presets the user
+    /// has imported. Lets the plugin detect when the curator publishes a
+    /// new version. SeenContentVersion advances to match server when the
+    /// user either applies an update or "Skip"s it; downloads start at
+    /// whatever the server's current content_version was at download
+    /// time.</summary>
+    public sealed class DownloadedPresetRecord
+    {
+        public string   LocalPresetName     { get; set; }   // name we saved it under
+        public string   CarId               { get; set; }
+        public string   GameName            { get; set; }
+        public int      SeenContentVersion  { get; set; } = 1;
+        public DateTime DownloadedAt        { get; set; }
     }
 
     /// <summary>Truth about a single car: chassis-level facts plus a list

@@ -213,6 +213,12 @@ namespace TrueforceForAll.Plugin
                 // is fully composited before the modal pops on top.
                 Dispatcher.BeginInvoke(new Action(MaybeShowNetworkedWelcome),
                     System.Windows.Threading.DispatcherPriority.Background);
+                // After the welcome modal (if any), check for community
+                // preset updates against the user's downloaded list. Same
+                // Dispatcher.Background slot so this never blocks panel
+                // composition; the modal pops only if updates exist.
+                Dispatcher.BeginInvoke(new Action(MaybeShowCommunityUpdates),
+                    System.Windows.Threading.DispatcherPriority.Background);
                 if (_plugin != null)
                 {
                     _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
@@ -4636,6 +4642,105 @@ namespace TrueforceForAll.Plugin
             MessageBox.Show(Window.GetWindow(this),
                 "Account deleted.",
                 "Delete account", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        // Plugin-load update notification. Runs once per panel-open
+        // (gated by a per-session flag) so we don't badger the user if
+        // they reload the panel. Backend rate limits the underlying
+        // RPC so a fast loop is fine even without the gate.
+        private bool _communityUpdatesCheckedThisSession;
+
+        private async void MaybeShowCommunityUpdates()
+        {
+            if (_communityUpdatesCheckedThisSession) return;
+            _communityUpdatesCheckedThisSession = true;
+            if (_plugin?.Settings?.CommunityEnabled != true) return;
+            if (_plugin.Settings.DownloadedCommunityPresets == null
+                || _plugin.Settings.DownloadedCommunityPresets.Count == 0)
+                return;
+
+            List<(PresetSummary Server, DownloadedPresetRecord Local)> updates = null;
+            try { updates = await _plugin.FindCommunityPresetUpdatesAsync(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Update check failed: " + ex.Message);
+                return;
+            }
+            if (updates == null || updates.Count == 0) return;
+
+            var dialog = new PresetUpdatesAvailableWindow(updates)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = dialog.ShowDialog();
+            if (ok != true) return;
+
+            int applied = 0, skipped = 0;
+            foreach (var o in dialog.Outcomes)
+            {
+                if (o.Action == PresetUpdatesAvailableWindow.RowAction.Skip)
+                {
+                    _plugin.AcknowledgeCommunityPresetVersion(o.Id, o.ServerContentVersion);
+                    skipped++;
+                    continue;
+                }
+                if (o.Action != PresetUpdatesAvailableWindow.RowAction.Update) continue;
+                try
+                {
+                    if (await ApplyCommunityUpdate(o)) applied++;
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[Trueforce] Apply update failed for " + o.Id + ": " + ex.Message);
+                }
+            }
+            if (applied + skipped > 0)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    $"Updates: {applied} applied, {skipped} skipped.",
+                    "Community preset updates", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        // Re-fetch + re-apply a single update. Overwrites the local
+        // preset file under the same name; bumps SeenContentVersion on
+        // success so the prompt won't return for this revision.
+        private async Task<bool> ApplyCommunityUpdate(PresetUpdatesAvailableWindow.RowOutcome outcome)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(outcome.Id)) return false;
+            PresetFull full = null;
+            try { full = await Task.Run(() => _plugin.FetchCommunityPresetBody(outcome.Id)); }
+            catch { return false; }
+            if (full?.Body == null || full.Summary == null) return false;
+
+            // Parse override + customs the same way the manual download does.
+            CarOverride ovr = null;
+            List<CustomEngineDef> customs = null;
+            try
+            {
+                var ovrToken = full.Body["override"];
+                if (ovrToken != null) ovr = ovrToken.ToObject<CarOverride>();
+                var ceToken = full.Body["custom_engines"];
+                if (ceToken is Newtonsoft.Json.Linq.JArray ja)
+                    customs = ja.ToObject<List<CustomEngineDef>>();
+            }
+            catch { return false; }
+            if (ovr == null) return false;
+
+            // Overwrite under the same local name. No section picker on
+            // update - the user opted in to this preset originally;
+            // bringing in the latest in full is the expected behavior.
+            if (customs != null && customs.Count > 0)
+                _plugin.ImportCommunityCustomEngines(customs);
+            _plugin.SaveImportedCommunityCarPreset(
+                full.Summary.CarId ?? _plugin.ActiveCarId,
+                outcome.LocalPresetName,
+                full.Summary.Game ?? _plugin.ActiveGame,
+                ovr,
+                full.Summary.Author, full.Summary.Description);
+            _plugin.AcknowledgeCommunityPresetVersion(outcome.Id, outcome.ServerContentVersion);
+            return true;
         }
 
         // Number of days to wait before re-prompting after a "Maybe later"

@@ -48,6 +48,12 @@ namespace TrueforceForAll.Plugin
         // time). The browser shows Edit/Delete only when this matches
         // the local signed-in user's id.
         public string OwnerUserId   { get; set; }
+        // Server-tracked content version. Bumps on every update_preset
+        // call. The plugin compares this against
+        // Settings.DownloadedCommunityPresets[id].SeenContentVersion to
+        // flag updates available.
+        public int    ContentVersion { get; set; }
+        public DateTime? UpdatedAt   { get; set; }
     }
 
     /// <summary>Detail row: summary + full body. Returned by FetchPresetBody
@@ -454,6 +460,70 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Bulk read of presets by id. Used by the update-
+        /// notification pass at plugin load. Returns null on failure;
+        /// empty list when none of the ids are alive. Suppressed rows
+        /// (author-deleted) just don't come back, which the caller
+        /// treats as "stop nagging about this id".</summary>
+        public List<PresetSummary> FetchPresetsByIds(IList<string> ids, int timeoutMs = 8000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            if (ids == null || ids.Count == 0) return new List<PresetSummary>();
+
+            string body;
+            try
+            {
+                body = JsonConvert.SerializeObject(new { p_ids = ids }, _jsonSettings);
+            }
+            catch { return null; }
+
+            string capturedKey = anonKey;
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/get_presets_by_ids";
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                {
+                    var task = Task.Run(async () =>
+                    {
+                        using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
+                        {
+                            req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + capturedKey);
+                            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                            using (var resp = await _http.SendAsync(req,
+                                HttpCompletionOption.ResponseContentRead,
+                                cts.Token).ConfigureAwait(false))
+                            {
+                                if (!resp.IsSuccessStatusCode) return (List<PresetSummary>)null;
+                                string respBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                if (string.IsNullOrEmpty(respBody)) return new List<PresetSummary>();
+                                var arr = JArray.Parse(respBody);
+                                var list = new List<PresetSummary>(arr.Count);
+                                foreach (var row in arr)
+                                {
+                                    JToken inner = row;
+                                    if (row is JObject ro && ro.Count == 1
+                                        && ro.Properties().First().Value is JObject inside)
+                                        inner = inside;
+                                    bool suppressed = inner?["is_suppressed"]?.ToObject<bool>() ?? false;
+                                    if (suppressed) continue;
+                                    list.Add(ParseSummary(inner));
+                                }
+                                return list;
+                            }
+                        }
+                    }, cts.Token);
+                    if (!task.Wait(timeoutMs)) return null;
+                    return task.Result;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] FetchPresetsByIds failed: {ex.Message}");
+                return null;
+            }
+        }
+
         // ---- Account ops (auth-gated) --------------------------------------
 
         public async Task<JObject> GetAccountStatsAsync(int timeoutMs = 5000)
@@ -582,7 +652,7 @@ namespace TrueforceForAll.Plugin
             string qs = "?game=eq."   + Uri.EscapeDataString(game)
                       + "&car_id=eq." + Uri.EscapeDataString(carId)
                       + "&select=id,name,author,description,game,car_id,effect_tags,"
-                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at"
                       + "&order=" + orderClause
                       + "&limit=" + Math.Max(1, Math.Min(limit, 100));
             string fullUrl = url.TrimEnd('/') + PresetsPath + qs;
@@ -761,6 +831,15 @@ namespace TrueforceForAll.Plugin
 
         // ---- Helpers -------------------------------------------------------
 
+        private static DateTime? TryParseDate(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return null;
+            if (DateTime.TryParse(s, null,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                return dt;
+            return null;
+        }
+
         private static PresetSummary ParseSummary(JToken row)
         {
             if (row == null) return null;
@@ -790,7 +869,9 @@ namespace TrueforceForAll.Plugin
                 WilsonScore = row["wilson_score"]?.ToObject<double>() ?? 0,
                 Downloads   = row["downloads"]?.ToObject<int>() ?? 0,
                 CreatedAt   = created,
-                OwnerUserId = row["owner_user_id"]?.ToString(),
+                OwnerUserId    = row["owner_user_id"]?.ToString(),
+                ContentVersion = row["content_version"]?.ToObject<int>() ?? 1,
+                UpdatedAt      = TryParseDate(row["updated_at"]?.ToString()),
             };
         }
 

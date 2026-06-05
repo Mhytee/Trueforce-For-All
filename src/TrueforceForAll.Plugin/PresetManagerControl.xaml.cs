@@ -2594,6 +2594,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _plugin.ActiveCarId, presetName, _plugin.ActiveGame, apply,
                 full.Summary.Author, full.Summary.Description);
             _plugin.RecordCommunityPresetDownload(capturedId);
+            // Track the download so the next plugin-load update check
+            // knows where to look. Re-records on every download (the
+            // tracker is keyed on preset_id) so a re-download after a
+            // delete-then-re-download cycle stays in sync.
+            _plugin.RecordDownloadedCommunityPreset(
+                full.Summary.Id, presetName,
+                _plugin.ActiveCarId, _plugin.ActiveGame,
+                full.Summary.ContentVersion);
 
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text =

@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7586,6 +7587,92 @@ namespace TrueforceForAll.Plugin
 
         internal Task<bool> DeleteMyAccountAsync()
             => _presetSharing?.DeleteMyAccountAsync() ?? Task.FromResult(false);
+
+        internal List<PresetSummary> FetchCommunityPresetsByIds(IList<string> ids)
+            => _presetSharing?.FetchPresetsByIds(ids);
+
+        /// <summary>Record a freshly-downloaded community preset so the
+        /// next plugin-load update-check knows to compare against it.
+        /// Idempotent on preset_id.</summary>
+        public void RecordDownloadedCommunityPreset(string presetId, string localPresetName,
+            string carId, string gameName, int contentVersion)
+        {
+            if (Settings == null || string.IsNullOrEmpty(presetId)) return;
+            if (Settings.DownloadedCommunityPresets == null)
+                Settings.DownloadedCommunityPresets = new Dictionary<string, DownloadedPresetRecord>();
+            Settings.DownloadedCommunityPresets[presetId] = new DownloadedPresetRecord
+            {
+                LocalPresetName     = localPresetName,
+                CarId               = carId,
+                GameName            = gameName,
+                SeenContentVersion  = contentVersion,
+                DownloadedAt        = DateTime.UtcNow,
+            };
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+        }
+
+        /// <summary>Run the update-check: ask the server for the current
+        /// state of every downloaded preset and return the ones whose
+        /// content_version is now higher than the local SeenContentVersion.
+        /// Background-thread safe; the result is plain data the UI
+        /// renders on the dispatcher.</summary>
+        internal async Task<List<(PresetSummary Server, DownloadedPresetRecord Local)>> FindCommunityPresetUpdatesAsync()
+        {
+            var found = new List<(PresetSummary, DownloadedPresetRecord)>();
+            if (Settings?.DownloadedCommunityPresets == null
+                || Settings.DownloadedCommunityPresets.Count == 0)
+                return found;
+            // Snapshot the local map before any background work so a
+            // concurrent download mid-check doesn't confuse us.
+            var localById = new Dictionary<string, DownloadedPresetRecord>(
+                Settings.DownloadedCommunityPresets, StringComparer.Ordinal);
+            var ids = localById.Keys.ToList();
+            List<PresetSummary> serverRows = null;
+            try
+            {
+                serverRows = await Task.Run(() =>
+                    _presetSharing?.FetchPresetsByIds(ids));
+            }
+            catch { return found; }
+            if (serverRows == null) return found;
+
+            var serverById = serverRows.Where(r => !string.IsNullOrEmpty(r.Id))
+                                       .ToDictionary(r => r.Id, r => r);
+            // Author-deleted (suppressed) rows are filtered out of the
+            // response; drop the local record so we stop checking.
+            var orphaned = new List<string>();
+            foreach (var kv in localById)
+            {
+                if (!serverById.TryGetValue(kv.Key, out var server))
+                {
+                    orphaned.Add(kv.Key);
+                    continue;
+                }
+                if (server.ContentVersion > kv.Value.SeenContentVersion)
+                    found.Add(((PresetSummary)server, kv.Value));
+            }
+            // Garbage-collect orphaned entries.
+            if (orphaned.Count > 0)
+            {
+                foreach (var id in orphaned)
+                    Settings.DownloadedCommunityPresets.Remove(id);
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+            return found;
+        }
+
+        /// <summary>Mark a downloaded preset's SeenContentVersion as
+        /// caught up to a given server version. Used when the user
+        /// either applies an update or Skip-dismisses the prompt.</summary>
+        public void AcknowledgeCommunityPresetVersion(string presetId, int contentVersion)
+        {
+            if (Settings?.DownloadedCommunityPresets == null) return;
+            if (Settings.DownloadedCommunityPresets.TryGetValue(presetId, out var rec))
+            {
+                rec.SeenContentVersion = contentVersion;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+        }
 
         // ---- Community auth passthroughs ----------------------------------
 
