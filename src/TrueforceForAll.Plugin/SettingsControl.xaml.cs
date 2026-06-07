@@ -248,6 +248,30 @@ namespace TrueforceForAll.Plugin
                     // silently suppressed by the prior user's gate.
                     _plugin.AuthIdentityChanged += OnAuthIdentityChanged;
                 }
+                // Unknown-variant prompt: subscribe to the parent
+                // Window.Activated so a fresh alt-tab back to SimHub is
+                // the natural trigger to surface "register this engine?"
+                // for any unrecognized telemetry signature on the
+                // active car. The Loaded -> deferred BeginInvoke chain
+                // below handles the "SimHub was already foreground at
+                // session start" case where Activated never fires.
+                HookParentWindowActivatedForVariantPrompt();
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    // Run once five seconds after the panel loads to
+                    // cover the "already in SimHub" case; the prompt's
+                    // own guards no-op when there's nothing to prompt.
+                    var delay = new System.Windows.Threading.DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromSeconds(5),
+                    };
+                    delay.Tick += (s, a) =>
+                    {
+                        delay.Stop();
+                        MaybeShowUnknownVariantPrompt();
+                    };
+                    delay.Start();
+                }), System.Windows.Threading.DispatcherPriority.Background);
                 // SimHub caches this control, so navigating away and back does NOT
                 // rebuild it. Re-pull values on every (re)load so edits made
                 // elsewhere while we were hidden (e.g. the home-screen Feedback
@@ -257,6 +281,7 @@ namespace TrueforceForAll.Plugin
             Unloaded += (_, __) =>
             {
                 _meterTimer.Stop();
+                UnhookParentWindowActivatedForVariantPrompt();
                 if (_plugin != null)
                 {
                     _plugin.AuthIdentityChanged -= OnAuthIdentityChanged;
@@ -264,6 +289,92 @@ namespace TrueforceForAll.Plugin
                     _plugin.MasterGainChangedExternally -= OnMasterGainChangedExternally;
                 }
             };
+        }
+
+        // Unknown-variant prompt plumbing -----------------------------
+
+        // Per-session: keys "{game}/{carId}|{signature}" the user
+        // already saw the prompt for OR clicked Skip on this session.
+        // Persistent dismissals live in Settings.CarFactsDismissedSignatures.
+        private readonly System.Collections.Generic.HashSet<string> _unknownVariantPromptedThisSession
+            = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+
+        // Cached parent Window reference for hook/unhook symmetry. The
+        // visual tree only attaches a parent Window after Loaded fires,
+        // so resolve it on the way in.
+        private Window _hostWindowForVariantPrompt;
+        private EventHandler _variantPromptActivatedHandler;
+        private bool _variantPromptModalOpen;
+
+        private void HookParentWindowActivatedForVariantPrompt()
+        {
+            if (_variantPromptActivatedHandler != null) return;
+            _hostWindowForVariantPrompt = Window.GetWindow(this);
+            if (_hostWindowForVariantPrompt == null) return;
+            _variantPromptActivatedHandler = (s, e) =>
+            {
+                // Defer so the activation transition completes before
+                // we pop a modal that would steal focus right back.
+                Dispatcher.BeginInvoke(new Action(MaybeShowUnknownVariantPrompt),
+                    System.Windows.Threading.DispatcherPriority.Background);
+            };
+            _hostWindowForVariantPrompt.Activated += _variantPromptActivatedHandler;
+        }
+
+        private void UnhookParentWindowActivatedForVariantPrompt()
+        {
+            if (_hostWindowForVariantPrompt != null && _variantPromptActivatedHandler != null)
+                _hostWindowForVariantPrompt.Activated -= _variantPromptActivatedHandler;
+            _hostWindowForVariantPrompt = null;
+            _variantPromptActivatedHandler = null;
+        }
+
+        private void MaybeShowUnknownVariantPrompt()
+        {
+            if (_plugin == null) return;
+            if (_variantPromptModalOpen) return;   // re-entrancy guard
+            string sig = _plugin.ActiveCarUnknownVariantSignature;
+            if (string.IsNullOrEmpty(sig)) return;
+            string carId = _plugin.ActiveCarId;
+            string game  = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
+            string sessionKey = game + "/" + carId + "|" + sig;
+            if (!_unknownVariantPromptedThisSession.Add(sessionKey)) return;
+
+            // Snapshot telemetry hints for the modal pre-fill. ObservedCyl
+            // is the trigger - the resolver already flagged that the
+            // applied variant doesn't match it. EnginePulse lives on the
+            // plugin directly, not on Settings.
+            int telemetryCyl = _plugin.EnginePulse?.ObservedCyl ?? 0;
+            double observedRedline = _plugin.EnginePulse?.ObservedRedlineRpm ?? 0;
+            int? telemetryRedline = observedRedline >= 500
+                ? (int?)((int)System.Math.Round(observedRedline / 500.0) * 500)
+                : null;
+            string carDisplayName = _plugin.ActiveCarDisplayName;
+            _variantPromptModalOpen = true;
+            bool? result = null;
+            CarFactsNewVariantWindow win = null;
+            try
+            {
+                win = new CarFactsNewVariantWindow(carDisplayName, carId, sig,
+                    telemetryCyl, telemetryRedline)
+                {
+                    Owner = Window.GetWindow(this),
+                };
+                result = win.ShowDialog();
+            }
+            finally { _variantPromptModalOpen = false; }
+            if (result == true)
+            {
+                _plugin.RegisterNewEngineVariant(
+                    win.Label, win.Cylinders, win.EngineConfig, win.RedlineRpm);
+            }
+            else if (win != null && win.DontAskAgain)
+            {
+                _plugin.DismissUnknownVariantSignature(sig);
+            }
+            // Skip-for-now: do nothing. The per-session HashSet keeps
+            // this (car, sig) from re-prompting; next session re-asks.
         }
 
         // The active local user changed (sign-in, sign-out, refresh
@@ -283,6 +394,10 @@ namespace TrueforceForAll.Plugin
             // again for the new user instead of being suppressed.
             _lastShownCarId = null;
             _lastShownGame  = null;
+            // The new user's CarFacts dismissal list lives in their
+            // slot, so per-session HashSet (which only mattered to
+            // suppress re-prompts inside ONE session) should reset too.
+            _unknownVariantPromptedThisSession.Clear();
             // Invalidate any in-flight account stats fetch from the prior user.
             unchecked { ++_accountStatsGen; }
             // Refresh visible UI state immediately - the new user's
@@ -954,6 +1069,25 @@ namespace TrueforceForAll.Plugin
 
         private void MeterTimer_Tick(object sender, EventArgs e)
         {
+            // Cheap per-tick recompute so an in-session change to
+            // ObservedCyl / signature is picked up without waiting for
+            // the next car-facts resolve. The helper is itself cheap
+            // (a few field reads + one dict lookup) and short-circuits
+            // when telemetry isn't ready.
+            if (_plugin != null && _hostWindowForVariantPrompt != null
+                && _hostWindowForVariantPrompt.IsActive)
+            {
+                _plugin.RecomputeUnknownVariantSignature();
+                if (!string.IsNullOrEmpty(_plugin.ActiveCarUnknownVariantSignature)
+                    && !_variantPromptModalOpen)
+                {
+                    // Background-deferred so we don't pop while the
+                    // tick handler is mid-frame.
+                    Dispatcher.BeginInvoke(new Action(MaybeShowUnknownVariantPrompt),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                }
+            }
+
             var src = _plugin?.AudioCapture;
             if (src != null)
             {

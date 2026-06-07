@@ -106,6 +106,19 @@ namespace TrueforceForAll.Plugin
         // CarFacts dict above. Migrate-once + idempotent.
         public bool CarFactsMigratedV1 { get; set; } = false;
 
+        // Per-(game, carId) signatures the user dismissed the
+        // "register this new engine variant?" prompt for. Key:
+        // "{game}/{carId}". Value: list of telemetry signature strings
+        // (cylinders/config/redline tuple from ComputeActiveCarVariantSignature)
+        // the user clicked "Don't ask again" on. The unknown-variant
+        // detector consults this list before flagging a signature as
+        // un-registered, so a configuration the user has declined
+        // stays quiet across sessions until the underlying signature
+        // changes (Forza swap to a different engine = new sig = fresh
+        // prompt). Local-only; not submitted to community.
+        public Dictionary<string, List<string>> CarFactsDismissedSignatures { get; set; }
+            = new Dictionary<string, List<string>>();
+
         // Community backend settings. Defaults are inert: CommunityEnabled
         // is off, no HTTP calls are made. Enabling it activates fire-and-
         // forget submission of User-source CarFacts corrections + (later)
@@ -751,6 +764,15 @@ namespace TrueforceForAll.Plugin
         /// <summary>User typed / corrected this value locally. Wins over
         /// community + scanner when present.</summary>
         User,
+        /// <summary>User registered this variant via the "new variant
+        /// detected" prompt (auto-detect-and-confirm flow). Ranks below
+        /// the legacy "Correct..." User source but above Community so
+        /// freshly-named variants are picked first when their signature
+        /// matches telemetry. Distinct from User so the legacy filter
+        /// at PickStoredVariant (which excludes User to keep corrections
+        /// out of the matching pool) doesn't accidentally hide newly-
+        /// registered variants.</summary>
+        UserVariant,
         /// <summary>Game telemetry supplies the value directly each session
         /// (e.g. AC's CarSettings_RedLineRPM). Treated as the truth and
         /// never persisted — the apply path reads it live each time.</summary>

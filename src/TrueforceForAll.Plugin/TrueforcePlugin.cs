@@ -7326,6 +7326,7 @@ namespace TrueforceForAll.Plugin
             switch (s)
             {
                 case CarFactSource.User:         return 50;
+                case CarFactSource.UserVariant:  return 45;
                 case CarFactSource.Community:    return 40;
                 case CarFactSource.SwapOverride: return 30;
                 case CarFactSource.Baked:        return 20;
@@ -7547,6 +7548,120 @@ namespace TrueforceForAll.Plugin
                     EnginePulse.NonCommunityAutoLayoutSource = "baked";
                 }
             }
+
+            // After the cascade applied a variant, check whether the
+            // live telemetry signature actually matches what we chose.
+            // If telemetry says V12 but the resolver picked the Baked
+            // V8 (user did a Forza engine swap), surface it for the
+            // SettingsControl prompt. See RecomputeUnknownVariantSignature.
+            RecomputeUnknownVariantSignature();
+        }
+
+        /// <summary>Last-observed signature ("cyl=N;maxrpm=M;redline=R")
+        /// for the active car when it doesn't match any stored variant +
+        /// the user hasn't already dismissed it. Null at all other times.
+        /// Drives the SettingsControl "register this engine?" prompt that
+        /// pops the next time the user is engaging with the plugin
+        /// (Window.Activated). Read-only from outside; recomputed by
+        /// <see cref="RecomputeUnknownVariantSignature"/> at the end of
+        /// every car-facts resolve and after each telemetry observe
+        /// stabilizes.</summary>
+        public string ActiveCarUnknownVariantSignature { get; private set; }
+
+        /// <summary>Refresh <see cref="ActiveCarUnknownVariantSignature"/>
+        /// from the current observed telemetry vs the resolver's chosen
+        /// variant. The signature stays null until ALL of these hold:
+        ///   1. Telemetry has reported a cylinder count.
+        ///   2. The resolver's CatalogCyl differs from telemetry cyl
+        ///      (so the variant we applied doesn't fit what the engine
+        ///      actually is - typical of a Forza in-game swap).
+        ///   3. The user hasn't already dismissed this signature for
+        ///      this (game, car_id) via "Don't ask again."
+        /// </summary>
+        public void RecomputeUnknownVariantSignature()
+        {
+            ActiveCarUnknownVariantSignature = null;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return;
+            // Reliable telemetry: need a cylinder count from the live
+            // source before we can compare to the resolver's choice.
+            int? telCyl = EnginePulse?.ObservedCyl;
+            if (!telCyl.HasValue || telCyl.Value < 1 || telCyl.Value > 16) return;
+
+            int resolvedCyl = EnginePulse?.CatalogCyl ?? 0;
+            // Resolver's pick matches telemetry: the active variant
+            // already covers the user's current engine. No prompt.
+            if (resolvedCyl > 0 && resolvedCyl == telCyl.Value) return;
+
+            string sig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
+            if (string.IsNullOrEmpty(sig)) return;
+
+            // Persistent dismissal: user said "don't ask again" for
+            // this exact signature in a prior session.
+            if (Settings?.CarFactsDismissedSignatures != null
+                && Settings.CarFactsDismissedSignatures.TryGetValue(
+                       _activeGame + "/" + _activeCarId, out var dismissed)
+                && dismissed != null
+                && dismissed.Contains(sig))
+                return;
+
+            ActiveCarUnknownVariantSignature = sig;
+        }
+
+        /// <summary>Persist a freshly-named engine variant for the active
+        /// car and re-resolve the cascade so the new variant takes
+        /// effect immediately. Called by the SettingsControl prompt's
+        /// Save button. Returns false on invalid input or when the
+        /// active-car context is gone.</summary>
+        public bool RegisterNewEngineVariant(string label, int cylinders,
+            EngineConfig config, int? redlineRpm)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (cylinders < 1 || cylinders > 16) return false;
+            if (Settings == null) return false;
+            if (Settings.CarFacts == null) Settings.CarFacts = new Dictionary<string, CarFactsBundle>();
+            string key = _activeGame + "/" + _activeCarId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null)
+            {
+                bundle = new CarFactsBundle();
+                Settings.CarFacts[key] = bundle;
+            }
+            if (bundle.EngineVariants == null) bundle.EngineVariants = new List<EngineVariant>();
+            bundle.EngineVariants.Add(new EngineVariant
+            {
+                Id            = Guid.NewGuid().ToString(),
+                Label         = string.IsNullOrWhiteSpace(label) ? "User variant" : label.Trim(),
+                Cylinders     = cylinders,
+                EngineConfig  = config,
+                RedlineRpm    = redlineRpm,
+                Source        = CarFactSource.UserVariant,
+                Confirmations = 0,
+            });
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
+            return true;
+        }
+
+        /// <summary>Persist a "don't ask again" decision for the given
+        /// telemetry signature on the active car so future sessions
+        /// suppress the unknown-variant prompt for THIS specific
+        /// configuration only (a future swap producing a different
+        /// signature still prompts).</summary>
+        public void DismissUnknownVariantSignature(string sig)
+        {
+            if (string.IsNullOrEmpty(sig)) return;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return;
+            if (Settings == null) return;
+            if (Settings.CarFactsDismissedSignatures == null)
+                Settings.CarFactsDismissedSignatures = new Dictionary<string, List<string>>();
+            string key = _activeGame + "/" + _activeCarId;
+            if (!Settings.CarFactsDismissedSignatures.TryGetValue(key, out var list) || list == null)
+            {
+                list = new List<string>();
+                Settings.CarFactsDismissedSignatures[key] = list;
+            }
+            if (!list.Contains(sig)) list.Add(sig);
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            ActiveCarUnknownVariantSignature = null;
         }
 
         // Same shape as TryResolveActiveVariant but with the Community rung
@@ -9171,6 +9286,7 @@ namespace TrueforceForAll.Plugin
                 case CarFactSource.Scanner:       return "cache";
                 case CarFactSource.Community:     return "community";
                 case CarFactSource.User:          return "user-set";
+                case CarFactSource.UserVariant:   return "user-variant";
                 case CarFactSource.GameTelemetry: return "telemetry";
                 case CarFactSource.Baked:         return "baked";
                 case CarFactSource.SwapOverride:  return "swap-override";
