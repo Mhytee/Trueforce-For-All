@@ -7664,6 +7664,100 @@ namespace TrueforceForAll.Plugin
             ActiveCarUnknownVariantSignature = null;
         }
 
+        /// <summary>Return the stored engine variants for the active car
+        /// in display order. Legacy User-source variants are filtered out
+        /// (PickStoredVariant ignores them, so showing them in the picker
+        /// would just confuse the user). Empty list when there's no
+        /// active car or no bundle yet. Caller MUST NOT mutate the
+        /// returned list - use RenameActiveCarVariant / DeleteActiveCarVariant
+        /// for mutations so the resolver + persist sequence stays
+        /// inside the plugin.</summary>
+        public IReadOnlyList<EngineVariant> GetActiveCarVariants()
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId))
+                return Array.Empty<EngineVariant>();
+            if (Settings?.CarFacts == null) return Array.Empty<EngineVariant>();
+            string key = _activeGame + "/" + _activeCarId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null)
+                return Array.Empty<EngineVariant>();
+            var pool = new List<EngineVariant>(bundle.EngineVariants.Count);
+            foreach (var v in bundle.EngineVariants)
+                if (v != null && v.Source != CarFactSource.User)
+                    pool.Add(v);
+            return pool;
+        }
+
+        /// <summary>Pin a specific variant as the active car's default
+        /// pick. Writes Settings.CarFactsSelection[{game}/{carId}] = id
+        /// (or clears the entry when id is null/empty), saves, and
+        /// re-resolves so the new pick applies live. Returns false on
+        /// no active car / no settings.</summary>
+        public bool SetActiveCarVariantSelection(string variantId)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (Settings == null) return false;
+            if (Settings.CarFactsSelection == null)
+                Settings.CarFactsSelection = new Dictionary<string, string>();
+            string key = _activeGame + "/" + _activeCarId;
+            if (string.IsNullOrEmpty(variantId))
+                Settings.CarFactsSelection.Remove(key);
+            else
+                Settings.CarFactsSelection[key] = variantId;
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
+            ApplyActiveCarOverride();
+            return true;
+        }
+
+        /// <summary>Rename a stored EngineVariant. Cosmetic only - no
+        /// re-resolve. Returns false on no active car / no bundle /
+        /// missing variant id / unchanged label. The label is trimmed
+        /// and capped at 64 chars to match the upload-time validator.</summary>
+        public bool RenameActiveCarVariant(string variantId, string newLabel)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (string.IsNullOrEmpty(variantId)) return false;
+            if (Settings?.CarFacts == null) return false;
+            string key = _activeGame + "/" + _activeCarId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
+            string label = (newLabel ?? "").Trim();
+            if (label.Length == 0) return false;
+            if (label.Length > 64) label = label.Substring(0, 64);
+            foreach (var v in bundle.EngineVariants)
+            {
+                if (v == null || v.Id != variantId) continue;
+                if (string.Equals(v.Label, label, StringComparison.Ordinal)) return false;
+                v.Label = label;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Remove a stored EngineVariant from the active car's
+        /// bundle. Also clears Settings.CarFactsSelection[key] if it
+        /// pointed at the deleted variant, so the resolver falls back
+        /// to ranked cascade on the next pass. Saves + re-resolves.
+        /// Returns false on no active car / missing variant.</summary>
+        public bool DeleteActiveCarVariant(string variantId)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (string.IsNullOrEmpty(variantId)) return false;
+            if (Settings?.CarFacts == null) return false;
+            string key = _activeGame + "/" + _activeCarId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
+            int removed = bundle.EngineVariants.RemoveAll(v => v != null && v.Id == variantId);
+            if (removed == 0) return false;
+            if (Settings.CarFactsSelection != null
+                && Settings.CarFactsSelection.TryGetValue(key, out var sel)
+                && string.Equals(sel, variantId, StringComparison.Ordinal))
+                Settings.CarFactsSelection.Remove(key);
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
+            ApplyActiveCarOverride();
+            return true;
+        }
+
         // Same shape as TryResolveActiveVariant but with the Community rung
         // explicitly skipped. Used by the engine-pulse panel to preview what
         // "Use built-in instead" would resolve to, and to drive the

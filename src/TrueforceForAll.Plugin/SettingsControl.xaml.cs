@@ -626,6 +626,7 @@ namespace TrueforceForAll.Plugin
                     // into Layout before we read it here.
                     RebuildEngineLayoutDropdown();
                     UpdateFiringPatternReadout(es);
+                    RebuildEngineVariantPicker();
                 }
                 // Bumps
                 var bs = _plugin.ActiveBumps;
@@ -5189,9 +5190,130 @@ namespace TrueforceForAll.Plugin
         /// <summary>(Re)populate the engine-layout dropdown from the built-in
         /// EngineLayout enum + the user's saved customs in
         /// TrueforceSettings.CustomEngines, plus the "Custom..." and
-        /// "Manage customs..." action sentinels. Preserves the current
-        /// selection across rebuilds (so adding a new custom doesn't bounce
-        /// the user back to Auto).</summary>
+        // Suppress EngineVariant_Changed reentry while we're loading the
+        // combo programmatically (Items.Add fires SelectionChanged).
+        private bool _suppressVariantPickerChange;
+
+        /// <summary>Refresh the inline variant picker for the active car.
+        /// Hidden when the bundle has fewer than 2 stored variants -
+        /// the single-variant fast-path in PickStoredVariant means there's
+        /// nothing for the user to pick between, and showing an empty
+        /// combo would add visual noise to every non-Forza car. The
+        /// "Manage variants..." link is collapsed in lockstep.</summary>
+        private void RebuildEngineVariantPicker()
+        {
+            if (EngineVariantRow == null || EngineVariantCombo == null) return;
+            if (_plugin == null) { EngineVariantRow.Visibility = Visibility.Collapsed; return; }
+
+            var variants = _plugin.GetActiveCarVariants();
+            // Pre-condition for the picker being useful at all: the
+            // user has registered (or downloaded) at least two variants
+            // for the active car. Anything less and the resolver's
+            // single-variant fast-path covers it without UI.
+            if (variants == null || variants.Count < 2)
+            {
+                EngineVariantRow.Visibility       = Visibility.Collapsed;
+                if (EngineVariantManageLink != null)
+                    EngineVariantManageLink.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // Selection lookup: explicit pin via CarFactsSelection wins,
+            // otherwise mirror what the resolver picked so the combo
+            // shows the actually-applied variant on first render.
+            string activeId = null;
+            if (_plugin.Settings?.CarFactsSelection != null
+                && !string.IsNullOrEmpty(_plugin.ActiveGame)
+                && !string.IsNullOrEmpty(_plugin.ActiveCarId)
+                && _plugin.Settings.CarFactsSelection.TryGetValue(
+                       _plugin.ActiveGame + "/" + _plugin.ActiveCarId, out var pinned))
+                activeId = pinned;
+
+            _suppressVariantPickerChange = true;
+            try
+            {
+                EngineVariantCombo.Items.Clear();
+                int selectedIndex = -1;
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    var v = variants[i];
+                    if (v == null) continue;
+                    string sourceLabel = MapCarFactSourceForCombo(v.Source);
+                    string label = string.IsNullOrEmpty(v.Label) ? "(unnamed)" : v.Label;
+                    var item = new System.Windows.Controls.ComboBoxItem
+                    {
+                        Content = label + "  (" + sourceLabel + ", " + v.Cylinders + "-cyl)",
+                        Tag     = v.Id,
+                    };
+                    EngineVariantCombo.Items.Add(item);
+                    if (!string.IsNullOrEmpty(activeId)
+                        && string.Equals(v.Id, activeId, StringComparison.Ordinal))
+                        selectedIndex = i;
+                }
+                EngineVariantCombo.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+            }
+            finally { _suppressVariantPickerChange = false; }
+
+            EngineVariantRow.Visibility = Visibility.Visible;
+            if (EngineVariantManageLink != null)
+                EngineVariantManageLink.Visibility = Visibility.Visible;
+        }
+
+        // Local short label for the variant combo. The plugin's
+        // MapCarFactSourceToUiLabel is private; keep this duplicate
+        // tight (one-line cases) so a future enum addition lands here
+        // without dragging the full label in.
+        private static string MapCarFactSourceForCombo(CarFactSource s)
+        {
+            switch (s)
+            {
+                case CarFactSource.UserVariant: return "yours";
+                case CarFactSource.Community:   return "community";
+                case CarFactSource.Baked:       return "built-in";
+                case CarFactSource.SwapOverride: return "swap";
+                case CarFactSource.Scanner:     return "auto";
+                default:                        return s.ToString().ToLowerInvariant();
+            }
+        }
+
+        private void EngineVariant_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressVariantPickerChange) return;
+            if (_plugin == null || EngineVariantCombo == null) return;
+            if (!(EngineVariantCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item)) return;
+            string id = item.Tag as string;
+            if (string.IsNullOrEmpty(id)) return;
+            _plugin.SetActiveCarVariantSelection(id);
+            // The plugin re-resolves on SetActiveCarVariantSelection -
+            // mirror its output back into the layout combo + readout so
+            // the user sees the new variant's layout immediately.
+            RebuildEngineLayoutDropdown();
+            UpdateFiringPatternReadout(_plugin.ActiveEngine);
+        }
+
+        private void EngineVariantManage_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string carId = _plugin.ActiveCarId;
+            string game  = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
+            var win = new CarFactsVariantsWindow(_plugin, game, carId, _plugin.ActiveCarDisplayName)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            win.ShowDialog();
+            // The window mutates via the plugin's helpers (which
+            // re-resolve internally); rebuild the picker on close so a
+            // delete / rename lands immediately.
+            RebuildEngineVariantPicker();
+            RebuildEngineLayoutDropdown();
+            UpdateFiringPatternReadout(_plugin.ActiveEngine);
+        }
+
+        /// <summary>Rebuild the engine-layout dropdown with the current
+        /// built-ins, the user's saved custom engines, and the
+        /// "Custom..." / "Manage customs..." action sentinels. Preserves
+        /// the current selection across rebuilds.</summary>
         private void RebuildEngineLayoutDropdown()
         {
             if (EngineLayoutCombo == null) return;

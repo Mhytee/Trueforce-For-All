@@ -1268,6 +1268,21 @@
                              after a save. -->
                         <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,4" Text=""/>
                         <TextBlock x:Name="EngineCommunityText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="" Visibility="Collapsed"/>
+                        <!-- Engine variant picker. Shown only when the active car
+                             has 2+ stored variants (Forza in-game engine swap +
+                             registered alternates). Single-variant cars hide
+                             both the row + the Manage link to keep the panel
+                             clean. SelectionChanged calls SetActiveCarVariantSelection
+                             on the plugin which re-resolves immediately. -->
+                        <Grid x:Name="EngineVariantRow" Margin="0,0,0,4" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Variant:" Style="{StaticResource LabelText}"
+                                       ToolTip="Pick which engine variant the resolver should apply for this car. Useful for Forza in-game engine swaps where one car has more than one engine you've registered."/>
+                            <ComboBox  Grid.Column="1" x:Name="EngineVariantCombo" SelectionChanged="EngineVariant_Changed"/>
+                        </Grid>
+                        <TextBlock x:Name="EngineVariantManageLink" Style="{StaticResource HelpText}" Margin="140,0,0,8" Visibility="Collapsed">
+                            <Hyperlink x:Name="EngineVariantManageHyperlink" Click="EngineVariantManage_Click">Manage variants…</Hyperlink>
+                        </TextBlock>
                         <!-- Active pattern readout: shows what's being synthesized
                              for the currently selected engine type. Read-only.
                              Authoring custom engines happens in the Custom...
