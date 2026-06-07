@@ -361,7 +361,7 @@ namespace TrueforceForAll.Plugin
                 string name = kv.Key;
                 var snap = kv.Value;
                 if (_plugin.IsBuiltinPreset(name)) continue;
-                if (!IsRedistributable(snap?.CommunitySourceId))
+                if (!IsRedistributable(snap?.CommunitySourceId, snap?.CommunityAllowInPacks))
                 {
                     list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(name, 128) + "  (community item, not redistributable)"));
                     continue;
@@ -412,7 +412,7 @@ namespace TrueforceForAll.Plugin
                     if (carEntry == null) continue;
                     if (carEntry.IsBuiltin) continue;
                     string gameName = carEntry.GameName ?? "";
-                    if (!IsRedistributable(carEntry.Override?.CommunitySourceId))
+                    if (!IsRedistributable(carEntry.Override?.CommunitySourceId, carEntry.Override?.CommunityAllowInPacks))
                     {
                         list.Children.Add(MakeIneligibleRow($"{UiContentSanitizer.SafeDisplayText(carId, 96)} :: {UiContentSanitizer.SafeDisplayText(presetName, 96)}  (community item, not redistributable)"));
                         continue;
@@ -459,7 +459,7 @@ namespace TrueforceForAll.Plugin
             foreach (var def in engines.OrderBy(d => d?.Name, StringComparer.OrdinalIgnoreCase))
             {
                 if (def == null || string.IsNullOrWhiteSpace(def.Name)) continue;
-                if (!IsRedistributable(def.CommunitySourceId))
+                if (!IsRedistributable(def.CommunitySourceId, def.CommunityAllowInPacks))
                 {
                     list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(def.Name, 128) + "  (community engine, not redistributable)"));
                     continue;
@@ -496,11 +496,22 @@ namespace TrueforceForAll.Plugin
         /// permission holes. Built-ins are pre-filtered by the section
         /// builders. communitySourceId=null means the user authored
         /// this item locally.</summary>
-        private bool IsRedistributable(string communitySourceId)
+        private bool IsRedistributable(string communitySourceId, bool? presetAllowInPacks)
         {
+            // Locally authored items (no source) are always redistributable
+            // by the local author - they own the preset.
             if (string.IsNullOrEmpty(communitySourceId)) return true;
+            // Preset-level field is authoritative when set: it travels
+            // with export/import and survives a missing tracker entry.
+            // Stamped at download from PresetSummary.AllowInPacks and at
+            // import from the carried JSON field.
+            if (presetAllowInPacks.HasValue) return presetAllowInPacks.Value;
+            // Legacy fallback for installs that pre-date the preset-level
+            // field: read from DownloadedCommunityPresets where downloads
+            // recorded the value at the time. Returns false on missing
+            // tracker entries (conservative: unknown permission == deny).
             var map = _plugin?.Settings?.DownloadedCommunityPresets;
-            if (map == null) return false;  // sourced but no record = unknown permission, conservative
+            if (map == null) return false;
             return map.TryGetValue(communitySourceId, out var rec)
                 && rec != null
                 && rec.AllowInPacks;

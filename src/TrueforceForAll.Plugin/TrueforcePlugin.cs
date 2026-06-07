@@ -8008,7 +8008,7 @@ namespace TrueforceForAll.Plugin
         /// server's content_version. Saves the snapshot back through
         /// SaveCommonSettings so the stamps survive a restart.</summary>
         public void StampGamePresetAsUploaded(string presetName, string uploadedId,
-            string bodyHash, int contentVersion)
+            string bodyHash, int contentVersion, bool? allowInPacks = null)
         {
             if (Settings?.Presets == null) return;
             if (string.IsNullOrEmpty(presetName) || string.IsNullOrEmpty(uploadedId)) return;
@@ -8017,6 +8017,10 @@ namespace TrueforceForAll.Plugin
             snap.CommunityUploadedByUserId   = AuthSignedInUserId;
             snap.CommunityUploadedBodyHash   = bodyHash;
             snap.CommunityUploadedVersion    = "v" + contentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // Carry the upload modal's "ok to re-bundle" choice forward
+            // onto the snapshot so a downstream export/import preserves
+            // the local author's intent.
+            if (allowInPacks.HasValue) snap.CommunityAllowInPacks = allowInPacks;
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
         }
 
@@ -8026,7 +8030,7 @@ namespace TrueforceForAll.Plugin
         /// new fields; CarOverride is serialized whole, so deserializing on
         /// the next launch re-hydrates the stamps.</summary>
         public void StampCarPresetAsUploaded(string carId, string presetName,
-            string uploadedId, string bodyHash, int contentVersion)
+            string uploadedId, string bodyHash, int contentVersion, bool? allowInPacks = null)
         {
             if (_carStore == null) return;
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)
@@ -8046,6 +8050,7 @@ namespace TrueforceForAll.Plugin
             entry.Override.CommunityUploadedByUserId = AuthSignedInUserId;
             entry.Override.CommunityUploadedBodyHash = bodyHash;
             entry.Override.CommunityUploadedVersion  = "v" + contentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (allowInPacks.HasValue) entry.Override.CommunityAllowInPacks = allowInPacks;
             _carStore.Save(carId, presetName, entry.GameName ?? "",
                 entry.Override, isBuiltin: false,
                 packName: entry.PackName,
@@ -8059,7 +8064,7 @@ namespace TrueforceForAll.Plugin
         /// dialog. Custom engines live in Settings.CustomEngines so the
         /// stamp goes through SaveCommonSettings like game presets.</summary>
         public void StampCustomEngineAsUploaded(string engineId, string uploadedId,
-            string bodyHash, int contentVersion)
+            string bodyHash, int contentVersion, bool? allowInPacks = null)
         {
             if (Settings?.CustomEngines == null) return;
             if (string.IsNullOrEmpty(engineId) || string.IsNullOrEmpty(uploadedId)) return;
@@ -8077,6 +8082,7 @@ namespace TrueforceForAll.Plugin
             def.CommunityUploadedByUserId = AuthSignedInUserId;
             def.CommunityUploadedBodyHash = bodyHash;
             def.CommunityUploadedVersion  = "v" + contentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (allowInPacks.HasValue) def.CommunityAllowInPacks = allowInPacks;
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
         }
 
@@ -8086,7 +8092,7 @@ namespace TrueforceForAll.Plugin
         /// uploader's Id, then ImportCommunityCustomEngines merges it
         /// in (deduping on the canonical content).</summary>
         public void SaveImportedCommunityCustomEngine(CustomEngineDef def,
-            string communitySourceId = null)
+            string communitySourceId = null, bool? allowInPacks = null)
         {
             if (def == null) return;
             // Use the community uuid AS the local Id when present, so
@@ -8099,6 +8105,9 @@ namespace TrueforceForAll.Plugin
             def.Id = !string.IsNullOrEmpty(communitySourceId)
                 ? communitySourceId
                 : Guid.NewGuid().ToString();
+            // Original author's "ok to re-bundle" permission travels
+            // with the def so peer-to-peer share preserves it.
+            if (allowInPacks.HasValue) def.CommunityAllowInPacks = allowInPacks;
             ImportCommunityCustomEngines(new List<CustomEngineDef> { def });
         }
 
@@ -8396,7 +8405,8 @@ namespace TrueforceForAll.Plugin
                     local.GameName ?? full.Summary.Game ?? "",
                     newOvr,
                     full.Summary.Author, full.Summary.Description,
-                    communitySourceId: full.Summary.Id);
+                    communitySourceId: full.Summary.Id,
+                    allowInPacks: full.Summary.AllowInPacks);
                 string newHash = PresetBodyHasher.ComputeCarOverrideHash(newOvr);
                 StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
                 SimHub.Logging.Current.Info(
@@ -8432,7 +8442,8 @@ namespace TrueforceForAll.Plugin
                 bool saved = SaveImportedCommunityGamePreset(
                     local.LocalPresetName, newSnap,
                     full.Summary.Author, full.Summary.Description,
-                    communitySourceId: full.Summary.Id);
+                    communitySourceId: full.Summary.Id,
+                    allowInPacks: full.Summary.AllowInPacks);
                 if (!saved) return false;
                 string newHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(newSnap);
                 StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
@@ -8466,7 +8477,8 @@ namespace TrueforceForAll.Plugin
                 catch { return false; }
                 if (newDef == null) return false;
                 SaveImportedCommunityCustomEngine(newDef,
-                    communitySourceId: full.Summary.Id);
+                    communitySourceId: full.Summary.Id,
+                    allowInPacks: full.Summary.AllowInPacks);
                 string newHash = PresetBodyHasher.ComputeCustomEngineHash(newDef);
                 StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
                 SimHub.Logging.Current.Info(
@@ -8975,7 +8987,7 @@ namespace TrueforceForAll.Plugin
         /// the row stays attributed in the preset manager Source column.</summary>
         public void SaveImportedCommunityCarPreset(string carId, string presetName,
             string gameName, CarOverride ovr, string author, string description,
-            string communitySourceId = null)
+            string communitySourceId = null, bool? allowInPacks = null)
         {
             if (_carStore == null || string.IsNullOrEmpty(carId)
                 || string.IsNullOrEmpty(presetName) || ovr == null) return;
@@ -8983,6 +8995,11 @@ namespace TrueforceForAll.Plugin
             // gate + pack creator can identify this item by stable
             // server uuid, surviving rename / duplicate / re-import.
             ovr.CommunitySourceId = communitySourceId;
+            // Stamp the original author's "ok to re-bundle" permission
+            // onto the override so peer-to-peer export/import carries it
+            // forward without depending on the DownloadedCommunityPresets
+            // tracker, and so a tracker-less import still has the truth.
+            if (allowInPacks.HasValue) ovr.CommunityAllowInPacks = allowInPacks;
             _carStore.Save(carId, presetName, gameName, ovr, isBuiltin: false,
                 packName: "Community",
                 author: author, description: description,
@@ -8997,7 +9014,7 @@ namespace TrueforceForAll.Plugin
         /// row and the permission gate can identify it.</summary>
         public bool SaveImportedCommunityGamePreset(string presetName,
             GameSettingsSnapshot snap, string author, string description,
-            string communitySourceId = null)
+            string communitySourceId = null, bool? allowInPacks = null)
         {
             if (string.IsNullOrEmpty(presetName) || snap == null) return false;
             if (IsBuiltinPreset(presetName) && !DevMode) return false;
@@ -9009,6 +9026,9 @@ namespace TrueforceForAll.Plugin
             snap.Description       = description;
             snap.PackName          = "Community";
             snap.CommunitySourceId = communitySourceId;
+            // Author's "ok to re-bundle" permission travels with the
+            // snapshot so export/import preserves it.
+            if (allowInPacks.HasValue) snap.CommunityAllowInPacks = allowInPacks;
             return PersistGamePresetToFolder(presetName, snap);
         }
 

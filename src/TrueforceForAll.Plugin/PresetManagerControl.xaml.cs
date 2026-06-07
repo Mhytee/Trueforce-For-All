@@ -2392,7 +2392,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     string finalHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(snap);
                     _plugin.StampGamePresetAsUploaded(
-                        presetName, dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                        presetName, dialog.UploadedPresetId, finalHash,
+                        dialog.UploadedContentVersion,
+                        allowInPacks: dialog.UploadedAllowInPacks);
                     RefreshGameButtons();
                 }
             }
@@ -2778,7 +2780,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     string finalHash = PresetBodyHasher.ComputeCarOverrideHash(entry.Override);
                     _plugin.StampCarPresetAsUploaded(
                         carId, presetName,
-                        dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                        dialog.UploadedPresetId, finalHash,
+                        dialog.UploadedContentVersion,
+                        allowInPacks: dialog.UploadedAllowInPacks);
                     RefreshCarButtons();
                 }
             }
@@ -3183,7 +3187,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     string finalHash = PresetBodyHasher.ComputeCustomEngineHash(def);
                     _plugin.StampCustomEngineAsUploaded(
-                        def.Id, dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                        def.Id, dialog.UploadedPresetId, finalHash,
+                        dialog.UploadedContentVersion,
+                        allowInPacks: dialog.UploadedAllowInPacks);
                     RefreshCustomButtons();
                 }
             }
@@ -4436,7 +4442,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 }
                 bool saved = _plugin.SaveImportedCommunityGamePreset(
                     gpName, snap, full.Summary.Author, full.Summary.Description,
-                    communitySourceId: full.Summary.Id);
+                    communitySourceId: full.Summary.Id,
+                    allowInPacks: full.Summary.AllowInPacks);
                 if (!saved)
                 {
                     if (CommunityStatusLabel != null)
@@ -4512,7 +4519,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             }
                             bool entrySaved = _plugin.SaveImportedCommunityGamePreset(
                                 useName, snap, entryAuthor, full.Summary.Description,
-                                communitySourceId: entrySourceId);
+                                communitySourceId: entrySourceId,
+                                allowInPacks: entryAllowPacks);
                             if (!entrySaved)
                             {
                                 errors++;
@@ -4583,7 +4591,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             _plugin.SaveImportedCommunityCarPreset(
                                 cid, useName, gname, carOvr,
                                 entryAuthor, full.Summary.Description,
-                                communitySourceId: entrySourceId);
+                                communitySourceId: entrySourceId,
+                                allowInPacks: entryAllowPacks);
                             if (!string.IsNullOrEmpty(entrySourceId))
                             {
                                 _plugin.RecordDownloadedCommunityPreset(
@@ -4636,7 +4645,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             }
                             if (already) { skipped++; continue; }
                             _plugin.SaveImportedCommunityCustomEngine(def,
-                                communitySourceId: entrySourceId);
+                                communitySourceId: entrySourceId,
+                                allowInPacks: entryAllowPacks);
                             if (!string.IsNullOrEmpty(entrySourceId))
                             {
                                 _plugin.RecordDownloadedCommunityPreset(
@@ -4723,7 +4733,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         }
                 }
                 _plugin.SaveImportedCommunityCustomEngine(def,
-                    communitySourceId: full.Summary.Id);
+                    communitySourceId: full.Summary.Id,
+                    allowInPacks: full.Summary.AllowInPacks);
                 _plugin.RecordCommunityCustomEngineDownload(capturedId);
                 _plugin.RecordDownloadedCommunityPreset(
                     full.Summary.Id, def.Name,
@@ -4829,7 +4840,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _plugin.SaveImportedCommunityCarPreset(
                 _plugin.ActiveCarId, presetName, _plugin.ActiveGame, apply,
                 full.Summary.Author, full.Summary.Description,
-                communitySourceId: full.Summary.Id);
+                communitySourceId: full.Summary.Id,
+                allowInPacks: full.Summary.AllowInPacks);
             _plugin.RecordCommunityPresetDownload(capturedId);
             // Track the download so the next plugin-load update check
             // knows where to look. Re-records on every download (the

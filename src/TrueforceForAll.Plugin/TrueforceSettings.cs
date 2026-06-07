@@ -701,6 +701,13 @@ namespace TrueforceForAll.Plugin
         /// first upload, never user-editable.</summary>
         public string CommunityUploadedVersion { get; set; }
 
+        /// <summary>Author's "ok to re-bundle into someone else's pack"
+        /// permission. Mirrors the field on GameSettingsSnapshot - travels
+        /// with export/import so peer-to-peer share preserves the original
+        /// author's choice without depending on the per-download tracker.
+        /// Nullable: null falls back to the tracker for legacy installs.</summary>
+        public bool? CommunityAllowInPacks { get; set; }
+
         /// <summary>Optional credit field. Set on export by stamping the
         /// curator's SharingAuthor when the def doesn't already have one,
         /// preserved on import so a recipient who acquires "MyV12 by Mhytee"
@@ -959,6 +966,16 @@ namespace TrueforceForAll.Plugin
         /// from the server's content_version at upload time. Null until
         /// first upload, never user-editable.</summary>
         public string CommunityUploadedVersion { get; set; }
+
+        /// <summary>Author's "ok to re-bundle into someone else's pack"
+        /// permission. Stamped from PresetSummary.AllowInPacks at download
+        /// time, from the upload modal's checkbox at upload time, and
+        /// preserved across export/import (this lives on the snapshot
+        /// so a JSON file carries it to a recipient without needing the
+        /// per-download tracker entry). Nullable: null means "no value
+        /// stamped, fall back to the DownloadedCommunityPresets tracker"
+        /// for legacy installs that pre-date this field.</summary>
+        public bool? CommunityAllowInPacks { get; set; }
     }
 
     public sealed class AudioCaptureSettings
@@ -1521,6 +1538,14 @@ namespace TrueforceForAll.Plugin
         /// from the server's content_version at upload time. Null until
         /// first upload, never user-editable.</summary>
         public string CommunityUploadedVersion { get; set; }
+
+        /// <summary>Author's "ok to re-bundle into someone else's pack"
+        /// permission. Same semantics as the field on GameSettingsSnapshot /
+        /// CustomEngineDef: stamped at download (from PresetSummary), at
+        /// upload (from the modal checkbox), and preserved across
+        /// export/import. Nullable so legacy CarOverride entries (without
+        /// the field) fall back to the DownloadedCommunityPresets tracker.</summary>
+        public bool? CommunityAllowInPacks { get; set; }
 
         public bool IsEmpty =>
             EnginePulse == null && RoadBumps == null && TractionLoss == null &&

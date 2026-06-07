@@ -2311,7 +2311,9 @@ namespace TrueforceForAll.Plugin
             {
                 string finalHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(snap);
                 _plugin.StampGamePresetAsUploaded(
-                    name, dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                    name, dialog.UploadedPresetId, finalHash,
+                    dialog.UploadedContentVersion,
+                    allowInPacks: dialog.UploadedAllowInPacks);
                 UpdateHeaderShareButtons();
             }
             }
@@ -2474,7 +2476,9 @@ namespace TrueforceForAll.Plugin
                 string finalHash = PresetBodyHasher.ComputeCarOverrideHash(entry.Override);
                 _plugin.StampCarPresetAsUploaded(
                     pick.CarId, pick.Name,
-                    dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                    dialog.UploadedPresetId, finalHash,
+                    dialog.UploadedContentVersion,
+                    allowInPacks: dialog.UploadedAllowInPacks);
                 UpdateHeaderShareButtons();
             }
             }
@@ -2660,7 +2664,8 @@ namespace TrueforceForAll.Plugin
             _plugin.SaveImportedCommunityCarPreset(
                 activeCarId, presetName, _plugin.ActiveGame ?? "", apply,
                 full.Summary.Author, full.Summary.Description,
-                communitySourceId: full.Summary.Id);
+                communitySourceId: full.Summary.Id,
+                allowInPacks: full.Summary.AllowInPacks);
             _plugin.RecordCommunityPresetDownload(full.Summary.Id);
             _plugin.RecordDownloadedCommunityPreset(
                 full.Summary.Id, presetName,
@@ -6240,7 +6245,8 @@ namespace TrueforceForAll.Plugin
                 full.Summary.Game ?? _plugin.ActiveGame,
                 ovr,
                 full.Summary.Author, full.Summary.Description,
-                communitySourceId: full.Summary.Id);
+                communitySourceId: full.Summary.Id,
+                allowInPacks: full.Summary.AllowInPacks);
             _plugin.AcknowledgeCommunityPresetVersion(outcome.Id, outcome.ServerContentVersion);
             return true;
         }

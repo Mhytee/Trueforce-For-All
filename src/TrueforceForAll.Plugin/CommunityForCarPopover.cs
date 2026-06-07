@@ -329,7 +329,8 @@ namespace TrueforceForAll.Plugin
             _plugin.SaveImportedCommunityCarPreset(
                 _activeCarId, presetName, _activeGame, ovr,
                 full.Summary.Author, full.Summary.Description,
-                communitySourceId: full.Summary.Id);
+                communitySourceId: full.Summary.Id,
+                allowInPacks: full.Summary.AllowInPacks);
 
             // Make it the active preset for this car BEFORE recording
             // the download. If the switch fails we don't want the

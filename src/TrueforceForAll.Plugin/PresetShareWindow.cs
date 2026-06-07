@@ -40,6 +40,10 @@ namespace TrueforceForAll.Plugin
         public bool   IsUpdate              { get; set; }
         public string ExistingUploadId      { get; set; }
         public int    UploadedContentVersion { get; set; }
+        // The "ok to re-bundle" checkbox state at successful upload.
+        // Stamped onto the local snapshot/override/def so the field
+        // travels with peer-to-peer export/import.
+        public bool   UploadedAllowInPacks   { get; set; }
 
         private readonly TrueforcePlugin _plugin;
         private readonly string _kind;        // "car" or "game"
@@ -629,6 +633,7 @@ namespace TrueforceForAll.Plugin
                     return;
                 }
                 UploadedPresetId = newId;
+                UploadedAllowInPacks = allowPacks;
                 if (newContentVersion.HasValue)
                     UploadedContentVersion = newContentVersion.Value;
                 else if (!isUpdatePath)

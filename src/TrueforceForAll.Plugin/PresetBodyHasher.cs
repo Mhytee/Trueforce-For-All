@@ -114,6 +114,12 @@ namespace TrueforceForAll.Plugin
                 "CommunityUploadedByUserId",
                 "CommunityUploadedBodyHash",
                 "CommunityUploadedVersion",
+                // Permission metadata that travels with the preset. Excluded
+                // for the same reason as the other Community* stamps: it's
+                // not body content, and including it would make the
+                // share-button gate flicker every time the author flipped
+                // the checkbox without changing the actual tune.
+                "CommunityAllowInPacks",
             };
 
         private sealed class OrderedContractResolver : DefaultContractResolver
