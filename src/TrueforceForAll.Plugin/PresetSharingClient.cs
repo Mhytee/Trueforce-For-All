@@ -590,15 +590,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (List<PresetSummary>)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
@@ -835,15 +834,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (List<PresetSummary>)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -896,15 +894,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (PresetFull)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -1361,15 +1358,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (PresetFull)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -1432,15 +1428,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (List<PresetSummary>)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
@@ -1765,15 +1760,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (PresetFull)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -1833,15 +1827,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (List<PresetSummary>)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
@@ -2100,15 +2093,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (PresetFull)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -2166,15 +2158,14 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // Community reads now require a signed-in user; send
+                        // the bearer token and bail when there isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (List<PresetSummary>)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                         {
-                            // Anonymous read - the apikey header is sufficient
-                            // under PostgREST + Supabase RLS. The previous Bearer
-                            // header stuffed the anon API key into a JWT-shaped
-                            // header, which PostgREST silently ignored but
-                            // violated HTTP semantics and would break if
-                            // Supabase ever validates Bearer format.
                             req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,

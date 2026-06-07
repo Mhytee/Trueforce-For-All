@@ -1586,14 +1586,15 @@ namespace TrueforceForAll.Plugin
             // configured (see supabase/README.md). Identity (submitter_id)
             // is derived server-side from the client IP + a rotating salt,
             // so the plugin holds no persistent submitter id.
-            _community = new CommunityClient(
-                () => Settings,
-                msg => SimHub.Logging.Current.Info(msg),
-                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString());
             _auth = new CommunityAuth(
                 () => Settings,
                 () => this.SaveCommonSettings("GeneralSettings", Settings),
                 msg => SimHub.Logging.Current.Info(msg));
+            _community = new CommunityClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
             // B5/F03 migration: legacy installs may have plaintext
             // AuthSession tokens on disk. Encrypt-in-place idempotently
             // so users stay signed in and on-disk tokens become

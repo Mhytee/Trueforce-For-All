@@ -139,14 +139,28 @@ namespace TrueforceForAll.Plugin
         private readonly Func<TrueforceSettings> _settingsProvider;
         private readonly Action<string>          _log;
         private readonly string                  _pluginVersion;
+        // When non-null, an authenticated bearer-token provider (the same
+        // CommunityAuth.GetAccessTokenAsync source PresetSharingClient uses).
+        // Awaited before each auth-gated read so token refresh happens
+        // lazily. Null in unit-test / no-auth contexts.
+        private readonly Func<Task<string>>      _accessTokenProvider;
 
         public CommunityClient(Func<TrueforceSettings> settingsProvider,
-            Action<string> log, string pluginVersion)
+            Action<string> log, string pluginVersion,
+            Func<Task<string>> accessTokenProvider = null)
         {
             _settingsProvider = settingsProvider
                 ?? throw new ArgumentNullException(nameof(settingsProvider));
             _log = log;
             _pluginVersion = pluginVersion ?? "";
+            _accessTokenProvider = accessTokenProvider;
+        }
+
+        private async Task<string> GetAccessTokenOrNullAsync()
+        {
+            if (_accessTokenProvider == null) return null;
+            try { return await _accessTokenProvider().ConfigureAwait(false); }
+            catch { return null; }
         }
 
         /// <summary>Vote on the current community consensus for a car's
@@ -327,10 +341,15 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // car_fact_consensus is now authenticated-read only;
+                        // send the signed-in user's token and bail when there
+                        // isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (RedlineConsensus)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
                             req.Headers.Add("apikey", capturedKey);
-                            req.Headers.Add("Authorization", "Bearer " + capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -391,10 +410,15 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // car_fact_consensus is now authenticated-read only;
+                        // send the signed-in user's token and bail when there
+                        // isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (CarNameConsensus)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
                             req.Headers.Add("apikey", capturedKey);
-                            req.Headers.Add("Authorization", "Bearer " + capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -456,10 +480,15 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
+                        // car_fact_consensus is now authenticated-read only;
+                        // send the signed-in user's token and bail when there
+                        // isn't one.
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer)) return (EngineLayoutConsensus)null;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
                             req.Headers.Add("apikey", capturedKey);
-                            req.Headers.Add("Authorization", "Bearer " + capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
                             using (var resp = await _http.SendAsync(req,
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
@@ -574,10 +603,19 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
+                    // Car-fact submit/vote RPCs require a signed-in user
+                    // (auth.uid()). Authenticate with the real user token, not
+                    // the anon key; skip the write when not signed in.
+                    string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                    if (string.IsNullOrEmpty(bearer))
+                    {
+                        _log?.Invoke("[Trueforce] Community submit skipped: sign-in required");
+                        return;
+                    }
                     using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                     {
                         req.Headers.Add("apikey", capturedKey);
-                        req.Headers.Add("Authorization", "Bearer " + capturedKey);
+                        req.Headers.Add("Authorization", "Bearer " + bearer);
                         // RPC calls return a value; we don't care about the
                         // value but Prefer: return=minimal can still cut the
                         // response body.
