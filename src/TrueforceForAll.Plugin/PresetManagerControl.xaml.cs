@@ -484,6 +484,11 @@ namespace TrueforceForAll.Plugin
             }
 
             SelectTab(initialTab);
+            // XAML's IsChecked="True" on the default segment doesn't fire
+            // Checked during construction, so force the segment + mode-wrap
+            // visibility now or the Library/Community sub-pill stays hidden
+            // until the user first clicks a segment pill.
+            Segment_Checked(null, null);
         }
 
         /// <summary>Bring one of the inner tabs (game / car / custom) forward.
@@ -1652,6 +1657,25 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             GameDeleteBtn.IsEnabled       = checkedNonBuiltin > 0 || selEditable;
             GameSetDefaultBtn.IsEnabled   = anySelected   && checkedCount <= 1;
             GameClearDefaultBtn.IsEnabled = anySelected   && checkedCount <= 1 && sel.Defaults.Count > 0;
+            if (GameShareBtn != null)
+            {
+                // Share gating mirrors CarShareBtn: community on + signed in
+                // + single row + non-built-in. Server rejects re-uploads of
+                // built-ins regardless, but disabling here makes the contract
+                // visible up front rather than via a backend error.
+                bool gShareCommunityOn = _plugin?.Settings?.CommunityEnabled == true;
+                bool gShareSignedIn    = _plugin?.AuthIsSignedIn == true;
+                GameShareBtn.IsEnabled = anySelected && checkedCount <= 1
+                    && !sel.Builtin && gShareCommunityOn && gShareSignedIn;
+                if (!gShareCommunityOn)
+                    GameShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
+                else if (!gShareSignedIn)
+                    GameShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
+                else if (anySelected && sel.Builtin)
+                    GameShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
+                else
+                    GameShareBtn.ToolTip = "Upload this game preset to the community so other drivers can find it.";
+            }
             // Promote works on the checked set when there is one (bulk), else
             // the highlighted row, so multi-select is supported, not blocked.
             if (GamePromoteBuiltinBtn != null)
@@ -1820,6 +1844,79 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             ReloadGames();
             SelectGameByName(newName);
+        }
+
+        // Share a game preset selected in the manager. Mirrors
+        // HeaderGameShare_Click in SettingsControl, but reads the snapshot
+        // from the selected row rather than the active preset, so a user
+        // can share any saved preset without first making it active.
+        private async void GameShare_Click(object sender, RoutedEventArgs e)
+        {
+            var sel = SelectedGame;
+            if (sel == null || _plugin == null) return;
+            if (_shareInProgress) return;
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Enable Community Contributions in Settings to share presets.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            _shareInProgress = true;
+            try
+            {
+                if (_plugin.Settings?.Presets == null
+                    || !_plugin.Settings.Presets.TryGetValue(sel.Name, out var snap)
+                    || snap == null)
+                {
+                    MessageBox.Show(Window.GetWindow(this),
+                        $"Could not load game preset '{sel.Name}'.",
+                        "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                var owner = Window.GetWindow(this);
+                if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+                {
+                    MessageBox.Show(owner,
+                        "Pick a username before sharing (Settings > Account & community).",
+                        "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                var body = new Newtonsoft.Json.Linq.JObject
+                {
+                    ["snapshot"] = Newtonsoft.Json.Linq.JToken.FromObject(snap),
+                };
+                var customs = _plugin.CollectReferencedCustomEngines(
+                    new[] { snap }, null);
+                if (customs != null && customs.Count > 0)
+                    body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
+
+                var tags = new List<string>(11);
+                if (snap.EnginePulse  != null) tags.Add("engine");
+                if (snap.RevLimiter   != null) tags.Add("revlimiter");
+                if (snap.RoadBumps    != null) tags.Add("roadbumps");
+                if (snap.TractionLoss != null) tags.Add("tractionloss");
+                if (snap.GearShift    != null) tags.Add("gearshift");
+                if (snap.AbsClick     != null) tags.Add("abs");
+                if (snap.PitLimiter   != null) tags.Add("pitlimiter");
+                if (snap.Drs          != null) tags.Add("drs");
+                if (snap.Collision    != null) tags.Add("collision");
+                if (snap.AudioCapture != null) tags.Add("audio");
+                if (snap.Airborne     != null) tags.Add("airborne");
+
+                string game = _plugin.ActiveGame ?? "";
+                var dialog = PresetShareWindow.ForGame(_plugin, sel.Name, game, body, tags);
+                dialog.Owner = owner;
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Share game preset failed: " + ex.Message);
+                MessageBox.Show(Window.GetWindow(this),
+                    "Share preset failed: " + ex.Message,
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _shareInProgress = false; }
         }
 
         private void GameDelete_Click(object sender, RoutedEventArgs e)
@@ -2811,13 +2908,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 if (capturedTrending)
                 {
-                    // Discard the trending fetch if ANY scope now
-                    // applies: for game-kind that's an active game, for
-                    // car-kind that's an active game (a game-scoped
-                    // refresh would now be more useful than a global
-                    // trending list). The user's next refresh will pick
-                    // up the scoped path.
+                    // Discard the trending fetch only when the new scope
+                    // would let a scoped fetch actually run. Game-kind
+                    // needs only an active game; car-kind needs BOTH game
+                    // AND car (a game-only scope still can't run the
+                    // FetchCommunityPresetsForCar call). Without this
+                    // refinement the car-kind path would silently drop
+                    // the trending result while no follow-up refresh ever
+                    // fires, leaving the status label stuck on "Loading
+                    // trending..." forever.
                     bool scopeNowPresent = !string.IsNullOrEmpty(_plugin.ActiveGame);
+                    if (capturedKind != "game")
+                        scopeNowPresent = scopeNowPresent && !string.IsNullOrEmpty(_plugin.ActiveCarId);
                     if (scopeNowPresent)
                     {
                         _communityFetchInFlight = false;

@@ -249,6 +249,8 @@
                                     ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Edit and save the usual way; Done returns you to your previously-active preset (saving over a built-in forks a copy)."/>
                             <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
                             <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
+                            <Button x:Name="GameShareBtn"      Content="Share…"         Style="{StaticResource RowButton}" Click="GameShare_Click"      IsEnabled="False"
+                                    ToolTip="Upload this game preset to the community so other drivers can find it. Needs Community Contributions on in Settings."/>
                             <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource RowButton}" Click="GameDelete_Click"     IsEnabled="False"/>
                             <Button x:Name="GameSetDefaultBtn" Content="Set default…"   Style="{StaticResource RowButton}" Width="120" Click="GameSetDefault_Click" IsEnabled="False"
                                     ToolTip="Bind this preset as the auto-load default for a game you've seen before."/>
