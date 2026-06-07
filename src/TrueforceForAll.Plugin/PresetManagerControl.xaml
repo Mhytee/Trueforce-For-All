@@ -472,7 +472,8 @@
                               IsReadOnly="True" RowHeaderWidth="0"
                               HorizontalScrollBarVisibility="Auto"
                               SelectionChanged="CustomList_SelectionChanged"
-                              ColumnDisplayIndexChanged="List_ColumnDisplayIndexChanged">
+                              ColumnDisplayIndexChanged="List_ColumnDisplayIndexChanged"
+                              MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Width="34" MinWidth="34" CanUserSort="False" CanUserReorder="False">
                                 <DataGridTemplateColumn.Header>
@@ -528,7 +529,8 @@
                           HeadersVisibility="Column" GridLinesVisibility="None"
                           IsReadOnly="True" RowHeaderWidth="0"
                           HorizontalScrollBarVisibility="Auto"
-                          SelectionChanged="PacksList_SelectionChanged">
+                          SelectionChanged="PacksList_SelectionChanged"
+                          MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Pack name" Width="*"   MinWidth="160" Binding="{Binding Name}"/>
                         <DataGridTextColumn Header="Author"    Width="140" MinWidth="80"  Binding="{Binding Author}"/>
@@ -572,10 +574,6 @@
                 </DockPanel>
                 <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <Button x:Name="CommunityVoteUpBtn"   Content="Upvote"   Style="{StaticResource RowButton}" Click="CommunityVoteUp_Click"   IsEnabled="False"
-                                ToolTip="Mark this preset as useful. Helps it rise in the Top sort."/>
-                        <Button x:Name="CommunityVoteDownBtn" Content="Downvote" Style="{StaticResource RowButton}" Click="CommunityVoteDown_Click" IsEnabled="False"
-                                ToolTip="Mark this preset as not useful. Flippable."/>
                         <Button x:Name="CommunityReportBtn"   Content="Report"   Style="{StaticResource RowButton}" Click="CommunityReport_Click"   IsEnabled="False"
                                 ToolTip="Flag inappropriate content for moderator review."/>
                         <Button x:Name="CommunityPreviewBtn"  Content="Preview…" Style="{StaticResource RowButton}" Click="CommunityPreview_Click"  IsEnabled="False"
@@ -637,7 +635,8 @@
                           HeadersVisibility="Column" GridLinesVisibility="None"
                           IsReadOnly="True" RowHeaderWidth="0"
                           HorizontalScrollBarVisibility="Auto"
-                          SelectionChanged="CommunityList_SelectionChanged">
+                          SelectionChanged="CommunityList_SelectionChanged"
+                          MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                     <DataGrid.Columns>
                         <!-- Reddit-style vote column: up + score + down. Click
                              on the same arrow you previously voted toggles it

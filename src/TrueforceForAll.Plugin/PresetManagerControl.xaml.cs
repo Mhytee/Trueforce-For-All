@@ -294,6 +294,7 @@ namespace TrueforceForAll.Plugin
                     return pulses > 0 ? $"{pulses} pulses" : "(empty)";
                 }
             }
+            public string DetailsText { get; set; }
         }
 
         private readonly ObservableCollection<GameRow>   _gameRows   = new ObservableCollection<GameRow>();
@@ -492,11 +493,52 @@ namespace TrueforceForAll.Plugin
             }
 
             SelectTab(initialTab);
+            // Restore the per-segment Library|Community sub-pill before
+            // the first Segment_Checked, otherwise the radios are all on
+            // their XAML "Library" default and the user's last choice is
+            // lost on plugin restart. Gated by _initializing so the
+            // *Mode_Checked write-back isn't a re-save of the same
+            // value during hydration.
+            HydrateModeToggles();
             // XAML's IsChecked="True" on the default segment doesn't fire
             // Checked during construction, so force the segment + mode-wrap
             // visibility now or the Library/Community sub-pill stays hidden
             // until the user first clicks a segment pill.
             Segment_Checked(null, null);
+        }
+
+        // Pull the four ManagerCommunityFor* latches into the radio
+        // buttons. Setting IsChecked = true on the Community radio fires
+        // Mode_Checked; setting it to false (when the latch says
+        // Library) does nothing because Mine starts checked. _initializing
+        // keeps the eventual write-back from re-persisting.
+        private void HydrateModeToggles()
+        {
+            var s = _plugin?.Settings;
+            if (s == null) return;
+            if (s.ManagerCommunityForCars    && CarModeCommunity    != null) CarModeCommunity.IsChecked    = true;
+            if (s.ManagerCommunityForGames   && GameModeCommunity   != null) GameModeCommunity.IsChecked   = true;
+            if (s.ManagerCommunityForCustoms && CustomModeCommunity != null) CustomModeCommunity.IsChecked = true;
+            if (s.ManagerCommunityForPacks   && PacksModeCommunity  != null) PacksModeCommunity.IsChecked  = true;
+        }
+
+        // Write a sub-pill flip back to settings. Skipped during the
+        // initial Segment_Checked sweep (so hydration doesn't churn the
+        // file) and when no settings instance is wired up yet.
+        private void PersistModeToggle(string seg, bool community)
+        {
+            if (_initializing) return;
+            var s = _plugin?.Settings;
+            if (s == null) return;
+            bool dirty = false;
+            switch (seg)
+            {
+                case "cars":    if (s.ManagerCommunityForCars    != community) { s.ManagerCommunityForCars    = community; dirty = true; } break;
+                case "games":   if (s.ManagerCommunityForGames   != community) { s.ManagerCommunityForGames   = community; dirty = true; } break;
+                case "customs": if (s.ManagerCommunityForCustoms != community) { s.ManagerCommunityForCustoms = community; dirty = true; } break;
+                case "packs":   if (s.ManagerCommunityForPacks   != community) { s.ManagerCommunityForPacks   = community; dirty = true; } break;
+            }
+            if (dirty) _plugin.PersistSettings();
         }
 
         /// <summary>Bring one of the inner tabs (game / car / custom) forward.
@@ -627,6 +669,7 @@ namespace TrueforceForAll.Plugin
             if (SegPacks?.IsChecked != true) return;
 
             bool community = PacksModeCommunity?.IsChecked == true;
+            PersistModeToggle(seg: "packs", community: community);
             PacksPanel.Visibility     = community ? Visibility.Collapsed : Visibility.Visible;
             CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
             if (community)
@@ -737,6 +780,7 @@ namespace TrueforceForAll.Plugin
             public string Version       { get; set; }
             public int    EntryCount    { get; set; }
             public string ImportedLabel { get; set; }
+            public string DetailsText   { get; set; }
         }
 
         private readonly System.Collections.ObjectModel.ObservableCollection<PackRow> _packRows
@@ -770,6 +814,7 @@ namespace TrueforceForAll.Plugin
                     ImportedLabel = p.ImportedAt == default(DateTime)
                                       ? ""
                                       : p.ImportedAt.ToLocalTime().ToString("yyyy-MM-dd"),
+                    DetailsText   = BuildPackDetailsText(p),
                 });
             }
             // Selection may now point at a removed pack; clear + re-eval
@@ -833,6 +878,7 @@ namespace TrueforceForAll.Plugin
             if (SegCustom?.IsChecked != true) return;
 
             bool community = CustomModeCommunity?.IsChecked == true;
+            PersistModeToggle(seg: "customs", community: community);
             CustomPanel.Visibility    = community ? Visibility.Collapsed : Visibility.Visible;
             CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
             if (community)
@@ -858,6 +904,7 @@ namespace TrueforceForAll.Plugin
             if (SegCar?.IsChecked != true) return;  // pill is hidden outside Cars
 
             bool community = CarModeCommunity?.IsChecked == true;
+            PersistModeToggle(seg: "cars", community: community);
             CarPanel.Visibility       = community ? Visibility.Collapsed : Visibility.Visible;
             CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
             if (community)
@@ -888,6 +935,7 @@ namespace TrueforceForAll.Plugin
             if (SegGame?.IsChecked != true) return;
 
             bool community = GameModeCommunity?.IsChecked == true;
+            PersistModeToggle(seg: "games", community: community);
             GamePanel.Visibility      = community ? Visibility.Collapsed : Visibility.Visible;
             CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
             if (community)
@@ -912,16 +960,18 @@ namespace TrueforceForAll.Plugin
         private void RelabelCommunityScopeRadio()
         {
             if (CommunityModeForCar == null) return;
-            // When the last completed fetch fell back to trending (no
-            // active game/car), reflect that in the scope radio's label
-            // so the user understands why they see cross-game results.
-            bool trending = _lastFetchWasTrending && _communityMode == "for-car";
+            // When the last fetch fell back to "no scope" (no active
+            // game/car), the radio says "All ..." so the label matches
+            // what the list actually shows. Was "Trending ..." which
+            // read as a curated/algorithmic feed; it's really just the
+            // unfiltered Wilson-ranked list.
+            bool unscoped = _lastFetchWasTrending && _communityMode == "for-car";
             switch (_communityKind)
             {
-                case "game":   CommunityModeForCar.Content = trending ? "Trending games" : "For this game"; break;
+                case "game":   CommunityModeForCar.Content = unscoped ? "All games" : "For this game"; break;
                 case "engine": CommunityModeForCar.Content = "All engines";   break;
                 case "pack":   CommunityModeForCar.Content = "All packs";     break;
-                default:       CommunityModeForCar.Content = trending ? "Trending cars" : "For this car";  break;
+                default:       CommunityModeForCar.Content = unscoped ? "All cars" : "For this car";  break;
             }
             if (CommunityHelpText != null)
             {
@@ -938,8 +988,8 @@ namespace TrueforceForAll.Plugin
                 else switch (_communityKind)
                 {
                     case "game":
-                        CommunityHelpText.Text = trending
-                            ? "No game loaded, so showing trending game presets from across the community. Load a game and refresh to see scoped results."
+                        CommunityHelpText.Text = unscoped
+                            ? "No game loaded, so showing every game preset the community has shared. Load a game and refresh to filter."
                             : "Browse + download community game presets for the game you're playing, or switch to your own uploads to manage them. "
                               + "Pick a row and Download to import; you'll get a section picker so you can take just the parts you want.";
                         break;
@@ -954,8 +1004,8 @@ namespace TrueforceForAll.Plugin
                             + "Pick a row and Download to import every entry into the matching part of your library.";
                         break;
                     default:
-                        CommunityHelpText.Text = trending
-                            ? "No car loaded, so showing trending car presets from across the community. Load a car in your game and refresh to see scoped results."
+                        CommunityHelpText.Text = unscoped
+                            ? "No car loaded, so showing every car preset the community has shared. Load a car in your game and refresh to filter."
                             : "Browse + download community presets for the car you're driving, or switch to your own uploads to manage them. "
                               + "Pick a row and Download to import; you'll get a section picker so you can take just the parts you want.";
                         break;
@@ -1086,7 +1136,7 @@ namespace TrueforceForAll.Plugin
             if (list != null)
             {
                 foreach (var c in list)
-                    if (c != null) _customRows.Add(new CustomRow { Def = c });
+                    if (c != null) _customRows.Add(new CustomRow { Def = c, DetailsText = BuildCustomDetailsText(c) });
             }
             CustomList_SelectionChanged(null, null);
             if (CustomListEmpty != null)
@@ -1343,6 +1393,102 @@ namespace TrueforceForAll.Plugin
             foreach (var line in lines) sb.AppendLine(line);
         }
 
+        // Hover tooltip for the Custom engines library. Mirrors
+        // BuildGame/CarDetailsText: humans-first summary of the engine's
+        // shape so the user can see what they're about to load without
+        // opening it. Electric / combustion gates the body.
+        private static string BuildCustomDetailsText(CustomEngineDef def)
+        {
+            if (def == null) return "";
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Name: {(string.IsNullOrEmpty(def.Name) ? "(unnamed)" : def.Name)}");
+            if (def.IsElectric)
+            {
+                string mode = def.ElectricMode == ElectricCarMode.Silent ? "Silent" : "Muted hum";
+                sb.AppendLine($"Type: Electric ({mode})");
+            }
+            else
+            {
+                int pulses = 0;
+                if (!string.IsNullOrWhiteSpace(def.Pattern))
+                {
+                    foreach (var ch in def.Pattern) if (ch == ',') pulses++;
+                    pulses++;
+                }
+                sb.AppendLine($"Type: Combustion ({pulses} pulse{(pulses == 1 ? "" : "s")})");
+                if (!string.IsNullOrWhiteSpace(def.Pattern))
+                    sb.AppendLine($"Pattern: {def.Pattern}");
+            }
+            if (!string.IsNullOrEmpty(def.CommunityUploadedVersion))
+                sb.AppendLine($"Your upload: {def.CommunityUploadedVersion}");
+            return sb.ToString().TrimEnd();
+        }
+
+        // Hover tooltip for the installed-packs library. Shows the
+        // shipping author/version + what the pack actually contains
+        // so the user can size up the bundle without opening it.
+        private static string BuildPackDetailsText(InstalledPack p)
+        {
+            if (p == null) return "";
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Pack: {(string.IsNullOrEmpty(p.PackName) ? "(unnamed)" : p.PackName)}");
+            if (!string.IsNullOrEmpty(p.Author))        sb.AppendLine($"Author: {p.Author}");
+            if (!string.IsNullOrEmpty(p.AuthorVersion)) sb.AppendLine($"Version: {p.AuthorVersion}");
+            int games = 0, cars = 0;
+            if (p.Entries != null)
+            {
+                foreach (var e in p.Entries)
+                {
+                    if (e == null) continue;
+                    if (e.Kind == InstalledPackEntry.KindGame) games++;
+                    else if (e.Kind == InstalledPackEntry.KindCar) cars++;
+                }
+            }
+            sb.AppendLine($"Entries: {(p.Entries?.Count ?? 0)} ({games} game preset{(games == 1 ? "" : "s")}, {cars} car preset{(cars == 1 ? "" : "s")})");
+            if (p.ImportedAt != default(DateTime))
+                sb.AppendLine($"Imported: {p.ImportedAt.ToLocalTime():yyyy-MM-dd}");
+            if (!string.IsNullOrWhiteSpace(p.Description))
+            {
+                sb.AppendLine();
+                sb.AppendLine(p.Description.Trim());
+            }
+            return sb.ToString().TrimEnd();
+        }
+
+        // Hover tooltip for the community browser. Surfaces vote
+        // breakdown / download count / target games / tags / description
+        // so the user can vet a row without selecting it (the selection
+        // also exposes a Preview button for a deeper look).
+        private static string BuildCommunityDetailsText(PresetSummary p, string tierBadge)
+        {
+            if (p == null) return "";
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Name: {(string.IsNullOrEmpty(p.Name) ? "(unnamed)" : p.Name)}");
+            sb.AppendLine($"Author: {(string.IsNullOrEmpty(p.Author) ? "(anonymous)" : p.Author)}");
+            int score = p.Upvotes - p.Downvotes;
+            sb.AppendLine($"Score: {score} (▲{p.Upvotes} / ▼{p.Downvotes})   Downloads: {p.Downloads}");
+            if (!string.IsNullOrEmpty(p.Game))   sb.AppendLine($"Game: {p.Game}");
+            if (!string.IsNullOrEmpty(p.CarId))  sb.AppendLine($"Car ID: {p.CarId}");
+            if (string.Equals(p.Kind, "game", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(tierBadge))
+                sb.AppendLine($"Scope: {tierBadge}");
+            if (string.Equals(p.Kind, "pack", StringComparison.OrdinalIgnoreCase))
+            {
+                if (p.EntryCount > 0)
+                    sb.AppendLine($"Entries: {p.EntryCount}");
+                if (!string.IsNullOrEmpty(p.AuthorVersion))
+                    sb.AppendLine($"Pack version: {p.AuthorVersion}");
+            }
+            if (p.EffectTags != null && p.EffectTags.Count > 0)
+                sb.AppendLine($"Tags: {string.Join(", ", p.EffectTags)}");
+            if (!string.IsNullOrWhiteSpace(p.Description))
+            {
+                sb.AppendLine();
+                sb.AppendLine(p.Description.Trim());
+            }
+            return sb.ToString().TrimEnd();
+        }
+
         // Insert spaces before each capital letter so PropertyNames render
         // as "Property Names". Acronyms left intact (e.g. "Rpm" -> "Rpm").
         private static string PrettyFieldName(string s)
@@ -1407,7 +1553,11 @@ namespace TrueforceForAll.Plugin
             var list = sender as DataGrid;
             if (list == null) { HideDetailsPopup(); return; }
             var row = FindRowUnderCursor(list, e);
-            string text = (row as GameRow)?.DetailsText ?? (row as CarRow)?.DetailsText;
+            string text = (row as GameRow)?.DetailsText
+                        ?? (row as CarRow)?.DetailsText
+                        ?? (row as CustomRow)?.DetailsText
+                        ?? (row as PackRow)?.DetailsText
+                        ?? (row as CommunityRow)?.DetailsText;
             if (string.IsNullOrEmpty(text)) { HideDetailsPopup(); return; }
 
             if (!object.ReferenceEquals(_hoveredRow, row))
@@ -3090,6 +3240,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 MyVote == -1
                     ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0x77, 0x77))
                     : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x80, 0x80, 0x80));
+            // Cursor-following details popup, populated from the
+            // PresetSummary the row wraps when each fetch lands. Mirrors
+            // the GameRow/CarRow pattern.
+            public string DetailsText { get; set; }
         }
 
         // Tiered ranking for the game-presets browse list: rows tuned for
@@ -3312,9 +3466,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             _communityFetchInFlight = true;
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = useTrendingFallback
-                    ? "Loading trending..."
-                    : "Loading...";
+                CommunityStatusLabel.Text = "Loading...";
 
             string capturedMode = _communityMode;
             string capturedKind = _communityKind;
@@ -3439,6 +3591,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var row = new CommunityRow { Summary = s };
                 if (capturedKind == "game")
                     row.TierBadge = ComputeTierBadge(s, _plugin?.ActiveGame);
+                row.DetailsText = BuildCommunityDetailsText(s, row.TierBadge);
                 _communityRows.Add(row);
             }
 
@@ -3477,12 +3630,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     emptyMsg = "You haven't uploaded any presets yet.";
                 else if (capturedTrending)
                     emptyMsg = capturedKind == "game"
-                        ? "No trending game presets yet."
+                        ? "No community game presets shared yet."
                         : capturedKind == "engine"
-                            ? "No trending custom engines yet."
+                            ? "No community custom engines shared yet."
                             : capturedKind == "pack"
-                                ? "No trending packs yet."
-                                : "No trending car presets yet.";
+                                ? "No community packs shared yet."
+                                : "No community car presets shared yet.";
                 else
                     emptyMsg = capturedKind == "game"
                         ? "No community game presets yet. Be the first to share."
@@ -3492,7 +3645,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                                 ? "No community packs yet. Be the first to share."
                                 : "No community presets for this car yet. Be the first to share.";
                 string foundMsg = capturedTrending
-                    ? $"{_communityRows.Count} preset(s) found (trending - load a game/car for scoped results)."
+                    ? $"{_communityRows.Count} preset(s) found (load a game/car to filter)."
                     : $"{_communityRows.Count} preset(s) found.";
                 CommunityStatusLabel.Text = _communityRows.Count == 0 ? emptyMsg : foundMsg;
             }
@@ -3528,8 +3681,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CommunityDescriptionText.Text = has && !string.IsNullOrWhiteSpace(sel.Summary.Description)
                     ? sel.Summary.Description
                     : "";
-            if (CommunityVoteUpBtn   != null) CommunityVoteUpBtn.IsEnabled   = has;
-            if (CommunityVoteDownBtn != null) CommunityVoteDownBtn.IsEnabled = has;
             if (CommunityReportBtn   != null) CommunityReportBtn.IsEnabled   = has;
             if (CommunityPreviewBtn  != null) CommunityPreviewBtn.IsEnabled  = has;
             if (CommunityDownloadBtn != null) CommunityDownloadBtn.IsEnabled = has;
@@ -3729,20 +3880,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _communityRows.Remove(sel);
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = "Deleted.";
-        }
-
-        // Legacy bottom-row handlers (still wired to existing buttons in
-        // XAML). Kept harmless - the per-row arrows are the primary
-        // surface now. They route through the selected row for backward
-        // compat.
-        private void CommunityVoteUp_Click(object sender, RoutedEventArgs e)
-        {
-            ToggleVote(SelectedCommunity, +1);
-        }
-
-        private void CommunityVoteDown_Click(object sender, RoutedEventArgs e)
-        {
-            ToggleVote(SelectedCommunity, -1);
         }
 
         // Reddit-style per-row arrow handlers. Clicking the up arrow when

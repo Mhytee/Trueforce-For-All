@@ -135,6 +135,18 @@ namespace TrueforceForAll.Plugin
         // update manually via PresetUpdatesAvailableWindow.
         public bool   AutoUpdateDownloadedPresets { get; set; } = false;
 
+        // Persist the Library|Community sub-pill selection per segment in
+        // the Preset Manager. When the user toggles a segment to
+        // Community, switches to another segment, and comes back, the
+        // toggle restores from these latches. Default false (Library)
+        // matches the original out-of-box selection. Per-segment so the
+        // user's "Cars > Community" choice doesn't drag Games into
+        // Community mode the next time they switch tabs.
+        public bool ManagerCommunityForCars    { get; set; } = false;
+        public bool ManagerCommunityForGames   { get; set; } = false;
+        public bool ManagerCommunityForCustoms { get; set; } = false;
+        public bool ManagerCommunityForPacks   { get; set; } = false;
+
         public float MasterGain { get; set; } = 1.0f;
 
         // Step master gain moves on each press of a bound Controls-tab action

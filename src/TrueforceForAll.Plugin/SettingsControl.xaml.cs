@@ -3264,7 +3264,12 @@ namespace TrueforceForAll.Plugin
                 // Dormant once the user has ignored the nudge too many times
                 // in a row (reset when they vote from one).
                 && (_plugin.Settings?.ConsecutiveVoteNudgeDismissals ?? 0)
-                       < TrueforcePlugin.VoteNudgeMaxConsecutiveDismissals;
+                       < TrueforcePlugin.VoteNudgeMaxConsecutiveDismissals
+                // Suppress when the persistent inline vote row is already
+                // visible: showing both the row + the nudge ends up as two
+                // copies of the same ▲ / ▼ pair, which the owner flagged
+                // as redundant. The persistent row is enough.
+                && (CommunityVoteRow == null || CommunityVoteRow.Visibility != Visibility.Visible);
 
             // Global cooldown: after ANY nudge fired, suppress all nudges.
             if (eligible)
