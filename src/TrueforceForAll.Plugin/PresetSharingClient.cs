@@ -325,13 +325,26 @@ namespace TrueforceForAll.Plugin
             int? bodyVersion = null, int timeoutMs = 15000,
             bool? allowInPacks = null)
         {
-            if (!ShouldSubmit(out var url, out var anonKey)) return false;
-            if (string.IsNullOrWhiteSpace(id)) return false;
+            var result = await UpdatePresetWithVersionAsync(id, name, description, body,
+                effectTags, bodyVersion, timeoutMs, allowInPacks).ConfigureAwait(false);
+            return result.HasValue;
+        }
+
+        /// <summary>Same as UpdatePresetAsync but returns the server's new
+        /// content_version on success (the update_preset RPC returns
+        /// {id, content_version}). Null on any failure.</summary>
+        public async Task<int?> UpdatePresetWithVersionAsync(string id,
+            string name, string description, JObject body, List<string> effectTags,
+            int? bodyVersion = null, int timeoutMs = 15000,
+            bool? allowInPacks = null)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            if (string.IsNullOrWhiteSpace(id)) return null;
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
                 _log?.Invoke("[Trueforce] Update preset attempted while signed out.");
-                return false;
+                return null;
             }
 
             string requestBody;
@@ -352,7 +365,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log?.Invoke($"[Trueforce] Update preset serialize failed: {ex.Message}");
-                return false;
+                return null;
             }
 
             string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/update_preset";
@@ -365,23 +378,44 @@ namespace TrueforceForAll.Plugin
                     req.Headers.Add("Authorization", "Bearer " + bearer);
                     req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
                     using (var resp = await _http.SendAsync(req,
-                        HttpCompletionOption.ResponseHeadersRead,
+                        HttpCompletionOption.ResponseContentRead,
                         cts.Token).ConfigureAwait(false))
                     {
-                        if (resp.IsSuccessStatusCode) return true;
-                        string detail = resp.Content != null
+                        string respBody = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                             : "";
-                        _log?.Invoke($"[Trueforce] Update preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
-                        return false;
+                        if (!resp.IsSuccessStatusCode)
+                        {
+                            _log?.Invoke($"[Trueforce] Update preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            return null;
+                        }
+                        return ParseContentVersionOrZero(respBody);
                     }
                 }
             }
             catch (Exception ex)
             {
                 _log?.Invoke($"[Trueforce] Update preset exception: {ex.Message}");
-                return false;
+                return null;
             }
+        }
+
+        // Server update_* RPCs return {id, content_version} as jsonb. Surface
+        // 0 when parse fails so the caller still treats the update as success
+        // (the bool path used HEAD-only and returned true without reading body).
+        private static int ParseContentVersionOrZero(string respBody)
+        {
+            if (string.IsNullOrWhiteSpace(respBody)) return 0;
+            try
+            {
+                var root = JToken.Parse(respBody);
+                var obj = root.Type == JTokenType.Array ? root[0] : root;
+                var cv = obj?["content_version"];
+                if (cv != null && cv.Type != JTokenType.Null)
+                    return cv.Value<int>();
+            }
+            catch { }
+            return 0;
         }
 
         // ---- Delete (auth-gated) -------------------------------------------
@@ -1211,13 +1245,26 @@ namespace TrueforceForAll.Plugin
             bool? allowInPacks = null,
             string[] targetGames = null)
         {
-            if (!ShouldSubmit(out var url, out var anonKey)) return false;
-            if (string.IsNullOrWhiteSpace(id)) return false;
+            var result = await UpdateGamePresetWithVersionAsync(id, name, description, body,
+                effectTags, bodyVersion, timeoutMs, allowInPacks, targetGames).ConfigureAwait(false);
+            return result.HasValue;
+        }
+
+        /// <summary>Same as UpdateGamePresetAsync but returns the new
+        /// server content_version on success (null on failure).</summary>
+        public async Task<int?> UpdateGamePresetWithVersionAsync(string id,
+            string name, string description, JObject body, List<string> effectTags,
+            int? bodyVersion = null, int timeoutMs = 15000,
+            bool? allowInPacks = null,
+            string[] targetGames = null)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            if (string.IsNullOrWhiteSpace(id)) return null;
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
                 _log?.Invoke("[Trueforce] Update game preset attempted while signed out.");
-                return false;
+                return null;
             }
 
             string requestBody;
@@ -1241,7 +1288,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log?.Invoke($"[Trueforce] Update game preset serialize failed: {ex.Message}");
-                return false;
+                return null;
             }
 
             string fullUrl = url.TrimEnd('/') + UpdateGameRpcPath;
@@ -1254,22 +1301,25 @@ namespace TrueforceForAll.Plugin
                     req.Headers.Add("Authorization", "Bearer " + bearer);
                     req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
                     using (var resp = await _http.SendAsync(req,
-                        HttpCompletionOption.ResponseHeadersRead,
+                        HttpCompletionOption.ResponseContentRead,
                         cts.Token).ConfigureAwait(false))
                     {
-                        if (resp.IsSuccessStatusCode) return true;
-                        string detail = resp.Content != null
+                        string respBody = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                             : "";
-                        _log?.Invoke($"[Trueforce] Update game preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
-                        return false;
+                        if (!resp.IsSuccessStatusCode)
+                        {
+                            _log?.Invoke($"[Trueforce] Update game preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            return null;
+                        }
+                        return ParseContentVersionOrZero(respBody);
                     }
                 }
             }
             catch (Exception ex)
             {
                 _log?.Invoke($"[Trueforce] Update game preset exception: {ex.Message}");
-                return false;
+                return null;
             }
         }
 
@@ -1613,13 +1663,25 @@ namespace TrueforceForAll.Plugin
             int? bodyVersion = null, int timeoutMs = 15000,
             bool? allowInPacks = null)
         {
-            if (!ShouldSubmit(out var url, out var anonKey)) return false;
-            if (string.IsNullOrWhiteSpace(id)) return false;
+            var result = await UpdateCustomEngineWithVersionAsync(id, name, description, body,
+                bodyVersion, timeoutMs, allowInPacks).ConfigureAwait(false);
+            return result.HasValue;
+        }
+
+        /// <summary>Same as UpdateCustomEngineAsync but returns the
+        /// server's new content_version on success (null on failure).</summary>
+        public async Task<int?> UpdateCustomEngineWithVersionAsync(string id,
+            string name, string description, Newtonsoft.Json.Linq.JObject body,
+            int? bodyVersion = null, int timeoutMs = 15000,
+            bool? allowInPacks = null)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            if (string.IsNullOrWhiteSpace(id)) return null;
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
                 _log?.Invoke("[Trueforce] Update engine attempted while signed out.");
-                return false;
+                return null;
             }
 
             string requestBody;
@@ -1638,7 +1700,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log?.Invoke($"[Trueforce] Update engine serialize failed: {ex.Message}");
-                return false;
+                return null;
             }
 
             string fullUrl = url.TrimEnd('/') + UpdateEngineRpcPath;
@@ -1651,21 +1713,24 @@ namespace TrueforceForAll.Plugin
                     req.Headers.Add("Authorization", "Bearer " + bearer);
                     req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
                     using (var resp = await _http.SendAsync(req,
-                        HttpCompletionOption.ResponseHeadersRead,
+                        HttpCompletionOption.ResponseContentRead,
                         cts.Token).ConfigureAwait(false))
                     {
-                        if (resp.IsSuccessStatusCode) return true;
-                        string detail = resp.Content != null
+                        string respBody = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
-                        _log?.Invoke($"[Trueforce] Update engine failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
-                        return false;
+                        if (!resp.IsSuccessStatusCode)
+                        {
+                            _log?.Invoke($"[Trueforce] Update engine failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            return null;
+                        }
+                        return ParseContentVersionOrZero(respBody);
                     }
                 }
             }
             catch (Exception ex)
             {
                 _log?.Invoke($"[Trueforce] Update engine exception: {ex.Message}");
-                return false;
+                return null;
             }
         }
 

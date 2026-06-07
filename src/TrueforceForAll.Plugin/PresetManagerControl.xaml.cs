@@ -1672,14 +1672,36 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 // visible up front rather than via a backend error.
                 bool gShareCommunityOn = _plugin?.Settings?.CommunityEnabled == true;
                 bool gShareSignedIn    = _plugin?.AuthIsSignedIn == true;
+                // Resolve the selected row's snapshot so we can read the
+                // upload-tracking stamps written by StampGamePresetAsUploaded.
+                GameSettingsSnapshot gShareSnap = null;
+                if (anySelected
+                    && _plugin?.Settings?.Presets != null
+                    && !string.IsNullOrEmpty(sel.Name))
+                    _plugin.Settings.Presets.TryGetValue(sel.Name, out gShareSnap);
+                bool gShareHasPriorUpload = gShareSnap != null
+                    && !string.IsNullOrEmpty(gShareSnap.CommunityUploadedById);
+                bool gShareMatchesUpload = false;
+                if (gShareHasPriorUpload
+                    && !string.IsNullOrEmpty(gShareSnap.CommunityUploadedBodyHash))
+                {
+                    string gShareCurrentHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(gShareSnap);
+                    gShareMatchesUpload = string.Equals(
+                        gShareCurrentHash, gShareSnap.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                }
                 GameShareBtn.IsEnabled = anySelected && checkedCount <= 1
-                    && !sel.Builtin && gShareCommunityOn && gShareSignedIn;
+                    && !sel.Builtin && gShareCommunityOn && gShareSignedIn
+                    && !gShareMatchesUpload;
                 if (!gShareCommunityOn)
                     GameShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
                 else if (!gShareSignedIn)
                     GameShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
                 else if (anySelected && sel.Builtin)
                     GameShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
+                else if (gShareMatchesUpload)
+                    GameShareBtn.ToolTip = $"This matches your last upload ({gShareSnap.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                else if (gShareHasPriorUpload)
+                    GameShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
                 else
                     GameShareBtn.ToolTip = "Upload this game preset to the community so other drivers can find it.";
             }
@@ -1735,20 +1757,36 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             bool signedIn    = _plugin?.AuthIsSignedIn == true;
             bool isBuiltinSel = sel?.Builtin == true;
             // Resolve the selected row's CarOverride via the per-car
-            // store so we can read its CommunitySourceId stamp.
+            // store so we can read its CommunitySourceId stamp and the
+            // upload-tracking stamps written at successful upload time.
             bool isCommunitySourced = false;
+            CarOverride carShareOvr = null;
             if (anySelected && checkedCount <= 1 && sel != null
                 && !string.IsNullOrEmpty(sel.CarId)
                 && !string.IsNullOrEmpty(sel.PresetName))
             {
                 var perCar = _plugin?.GetCarPresets(sel.CarId);
                 if (perCar != null && perCar.TryGetValue(sel.PresetName, out var entry)
-                    && entry?.Override != null
-                    && !string.IsNullOrEmpty(entry.Override.CommunitySourceId))
-                    isCommunitySourced = true;
+                    && entry?.Override != null)
+                {
+                    carShareOvr = entry.Override;
+                    if (!string.IsNullOrEmpty(entry.Override.CommunitySourceId))
+                        isCommunitySourced = true;
+                }
+            }
+            bool carShareHasPriorUpload = carShareOvr != null
+                && !string.IsNullOrEmpty(carShareOvr.CommunityUploadedById);
+            bool carShareMatchesUpload = false;
+            if (carShareHasPriorUpload
+                && !string.IsNullOrEmpty(carShareOvr.CommunityUploadedBodyHash))
+            {
+                string carShareCurrentHash = PresetBodyHasher.ComputeCarOverrideHash(carShareOvr);
+                carShareMatchesUpload = string.Equals(
+                    carShareCurrentHash, carShareOvr.CommunityUploadedBodyHash, StringComparison.Ordinal);
             }
             CarShareBtn.IsEnabled = anySelected && checkedCount <= 1
-                && communityOn && signedIn && !isCommunitySourced && !isBuiltinSel;
+                && communityOn && signedIn && !isCommunitySourced && !isBuiltinSel
+                && !carShareMatchesUpload;
             if (!communityOn)
                 CarShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
             else if (!signedIn)
@@ -1757,6 +1795,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CarShareBtn.ToolTip = "Built-in presets ship with the plugin -- no need to re-share.";
             else if (isCommunitySourced)
                 CarShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
+            else if (carShareMatchesUpload)
+                CarShareBtn.ToolTip = $"This matches your last upload ({carShareOvr.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+            else if (carShareHasPriorUpload)
+                CarShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
             else
                 CarShareBtn.ToolTip = "Upload this car preset to the community so other drivers can find it.";
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelEditable;
@@ -1925,7 +1967,48 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 string game = _plugin.ActiveGame ?? "";
                 var dialog = PresetShareWindow.ForGame(_plugin, presetName, game, body, tags);
                 dialog.Owner = owner;
-                dialog.ShowDialog();
+
+                // Update vs Share-as-new chooser: only when this user
+                // already owns a community row for this preset AND the
+                // local body has diverged from what they last uploaded
+                // (matching uploads stay on the Share gate's disabled
+                // path; we don't reach here for them).
+                bool userOwnsUpload = !string.IsNullOrEmpty(snap.CommunityUploadedById)
+                    && string.Equals(snap.CommunityUploadedByUserId,
+                                     _plugin.AuthSignedInUserId, StringComparison.Ordinal);
+                if (userOwnsUpload)
+                {
+                    string currentHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(snap);
+                    bool bodyChanged = !string.Equals(currentHash,
+                        snap.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                    if (bodyChanged)
+                    {
+                        string verLabel = string.IsNullOrEmpty(snap.CommunityUploadedVersion)
+                            ? "Update existing upload"
+                            : "Update existing (" + snap.CommunityUploadedVersion + ")";
+                        var chooser = new UpdateVsNewChooserWindow(
+                            "Re-share '" + presetName + "'",
+                            "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                            verLabel,
+                            "Share as new preset")
+                        {
+                            Owner = owner,
+                        };
+                        bool? pick = chooser.ShowDialog();
+                        if (pick != true) return;
+                        dialog.IsUpdate = chooser.IsUpdate;
+                        dialog.ExistingUploadId = chooser.IsUpdate ? snap.CommunityUploadedById : null;
+                    }
+                }
+
+                bool? ok = dialog.ShowDialog();
+                if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
+                {
+                    string finalHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(snap);
+                    _plugin.StampGamePresetAsUploaded(
+                        presetName, dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                    RefreshGameButtons();
+                }
             }
             catch (Exception ex)
             {
@@ -2175,7 +2258,44 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     Owner = owner,
                 };
-                dialog.ShowDialog();
+
+                bool userOwnsUpload = !string.IsNullOrEmpty(entry.Override.CommunityUploadedById)
+                    && string.Equals(entry.Override.CommunityUploadedByUserId,
+                                     _plugin.AuthSignedInUserId, StringComparison.Ordinal);
+                if (userOwnsUpload)
+                {
+                    string currentHash = PresetBodyHasher.ComputeCarOverrideHash(entry.Override);
+                    bool bodyChanged = !string.Equals(currentHash,
+                        entry.Override.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                    if (bodyChanged)
+                    {
+                        string verLabel = string.IsNullOrEmpty(entry.Override.CommunityUploadedVersion)
+                            ? "Update existing upload"
+                            : "Update existing (" + entry.Override.CommunityUploadedVersion + ")";
+                        var chooser = new UpdateVsNewChooserWindow(
+                            "Re-share '" + presetName + "'",
+                            "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                            verLabel,
+                            "Share as new preset")
+                        {
+                            Owner = owner,
+                        };
+                        bool? pick = chooser.ShowDialog();
+                        if (pick != true) return;
+                        dialog.IsUpdate = chooser.IsUpdate;
+                        dialog.ExistingUploadId = chooser.IsUpdate ? entry.Override.CommunityUploadedById : null;
+                    }
+                }
+
+                bool? ok = dialog.ShowDialog();
+                if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
+                {
+                    string finalHash = PresetBodyHasher.ComputeCarOverrideHash(entry.Override);
+                    _plugin.StampCarPresetAsUploaded(
+                        carId, presetName,
+                        dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                    RefreshCarButtons();
+                }
             }
             catch (Exception ex)
             {
@@ -2527,7 +2647,44 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var dialog = PresetShareWindow.ForEngine(_plugin,
                     row.Def.Name ?? "Custom engine", body);
                 dialog.Owner = owner;
-                dialog.ShowDialog();
+
+                var def = row.Def;
+                bool userOwnsUpload = !string.IsNullOrEmpty(def.CommunityUploadedById)
+                    && string.Equals(def.CommunityUploadedByUserId,
+                                     _plugin.AuthSignedInUserId, StringComparison.Ordinal);
+                if (userOwnsUpload)
+                {
+                    string currentHash = PresetBodyHasher.ComputeCustomEngineHash(def);
+                    bool bodyChanged = !string.Equals(currentHash,
+                        def.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                    if (bodyChanged)
+                    {
+                        string verLabel = string.IsNullOrEmpty(def.CommunityUploadedVersion)
+                            ? "Update existing upload"
+                            : "Update existing (" + def.CommunityUploadedVersion + ")";
+                        var chooser = new UpdateVsNewChooserWindow(
+                            "Re-share '" + (def.Name ?? "Custom engine") + "'",
+                            "You already uploaded this engine to the community. Update your existing upload, or share a fresh copy as a new engine?",
+                            verLabel,
+                            "Share as new engine")
+                        {
+                            Owner = owner,
+                        };
+                        bool? pick = chooser.ShowDialog();
+                        if (pick != true) return;
+                        dialog.IsUpdate = chooser.IsUpdate;
+                        dialog.ExistingUploadId = chooser.IsUpdate ? def.CommunityUploadedById : null;
+                    }
+                }
+
+                bool? ok = dialog.ShowDialog();
+                if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
+                {
+                    string finalHash = PresetBodyHasher.ComputeCustomEngineHash(def);
+                    _plugin.StampCustomEngineAsUploaded(
+                        def.Id, dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                    RefreshCustomButtons();
+                }
             }
             catch (Exception ex)
             {
@@ -3505,6 +3662,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     CommunityStatusLabel.Text = "Refresh in progress. Try voting again in a moment.";
                 return;
             }
+            // Server gate: a FRESH vote requires the user to have downloaded
+            // the item (RPC raises "download before voting"). Surface that
+            // locally before the optimistic UI bounces. The row.MyVote == 0
+            // guard lets an EXISTING vote still be retracted / changed even
+            // if the local download record is gone.
+            if (!_plugin.HasDownloadedCommunity(row.Summary.Id) && row.MyVote == 0)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Download this preset first to rate it.";
+                return;
+            }
+
             int prev = row.MyVote;
             int next = (prev == clicked) ? 0 : clicked;  // toggle off or flip/set
             // Optimistic counter adjustment based on prev->next transition.

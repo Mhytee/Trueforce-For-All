@@ -2212,7 +2212,45 @@ namespace TrueforceForAll.Plugin
             string game = _plugin.ActiveGame ?? "";
             var dialog = PresetShareWindow.ForGame(_plugin, name, game, body, tags);
             dialog.Owner = owner;
-            dialog.ShowDialog();
+
+            // Re-share chooser: only for presets this user already uploaded
+            // AND whose local body has diverged from that last upload.
+            bool userOwnsUpload = !string.IsNullOrEmpty(snap.CommunityUploadedById)
+                && string.Equals(snap.CommunityUploadedByUserId,
+                                 _plugin.AuthSignedInUserId, StringComparison.Ordinal);
+            if (userOwnsUpload)
+            {
+                string currentHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(snap);
+                bool bodyChanged = !string.Equals(currentHash,
+                    snap.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                if (bodyChanged)
+                {
+                    string verLabel = string.IsNullOrEmpty(snap.CommunityUploadedVersion)
+                        ? "Update existing upload"
+                        : "Update existing (" + snap.CommunityUploadedVersion + ")";
+                    var chooser = new UpdateVsNewChooserWindow(
+                        "Re-share '" + name + "'",
+                        "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                        verLabel,
+                        "Share as new preset")
+                    {
+                        Owner = owner,
+                    };
+                    bool? pick = chooser.ShowDialog();
+                    if (pick != true) return;
+                    dialog.IsUpdate = chooser.IsUpdate;
+                    dialog.ExistingUploadId = chooser.IsUpdate ? snap.CommunityUploadedById : null;
+                }
+            }
+
+            bool? ok = dialog.ShowDialog();
+            if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
+            {
+                string finalHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(snap);
+                _plugin.StampGamePresetAsUploaded(
+                    name, dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                UpdateHeaderShareButtons();
+            }
             }
             catch (Exception ex)
             {
@@ -2323,7 +2361,44 @@ namespace TrueforceForAll.Plugin
                 pick.Name, entry.GameName ?? "",
                 pick.CarId, carDisplay, body, tags);
             dialog.Owner = owner;
-            dialog.ShowDialog();
+
+            bool userOwnsUpload = !string.IsNullOrEmpty(entry.Override.CommunityUploadedById)
+                && string.Equals(entry.Override.CommunityUploadedByUserId,
+                                 _plugin.AuthSignedInUserId, StringComparison.Ordinal);
+            if (userOwnsUpload)
+            {
+                string currentHash = PresetBodyHasher.ComputeCarOverrideHash(entry.Override);
+                bool bodyChanged = !string.Equals(currentHash,
+                    entry.Override.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                if (bodyChanged)
+                {
+                    string verLabel = string.IsNullOrEmpty(entry.Override.CommunityUploadedVersion)
+                        ? "Update existing upload"
+                        : "Update existing (" + entry.Override.CommunityUploadedVersion + ")";
+                    var chooser = new UpdateVsNewChooserWindow(
+                        "Re-share '" + pick.Name + "'",
+                        "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                        verLabel,
+                        "Share as new preset")
+                    {
+                        Owner = owner,
+                    };
+                    bool? pickChoice = chooser.ShowDialog();
+                    if (pickChoice != true) return;
+                    dialog.IsUpdate = chooser.IsUpdate;
+                    dialog.ExistingUploadId = chooser.IsUpdate ? entry.Override.CommunityUploadedById : null;
+                }
+            }
+
+            bool? ok = dialog.ShowDialog();
+            if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
+            {
+                string finalHash = PresetBodyHasher.ComputeCarOverrideHash(entry.Override);
+                _plugin.StampCarPresetAsUploaded(
+                    pick.CarId, pick.Name,
+                    dialog.UploadedPresetId, finalHash, dialog.UploadedContentVersion);
+                UpdateHeaderShareButtons();
+            }
             }
             catch (Exception ex)
             {
@@ -2844,6 +2919,321 @@ namespace TrueforceForAll.Plugin
                 HeaderCarPresetCombo.SelectedItem = toSelect;
             }
             finally { _suppressEvents = prevSuppress; }
+
+            // Re-evaluate the inline community vote control + one-time nudge
+            // for the (possibly newly) applied car preset. Runs after the
+            // picker rebuild so the resolved active preset name is current,
+            // and also catches the async _cachedTopForActiveCar fill (which
+            // re-enters via RefreshCarPresetPicker) so the score populates
+            // once community data arrives.
+            UpdateActiveCardVoteControl();
+        }
+
+        // ===================== Active-card community vote =====================
+        // Inline rate-what-you-run control + one-time nudge. The browse-list
+        // (PresetManagerControl) owns the full vote grid; this is the small
+        // surface in the active card for the preset the user is CURRENTLY
+        // running. Reuses the same _plugin.TryVoteCommunity*Async path and
+        // the same optimistic+rollback shape.
+
+        // Community id of the applied car preset the vote control is bound
+        // to (null = control hidden / not a community download). Captured so
+        // the click handlers know what to vote on without re-resolving.
+        private string _activeCardVoteCommunityId;
+        // Cached optimistic score for the bound item. Seeded from the
+        // _cachedTopForActiveCar summary when present; nudged on vote so the
+        // label moves even when the browse summary isn't in the cache.
+        private int _activeCardVoteUp;
+        private int _activeCardVoteDown;
+        // Reentrancy guard: an in-flight vote await mustn't be clobbered by a
+        // refresh-driven rebuild or a double click.
+        private bool _activeCardVoteInFlight;
+
+        // Rebuilds the active-card vote control from the applied car preset.
+        // Shows the up/down arrows + score only when that preset is a
+        // downloaded community item; hides everything otherwise. Also drives
+        // the once-per-session UseCount bump and the one-time nudge.
+        private void UpdateActiveCardVoteControl()
+        {
+            if (_plugin == null || CommunityVoteRow == null) return;
+
+            string carId = _plugin.ActiveCarId;
+            string presetName = string.IsNullOrEmpty(carId)
+                ? null : _plugin.GetActiveCarPresetName(carId);
+
+            // Bump UseCount at most once this session AND resolve the applied
+            // preset's community id in one call.
+            string communityId = (!string.IsNullOrEmpty(carId) && !string.IsNullOrEmpty(presetName))
+                ? _plugin.NoteActiveCommunityCarPresetUsed(carId, presetName)
+                : null;
+
+            bool isDownloadedCommunity =
+                !string.IsNullOrEmpty(communityId)
+                && _plugin.HasDownloadedCommunity(communityId);
+
+            if (!isDownloadedCommunity)
+            {
+                _activeCardVoteCommunityId = null;
+                CommunityVoteRow.Visibility   = Visibility.Collapsed;
+                if (CommunityVoteNudge != null)
+                    CommunityVoteNudge.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            _activeCardVoteCommunityId = communityId;
+
+            // Seed the score from the browse summary cache when it's there
+            // (the applied preset is often one of the top picks for the car).
+            // Don't reset an in-flight optimistic score under the user.
+            if (!_activeCardVoteInFlight)
+            {
+                var summary = FindCachedSummary(communityId);
+                _activeCardVoteUp   = summary?.Upvotes   ?? _activeCardVoteUp;
+                _activeCardVoteDown = summary?.Downvotes ?? _activeCardVoteDown;
+            }
+
+            int myVote = 0;
+            if (_plugin.Settings?.DownloadedCommunityPresets != null
+                && _plugin.Settings.DownloadedCommunityPresets.TryGetValue(communityId, out var rec)
+                && rec != null)
+                myVote = rec.MyVote;
+
+            RenderActiveCardVote(myVote);
+            CommunityVoteRow.Visibility = Visibility.Visible;
+            if (CommunityVoteStatus != null && !_activeCardVoteInFlight)
+                CommunityVoteStatus.Text = "";
+
+            MaybeShowVoteNudge(communityId);
+        }
+
+        // Look up a cached PresetSummary for the given community id (the
+        // active-car top-picks cache the picker shares). Null when absent.
+        private PresetSummary FindCachedSummary(string communityId)
+        {
+            if (_cachedTopForActiveCar == null || string.IsNullOrEmpty(communityId))
+                return null;
+            foreach (var s in _cachedTopForActiveCar)
+                if (s != null && string.Equals(s.Id, communityId, StringComparison.Ordinal))
+                    return s;
+            return null;
+        }
+
+        // Paint the score label + highlight the chosen arrow for myVote.
+        private void RenderActiveCardVote(int myVote)
+        {
+            if (CommunityVoteScore != null)
+                CommunityVoteScore.Text = $"▲ {_activeCardVoteUp} / ▼ {_activeCardVoteDown}";
+            if (CommunityVoteUpArrow != null)
+                CommunityVoteUpArrow.Foreground = (myVote == 1)
+                    ? new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0xA5, 0xD6, 0xA7))
+                    : new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0x88, 0x88, 0x88));
+            if (CommunityVoteDownArrow != null)
+                CommunityVoteDownArrow.Foreground = (myVote == -1)
+                    ? new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0xEF, 0x9A, 0x9A))
+                    : new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0x88, 0x88, 0x88));
+        }
+
+        private void ActiveCardVoteUp_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            _ = CastActiveCardVoteAsync(+1);
+        }
+
+        private void ActiveCardVoteDown_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            _ = CastActiveCardVoteAsync(-1);
+        }
+
+        // Cast / toggle a vote from the active-card control. Mirrors
+        // PresetManagerControl.ToggleVote's optimistic+rollback shape but
+        // against the inline score + the DownloadedPresetRecord.MyVote.
+        // clicked is +1 / -1; clicking the already-selected direction
+        // retracts (value 0).
+        private async System.Threading.Tasks.Task CastActiveCardVoteAsync(int clicked)
+        {
+            if (_plugin == null) return;
+            string communityId = _activeCardVoteCommunityId;
+            if (string.IsNullOrEmpty(communityId)) return;
+            if (_activeCardVoteInFlight) return;
+
+            if (!_plugin.AuthIsSignedIn)
+            {
+                if (CommunityVoteStatus != null)
+                    CommunityVoteStatus.Text = "Sign in (Settings) to vote.";
+                return;
+            }
+
+            int prev = 0;
+            if (_plugin.Settings?.DownloadedCommunityPresets != null
+                && _plugin.Settings.DownloadedCommunityPresets.TryGetValue(communityId, out var rec0)
+                && rec0 != null)
+                prev = rec0.MyVote;
+
+            int next = (prev == clicked) ? 0 : clicked;
+
+            // Optimistic score + arrow update.
+            if (prev == 1)  _activeCardVoteUp   = Math.Max(0, _activeCardVoteUp   - 1);
+            if (prev == -1) _activeCardVoteDown = Math.Max(0, _activeCardVoteDown - 1);
+            if (next == 1)  _activeCardVoteUp   += 1;
+            if (next == -1) _activeCardVoteDown += 1;
+            RenderActiveCardVote(next);
+            if (CommunityVoteStatus != null)
+                CommunityVoteStatus.Text = next == 0
+                    ? "Sending..." : (next == 1 ? "Sending..." : "Sending...");
+
+            _activeCardVoteInFlight = true;
+            bool ok = false;
+            try
+            {
+                // Active-card preset is always a car preset (this control only
+                // shows for an applied car preset), so the car vote RPC is the
+                // right route.
+                ok = await _plugin.TryVoteCommunityPresetAsync(communityId, next);
+            }
+            catch (Exception ex)
+            {
+                ok = false;
+                SimHub.Logging.Current.Info("[Trueforce] Active-card vote failed: " + ex.Message);
+            }
+            finally { _activeCardVoteInFlight = false; }
+
+            if (!ok)
+            {
+                // Roll the optimistic score back to prev.
+                if (next == 1)  _activeCardVoteUp   = Math.Max(0, _activeCardVoteUp   - 1);
+                if (next == -1) _activeCardVoteDown = Math.Max(0, _activeCardVoteDown - 1);
+                if (prev == 1)  _activeCardVoteUp   += 1;
+                if (prev == -1) _activeCardVoteDown += 1;
+                RenderActiveCardVote(prev);
+                if (CommunityVoteStatus != null)
+                    CommunityVoteStatus.Text = "Vote didn't go through; try again.";
+                return;
+            }
+
+            // Persist the new vote on the record.
+            _plugin.SetDownloadedCommunityVote(communityId, next);
+            // Keep the shared browse cache in sync so re-opening the picker /
+            // manager reflects the new score.
+            var cached = FindCachedSummary(communityId);
+            if (cached != null)
+            {
+                cached.Upvotes   = _activeCardVoteUp;
+                cached.Downvotes = _activeCardVoteDown;
+                cached.MyVote    = next;
+            }
+            if (CommunityVoteStatus != null)
+                CommunityVoteStatus.Text = next == 0
+                    ? "Vote retracted." : (next == 1 ? "Thanks for the upvote." : "Downvote recorded.");
+
+            // A successful downvote offers to remove the preset + revert.
+            if (next == -1)
+                OfferUninstallAfterDownvote(communityId);
+        }
+
+        // After a downvote, offer to remove the preset and revert the active
+        // car to its previous setup. Confirm dialog is fine here (this is a
+        // deliberate user action, not an ambient nudge).
+        private void OfferUninstallAfterDownvote(string communityId)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(communityId)) return;
+            string carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(carId)) return;
+
+            string name = null;
+            if (_plugin.Settings?.DownloadedCommunityPresets != null
+                && _plugin.Settings.DownloadedCommunityPresets.TryGetValue(communityId, out var rec)
+                && rec != null)
+                name = rec.LocalPresetName;
+            if (string.IsNullOrEmpty(name)) name = "this preset";
+
+            var r = MessageBox.Show(Window.GetWindow(this),
+                $"Remove \"{name}\" and revert to your previous setup?",
+                "Remove preset", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (r != MessageBoxResult.Yes) return;   // keep the downvote, leave it applied
+
+            _plugin.ClearActiveCarPreset(carId);
+            RefreshFromPlugin();
+        }
+
+        // ----- One-time inline "rate it?" nudge -----
+
+        // Evaluate + show the nudge for the given applied community preset.
+        // All five gates must hold (see task spec). On fire: latch the
+        // per-item flag + global cooldown clock, persist, and reveal the
+        // inline prompt. Never a MessageBox.
+        private void MaybeShowVoteNudge(string communityId)
+        {
+            if (CommunityVoteNudge == null) return;
+            // Default hidden; only the success path below reveals it.
+            if (_plugin?.Settings?.DownloadedCommunityPresets == null
+                || string.IsNullOrEmpty(communityId)
+                || !_plugin.Settings.DownloadedCommunityPresets.TryGetValue(communityId, out var rec)
+                || rec == null)
+            {
+                CommunityVoteNudge.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            bool eligible =
+                   rec.MyVote == 0
+                && !rec.PromptedForVote
+                && rec.UseCount >= TrueforcePlugin.VoteNudgeMinUses
+                // Dormant once the user has ignored the nudge too many times
+                // in a row (reset when they vote from one).
+                && (_plugin.Settings?.ConsecutiveVoteNudgeDismissals ?? 0)
+                       < TrueforcePlugin.VoteNudgeMaxConsecutiveDismissals;
+
+            // Global cooldown: after ANY nudge fired, suppress all nudges.
+            if (eligible)
+            {
+                var last = _plugin.Settings.LastVoteNudgeUtc;
+                if (last.HasValue
+                    && (DateTime.UtcNow - last.Value)
+                        <= TimeSpan.FromHours(TrueforcePlugin.VoteNudgeGlobalCooldownHours))
+                    eligible = false;
+            }
+
+            if (!eligible)
+            {
+                CommunityVoteNudge.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // Fire: latch so it never returns for this item + start the
+            // global cooldown, then show inline.
+            _plugin.MarkVoteNudgeShown(communityId);
+            if (CommunityVoteNudgeText != null)
+                CommunityVoteNudgeText.Text =
+                    $"You've been running \"{rec.LocalPresetName}\" - rate it?";
+            CommunityVoteNudge.Visibility = Visibility.Visible;
+        }
+
+        private void ActiveCardNudgeGood_Click(object sender, RoutedEventArgs e)
+        {
+            if (CommunityVoteNudge != null) CommunityVoteNudge.Visibility = Visibility.Collapsed;
+            // Engaged with a nudge -> clear the dismissal streak.
+            _plugin?.ResetVoteNudgeDismissals();
+            _ = CastActiveCardVoteAsync(+1);
+        }
+
+        private void ActiveCardNudgeBad_Click(object sender, RoutedEventArgs e)
+        {
+            if (CommunityVoteNudge != null) CommunityVoteNudge.Visibility = Visibility.Collapsed;
+            // Engaged with a nudge -> clear the dismissal streak.
+            _plugin?.ResetVoteNudgeDismissals();
+            _ = CastActiveCardVoteAsync(-1);
+        }
+
+        private void ActiveCardNudgeLater_Click(object sender, RoutedEventArgs e)
+        {
+            // Dismiss. PromptedForVote was already latched when the nudge
+            // fired, so it won't return for this item; bump the consecutive-
+            // dismissal streak so the nudge goes dormant if ignored repeatedly.
+            if (CommunityVoteNudge != null) CommunityVoteNudge.Visibility = Visibility.Collapsed;
+            _plugin?.NoteVoteNudgeDismissed();
         }
 
         // Friendly display name for a game code (the car-preset GameName), for

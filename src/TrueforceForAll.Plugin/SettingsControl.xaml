@@ -682,6 +682,57 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Community vote row: shown only when the applied car
+                         preset is a community download. Lets the user rate
+                         the tune they're running without leaving the card.
+                         Score + up/down arrows mirror the browse list; the
+                         arrow the user picked is highlighted. Built / shown /
+                         hidden in code (UpdateActiveCardVoteControl). -->
+                    <Border x:Name="CommunityVoteRow" Visibility="Collapsed"
+                            Background="#22303030" CornerRadius="4" Padding="10,6" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Rate this community preset:" FontSize="12"
+                                       Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="CommunityVoteUpArrow" Text="▲" FontSize="14"
+                                       Foreground="#888888" Cursor="Hand" VerticalAlignment="Center"
+                                       MouseLeftButtonUp="ActiveCardVoteUp_Click"
+                                       ToolTip="Good tune. Click again to undo your vote."/>
+                            <TextBlock x:Name="CommunityVoteScore" Text="0 / 0" FontSize="12"
+                                       Foreground="#CFCFCF" VerticalAlignment="Center"
+                                       TextAlignment="Center" MinWidth="46" Margin="6,0,6,0"/>
+                            <TextBlock x:Name="CommunityVoteDownArrow" Text="▼" FontSize="14"
+                                       Foreground="#888888" Cursor="Hand" VerticalAlignment="Center"
+                                       MouseLeftButtonUp="ActiveCardVoteDown_Click"
+                                       ToolTip="Not for me. Click again to undo your vote."/>
+                            <TextBlock x:Name="CommunityVoteStatus" Text="" FontSize="11"
+                                       Foreground="#9E9E9E" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- One-time inline "rate it?" nudge. Non-blocking (no
+                         MessageBox). Fires at most once per item and obeys a
+                         global cooldown; built / shown in code
+                         (MaybeShowVoteNudge). -->
+                    <Border x:Name="CommunityVoteNudge" Visibility="Collapsed"
+                            Background="#2E3A2E" BorderBrush="#3D8B40" BorderThickness="1"
+                            CornerRadius="4" Padding="10,7" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="CommunityVoteNudgeText" FontSize="12"
+                                       Foreground="#E8F5E9" TextWrapping="Wrap"
+                                       VerticalAlignment="Center"
+                                       Text="Rate the preset you've been running?"/>
+                            <Button x:Name="CommunityVoteNudgeGood" Content="▲ Good"
+                                    Style="{StaticResource LinkButton}" Margin="14,0,0,0"
+                                    Foreground="#A5D6A7" Click="ActiveCardNudgeGood_Click"/>
+                            <Button x:Name="CommunityVoteNudgeBad" Content="▼ Not for me"
+                                    Style="{StaticResource LinkButton}" Margin="14,0,0,0"
+                                    Foreground="#EF9A9A" Click="ActiveCardNudgeBad_Click"/>
+                            <Button x:Name="CommunityVoteNudgeLater" Content="Later"
+                                    Style="{StaticResource LinkButton}" Margin="14,0,0,0"
+                                    Click="ActiveCardNudgeLater_Click"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Status pill row: status badge (+ optional gold "Enhanced
                          N Hz" hype badge) on the left; Manage presets… shares the
                          line on the right to save a row of vertical space. -->

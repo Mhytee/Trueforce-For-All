@@ -128,6 +128,13 @@ namespace TrueforceForAll.Plugin
         public string CommunityBackendUrl     { get; set; } = "";
         public string CommunityBackendAnonKey { get; set; } = "";
 
+        // Opt-in auto-apply for community preset updates the user previously
+        // downloaded. Default off. Only applies when the local body still
+        // matches the original-download hash (no local edits since download);
+        // any local edit makes the entry sticky and the user must accept the
+        // update manually via PresetUpdatesAvailableWindow.
+        public bool   AutoUpdateDownloadedPresets { get; set; } = false;
+
         public float MasterGain { get; set; } = 1.0f;
 
         // Step master gain moves on each press of a bound Controls-tab action
@@ -450,6 +457,21 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, DownloadedPresetRecord> DownloadedCommunityPresets { get; set; }
             = new Dictionary<string, DownloadedPresetRecord>();
 
+        // Global cooldown clock for the one-time "rate the preset you've
+        // been running" nudge. After ANY nudge fires we stamp UtcNow here
+        // and suppress all further nudges for VoteNudgeGlobalCooldownHours,
+        // so a user who downloads several presets in one sitting isn't
+        // nagged for each. Null = no nudge has ever fired.
+        public DateTime? LastVoteNudgeUtc { get; set; } = null;
+
+        // Consecutive times the user dismissed a vote nudge with "Later"
+        // without voting. Reset to 0 whenever they vote from a nudge. Once it
+        // reaches VoteNudgeMaxConsecutiveDismissals the nudge goes dormant - a
+        // user who keeps ignoring it has signalled they won't engage, so we
+        // stop nagging; anyone who votes resets it and keeps being asked about
+        // future presets.
+        public int      ConsecutiveVoteNudgeDismissals { get; set; } = 0;
+
         // Per-local-user data slots. Key = lower-cased email (the
         // user's Supabase identity) or "" for anonymous activity.
         // Mounting / migration is handled by TrueforcePlugin's slot
@@ -646,6 +668,27 @@ namespace TrueforceForAll.Plugin
         /// it as null so legacy library files keep loading unchanged.</summary>
         public string CommunitySourceId { get; set; }
 
+        /// <summary>Server uuid of the community row this user uploaded
+        /// this engine to (distinct from CommunitySourceId which tracks
+        /// downloads). Null = never uploaded by current user. Used by the
+        /// Share button gate to detect a user-owned re-uploadable row.</summary>
+        public string CommunityUploadedById { get; set; }
+
+        /// <summary>The user uuid that owns CommunityUploadedById, stamped
+        /// from AuthSignedInUserId at upload time. Lets the gate tell
+        /// "I uploaded this" from "I downloaded my own upload".</summary>
+        public string CommunityUploadedByUserId { get; set; }
+
+        /// <summary>SHA256 hex of the body at last successful upload (or
+        /// update). Null until first upload. Drives the "Share disabled
+        /// when current body matches last upload" gate.</summary>
+        public string CommunityUploadedBodyHash { get; set; }
+
+        /// <summary>Auto-computed display version ("v1", "v2", ...) derived
+        /// from the server's content_version at upload time. Null until
+        /// first upload, never user-editable.</summary>
+        public string CommunityUploadedVersion { get; set; }
+
         /// <summary>Optional credit field. Set on export by stamping the
         /// curator's SharingAuthor when the def doesn't already have one,
         /// preserved on import so a recipient who acquires "MyV12 by Mhytee"
@@ -780,6 +823,26 @@ namespace TrueforceForAll.Plugin
         // may be re-bundled in a pack the local user is building.
         // Conservative default false matches the server default.
         public bool     AllowInPacks        { get; set; } = false;
+        // Cached uploader uuid from PresetSummary.OwnerUserId at download.
+        // Lets the gate tell "I downloaded my own upload" from "someone else's".
+        public string   OwnerUserId         { get; set; }
+        // SHA256 hex of the body AS DOWNLOADED. Auto-update only fires when
+        // the user has not locally edited the body since this hash was stamped.
+        public string   OriginalBodyHash    { get; set; }
+
+        // ---- Community voting UX (rate-what-you-run) -------------------
+        // Last known vote the local user cast on this item: -1 / 0 / 1.
+        // Mirrors the server side so the active-card vote control can
+        // render the chosen direction without a round trip. Default 0.
+        public int      MyVote              { get; set; } = 0;
+        // Set true once the one-time "rate it?" nudge has been shown for
+        // this item (whether the user voted, downvoted, or dismissed with
+        // Later). Prevents the nudge from ever returning for this item.
+        public bool     PromptedForVote     { get; set; } = false;
+        // Times this downloaded preset has been the active car's applied
+        // preset across plugin sessions. Incremented at most once per
+        // session. Gates the nudge (>= VoteNudgeMinUses).
+        public int      UseCount            { get; set; } = 0;
     }
 
     /// <summary>Truth about a single car: chassis-level facts plus a list
@@ -863,6 +926,27 @@ namespace TrueforceForAll.Plugin
         /// the item by stable server id instead of fuzzy local name,
         /// surviving rename / duplicate / edit.</summary>
         public string CommunitySourceId { get; set; }
+
+        /// <summary>Server uuid of the community row this user uploaded
+        /// this game snapshot to (distinct from CommunitySourceId, which
+        /// tracks downloads). Null = never uploaded by current user. Used
+        /// by the Share button gate to detect a user-owned re-uploadable row.</summary>
+        public string CommunityUploadedById { get; set; }
+
+        /// <summary>The user uuid that owns CommunityUploadedById, stamped
+        /// from AuthSignedInUserId at upload time. Lets the gate tell
+        /// "I uploaded this" from "I downloaded my own upload".</summary>
+        public string CommunityUploadedByUserId { get; set; }
+
+        /// <summary>SHA256 hex of the body at last successful upload (or
+        /// update). Null until first upload. Drives the "Share disabled
+        /// when current body matches last upload" gate.</summary>
+        public string CommunityUploadedBodyHash { get; set; }
+
+        /// <summary>Auto-computed display version ("v1", "v2", ...) derived
+        /// from the server's content_version at upload time. Null until
+        /// first upload, never user-editable.</summary>
+        public string CommunityUploadedVersion { get; set; }
     }
 
     public sealed class AudioCaptureSettings
@@ -1404,6 +1488,27 @@ namespace TrueforceForAll.Plugin
         /// the item by stable server id instead of fuzzy local name,
         /// surviving rename / duplicate / edit.</summary>
         public string CommunitySourceId { get; set; }
+
+        /// <summary>Server uuid of the community row this user uploaded
+        /// this car override to (distinct from CommunitySourceId, which
+        /// tracks downloads). Null = never uploaded by current user. Used
+        /// by the Share button gate to detect a user-owned re-uploadable row.</summary>
+        public string CommunityUploadedById { get; set; }
+
+        /// <summary>The user uuid that owns CommunityUploadedById, stamped
+        /// from AuthSignedInUserId at upload time. Lets the gate tell
+        /// "I uploaded this" from "I downloaded my own upload".</summary>
+        public string CommunityUploadedByUserId { get; set; }
+
+        /// <summary>SHA256 hex of the body at last successful upload (or
+        /// update). Null until first upload. Drives the "Share disabled
+        /// when current body matches last upload" gate.</summary>
+        public string CommunityUploadedBodyHash { get; set; }
+
+        /// <summary>Auto-computed display version ("v1", "v2", ...) derived
+        /// from the server's content_version at upload time. Null until
+        /// first upload, never user-editable.</summary>
+        public string CommunityUploadedVersion { get; set; }
 
         public bool IsEmpty =>
             EnginePulse == null && RoadBumps == null && TractionLoss == null &&

@@ -7850,6 +7850,19 @@ namespace TrueforceForAll.Plugin
                 bodyVersion, allowInPacks: allowInPacks);
         }
 
+        /// <summary>Same as UpdateCommunityPresetAsync but surfaces the
+        /// server-bumped content_version on success (null on failure).
+        /// Used by the share dialog's update path to stamp the local
+        /// preset's CommunityUploadedVersion.</summary>
+        internal async Task<int?> UpdateCommunityPresetWithVersionAsync(string id,
+            string name, string description, JObject body, List<string> effectTags,
+            int? bodyVersion = null, bool? allowInPacks = null)
+        {
+            if (_presetSharing == null) return null;
+            return await _presetSharing.UpdatePresetWithVersionAsync(id, name, description, body, effectTags,
+                bodyVersion, allowInPacks: allowInPacks);
+        }
+
         internal async Task<bool> DeleteCommunityPresetAsync(string id)
         {
             if (_presetSharing == null) return false;
@@ -7895,6 +7908,21 @@ namespace TrueforceForAll.Plugin
         {
             if (_presetSharing == null) return false;
             return await _presetSharing.UpdateGamePresetAsync(
+                id, name, description, body, effectTags, bodyVersion,
+                allowInPacks: allowInPacks,
+                targetGames: targetGames);
+        }
+
+        /// <summary>Version-aware game-preset update; returns server's
+        /// new content_version on success.</summary>
+        internal async Task<int?> UpdateCommunityGamePresetWithVersionAsync(string id,
+            string name, string description, JObject body,
+            List<string> effectTags, int? bodyVersion = null,
+            bool? allowInPacks = null,
+            string[] targetGames = null)
+        {
+            if (_presetSharing == null) return null;
+            return await _presetSharing.UpdateGamePresetWithVersionAsync(
                 id, name, description, body, effectTags, bodyVersion,
                 allowInPacks: allowInPacks,
                 targetGames: targetGames);
@@ -7953,12 +7981,104 @@ namespace TrueforceForAll.Plugin
                 allowInPacks: allowInPacks);
         }
 
+        /// <summary>Version-aware custom engine update; returns server's
+        /// new content_version on success.</summary>
+        internal async Task<int?> UpdateCommunityCustomEngineWithVersionAsync(string id,
+            string name, string description, JObject body, int? bodyVersion = null,
+            bool? allowInPacks = null)
+        {
+            if (_presetSharing == null) return null;
+            return await _presetSharing.UpdateCustomEngineWithVersionAsync(
+                id, name, description, body, bodyVersion,
+                allowInPacks: allowInPacks);
+        }
+
         internal List<PresetSummary> FetchCustomEnginesByIds(IList<string> ids)
             => _presetSharing?.FetchCustomEnginesByIds(ids);
 
         internal Task<Dictionary<string, int>> FetchMyCommunityEngineVotesAsync(IList<string> engineIds)
             => _presetSharing?.FetchMyEngineVotesAsync(engineIds)
                 ?? Task.FromResult<Dictionary<string, int>>(null);
+
+        /// <summary>Persist the four CommunityUploaded* fields onto the
+        /// named game preset after a successful Share dialog. Stamps the
+        /// server id, the current signed-in user as the upload owner,
+        /// the body hash so the Share-button gate can detect later
+        /// edits, and the auto-versioned "v{N}" string derived from the
+        /// server's content_version. Saves the snapshot back through
+        /// SaveCommonSettings so the stamps survive a restart.</summary>
+        public void StampGamePresetAsUploaded(string presetName, string uploadedId,
+            string bodyHash, int contentVersion)
+        {
+            if (Settings?.Presets == null) return;
+            if (string.IsNullOrEmpty(presetName) || string.IsNullOrEmpty(uploadedId)) return;
+            if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) return;
+            snap.CommunityUploadedById       = uploadedId;
+            snap.CommunityUploadedByUserId   = AuthSignedInUserId;
+            snap.CommunityUploadedBodyHash   = bodyHash;
+            snap.CommunityUploadedVersion    = "v" + contentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+        }
+
+        /// <summary>Persist the four CommunityUploaded* fields onto the
+        /// (carId, presetName) car preset after a successful Share dialog.
+        /// Writes through CarPresetStore so the .json on disk picks up the
+        /// new fields; CarOverride is serialized whole, so deserializing on
+        /// the next launch re-hydrates the stamps.</summary>
+        public void StampCarPresetAsUploaded(string carId, string presetName,
+            string uploadedId, string bodyHash, int contentVersion)
+        {
+            if (_carStore == null) return;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)
+                || string.IsNullOrEmpty(uploadedId)) return;
+            // Re-load through the store (built-ins merged in) so we can
+            // pick out the exact entry and keep its GameName / metadata
+            // intact when we round-trip back through Save below.
+            var loaded = _carStore.LoadAll();
+            if (loaded == null || !loaded.TryGetValue(carId, out var perCar) || perCar == null) return;
+            if (!perCar.TryGetValue(presetName, out var entry)
+                || entry == null || entry.Override == null) return;
+            // Built-ins ship with the plugin; the Share gate already blocks
+            // them, but guard at the stamp boundary too so a stray call
+            // never rewrites a factory preset on disk.
+            if (entry.IsBuiltin) return;
+            entry.Override.CommunityUploadedById     = uploadedId;
+            entry.Override.CommunityUploadedByUserId = AuthSignedInUserId;
+            entry.Override.CommunityUploadedBodyHash = bodyHash;
+            entry.Override.CommunityUploadedVersion  = "v" + contentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _carStore.Save(carId, presetName, entry.GameName ?? "",
+                entry.Override, isBuiltin: false,
+                packName: entry.PackName,
+                author: entry.Author,
+                description: entry.Description,
+                authorVersion: entry.AuthorVersion);
+        }
+
+        /// <summary>Persist the four CommunityUploaded* fields onto the
+        /// custom engine identified by engineId after a successful Share
+        /// dialog. Custom engines live in Settings.CustomEngines so the
+        /// stamp goes through SaveCommonSettings like game presets.</summary>
+        public void StampCustomEngineAsUploaded(string engineId, string uploadedId,
+            string bodyHash, int contentVersion)
+        {
+            if (Settings?.CustomEngines == null) return;
+            if (string.IsNullOrEmpty(engineId) || string.IsNullOrEmpty(uploadedId)) return;
+            CustomEngineDef def = null;
+            foreach (var e in Settings.CustomEngines)
+            {
+                if (e != null && string.Equals(e.Id, engineId, StringComparison.Ordinal))
+                {
+                    def = e;
+                    break;
+                }
+            }
+            if (def == null) return;
+            def.CommunityUploadedById     = uploadedId;
+            def.CommunityUploadedByUserId = AuthSignedInUserId;
+            def.CommunityUploadedBodyHash = bodyHash;
+            def.CommunityUploadedVersion  = "v" + contentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+        }
 
         /// <summary>Save a freshly-downloaded community custom engine
         /// into the user's local engines library. The CustomEngineDef
@@ -8168,6 +8288,135 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // ===================== Community voting UX =====================
+        // Client side of the "rate what you run" feature. The server RPC
+        // already refuses a fresh vote from a user who hasn't downloaded
+        // the item ("download before voting"); these helpers + the
+        // DownloadedPresetRecord fields let the UI gate the vote BEFORE it
+        // bounces, mirror the chosen direction without a round trip, and
+        // surface a one-time, non-blocking "rate it?" nudge.
+
+        // Nudge only becomes eligible once the user has actually run a
+        // downloaded preset a couple of times (so we never nag on a fresh
+        // download they haven't tried yet).
+        public const int VoteNudgeMinUses = 2;
+        // After ANY nudge fires, suppress every nudge for this long so a
+        // user who downloads several presets in one sitting isn't nagged
+        // for each.
+        public const int VoteNudgeGlobalCooldownHours = 48;
+        // After this many consecutive "Later" dismissals (no vote in between)
+        // the nudge goes dormant - the user has shown they won't engage with
+        // it. Any nudge vote resets the streak.
+        public const int VoteNudgeMaxConsecutiveDismissals = 3;
+
+        // Preset ids whose UseCount has already been bumped this plugin
+        // session, so a single seating only counts once no matter how many
+        // times the active-card refresh fires. Seeded empty at startup.
+        private readonly HashSet<string> _useCountedThisSession =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>True when the given community item id is in the active
+        /// user's downloaded-presets map. Used by the browse-list vote gate
+        /// and the active-card vote control to decide whether a fresh vote
+        /// is allowed locally before the server round trip.</summary>
+        public bool HasDownloadedCommunity(string id) =>
+            Settings?.DownloadedCommunityPresets != null
+            && !string.IsNullOrEmpty(id)
+            && Settings.DownloadedCommunityPresets.ContainsKey(id);
+
+        /// <summary>Record the local user's last-known vote for a downloaded
+        /// community item (-1/0/1) and persist. No-op when the id isn't a
+        /// tracked download. Called by the active-card vote control / nudge
+        /// after a successful server vote so the UI stays in sync.</summary>
+        public void SetDownloadedCommunityVote(string id, int value)
+        {
+            if (Settings?.DownloadedCommunityPresets == null
+                || string.IsNullOrEmpty(id)) return;
+            if (Settings.DownloadedCommunityPresets.TryGetValue(id, out var rec)
+                && rec != null)
+            {
+                rec.MyVote = value;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+        }
+
+        /// <summary>Mark a downloaded community item's one-time vote nudge as
+        /// shown (so it never returns for this item) and stamp the global
+        /// cooldown clock. Persists. No-op when the id isn't tracked.</summary>
+        public void MarkVoteNudgeShown(string id)
+        {
+            if (Settings?.DownloadedCommunityPresets == null
+                || string.IsNullOrEmpty(id)) return;
+            if (Settings.DownloadedCommunityPresets.TryGetValue(id, out var rec)
+                && rec != null)
+            {
+                rec.PromptedForVote = true;
+                Settings.LastVoteNudgeUtc = DateTime.UtcNow;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+        }
+
+        /// <summary>User dismissed a vote nudge with "Later". Bumps the
+        /// consecutive-dismissal streak; once it hits
+        /// VoteNudgeMaxConsecutiveDismissals the nudge goes dormant.</summary>
+        public void NoteVoteNudgeDismissed()
+        {
+            if (Settings == null) return;
+            Settings.ConsecutiveVoteNudgeDismissals += 1;
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+        }
+
+        /// <summary>User voted from a nudge - they engage with it, so clear
+        /// the dismissal streak and keep asking about future presets.</summary>
+        public void ResetVoteNudgeDismissals()
+        {
+            if (Settings == null || Settings.ConsecutiveVoteNudgeDismissals == 0) return;
+            Settings.ConsecutiveVoteNudgeDismissals = 0;
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+        }
+
+        /// <summary>When the named car preset is a community download, bump
+        /// its UseCount at most once per plugin session and persist. Called
+        /// from the active-card refresh after the applied car preset is
+        /// resolved; returns the matched download id (or null) so the caller
+        /// can drive the vote control / nudge off the same lookup.</summary>
+        public string NoteActiveCommunityCarPresetUsed(string carId, string presetName)
+        {
+            if (Settings?.DownloadedCommunityPresets == null
+                || string.IsNullOrEmpty(carId)
+                || string.IsNullOrEmpty(presetName)) return null;
+            // Resolve the applied car preset's community source id via the
+            // override's CommunitySourceId (the same stable identity the
+            // share-gate uses; survives rename / duplicate).
+            string communityId = GetCommunitySourceIdForCarPreset(carId, presetName);
+            if (string.IsNullOrEmpty(communityId)) return null;
+            if (!Settings.DownloadedCommunityPresets.TryGetValue(communityId, out var rec)
+                || rec == null)
+                return null;
+            if (_useCountedThisSession.Add(communityId))
+            {
+                rec.UseCount += 1;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+            return communityId;
+        }
+
+        /// <summary>Community source id stamped on a car preset's override
+        /// at download time, or null when the preset is locally authored /
+        /// missing. Null carId/presetName -> null.</summary>
+        public string GetCommunitySourceIdForCarPreset(string carId, string presetName)
+        {
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName))
+                return null;
+            var perCar = GetCarPresets(carId);
+            if (perCar == null) return null;
+            if (perCar.TryGetValue(presetName, out var entry)
+                && entry?.Override != null
+                && !string.IsNullOrEmpty(entry.Override.CommunitySourceId))
+                return entry.Override.CommunitySourceId;
+            return null;
+        }
+
         // ---- Per-local-user data slots ------------------------------------
         //
         // When the same install is used by more than one Supabase
@@ -8339,6 +8588,11 @@ namespace TrueforceForAll.Plugin
                 ?? new Dictionary<string, DownloadedPresetRecord>();
             Settings.SharingAuthor = newSlot.SharingAuthor ?? "";
             Settings.ActiveSlotKey = newKey;
+
+            // Different user is now active: their once-per-session UseCount
+            // bumps should start fresh (the prior user's bumps were against
+            // a different DownloadedCommunityPresets map).
+            _useCountedThisSession.Clear();
 
             // Re-derive Settings.GameDefaults + CarDefaults so the
             // active user's per-user overrides (if any) overlay the

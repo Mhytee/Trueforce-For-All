@@ -32,6 +32,15 @@ namespace TrueforceForAll.Plugin
 
         public string UploadedPresetId { get; private set; }
 
+        // Update-vs-Share-as-new routing. When IsUpdate=true the upload
+        // flow calls update_* RPCs against ExistingUploadId instead of
+        // creating a new community row. UploadedContentVersion captures
+        // the server-bumped content_version so the caller can stamp the
+        // local preset.
+        public bool   IsUpdate              { get; set; }
+        public string ExistingUploadId      { get; set; }
+        public int    UploadedContentVersion { get; set; }
+
         private readonly TrueforcePlugin _plugin;
         private readonly string _kind;        // "car" or "game"
         private readonly string _presetName;
@@ -538,7 +547,8 @@ namespace TrueforceForAll.Plugin
                 uploadBtn.IsEnabled = false;
                 cancelBtn.IsEnabled = false;
                 statusText.Foreground = MutedFg;
-                statusText.Text = "Uploading...";
+                bool isUpdatePath = IsUpdate && !string.IsNullOrEmpty(ExistingUploadId);
+                statusText.Text = isUpdatePath ? "Updating..." : "Uploading...";
 
                 string desc = (descInput.Text ?? "").Trim();
                 // Author is server-authoritative now: profile.username if
@@ -548,11 +558,40 @@ namespace TrueforceForAll.Plugin
                 // upload_game_preset (separate table + RPC).
                 bool allowPacks = allowInPacksCheck?.IsChecked == true;
                 string newId = null;
+                int? newContentVersion = null;
                 try
                 {
-                    if (isEngine)
+                    if (isUpdatePath)
+                    {
+                        // Update path: re-target the existing community row
+                        // via update_* RPCs. Server auto-bumps content_version.
+                        if (isEngine)
+                        {
+                            newContentVersion = await _plugin.UpdateCommunityCustomEngineWithVersionAsync(
+                                ExistingUploadId, _presetName, desc, _body,
+                                allowInPacks: allowPacks);
+                        }
+                        else if (isGame)
+                        {
+                            string[] tg = CollectTargetGames(universalCheck, gamesList);
+                            newContentVersion = await _plugin.UpdateCommunityGamePresetWithVersionAsync(
+                                ExistingUploadId, _presetName, desc, _body, _effectTags,
+                                allowInPacks: allowPacks, targetGames: tg);
+                        }
+                        else
+                        {
+                            newContentVersion = await _plugin.UpdateCommunityPresetWithVersionAsync(
+                                ExistingUploadId, _presetName, desc, _body, _effectTags,
+                                allowInPacks: allowPacks);
+                        }
+                        if (newContentVersion.HasValue)
+                            newId = ExistingUploadId;
+                    }
+                    else if (isEngine)
+                    {
                         newId = await _plugin.UploadCustomEngineToCommunityAsync(
                             _presetName, _body, desc, allowInPacks: allowPacks);
+                    }
                     else if (isGame)
                     {
                         // Empty array = Universal; otherwise collect the
@@ -563,15 +602,17 @@ namespace TrueforceForAll.Plugin
                             allowInPacks: allowPacks, targetGames: tg);
                     }
                     else
+                    {
                         newId = await _plugin.UploadCarPresetToCommunityAsync(
                             _presetName, _game, _carId, _body,
                             null, desc, _effectTags,
                             allowInPacks: allowPacks);
+                    }
                 }
                 catch (Exception ex)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Upload exception: " + ex.Message;
+                    statusText.Text = (isUpdatePath ? "Update" : "Upload") + " exception: " + ex.Message;
                     uploadBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     return;
@@ -580,14 +621,20 @@ namespace TrueforceForAll.Plugin
                 if (string.IsNullOrEmpty(newId))
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = _plugin.DescribeLastUploadError();
+                    statusText.Text = isUpdatePath
+                        ? "Update failed (sign in expired or permission denied)."
+                        : _plugin.DescribeLastUploadError();
                     uploadBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     return;
                 }
                 UploadedPresetId = newId;
+                if (newContentVersion.HasValue)
+                    UploadedContentVersion = newContentVersion.Value;
                 statusText.Foreground = OkFg;
-                statusText.Text = "Uploaded. Thanks for contributing.";
+                statusText.Text = isUpdatePath
+                    ? "Updated. Thanks for contributing."
+                    : "Uploaded. Thanks for contributing.";
                 DialogResult = true;
                 Close();
             };
