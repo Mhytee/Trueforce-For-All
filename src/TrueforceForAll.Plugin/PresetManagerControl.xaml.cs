@@ -1455,11 +1455,14 @@ namespace TrueforceForAll.Plugin
             return sb.ToString().TrimEnd();
         }
 
-        // Hover tooltip for the community browser. Surfaces vote
-        // breakdown / download count / target games / tags / description
-        // so the user can vet a row without selecting it (the selection
-        // also exposes a Preview button for a deeper look).
-        private static string BuildCommunityDetailsText(PresetSummary p, string tierBadge)
+        // Hover tooltip for the community browser. Renders summary
+        // metadata (votes, downloads, scope, tags, description) plus
+        // - when body != null - the per-section detail that matches
+        // what the local-library tooltips show (gain values etc).
+        // Bodies are lazy-fetched on first hover; the bare summary
+        // text serves as the placeholder until the fetch lands.
+        private static string BuildCommunityDetailsText(PresetSummary p, string tierBadge,
+            Newtonsoft.Json.Linq.JObject body = null)
         {
             if (p == null) return "";
             var sb = new System.Text.StringBuilder();
@@ -1486,7 +1489,94 @@ namespace TrueforceForAll.Plugin
                 sb.AppendLine();
                 sb.AppendLine(p.Description.Trim());
             }
+            if (body != null)
+            {
+                string bodyText = RenderCommunityBodyDetail(p?.Kind, body);
+                if (!string.IsNullOrEmpty(bodyText))
+                {
+                    sb.AppendLine();
+                    sb.Append(bodyText);
+                }
+            }
             return sb.ToString().TrimEnd();
+        }
+
+        // Body -> per-section detail string, kind-routed:
+        //   game   - parse body.snapshot as GameSettingsSnapshot, reuse BuildGameDetailsText
+        //   car    - parse body.override  as CarOverride, render its non-null sections (no baseline diff)
+        //   engine - parse body as CustomEngineDef, reuse BuildCustomDetailsText
+        //   pack   - count entries per kind from body.game_presets / car_presets / custom_engines
+        // Returns empty string on a body shape we don't recognize so the
+        // caller's summary header still renders cleanly.
+        private static string RenderCommunityBodyDetail(string kind, Newtonsoft.Json.Linq.JObject body)
+        {
+            if (body == null) return "";
+            try
+            {
+                switch ((kind ?? "car").ToLowerInvariant())
+                {
+                    case "game":
+                    {
+                        var snapTok = body["snapshot"];
+                        if (snapTok == null) return "";
+                        var snap = snapTok.ToObject<GameSettingsSnapshot>();
+                        return snap == null ? "" : BuildGameDetailsText(snap);
+                    }
+                    case "engine":
+                    {
+                        var def = body.ToObject<CustomEngineDef>();
+                        return def == null ? "" : BuildCustomDetailsText(def);
+                    }
+                    case "pack":
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        int games   = (body["game_presets"]    as Newtonsoft.Json.Linq.JArray)?.Count ?? 0;
+                        int cars    = (body["car_presets"]     as Newtonsoft.Json.Linq.JArray)?.Count ?? 0;
+                        int engines = (body["custom_engines"]  as Newtonsoft.Json.Linq.JArray)?.Count ?? 0;
+                        sb.AppendLine("Contents:");
+                        sb.AppendLine($"  Game presets: {games}");
+                        sb.AppendLine($"  Car presets: {cars}");
+                        sb.AppendLine($"  Custom engines: {engines}");
+                        return sb.ToString().TrimEnd();
+                    }
+                    default:
+                    {
+                        var ovTok = body["override"];
+                        if (ovTok == null) return "";
+                        var ov = ovTok.ToObject<CarOverride>();
+                        if (ov == null) return "";
+                        var sb = new System.Text.StringBuilder();
+                        var sections = new System.Text.StringBuilder();
+                        AppendOverrideSection(sections, "Audio capture",    ov.AudioCapture, null);
+                        AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  null);
+                        AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    null);
+                        AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, null);
+                        AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    null);
+                        AppendOverrideSection(sections, "ABS",              ov.AbsClick,     null);
+                        AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   null);
+                        AppendOverrideSection(sections, "DRS",              ov.Drs,          null);
+                        AppendOverrideSection(sections, "Collision",        ov.Collision,    null);
+                        AppendOverrideSection(sections, "Rev limiter",      ov.RevLimiter,   null);
+                        AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     null);
+                        if (sections.Length > 0)
+                        {
+                            sb.AppendLine("Overrides:");
+                            sb.Append(sections);
+                        }
+                        else
+                        {
+                            sb.AppendLine("No section overrides (follows the game default).");
+                        }
+                        return sb.ToString().TrimEnd();
+                    }
+                }
+            }
+            catch
+            {
+                // Don't surface a parse failure as a popup error - just
+                // skip the body detail and leave the summary header.
+                return "";
+            }
         }
 
         // Insert spaces before each capital letter so PropertyNames render
@@ -1564,6 +1654,12 @@ namespace TrueforceForAll.Plugin
             {
                 _hoveredRow = row;
                 DetailsPopupText.Text = text;
+                // Community rows: kick off a body lazy-fetch on first
+                // hover so the tooltip can match local-library parity
+                // (per-section on/off + gain). The Body fetch is async
+                // so the popup shows the summary text immediately and
+                // the richer body detail folds in when the fetch lands.
+                MaybeStartCommunityBodyFetch(row as CommunityRow);
             }
             DetailsPopup.PlacementTarget = list;
             DetailsPopup.Placement = PlacementMode.Relative;
@@ -1571,6 +1667,51 @@ namespace TrueforceForAll.Plugin
             DetailsPopup.HorizontalOffset = pos.X + 18;
             DetailsPopup.VerticalOffset   = pos.Y + 18;
             if (!DetailsPopup.IsOpen) DetailsPopup.IsOpen = true;
+        }
+
+        // Fire-and-forget: if this community row has no body yet and
+        // no fetch is in flight, pull the body and rebuild its
+        // DetailsText. Updates the open popup if the user is still
+        // hovering the same row when the fetch lands.
+        private async void MaybeStartCommunityBodyFetch(CommunityRow row)
+        {
+            if (row == null || _plugin == null) return;
+            if (row.Body != null) return;
+            if (row.BodyFetchInFlight) return;
+            if (row.Summary == null || string.IsNullOrEmpty(row.Summary.Id)) return;
+            row.BodyFetchInFlight = true;
+            string id = row.Summary.Id;
+            string kind = (row.Summary.Kind ?? _communityKind ?? "car").ToLowerInvariant();
+            PresetFull full = null;
+            try
+            {
+                full = await System.Threading.Tasks.Task.Run(() =>
+                {
+                    switch (kind)
+                    {
+                        case "game":   return _plugin.FetchCommunityGamePresetBody(id);
+                        case "engine": return _plugin.FetchCommunityCustomEngineBody(id);
+                        case "pack":   return _plugin.FetchCommunityPackBody(id);
+                        default:       return _plugin.FetchCommunityPresetBody(id);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Hover body fetch failed: " + ex.Message);
+            }
+            finally { row.BodyFetchInFlight = false; }
+            if (full?.Body == null) return;
+            row.Body = full.Body;
+            row.DetailsText = BuildCommunityDetailsText(row.Summary, row.TierBadge, full.Body);
+            // If the user is still hovering this same row, swap the
+            // popup text in place so the body content appears without
+            // them having to move off and back on.
+            if (object.ReferenceEquals(_hoveredRow, row)
+                && DetailsPopup != null && DetailsPopup.IsOpen)
+            {
+                DetailsPopupText.Text = row.DetailsText;
+            }
         }
 
         private void List_MouseLeave(object sender, MouseEventArgs e) => HideDetailsPopup();
@@ -3242,8 +3383,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x80, 0x80, 0x80));
             // Cursor-following details popup, populated from the
             // PresetSummary the row wraps when each fetch lands. Mirrors
-            // the GameRow/CarRow pattern.
+            // the GameRow/CarRow pattern. Replaced by a richer
+            // body-driven build the first time the user hovers and the
+            // body lazy-fetch lands.
             public string DetailsText { get; set; }
+            // Lazy-fetched full body. Null until first hover triggers
+            // FetchCommunity*Body; once set the row's DetailsText is
+            // upgraded to match the local-library tooltip parity (per-
+            // section on/off + gain for game/car presets).
+            public Newtonsoft.Json.Linq.JObject Body { get; set; }
+            // Guard so a slow hover doesn't kick off N concurrent body
+            // fetches for the same row.
+            public bool BodyFetchInFlight { get; set; }
         }
 
         // Tiered ranking for the game-presets browse list: rows tuned for
