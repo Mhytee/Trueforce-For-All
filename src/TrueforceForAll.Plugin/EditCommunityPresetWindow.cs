@@ -307,8 +307,9 @@ namespace TrueforceForAll.Plugin
             };
             // Candidate set sourced from SimHub-known games on this
             // install + the WellKnownGames fallback. Native-Trueforce
-            // titles filtered out (we yield to those). Free-text Add
-            // is the escape hatch for anything off-list.
+            // titles are partitioned (not removed) so the toggle below
+            // can hide them without losing user selections. Free-text
+            // Add is the escape hatch for anything off-list.
             var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (plugin?.Settings?.GameDefaults != null)
                 foreach (var k in plugin.Settings.GameDefaults.Keys)
@@ -320,34 +321,75 @@ namespace TrueforceForAll.Plugin
                 candidates.Add(activeGameSeed.Trim());
             foreach (var g in WellKnownGames)
                 if (!string.IsNullOrWhiteSpace(g)) candidates.Add(g);
-            candidates.RemoveWhere(g => TrueforcePlugin.IsNativeTrueforceGame(g));
 
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            // Pre-populate with current target games (pre-checked). The
-            // user's existing intent wins even over the native-TF filter.
+            // Per-game check-state cache that survives toggle rebuilds.
+            // Seeded with currentTargetGames (the row's existing intent)
+            // so they always show pre-checked, even if the native-TF
+            // toggle is off and they happen to be native.
+            var checkedState = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             if (currentTargetGames != null)
-                foreach (var g in currentTargetGames
-                                    .Where(g => !string.IsNullOrWhiteSpace(g))
-                                    .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
-                {
-                    string val = g.Trim();
-                    if (!seen.Add(val)) continue;
-                    gamesList.Items.Add(MakeGameItem(val, true));
-                }
-            // Everything else sorted alphabetically, unchecked.
-            foreach (var g in candidates
-                                .Where(g => !seen.Contains(g))
-                                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+                foreach (var g in currentTargetGames)
+                    if (!string.IsNullOrWhiteSpace(g))
+                        checkedState[g.Trim()] = true;
+            if (startsUniversal && !string.IsNullOrWhiteSpace(activeGameSeed))
+                checkedState[activeGameSeed.Trim()] = true;
+
+            var currentTargets = new HashSet<string>(
+                (currentTargetGames ?? new string[0]).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()),
+                StringComparer.OrdinalIgnoreCase);
+
+            Action<bool> rebuildGames = null;
+            rebuildGames = showNative =>
             {
-                if (!seen.Add(g)) continue;
-                // Active game is conventionally checked on first edit
-                // when starting Universal, so the user can quickly anchor
-                // to "current game" without typing.
-                bool preChecked = startsUniversal
-                    && string.Equals(g, activeGameSeed, StringComparison.OrdinalIgnoreCase);
-                gamesList.Items.Add(MakeGameItem(g, preChecked));
-            }
+                foreach (CheckBox cb in gamesList.Items)
+                    if (cb?.Content is string s2)
+                        checkedState[s2] = cb.IsChecked == true;
+                gamesList.Items.Clear();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // Existing target games first (always shown - user's
+                // intent wins over the native-TF filter).
+                foreach (var g in currentTargets.OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!seen.Add(g)) continue;
+                    bool c = !checkedState.TryGetValue(g, out var v) || v;
+                    gamesList.Items.Add(MakeGameItem(g, c));
+                }
+                // Non-native candidates next, sorted.
+                foreach (var g in candidates
+                            .Where(g => !seen.Contains(g) && !TrueforcePlugin.IsNativeTrueforceGame(g))
+                            .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!seen.Add(g)) continue;
+                    bool c = checkedState.TryGetValue(g, out var v) && v;
+                    gamesList.Items.Add(MakeGameItem(g, c));
+                }
+                // Native-TF games last, only when the toggle is on.
+                if (showNative)
+                {
+                    foreach (var g in candidates
+                                .Where(g => !seen.Contains(g) && TrueforcePlugin.IsNativeTrueforceGame(g))
+                                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+                    {
+                        if (!seen.Add(g)) continue;
+                        bool c = checkedState.TryGetValue(g, out var v) && v;
+                        gamesList.Items.Add(MakeGameItem(g, c));
+                    }
+                }
+            };
+            rebuildGames(false);
             pickerStack.Children.Add(gamesList);
+
+            var showNativeCheck = new CheckBox
+            {
+                Content = "Show games with native Trueforce (advanced)",
+                Foreground = MutedFg, FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 6),
+                IsChecked = false,
+                ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if your preset targets a co-operative setup like MAIRA in iRacing.",
+            };
+            showNativeCheck.Checked   += (s, e) => rebuildGames(true);
+            showNativeCheck.Unchecked += (s, e) => rebuildGames(false);
+            pickerStack.Children.Add(showNativeCheck);
 
             var addRow = new StackPanel { Orientation = Orientation.Horizontal };
             var addGameInput = new TextBox

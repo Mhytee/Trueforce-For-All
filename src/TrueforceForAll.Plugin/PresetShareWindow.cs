@@ -268,11 +268,9 @@ namespace TrueforceForAll.Plugin
                 // registered on this install (GameDefaults + GameEnabled
                 // keys + active game), plus a small WellKnownGames
                 // fallback for users who haven't interacted with any
-                // games yet. Filter out titles where Trueforce ships
-                // natively - we yield to those, so sharing for them
-                // gains nothing. The free-text Add input lets users
-                // type a name not on the list (a custom SimHub game,
-                // an opt-in driver-override scenario, etc).
+                // games yet. Partition by native-Trueforce status so the
+                // toggle below can hide the native subset without losing
+                // user selections.
                 var candidateSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 if (_plugin?.Settings?.GameDefaults != null)
                     foreach (var k in _plugin.Settings.GameDefaults.Keys)
@@ -285,31 +283,81 @@ namespace TrueforceForAll.Plugin
                     candidateSet.Add(activeGame.Trim());
                 foreach (var g in WellKnownGames)
                     if (!string.IsNullOrWhiteSpace(g)) candidateSet.Add(g);
-                candidateSet.RemoveWhere(g => TrueforcePlugin.IsNativeTrueforceGame(g));
 
-                // Render order: pre-checked default-bound games first
-                // (user's existing intent), then everything else sorted
-                // alphabetically. Default-bound games always win even if
-                // the native-TF filter would normally remove them (the
-                // binding is the user's intent, not a fresh add).
-                var seedSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var defaultGamesOrdered = defaultGames
-                    .Where(g => !string.IsNullOrWhiteSpace(g))
-                    .OrderBy(g => g, StringComparer.OrdinalIgnoreCase);
-                foreach (var g in defaultGamesOrdered)
+                // Per-game check-state cache that survives rebuilds when
+                // the "Show native" toggle flips. Seeded with the
+                // user's current default-bound games as checked.
+                var checkedState = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                foreach (var g in defaultGames)
+                    if (!string.IsNullOrWhiteSpace(g))
+                        checkedState[g.Trim()] = true;
+
+                Action<bool> rebuildGames = null;
+                rebuildGames = showNative =>
                 {
-                    if (!seedSeen.Add(g)) continue;
-                    gamesList.Items.Add(MakeGameItem(g, true));
-                }
-                var unchecked2 = candidateSet
-                    .Where(g => !seedSeen.Contains(g))
-                    .OrderBy(g => g, StringComparer.OrdinalIgnoreCase);
-                foreach (var g in unchecked2)
-                {
-                    if (!seedSeen.Add(g)) continue;
-                    gamesList.Items.Add(MakeGameItem(g, false));
-                }
+                    // Capture current state before clearing so user toggles
+                    // on individual rows survive the rebuild.
+                    foreach (CheckBox cb in gamesList.Items)
+                        if (cb?.Content is string s2)
+                            checkedState[s2] = cb.IsChecked == true;
+                    gamesList.Items.Clear();
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    // Pre-checked default-bound games always show (the
+                    // user's existing intent wins over the toggle).
+                    foreach (var g in defaultGames
+                                .Where(g => !string.IsNullOrWhiteSpace(g))
+                                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+                    {
+                        if (!seen.Add(g)) continue;
+                        bool c = !checkedState.TryGetValue(g, out var v) || v;
+                        gamesList.Items.Add(MakeGameItem(g, c));
+                    }
+                    // Non-native candidates next, sorted.
+                    foreach (var g in candidateSet
+                                .Where(g => !seen.Contains(g) && !TrueforcePlugin.IsNativeTrueforceGame(g))
+                                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+                    {
+                        if (!seen.Add(g)) continue;
+                        bool c = checkedState.TryGetValue(g, out var v) && v;
+                        gamesList.Items.Add(MakeGameItem(g, c));
+                    }
+                    // Native-TF games last, only when the toggle is on.
+                    // No suffix label: CollectTargetGames serialises the
+                    // CheckBox Content as-is, so anything we slap on the
+                    // displayed name would end up in target_games on the
+                    // server. The toggle's presence is the signal.
+                    if (showNative)
+                    {
+                        foreach (var g in candidateSet
+                                    .Where(g => !seen.Contains(g) && TrueforcePlugin.IsNativeTrueforceGame(g))
+                                    .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+                        {
+                            if (!seen.Add(g)) continue;
+                            bool c = checkedState.TryGetValue(g, out var v) && v;
+                            gamesList.Items.Add(MakeGameItem(g, c));
+                        }
+                    }
+                };
+                rebuildGames(false);
                 pickerStack.Children.Add(gamesList);
+
+                // Toggle for the native-Trueforce subset. Default off
+                // because the plugin auto-yields for native-TF games so
+                // sharing for them gains nothing in the common case.
+                // The MAIRA + iRacing cooperative setup is the documented
+                // exception, so users can flip this on when they need it.
+                var showNativeCheck = new CheckBox
+                {
+                    Content = "Show games with native Trueforce (advanced)",
+                    Foreground = MutedFg, FontSize = 11,
+                    Margin = new Thickness(0, 0, 0, 6),
+                    IsChecked = false,
+                    IsEnabled = signedIn,
+                    ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if you're sharing for a co-operative setup like MAIRA in iRacing.",
+                };
+                showNativeCheck.Checked   += (s, e) => rebuildGames(true);
+                showNativeCheck.Unchecked += (s, e) => rebuildGames(false);
+                pickerStack.Children.Add(showNativeCheck);
 
                 var addRow = new StackPanel
                 {
