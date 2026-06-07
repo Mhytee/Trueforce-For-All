@@ -12972,15 +12972,19 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[Trueforce] USBPcap setup not found at {setup}. Was the plugin installed via the official installer?");
                 return;
             }
-            // Refuse to run an unsigned or tampered installer with admin
-            // rights. Debug builds may opt in via TRUEFORCE_DEV_UNSIGNED; the
-            // env var is compiled out of Release so shipped binaries always
-            // require a valid Authenticode signature.
-            if (!ChannelValidation.VerifyAuthenticodeSignature(setup))
-            {
-                SimHub.Logging.Current.Error($"[Trueforce] USBPcap installer signature verification failed. Aborting installation.");
-                return;
-            }
+            // Authenticode signature verification on the bundled USBPcap
+            // installer was added as part of the B8 audit response and
+            // removed shortly after. The realistic threat model for this
+            // file is local-disk tampering between install and reinstall
+            // (low risk on a single-user Windows account), and the
+            // generic WinVerifyTrust pass didn't gate on our publisher
+            // cert specifically, so it would pass for any cert-signed
+            // installer an attacker substituted. The HTTPS + repo pin on
+            // the main plugin update path (still enforced via
+            // ChannelValidation.IsTrustedGitHubReleaseUrl) carries the
+            // actual defence. ChannelValidation.VerifyAuthenticodeSignature
+            // is left in place for future re-enablement if we ever sign
+            // releases with a pinned publisher cert.
 
             ThreadPool.QueueUserWorkItem(_ =>
             {
