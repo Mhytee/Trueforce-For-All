@@ -2516,6 +2516,19 @@
                               ToolTip="When you save engine data that disagrees with what's detected, the plugin asks if you want to share it. When community data exists for a car you load, the plugin uses it. Turn off to keep everything local: nothing leaves your machine and community values are ignored."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
                                Text="Anonymous data exchange to help everyone tune cars faster. Turn off to stay local-only."/>
+                    <!-- Auto-update downloaded community presets. Off by default.
+                         Only fires on presets the user hasn't locally edited
+                         since download (original-body-hash gate). Edits make a
+                         preset sticky and the user picks the update manually
+                         via the updates-available modal. -->
+                    <CheckBox x:Name="AutoUpdateDownloadedPresetsCheck"
+                              Content="Auto-update downloaded community presets"
+                              Margin="0,0,0,2"
+                              Checked="AutoUpdateDownloadedPresets_Changed"
+                              Unchecked="AutoUpdateDownloadedPresets_Changed"
+                              ToolTip="When a curator publishes a new version of a preset you downloaded, apply it silently. Only runs when you haven't edited your local copy since download."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
+                               Text="Only when you haven't edited the preset locally. Edited presets stay yours and surface in the updates list instead."/>
                     <!-- Username. Read-only display - the only way to
                          identify yourself on a community upload is to be
                          signed in (your username) OR be anonymous. No

@@ -191,6 +191,19 @@
                     <TextBlock Text="&#x21BB;" FontSize="16" FontWeight="Bold"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Button>
+                <!-- Persistent gold chip surfacing pending community preset
+                     updates (rows the user hasn't yet acted on). Hidden when
+                     count is zero. Click re-runs the update check and opens
+                     PresetUpdatesAvailableWindow for per-row decisions. -->
+                <Button x:Name="UpdatesChip" DockPanel.Dock="Right"
+                        Visibility="Collapsed"
+                        Height="28" Padding="12,0"
+                        Margin="0,0,8,0"
+                        Background="#E5C04A" BorderBrush="#E5C04A"
+                        Foreground="#1E1E1E" FontWeight="Bold" FontSize="12"
+                        Cursor="Hand" Click="UpdatesChip_Click"
+                        Focusable="False" FocusVisualStyle="{x:Null}"
+                        ToolTip="One or more community presets you downloaded have a newer version. Click to review them."/>
                 <StackPanel Orientation="Horizontal">
                     <RadioButton x:Name="SegGame"      Content="Game presets"      GroupName="PresetSeg" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Segment_Checked"/>
                     <RadioButton x:Name="SegCar"       Content="Car presets"       GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>

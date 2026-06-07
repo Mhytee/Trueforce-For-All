@@ -8160,10 +8160,15 @@ namespace TrueforceForAll.Plugin
         /// / "pack" routes the update check to the right server table.
         /// allowInPacks is the author's "may be re-bundled" permission,
         /// captured at download time so the local pack creator can
-        /// filter selectable rows.</summary>
+        /// filter selectable rows.
+        /// originalBodyHash + ownerUserId feed the auto-update gate: the
+        /// background sweep only silently re-applies an update when the
+        /// local body still matches the hash from this stamp (no local
+        /// edits since download).</summary>
         public void RecordDownloadedCommunityPreset(string presetId, string localPresetName,
             string carId, string gameName, int contentVersion,
-            string kind = "car", bool allowInPacks = false)
+            string kind = "car", bool allowInPacks = false,
+            string originalBodyHash = null, string ownerUserId = null)
         {
             if (Settings == null || string.IsNullOrEmpty(presetId)) return;
             if (Settings.DownloadedCommunityPresets == null)
@@ -8177,6 +8182,8 @@ namespace TrueforceForAll.Plugin
                 DownloadedAt        = DateTime.UtcNow,
                 Kind                = string.IsNullOrEmpty(kind) ? "car" : kind,
                 AllowInPacks        = allowInPacks,
+                OriginalBodyHash    = originalBodyHash,
+                OwnerUserId         = ownerUserId,
             };
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
         }
@@ -8286,6 +8293,201 @@ namespace TrueforceForAll.Plugin
                 rec.SeenContentVersion = contentVersion;
                 try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
             }
+        }
+
+        /// <summary>Silently re-apply any community update where the local
+        /// body still matches the OriginalBodyHash from download (i.e. the
+        /// user hasn't edited it locally). Returns the residual list of
+        /// updates that still need user input (edited locally, unsupported
+        /// kind, or fetch/save failed) so the caller can route those into
+        /// PresetUpdatesAvailableWindow as today.
+        ///
+        /// No-ops (returns the input unchanged) when
+        /// AutoUpdateDownloadedPresets is off. Packs are never auto-applied:
+        /// they bundle multiple entries across kinds and a silent re-save
+        /// would clobber per-entry user state.</summary>
+        internal async Task<List<(PresetSummary Server, DownloadedPresetRecord Local)>>
+            AutoApplyCommunityPresetUpdatesAsync(
+                List<(PresetSummary Server, DownloadedPresetRecord Local)> updates)
+        {
+            var residual = new List<(PresetSummary, DownloadedPresetRecord)>();
+            if (updates == null || updates.Count == 0) return residual;
+            if (Settings?.AutoUpdateDownloadedPresets != true)
+            {
+                residual.AddRange(updates);
+                return residual;
+            }
+            foreach (var pair in updates)
+            {
+                var server = pair.Server;
+                var local  = pair.Local;
+                if (server == null || local == null)
+                {
+                    residual.Add(pair);
+                    continue;
+                }
+                // No baseline -> can't prove "unedited"; user decides.
+                if (string.IsNullOrEmpty(local.OriginalBodyHash))
+                {
+                    residual.Add(pair);
+                    continue;
+                }
+                string kind = (local.Kind ?? "car").ToLowerInvariant();
+                // Pack updates touch multiple library entries at once;
+                // never silent-apply (would overwrite user edits inside
+                // the bundle without consent).
+                if (kind == "pack")
+                {
+                    residual.Add(pair);
+                    continue;
+                }
+                bool applied = false;
+                try
+                {
+                    applied = await Task.Run(() =>
+                        TryAutoApplyOne(kind, server, local));
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[Trueforce] Auto-update failed for " + server.Id + ": " + ex.Message);
+                }
+                if (!applied) residual.Add(pair);
+            }
+            return residual;
+        }
+
+        // Per-row body+hash compare + re-fetch + re-save + re-stamp.
+        // Runs on a background thread (called from Task.Run). Returns
+        // true when the row was silently applied and should NOT appear
+        // in the user-facing residual list.
+        private bool TryAutoApplyOne(string kind,
+            PresetSummary server, DownloadedPresetRecord local)
+        {
+            if (kind == "car")
+            {
+                if (string.IsNullOrEmpty(local.CarId) || local.CarId == "*") return false;
+                if (string.IsNullOrEmpty(local.LocalPresetName)) return false;
+                var perCar = GetCarPresets(local.CarId);
+                if (perCar == null) return false;
+                if (!perCar.TryGetValue(local.LocalPresetName, out var entry)) return false;
+                if (entry?.Override == null) return false;
+                string currentHash = PresetBodyHasher.ComputeCarOverrideHash(entry.Override);
+                if (!string.Equals(currentHash, local.OriginalBodyHash, StringComparison.Ordinal))
+                    return false;
+                PresetFull full = _presetSharing?.FetchPresetBody(server.Id);
+                if (full?.Body == null || full.Summary == null) return false;
+                CarOverride newOvr = null;
+                List<CustomEngineDef> customs = null;
+                try
+                {
+                    var ovrToken = full.Body["override"];
+                    if (ovrToken != null) newOvr = ovrToken.ToObject<CarOverride>();
+                    var ceToken = full.Body["custom_engines"];
+                    if (ceToken is Newtonsoft.Json.Linq.JArray ja)
+                        customs = ja.ToObject<List<CustomEngineDef>>();
+                }
+                catch { return false; }
+                if (newOvr == null) return false;
+                if (customs != null && customs.Count > 0)
+                    ImportCommunityCustomEngines(customs);
+                SaveImportedCommunityCarPreset(
+                    local.CarId, local.LocalPresetName,
+                    local.GameName ?? full.Summary.Game ?? "",
+                    newOvr,
+                    full.Summary.Author, full.Summary.Description,
+                    communitySourceId: full.Summary.Id);
+                string newHash = PresetBodyHasher.ComputeCarOverrideHash(newOvr);
+                StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Auto-updated community car preset '" + local.LocalPresetName
+                    + "' (v" + local.SeenContentVersion + " -> v" + server.ContentVersion + ").");
+                return true;
+            }
+            if (kind == "game")
+            {
+                if (string.IsNullOrEmpty(local.LocalPresetName)) return false;
+                if (Settings?.Presets == null) return false;
+                if (!Settings.Presets.TryGetValue(local.LocalPresetName, out var localSnap)) return false;
+                if (localSnap == null) return false;
+                string currentHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(localSnap);
+                if (!string.Equals(currentHash, local.OriginalBodyHash, StringComparison.Ordinal))
+                    return false;
+                PresetFull full = _presetSharing?.FetchGamePresetBody(server.Id);
+                if (full?.Body == null || full.Summary == null) return false;
+                GameSettingsSnapshot newSnap = null;
+                List<CustomEngineDef> customs = null;
+                try
+                {
+                    var snapToken = full.Body["snapshot"];
+                    if (snapToken != null) newSnap = snapToken.ToObject<GameSettingsSnapshot>();
+                    var ceToken = full.Body["custom_engines"];
+                    if (ceToken is Newtonsoft.Json.Linq.JArray ja)
+                        customs = ja.ToObject<List<CustomEngineDef>>();
+                }
+                catch { return false; }
+                if (newSnap == null) return false;
+                if (customs != null && customs.Count > 0)
+                    ImportCommunityCustomEngines(customs);
+                bool saved = SaveImportedCommunityGamePreset(
+                    local.LocalPresetName, newSnap,
+                    full.Summary.Author, full.Summary.Description,
+                    communitySourceId: full.Summary.Id);
+                if (!saved) return false;
+                string newHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(newSnap);
+                StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Auto-updated community game preset '" + local.LocalPresetName
+                    + "' (v" + local.SeenContentVersion + " -> v" + server.ContentVersion + ").");
+                return true;
+            }
+            if (kind == "engine")
+            {
+                if (Settings?.CustomEngines == null) return false;
+                CustomEngineDef localDef = null;
+                foreach (var e in Settings.CustomEngines)
+                {
+                    if (e == null) continue;
+                    if (string.Equals(e.CommunitySourceId, server.Id, StringComparison.Ordinal)
+                        || string.Equals(e.Id, server.Id, StringComparison.Ordinal))
+                    {
+                        localDef = e;
+                        break;
+                    }
+                }
+                if (localDef == null) return false;
+                string currentHash = PresetBodyHasher.ComputeCustomEngineHash(localDef);
+                if (!string.Equals(currentHash, local.OriginalBodyHash, StringComparison.Ordinal))
+                    return false;
+                PresetFull full = _presetSharing?.FetchCommunityCustomEngineBody(server.Id);
+                if (full?.Body == null || full.Summary == null) return false;
+                CustomEngineDef newDef = null;
+                try { newDef = full.Body.ToObject<CustomEngineDef>(); }
+                catch { return false; }
+                if (newDef == null) return false;
+                SaveImportedCommunityCustomEngine(newDef,
+                    communitySourceId: full.Summary.Id);
+                string newHash = PresetBodyHasher.ComputeCustomEngineHash(newDef);
+                StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Auto-updated community custom engine '" + (newDef.Name ?? local.LocalPresetName)
+                    + "' (v" + local.SeenContentVersion + " -> v" + server.ContentVersion + ").");
+                return true;
+            }
+            return false;
+        }
+
+        // Restamp the DownloadedPresetRecord after an auto-update: bump
+        // SeenContentVersion (so the same revision won't re-surface) and
+        // refresh OriginalBodyHash to the newly-saved body so the next
+        // sweep can detect any future local edits.
+        private void StampAutoUpdatedDownloadRecord(string presetId, int newContentVersion, string newBodyHash)
+        {
+            if (Settings?.DownloadedCommunityPresets == null) return;
+            if (!Settings.DownloadedCommunityPresets.TryGetValue(presetId, out var rec)) return;
+            rec.SeenContentVersion = newContentVersion;
+            rec.OriginalBodyHash   = newBodyHash;
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
         }
 
         // ===================== Community voting UX =====================

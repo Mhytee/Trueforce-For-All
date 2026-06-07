@@ -360,7 +360,9 @@ namespace TrueforceForAll.Plugin
             _plugin.RecordDownloadedCommunityPreset(
                 full.Summary.Id, presetName, _activeCarId, _activeGame,
                 full.Summary.ContentVersion, kind: "car",
-                allowInPacks: full.Summary.AllowInPacks);
+                allowInPacks: full.Summary.AllowInPacks,
+                originalBodyHash: PresetBodyHasher.ComputeCarOverrideHash(ovr),
+                ownerUserId: full.Summary.OwnerUserId);
             return true;
         }
     }

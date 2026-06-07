@@ -194,6 +194,7 @@ namespace TrueforceForAll.Plugin
             _presetManager.CarCommunityListRefreshed += OnCarCommunityListRefreshed;
             _presetManager.EditPresetRequested += name => EnterOfflineEditMode(name);
             _presetManager.EditCarPresetRequested += (carId, name) => EnterOfflineEditModeForCar(carId, name);
+            _presetManager.UpdatesChipClicked += OnPresetManagerUpdatesChipClicked;
             PresetManagerHost.Children.Add(_presetManager);
             ApplyDevModeVisibility();
 
@@ -337,6 +338,8 @@ namespace TrueforceForAll.Plugin
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
                 if (CommunityEnabledCheck != null)
                     CommunityEnabledCheck.IsChecked = _plugin.Settings?.CommunityEnabled == true;
+                if (AutoUpdateDownloadedPresetsCheck != null)
+                    AutoUpdateDownloadedPresetsCheck.IsChecked = _plugin.Settings?.AutoUpdateDownloadedPresets == true;
                 RefreshCommunityAuthRow();
 
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
@@ -2042,7 +2045,23 @@ namespace TrueforceForAll.Plugin
                 bool present     = !string.IsNullOrEmpty(activePreset);
                 bool isBuiltin   = present && (_plugin?.IsBuiltinPreset(activePreset) ?? false);
                 bool isCommunity = present && IsActiveGamePresetCommunitySourced(activePreset);
-                bool shareable   = community && present && !isBuiltin && !isCommunity;
+                // Resolve the snapshot once so we can read both the
+                // CommunitySourceId gate above and the upload-tracking
+                // stamps written at successful upload time.
+                GameSettingsSnapshot headerGameSnap = null;
+                if (present && _plugin?.Settings?.Presets != null)
+                    _plugin.Settings.Presets.TryGetValue(activePreset, out headerGameSnap);
+                bool headerGameHasPriorUpload = headerGameSnap != null
+                    && !string.IsNullOrEmpty(headerGameSnap.CommunityUploadedById);
+                bool headerGameMatchesUpload = false;
+                if (headerGameHasPriorUpload
+                    && !string.IsNullOrEmpty(headerGameSnap.CommunityUploadedBodyHash))
+                {
+                    string headerGameCurrentHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(headerGameSnap);
+                    headerGameMatchesUpload = string.Equals(
+                        headerGameCurrentHash, headerGameSnap.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                }
+                bool shareable = community && present && !isBuiltin && !isCommunity && !headerGameMatchesUpload;
                 // Visible-but-disabled with a tooltip explains why
                 // Share is greyed out (built-in vs downloaded) instead
                 // of silently collapsing it. Hidden entirely only
@@ -2051,11 +2070,16 @@ namespace TrueforceForAll.Plugin
                 {
                     HeaderGameShareBtn.Visibility = Visibility.Visible;
                     HeaderGameShareBtn.IsEnabled  = shareable;
-                    HeaderGameShareBtn.ToolTip = shareable
-                        ? "Share this game preset with the community. Requires sign-in."
-                        : isBuiltin
-                            ? "This is a built-in preset and ships with the plugin -- no need to re-share."
-                            : "Shared by another driver. Duplicate to make your own version and share that.";
+                    if (isBuiltin)
+                        HeaderGameShareBtn.ToolTip = "This is a built-in preset and ships with the plugin -- no need to re-share.";
+                    else if (isCommunity)
+                        HeaderGameShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
+                    else if (headerGameMatchesUpload)
+                        HeaderGameShareBtn.ToolTip = $"This matches your last upload ({headerGameSnap.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                    else if (headerGameHasPriorUpload)
+                        HeaderGameShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                    else
+                        HeaderGameShareBtn.ToolTip = "Share this game preset with the community. Requires sign-in.";
                 }
                 else
                 {
@@ -2074,16 +2098,41 @@ namespace TrueforceForAll.Plugin
                     && !string.IsNullOrEmpty(pick.CarId);
                 bool isBuiltin   = present && IsCarPresetBuiltin(pick.CarId, pick.Name);
                 bool isCommunity = present && IsCarPresetCommunitySourced(pick.CarId, pick.Name);
-                bool shareable   = community && present && !isBuiltin && !isCommunity;
+                // Resolve the entry's CarOverride so we can read the
+                // upload-tracking stamps written at successful upload time.
+                CarOverride headerCarOvr = null;
+                if (present)
+                {
+                    var perCar = _plugin?.GetCarPresets(pick.CarId);
+                    if (perCar != null && perCar.TryGetValue(pick.Name, out var headerCarEntry)
+                        && headerCarEntry?.Override != null)
+                        headerCarOvr = headerCarEntry.Override;
+                }
+                bool headerCarHasPriorUpload = headerCarOvr != null
+                    && !string.IsNullOrEmpty(headerCarOvr.CommunityUploadedById);
+                bool headerCarMatchesUpload = false;
+                if (headerCarHasPriorUpload
+                    && !string.IsNullOrEmpty(headerCarOvr.CommunityUploadedBodyHash))
+                {
+                    string headerCarCurrentHash = PresetBodyHasher.ComputeCarOverrideHash(headerCarOvr);
+                    headerCarMatchesUpload = string.Equals(
+                        headerCarCurrentHash, headerCarOvr.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                }
+                bool shareable = community && present && !isBuiltin && !isCommunity && !headerCarMatchesUpload;
                 if (community && present)
                 {
                     HeaderCarShareBtn.Visibility = Visibility.Visible;
                     HeaderCarShareBtn.IsEnabled  = shareable;
-                    HeaderCarShareBtn.ToolTip = shareable
-                        ? "Share this car preset with the community. Requires sign-in."
-                        : isBuiltin
-                            ? "This is a built-in car preset and ships with the plugin. Duplicate it to make your own version, then share that."
-                            : "Shared by another driver. Duplicate to make your own version and share that.";
+                    if (isBuiltin)
+                        HeaderCarShareBtn.ToolTip = "This is a built-in car preset and ships with the plugin. Duplicate it to make your own version, then share that.";
+                    else if (isCommunity)
+                        HeaderCarShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
+                    else if (headerCarMatchesUpload)
+                        HeaderCarShareBtn.ToolTip = $"This matches your last upload ({headerCarOvr.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                    else if (headerCarHasPriorUpload)
+                        HeaderCarShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                    else
+                        HeaderCarShareBtn.ToolTip = "Share this car preset with the community. Requires sign-in.";
                 }
                 else
                 {
@@ -2588,7 +2637,9 @@ namespace TrueforceForAll.Plugin
                 full.Summary.Id, presetName,
                 activeCarId, _plugin.ActiveGame ?? "",
                 full.Summary.ContentVersion, kind: "car",
-                allowInPacks: full.Summary.AllowInPacks);
+                allowInPacks: full.Summary.AllowInPacks,
+                originalBodyHash: PresetBodyHasher.ComputeCarOverrideHash(apply),
+                ownerUserId: full.Summary.OwnerUserId);
 
             // Refresh the picker so the freshly-imported preset appears
             // under "── This car ──" and the user can flip the combo to
@@ -5212,6 +5263,24 @@ namespace TrueforceForAll.Plugin
             UpdateHeaderShareButtons();
         }
 
+        // Auto-update toggle. Persists the new value and lets the per-
+        // session update-check latch re-run so the user sees auto-applies
+        // (or the residual modal) without restarting the plugin.
+        private void AutoUpdateDownloadedPresets_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (AutoUpdateDownloadedPresetsCheck == null) return;
+            bool newOn = AutoUpdateDownloadedPresetsCheck.IsChecked == true;
+            _plugin.Settings.AutoUpdateDownloadedPresets = newOn;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Persist AutoUpdateDownloadedPresets failed: " + ex.Message);
+            }
+            if (newOn) _communityUpdatesCheckedThisSession = false;
+        }
+
         // Sync the Account expander to the current plugin auth state.
         // Sign-in is independent of the Community toggle - users can
         // claim a username even with community pull/push off.
@@ -5935,8 +6004,26 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[Trueforce] Update check failed: " + ex.Message);
+                _presetManager?.RefreshUpdatesChip(0);
                 return;
             }
+            if (updates == null || updates.Count == 0)
+            {
+                _presetManager?.RefreshUpdatesChip(0);
+                return;
+            }
+
+            // Auto-apply: silently update any row the user hasn't edited
+            // locally (OriginalBodyHash still matches). The residual set
+            // (edited rows + unsupported kinds) is what the modal shows.
+            int autoApplied = updates.Count;
+            try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Auto-apply update sweep failed: " + ex.Message);
+            }
+            autoApplied -= updates?.Count ?? 0;
+            _presetManager?.RefreshUpdatesChip(updates?.Count ?? 0);
             if (updates == null || updates.Count == 0) return;
 
             // Owner-null guard: this method is async void scheduled on
@@ -5951,7 +6038,11 @@ namespace TrueforceForAll.Plugin
 
             var dialog = new PresetUpdatesAvailableWindow(updates) { Owner = owner };
             bool? ok = dialog.ShowDialog();
-            if (ok != true) return;
+            if (ok != true)
+            {
+                await RecomputeUpdatesChipAsync();
+                return;
+            }
 
             int applied = 0, skipped = 0;
             foreach (var o in dialog.Outcomes)
@@ -5973,10 +6064,103 @@ namespace TrueforceForAll.Plugin
                         "[Trueforce] Apply update failed for " + o.Id + ": " + ex.Message);
                 }
             }
-            if (applied + skipped > 0)
+            await RecomputeUpdatesChipAsync();
+            if (applied + skipped + autoApplied > 0)
             {
+                string summary = $"Updates: {applied} applied, {skipped} skipped";
+                if (autoApplied > 0) summary += ", " + autoApplied + " auto-updated";
+                summary += ".";
                 MessageBox.Show(owner,
-                    $"Updates: {applied} applied, {skipped} skipped.",
+                    summary,
+                    "Community preset updates", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        // Cheap re-fetch of the pending update count so the persistent
+        // chip in PresetManagerControl stays accurate after a modal
+        // close, manual check, or auto-apply sweep. Swallows errors so
+        // a stale count never breaks the panel; logged for diagnostics.
+        private async Task RecomputeUpdatesChipAsync()
+        {
+            if (_plugin == null || _presetManager == null) return;
+            try
+            {
+                var fresh = await _plugin.FindCommunityPresetUpdatesAsync();
+                _presetManager.RefreshUpdatesChip(fresh?.Count ?? 0);
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Updates chip refresh failed: " + ex.Message);
+            }
+        }
+
+        // Chip-driven review flow. Mirrors CommunityCheckNowBtn_Click but
+        // skips the status-label fade since the chip is its own
+        // affordance. Re-fetches the update list, opens the same modal,
+        // processes apply / acknowledge outcomes, and refreshes the chip.
+        private async void OnPresetManagerUpdatesChipClicked()
+        {
+            if (_plugin == null) return;
+            List<(PresetSummary Server, DownloadedPresetRecord Local)> updates;
+            try { updates = await _plugin.FindCommunityPresetUpdatesAsync(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Updates chip check failed: " + ex.Message);
+                _presetManager?.RefreshUpdatesChip(0);
+                return;
+            }
+            int autoApplied = 0;
+            if (updates != null && updates.Count > 0)
+            {
+                int before = updates.Count;
+                try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[Trueforce] Auto-apply update sweep failed: " + ex.Message);
+                }
+                autoApplied = before - (updates?.Count ?? 0);
+            }
+            int residual = updates?.Count ?? 0;
+            _presetManager?.RefreshUpdatesChip(residual);
+            if (residual == 0) return;
+
+            var owner = Window.GetWindow(this);
+            if (owner == null) return;
+            var dialog = new PresetUpdatesAvailableWindow(updates) { Owner = owner };
+            bool? ok = dialog.ShowDialog();
+            if (ok != true)
+            {
+                await RecomputeUpdatesChipAsync();
+                return;
+            }
+            int applied = 0, skipped = 0;
+            foreach (var o in dialog.Outcomes)
+            {
+                if (o.Action == PresetUpdatesAvailableWindow.RowAction.Skip)
+                {
+                    _plugin.AcknowledgeCommunityPresetVersion(o.Id, o.ServerContentVersion);
+                    skipped++;
+                    continue;
+                }
+                if (o.Action != PresetUpdatesAvailableWindow.RowAction.Update) continue;
+                try
+                {
+                    if (await ApplyCommunityUpdate(o)) applied++;
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[Trueforce] Apply update failed for " + o.Id + ": " + ex.Message);
+                }
+            }
+            await RecomputeUpdatesChipAsync();
+            if (applied + skipped + autoApplied > 0)
+            {
+                string summary = $"Updates: {applied} applied, {skipped} skipped";
+                if (autoApplied > 0) summary += ", " + autoApplied + " auto-updated";
+                summary += ".";
+                MessageBox.Show(owner,
+                    summary,
                     "Community preset updates", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
@@ -9748,9 +9932,26 @@ namespace TrueforceForAll.Plugin
             {
                 var updates = await _plugin.FindCommunityPresetUpdatesAsync();
                 found = updates?.Count ?? 0;
+                int autoApplied = 0;
+                if (found > 0)
+                {
+                    int before = found;
+                    try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info("[Trueforce] Auto-apply update sweep failed: " + ex.Message);
+                    }
+                    found = updates?.Count ?? 0;
+                    autoApplied = before - found;
+                }
+                _presetManager?.RefreshUpdatesChip(found);
                 if (found == 0)
                 {
-                    finalText = "You're up to date";
+                    finalText = autoApplied > 0
+                        ? (autoApplied == 1
+                            ? "1 auto-updated"
+                            : autoApplied + " auto-updated")
+                        : "You're up to date";
                 }
                 else
                 {
@@ -9761,6 +9962,7 @@ namespace TrueforceForAll.Plugin
                     if (owner == null)
                     {
                         finalText = found == 1 ? "1 update available" : $"{found} updates available";
+                        if (autoApplied > 0) finalText += ", " + autoApplied + " auto-updated";
                     }
                     else
                     {
@@ -9796,7 +9998,10 @@ namespace TrueforceForAll.Plugin
                                 }
                             }
                             finalText = $"{applied} applied, {skipped} skipped";
+                            if (autoApplied > 0)
+                                finalText += ", " + autoApplied + " auto-updated";
                         }
+                        await RecomputeUpdatesChipAsync();
                     }
                 }
             }

@@ -522,6 +522,38 @@ namespace TrueforceForAll.Plugin
             if (CarModeCommunity != null) CarModeCommunity.IsChecked = true;
         }
 
+        // Raised when the user clicks the "X updates available" chip near
+        // the segment selector. The host (SettingsControl) reuses its
+        // existing review flow (FindCommunityPresetUpdatesAsync ->
+        // PresetUpdatesAvailableWindow with apply / acknowledge) so all
+        // the update-application logic stays in one place.
+        public event Action UpdatesChipClicked;
+
+        /// <summary>Set the count shown on the persistent updates chip
+        /// near the segment selector. Zero hides the chip; positive
+        /// values render "{N} updates available" (singular "1 update
+        /// available"). Driven by the host after every check, auto-apply
+        /// sweep, and modal close.</summary>
+        public void RefreshUpdatesChip(int count)
+        {
+            if (UpdatesChip == null) return;
+            if (count <= 0)
+            {
+                UpdatesChip.Visibility = Visibility.Collapsed;
+                UpdatesChip.Content = "";
+                return;
+            }
+            UpdatesChip.Visibility = Visibility.Visible;
+            UpdatesChip.Content = count == 1
+                ? "↻ 1 update available"
+                : "↻ " + count + " updates available";
+        }
+
+        private void UpdatesChip_Click(object sender, RoutedEventArgs e)
+        {
+            UpdatesChipClicked?.Invoke();
+        }
+
         // Segmented selector clicked (or set programmatically). Show the chosen
         // view, hide the others. Community is no longer a separate top
         // segment; it's inlined under Cars (and later Games) via the
@@ -1831,14 +1863,37 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         private void RefreshCustomButtons()
         {
             int   checkedCount = _customRows.Count(r => r.IsChecked);
-            bool  any          = SelectedCustom != null;
+            var   selCustom    = SelectedCustom;
+            bool  any          = selCustom != null;
 
             CustomEditBtn.IsEnabled   = any && checkedCount <= 1;
             // Share is single-row, requires community on. The button
             // itself stays in the DOM; just enable when actionable.
             if (CustomShareBtn != null)
+            {
+                bool cuShareCommunityOn = _plugin?.Settings?.CommunityEnabled == true;
+                CustomEngineDef cuShareDef = selCustom?.Def;
+                bool cuShareHasPriorUpload = cuShareDef != null
+                    && !string.IsNullOrEmpty(cuShareDef.CommunityUploadedById);
+                bool cuShareMatchesUpload = false;
+                if (cuShareHasPriorUpload
+                    && !string.IsNullOrEmpty(cuShareDef.CommunityUploadedBodyHash))
+                {
+                    string cuShareCurrentHash = PresetBodyHasher.ComputeCustomEngineHash(cuShareDef);
+                    cuShareMatchesUpload = string.Equals(
+                        cuShareCurrentHash, cuShareDef.CommunityUploadedBodyHash, StringComparison.Ordinal);
+                }
                 CustomShareBtn.IsEnabled = any && checkedCount <= 1
-                    && _plugin?.Settings?.CommunityEnabled == true;
+                    && cuShareCommunityOn && !cuShareMatchesUpload;
+                if (!cuShareCommunityOn)
+                    CustomShareBtn.ToolTip = "Enable Community Contributions in Settings to share.";
+                else if (cuShareMatchesUpload)
+                    CustomShareBtn.ToolTip = $"This matches your last upload ({cuShareDef.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                else if (cuShareHasPriorUpload)
+                    CustomShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                else
+                    CustomShareBtn.ToolTip = "Upload this custom engine to the community.";
+            }
             CustomDeleteBtn.IsEnabled = checkedCount > 0 || any;
 
             CustomCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
@@ -3923,7 +3978,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     full.Summary.Id, gpName,
                     carId: "*", gameName: _plugin.ActiveGame,
                     contentVersion: full.Summary.ContentVersion, kind: "game",
-                    allowInPacks: full.Summary.AllowInPacks);
+                    allowInPacks: full.Summary.AllowInPacks,
+                    originalBodyHash: PresetBodyHasher.ComputeGameSnapshotBodyHash(snap),
+                    ownerUserId: full.Summary.OwnerUserId);
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = $"Saved as '{gpName}'.";
                 LibraryChanged?.Invoke();
@@ -3998,7 +4055,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                                     entrySourceId, useName,
                                     carId: "*", gameName: _plugin.ActiveGame,
                                     contentVersion: 1, kind: "game",
-                                    allowInPacks: entryAllowPacks);
+                                    allowInPacks: entryAllowPacks,
+                                    originalBodyHash: PresetBodyHasher.ComputeGameSnapshotBodyHash(snap),
+                                    ownerUserId: null);
                             }
                             imported++;
                         }
@@ -4060,7 +4119,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                                     entrySourceId, useName,
                                     carId: cid, gameName: gname,
                                     contentVersion: 1, kind: "car",
-                                    allowInPacks: entryAllowPacks);
+                                    allowInPacks: entryAllowPacks,
+                                    originalBodyHash: PresetBodyHasher.ComputeCarOverrideHash(carOvr),
+                                    ownerUserId: null);
                             }
                             imported++;
                         }
@@ -4111,7 +4172,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                                     entrySourceId, def.Name,
                                     carId: "*", gameName: "",
                                     contentVersion: 1, kind: "engine",
-                                    allowInPacks: entryAllowPacks);
+                                    allowInPacks: entryAllowPacks,
+                                    originalBodyHash: PresetBodyHasher.ComputeCustomEngineHash(def),
+                                    ownerUserId: null);
                             }
                             imported++;
                         }
@@ -4195,7 +4258,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     full.Summary.Id, def.Name,
                     carId: "*", gameName: "",
                     contentVersion: full.Summary.ContentVersion, kind: "engine",
-                    allowInPacks: full.Summary.AllowInPacks);
+                    allowInPacks: full.Summary.AllowInPacks,
+                    originalBodyHash: PresetBodyHasher.ComputeCustomEngineHash(def),
+                    ownerUserId: full.Summary.OwnerUserId);
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = $"Saved engine '{def.Name}' to your library.";
                 LibraryChanged?.Invoke();
@@ -4303,7 +4368,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 full.Summary.Id, presetName,
                 _plugin.ActiveCarId, _plugin.ActiveGame,
                 full.Summary.ContentVersion, kind: "car",
-                allowInPacks: full.Summary.AllowInPacks);
+                allowInPacks: full.Summary.AllowInPacks,
+                originalBodyHash: PresetBodyHasher.ComputeCarOverrideHash(apply),
+                ownerUserId: full.Summary.OwnerUserId);
 
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text =
