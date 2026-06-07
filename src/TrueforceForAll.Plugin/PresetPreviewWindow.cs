@@ -180,10 +180,54 @@ namespace TrueforceForAll.Plugin
             if (snap == null)
                 bodyPanel.Children.Add(MutedLine("(no snapshot data)"));
             else
-                // GameSettingsSnapshot top-level keys match CarOverride's
-                // effect section names, so the same renderer applies.
+            {
+                // Game presets have flat top-level FFB settings
+                // (MasterGain, FfbScale, FfbSmoothTimeConstantMs,
+                // FfbInvertSign, etc) that aren't structured as
+                // effect sections; show them up front so the reader
+                // sees the preset's global tuning before drilling
+                // into per-effect overrides.
+                AddTopLevelGameSettings(bodyPanel, snap);
+                // Per-effect sections share key names with CarOverride.
                 AddOverrideSections(bodyPanel, snap);
+            }
             AddBundledEngines(bodyPanel, body["custom_engines"] as JArray);
+        }
+
+        // Top-level FFB tuning fields on a GameSettingsSnapshot. Effect
+        // sections are nested JObjects (handled by AddOverrideSections);
+        // everything else flat at the snapshot root is rendered here.
+        private void AddTopLevelGameSettings(StackPanel host, JObject snap)
+        {
+            // Anything that's a section header lives elsewhere; skip.
+            var sectionKeys = new HashSet<string>(new[] {
+                "EnginePulse","RevLimiter","RoadBumps","TractionLoss",
+                "GearShift","AbsClick","PitLimiter","Drs","Collision",
+                "AudioCapture","Airborne",
+            });
+            // CarOverrides on legacy snapshots is a dict, not a flat
+            // field; also skip it from the headline overview.
+            sectionKeys.Add("CarOverrides");
+
+            var flat = new JObject();
+            foreach (var prop in snap.Properties())
+            {
+                if (sectionKeys.Contains(prop.Name)) continue;
+                if (prop.Value == null || prop.Value.Type == JTokenType.Null) continue;
+                // Defensive: skip nested objects that aren't effect
+                // sections (none should exist at this layer but a
+                // future schema add wouldn't render well as a flat
+                // value line).
+                if (prop.Value.Type == JTokenType.Object) continue;
+                flat[prop.Name] = prop.Value;
+            }
+            if (flat.Count == 0) return;
+            host.Children.Add(new TextBlock {
+                Text = "Global FFB settings",
+                Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 2),
+            });
+            host.Children.Add(BuildFieldsBlock(flat));
         }
 
         private void RenderEngine(StackPanel bodyPanel, JObject body)
@@ -366,46 +410,114 @@ namespace TrueforceForAll.Plugin
 
         private void AddSection(StackPanel host, JObject ovr, string key, string label)
         {
-            var sect = ovr[key];
-            if (sect == null || sect.Type == JTokenType.Null) return;
+            var sect = ovr[key] as JObject;
+            if (sect == null) return;
 
             host.Children.Add(new TextBlock {
                 Text = label, Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 8, 0, 2),
             });
-            var summary = SummariseSection(sect as JObject);
-            host.Children.Add(new TextBlock {
-                Text = summary, Foreground = TextFg, FontSize = 11,
-                Margin = new Thickness(8, 0, 0, 4),
-                TextWrapping = TextWrapping.Wrap,
-            });
+            host.Children.Add(BuildFieldsBlock(sect));
         }
 
-        private static string SummariseSection(JObject section)
+        // Two-column "Field    Value" listing for a JObject. Shows every
+        // non-null primitive field the preset sets so the reader can see
+        // the actual values the author tuned, not just a headline.
+        // Nested objects + arrays render as a compact summary placeholder
+        // rather than recursing (preset sections don't currently nest
+        // beyond one level).
+        private FrameworkElement BuildFieldsBlock(JObject section)
         {
-            if (section == null) return "(present)";
-            var parts = new List<string>();
-            foreach (var headline in new[] {
-                "Enabled","Gain","Pitch","LowpassHz","HighpassHz",
-                "Freq","PulseFreq","DutyCycle","ActiveAmp","Threshold",
-                "RedlineOffsetRpm","EngageMode","Waveform","Sensitivity",
-                "Reduction","Layout","ElectricMode","CustomEngineId",
-            })
+            var grid = new Grid { Margin = new Thickness(8, 0, 0, 6) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            // Surface enabled / disabled + gain first (the headline
+            // tuning signal), then everything else alphabetically.
+            var headline = new[] { "Enabled", "Gain", "Freq", "PulseFreq" };
+            var seen = new HashSet<string>(System.StringComparer.Ordinal);
+            int rendered = 0;
+            foreach (var name in headline)
             {
-                var t = section[headline];
+                var t = section[name];
                 if (t == null || t.Type == JTokenType.Null) continue;
-                string val = t.Type == JTokenType.Float
-                    ? t.ToObject<double>().ToString("0.###")
-                    : t.ToString();
-                parts.Add(headline + ": " + val);
-                if (parts.Count >= 6) break;
+                if (!IsRenderableValue(t)) continue;
+                AppendFieldRow(grid, rendered++, name, t);
+                seen.Add(name);
             }
-            if (parts.Count == 0)
+            foreach (var prop in section.Properties()
+                                          .Where(p => !seen.Contains(p.Name))
+                                          .Where(p => p.Value != null && p.Value.Type != JTokenType.Null)
+                                          .OrderBy(p => p.Name, System.StringComparer.OrdinalIgnoreCase))
             {
-                int n = section.Properties().Count();
-                return n + " field" + (n == 1 ? "" : "s");
+                if (!IsRenderableValue(prop.Value)) continue;
+                AppendFieldRow(grid, rendered++, prop.Name, prop.Value);
             }
-            return string.Join("   |   ", parts);
+            if (rendered == 0)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var tb = new TextBlock {
+                    Text = "(no fields set)", Foreground = MutedFg, FontSize = 11,
+                };
+                Grid.SetRow(tb, 0);
+                Grid.SetColumn(tb, 0);
+                Grid.SetColumnSpan(tb, 2);
+                grid.Children.Add(tb);
+            }
+            return grid;
+        }
+
+        private void AppendFieldRow(Grid grid, int row, string name, JToken value)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var nameBlock = new TextBlock {
+                Text = name,
+                Foreground = MutedFg, FontSize = 11,
+                Margin = new Thickness(0, 1, 8, 1),
+            };
+            Grid.SetRow(nameBlock, row);
+            Grid.SetColumn(nameBlock, 0);
+            grid.Children.Add(nameBlock);
+
+            var valBlock = new TextBlock {
+                Text = FormatValue(value),
+                Foreground = TextFg, FontSize = 11,
+                Margin = new Thickness(0, 1, 0, 1),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            Grid.SetRow(valBlock, row);
+            Grid.SetColumn(valBlock, 1);
+            grid.Children.Add(valBlock);
+        }
+
+        // True when the token can be expressed on a single value line.
+        // Objects don't fit (preset sections don't currently nest, but
+        // a future schema add would degrade ungracefully without this
+        // guard).
+        private static bool IsRenderableValue(JToken t)
+        {
+            return t.Type != JTokenType.Object;
+        }
+
+        private static string FormatValue(JToken t)
+        {
+            switch (t.Type)
+            {
+                case JTokenType.Float:
+                    return t.ToObject<double>().ToString("0.###");
+                case JTokenType.Boolean:
+                    return t.ToObject<bool>() ? "Yes" : "No";
+                case JTokenType.Array:
+                    var arr = (JArray)t;
+                    if (arr.Count == 0) return "(none)";
+                    var first = arr.Take(6).Select(FormatValue);
+                    string joined = string.Join(", ", first);
+                    return arr.Count > 6 ? joined + " ... (" + arr.Count + ")" : joined;
+                case JTokenType.Null:
+                    return "(none)";
+                default:
+                    return t.ToString();
+            }
         }
     }
 }
