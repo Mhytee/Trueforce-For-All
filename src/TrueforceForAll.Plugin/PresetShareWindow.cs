@@ -631,6 +631,12 @@ namespace TrueforceForAll.Plugin
                 UploadedPresetId = newId;
                 if (newContentVersion.HasValue)
                     UploadedContentVersion = newContentVersion.Value;
+                else if (!isUpdatePath)
+                    // Fresh inserts default to content_version = 1
+                    // server-side; the upload_* RPCs only return the id, so
+                    // stamp the default explicitly instead of leaving the
+                    // caller with 0 and a "v0" tooltip.
+                    UploadedContentVersion = 1;
                 statusText.Foreground = OkFg;
                 statusText.Text = isUpdatePath
                     ? "Updated. Thanks for contributing."

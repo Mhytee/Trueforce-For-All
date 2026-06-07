@@ -2020,14 +2020,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (snap.Airborne     != null) tags.Add("airborne");
 
                 string game = _plugin.ActiveGame ?? "";
-                var dialog = PresetShareWindow.ForGame(_plugin, presetName, game, body, tags);
-                dialog.Owner = owner;
 
-                // Update vs Share-as-new chooser: only when this user
-                // already owns a community row for this preset AND the
-                // local body has diverged from what they last uploaded
-                // (matching uploads stay on the Share gate's disabled
-                // path; we don't reach here for them).
+                // Resolve share intent BEFORE constructing the share
+                // dialog so a "share as new" path can carry a different
+                // community-side name (the local preset name doesn't
+                // change either way).
+                string shareName = presetName;
+                bool   isUpdatePath = false;
+                string existingUploadId = null;
                 bool userOwnsUpload = !string.IsNullOrEmpty(snap.CommunityUploadedById)
                     && string.Equals(snap.CommunityUploadedByUserId,
                                      _plugin.AuthSignedInUserId, StringComparison.Ordinal);
@@ -2038,23 +2038,38 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         snap.CommunityUploadedBodyHash, StringComparison.Ordinal);
                     if (bodyChanged)
                     {
-                        string verLabel = string.IsNullOrEmpty(snap.CommunityUploadedVersion)
-                            ? "Update existing upload"
-                            : "Update existing (" + snap.CommunityUploadedVersion + ")";
+                        string nextVer = NextVersionLabel(snap.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
                             "Re-share '" + presetName + "'",
                             "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
-                            verLabel,
+                            "Update existing (" + nextVer + ")",
                             "Share as new preset")
                         {
                             Owner = owner,
                         };
                         bool? pick = chooser.ShowDialog();
                         if (pick != true) return;
-                        dialog.IsUpdate = chooser.IsUpdate;
-                        dialog.ExistingUploadId = chooser.IsUpdate ? snap.CommunityUploadedById : null;
+                        if (chooser.IsUpdate)
+                        {
+                            isUpdatePath = true;
+                            existingUploadId = snap.CommunityUploadedById;
+                        }
+                        else
+                        {
+                            string suggested = presetName + " " + nextVer;
+                            string newName = PromptForName("Share as a new preset",
+                                "Community name for this new upload (your local preset's name stays the same):",
+                                suggested);
+                            if (string.IsNullOrWhiteSpace(newName)) return;
+                            shareName = newName.Trim();
+                        }
                     }
                 }
+
+                var dialog = PresetShareWindow.ForGame(_plugin, shareName, game, body, tags);
+                dialog.Owner = owner;
+                dialog.IsUpdate = isUpdatePath;
+                dialog.ExistingUploadId = existingUploadId;
 
                 bool? ok = dialog.ShowDialog();
                 if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
@@ -2307,13 +2322,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
-                var dialog = new PresetShareWindow(
-                    _plugin, presetName, resolvedGame,
-                    carId, carDisplay, body, tags)
-                {
-                    Owner = owner,
-                };
-
+                string shareName = presetName;
+                bool   isUpdatePath = false;
+                string existingUploadId = null;
                 bool userOwnsUpload = !string.IsNullOrEmpty(entry.Override.CommunityUploadedById)
                     && string.Equals(entry.Override.CommunityUploadedByUserId,
                                      _plugin.AuthSignedInUserId, StringComparison.Ordinal);
@@ -2324,23 +2335,42 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         entry.Override.CommunityUploadedBodyHash, StringComparison.Ordinal);
                     if (bodyChanged)
                     {
-                        string verLabel = string.IsNullOrEmpty(entry.Override.CommunityUploadedVersion)
-                            ? "Update existing upload"
-                            : "Update existing (" + entry.Override.CommunityUploadedVersion + ")";
+                        string nextVer = NextVersionLabel(entry.Override.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
                             "Re-share '" + presetName + "'",
                             "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
-                            verLabel,
+                            "Update existing (" + nextVer + ")",
                             "Share as new preset")
                         {
                             Owner = owner,
                         };
                         bool? pick = chooser.ShowDialog();
                         if (pick != true) return;
-                        dialog.IsUpdate = chooser.IsUpdate;
-                        dialog.ExistingUploadId = chooser.IsUpdate ? entry.Override.CommunityUploadedById : null;
+                        if (chooser.IsUpdate)
+                        {
+                            isUpdatePath = true;
+                            existingUploadId = entry.Override.CommunityUploadedById;
+                        }
+                        else
+                        {
+                            string suggested = presetName + " " + nextVer;
+                            string newName = PromptForName("Share as a new preset",
+                                "Community name for this new upload (your local preset's name stays the same):",
+                                suggested);
+                            if (string.IsNullOrWhiteSpace(newName)) return;
+                            shareName = newName.Trim();
+                        }
                     }
                 }
+
+                var dialog = new PresetShareWindow(
+                    _plugin, shareName, resolvedGame,
+                    carId, carDisplay, body, tags)
+                {
+                    Owner = owner,
+                };
+                dialog.IsUpdate = isUpdatePath;
+                dialog.ExistingUploadId = existingUploadId;
 
                 bool? ok = dialog.ShowDialog();
                 if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
@@ -2699,11 +2729,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     return;
                 }
                 var body = Newtonsoft.Json.Linq.JObject.FromObject(row.Def);
-                var dialog = PresetShareWindow.ForEngine(_plugin,
-                    row.Def.Name ?? "Custom engine", body);
-                dialog.Owner = owner;
-
                 var def = row.Def;
+                string baseName = def.Name ?? "Custom engine";
+
+                string shareName = baseName;
+                bool   isUpdatePath = false;
+                string existingUploadId = null;
                 bool userOwnsUpload = !string.IsNullOrEmpty(def.CommunityUploadedById)
                     && string.Equals(def.CommunityUploadedByUserId,
                                      _plugin.AuthSignedInUserId, StringComparison.Ordinal);
@@ -2714,23 +2745,38 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         def.CommunityUploadedBodyHash, StringComparison.Ordinal);
                     if (bodyChanged)
                     {
-                        string verLabel = string.IsNullOrEmpty(def.CommunityUploadedVersion)
-                            ? "Update existing upload"
-                            : "Update existing (" + def.CommunityUploadedVersion + ")";
+                        string nextVer = NextVersionLabel(def.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
-                            "Re-share '" + (def.Name ?? "Custom engine") + "'",
+                            "Re-share '" + baseName + "'",
                             "You already uploaded this engine to the community. Update your existing upload, or share a fresh copy as a new engine?",
-                            verLabel,
+                            "Update existing (" + nextVer + ")",
                             "Share as new engine")
                         {
                             Owner = owner,
                         };
                         bool? pick = chooser.ShowDialog();
                         if (pick != true) return;
-                        dialog.IsUpdate = chooser.IsUpdate;
-                        dialog.ExistingUploadId = chooser.IsUpdate ? def.CommunityUploadedById : null;
+                        if (chooser.IsUpdate)
+                        {
+                            isUpdatePath = true;
+                            existingUploadId = def.CommunityUploadedById;
+                        }
+                        else
+                        {
+                            string suggested = baseName + " " + nextVer;
+                            string newName = PromptForName("Share as a new engine",
+                                "Community name for this new upload (your local engine's name stays the same):",
+                                suggested);
+                            if (string.IsNullOrWhiteSpace(newName)) return;
+                            shareName = newName.Trim();
+                        }
                     }
                 }
+
+                var dialog = PresetShareWindow.ForEngine(_plugin, shareName, body);
+                dialog.Owner = owner;
+                dialog.IsUpdate = isUpdatePath;
+                dialog.ExistingUploadId = existingUploadId;
 
                 bool? ok = dialog.ShowDialog();
                 if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
@@ -2829,7 +2875,22 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
         // Mirror of SettingsControl.PromptForName so this control stays self-
         // contained. Returns the trimmed text or null on Cancel.
-        private string PromptForName(string title, string label, string defaultValue)
+        // "v1" -> "v2", "v17" -> "v18", null/garbage -> "v1". Used by the
+        // Update-vs-Share-as-new chooser to display the version the user
+        // will land on, not the one they came from.
+        internal static string NextVersionLabel(string currentVersion)
+        {
+            if (string.IsNullOrEmpty(currentVersion)) return "v1";
+            string trimmed = currentVersion.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                ? currentVersion.Substring(1)
+                : currentVersion;
+            if (!int.TryParse(trimmed, System.Globalization.NumberStyles.Integer,
+                              System.Globalization.CultureInfo.InvariantCulture, out int n))
+                return "v1";
+            return "v" + (n + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        internal string PromptForName(string title, string label, string defaultValue)
         {
             var win = new Window
             {

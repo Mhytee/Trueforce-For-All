@@ -101,12 +101,28 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Tracking metadata that travels alongside the body but does NOT
+        // represent body content. Excluded from the hash so that stamping
+        // these fields after a successful share doesn't itself invalidate
+        // the hash the gate just stored - the next refresh would see a
+        // different hash and the Share button would never disable.
+        private static readonly HashSet<string> ExcludedFromHash =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "CommunitySourceId",
+                "CommunityUploadedById",
+                "CommunityUploadedByUserId",
+                "CommunityUploadedBodyHash",
+                "CommunityUploadedVersion",
+            };
+
         private sealed class OrderedContractResolver : DefaultContractResolver
         {
             protected override IList<JsonProperty> CreateProperties(Type type, MemberSerialization memberSerialization)
             {
                 var properties = base.CreateProperties(type, memberSerialization);
                 return properties
+                    .Where(p => !ExcludedFromHash.Contains(p.PropertyName))
                     .OrderBy(p => p.PropertyName, StringComparer.Ordinal)
                     .ToList();
             }

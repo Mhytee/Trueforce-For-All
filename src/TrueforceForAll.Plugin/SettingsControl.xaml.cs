@@ -2259,11 +2259,10 @@ namespace TrueforceForAll.Plugin
             if (snap.Airborne     != null) tags.Add("airborne");
 
             string game = _plugin.ActiveGame ?? "";
-            var dialog = PresetShareWindow.ForGame(_plugin, name, game, body, tags);
-            dialog.Owner = owner;
 
-            // Re-share chooser: only for presets this user already uploaded
-            // AND whose local body has diverged from that last upload.
+            string shareName = name;
+            bool   isUpdatePath = false;
+            string existingUploadId = null;
             bool userOwnsUpload = !string.IsNullOrEmpty(snap.CommunityUploadedById)
                 && string.Equals(snap.CommunityUploadedByUserId,
                                  _plugin.AuthSignedInUserId, StringComparison.Ordinal);
@@ -2274,23 +2273,38 @@ namespace TrueforceForAll.Plugin
                     snap.CommunityUploadedBodyHash, StringComparison.Ordinal);
                 if (bodyChanged)
                 {
-                    string verLabel = string.IsNullOrEmpty(snap.CommunityUploadedVersion)
-                        ? "Update existing upload"
-                        : "Update existing (" + snap.CommunityUploadedVersion + ")";
+                    string nextVer = PresetManagerControl.NextVersionLabel(snap.CommunityUploadedVersion);
                     var chooser = new UpdateVsNewChooserWindow(
                         "Re-share '" + name + "'",
                         "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
-                        verLabel,
+                        "Update existing (" + nextVer + ")",
                         "Share as new preset")
                     {
                         Owner = owner,
                     };
                     bool? pick = chooser.ShowDialog();
                     if (pick != true) return;
-                    dialog.IsUpdate = chooser.IsUpdate;
-                    dialog.ExistingUploadId = chooser.IsUpdate ? snap.CommunityUploadedById : null;
+                    if (chooser.IsUpdate)
+                    {
+                        isUpdatePath = true;
+                        existingUploadId = snap.CommunityUploadedById;
+                    }
+                    else
+                    {
+                        string suggested = name + " " + nextVer;
+                        string newName = _presetManager?.PromptForName("Share as a new preset",
+                            "Community name for this new upload (your local preset's name stays the same):",
+                            suggested);
+                        if (string.IsNullOrWhiteSpace(newName)) return;
+                        shareName = newName.Trim();
+                    }
                 }
             }
+
+            var dialog = PresetShareWindow.ForGame(_plugin, shareName, game, body, tags);
+            dialog.Owner = owner;
+            dialog.IsUpdate = isUpdatePath;
+            dialog.ExistingUploadId = existingUploadId;
 
             bool? ok = dialog.ShowDialog();
             if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
@@ -2406,11 +2420,9 @@ namespace TrueforceForAll.Plugin
                 carDisplay = bundle.CarName;
             }
 
-            var dialog = PresetShareWindow.ForCar(_plugin,
-                pick.Name, entry.GameName ?? "",
-                pick.CarId, carDisplay, body, tags);
-            dialog.Owner = owner;
-
+            string shareName = pick.Name;
+            bool   isUpdatePath = false;
+            string existingUploadId = null;
             bool userOwnsUpload = !string.IsNullOrEmpty(entry.Override.CommunityUploadedById)
                 && string.Equals(entry.Override.CommunityUploadedByUserId,
                                  _plugin.AuthSignedInUserId, StringComparison.Ordinal);
@@ -2421,23 +2433,40 @@ namespace TrueforceForAll.Plugin
                     entry.Override.CommunityUploadedBodyHash, StringComparison.Ordinal);
                 if (bodyChanged)
                 {
-                    string verLabel = string.IsNullOrEmpty(entry.Override.CommunityUploadedVersion)
-                        ? "Update existing upload"
-                        : "Update existing (" + entry.Override.CommunityUploadedVersion + ")";
+                    string nextVer = PresetManagerControl.NextVersionLabel(entry.Override.CommunityUploadedVersion);
                     var chooser = new UpdateVsNewChooserWindow(
                         "Re-share '" + pick.Name + "'",
                         "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
-                        verLabel,
+                        "Update existing (" + nextVer + ")",
                         "Share as new preset")
                     {
                         Owner = owner,
                     };
                     bool? pickChoice = chooser.ShowDialog();
                     if (pickChoice != true) return;
-                    dialog.IsUpdate = chooser.IsUpdate;
-                    dialog.ExistingUploadId = chooser.IsUpdate ? entry.Override.CommunityUploadedById : null;
+                    if (chooser.IsUpdate)
+                    {
+                        isUpdatePath = true;
+                        existingUploadId = entry.Override.CommunityUploadedById;
+                    }
+                    else
+                    {
+                        string suggested = pick.Name + " " + nextVer;
+                        string newName = _presetManager?.PromptForName("Share as a new preset",
+                            "Community name for this new upload (your local preset's name stays the same):",
+                            suggested);
+                        if (string.IsNullOrWhiteSpace(newName)) return;
+                        shareName = newName.Trim();
+                    }
                 }
             }
+
+            var dialog = PresetShareWindow.ForCar(_plugin,
+                shareName, entry.GameName ?? "",
+                pick.CarId, carDisplay, body, tags);
+            dialog.Owner = owner;
+            dialog.IsUpdate = isUpdatePath;
+            dialog.ExistingUploadId = existingUploadId;
 
             bool? ok = dialog.ShowDialog();
             if (ok == true && !string.IsNullOrEmpty(dialog.UploadedPresetId))
