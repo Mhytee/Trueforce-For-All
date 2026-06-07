@@ -2319,19 +2319,46 @@ namespace TrueforceForAll.Plugin
                 Game        = row["game"]?.ToString(),
                 CarId       = row["car_id"]?.ToString() ?? "",
                 EffectTags  = tags,
-                Upvotes     = row["upvotes"]?.ToObject<int>() ?? 0,
-                Downvotes   = row["downvotes"]?.ToObject<int>() ?? 0,
-                WilsonScore = row["wilson_score"]?.ToObject<double>() ?? 0,
-                Downloads   = row["downloads"]?.ToObject<int>() ?? 0,
+                Upvotes     = AsInt(row["upvotes"]),
+                Downvotes   = AsInt(row["downvotes"]),
+                WilsonScore = AsDouble(row["wilson_score"]),
+                Downloads   = AsInt(row["downloads"]),
                 CreatedAt   = created,
                 OwnerUserId    = row["owner_user_id"]?.ToString(),
-                ContentVersion = row["content_version"]?.ToObject<int>() ?? 1,
+                ContentVersion = AsInt(row["content_version"], 1),
                 UpdatedAt      = TryParseDate(row["updated_at"]?.ToString()),
-                EntryCount     = row["entry_count"]?.ToObject<int>() ?? 0,
+                EntryCount     = AsInt(row["entry_count"]),
                 AuthorVersion  = row["author_version"]?.ToString(),
-                AllowInPacks   = row["allow_in_packs"]?.ToObject<bool>() ?? false,
+                AllowInPacks   = AsBool(row["allow_in_packs"]),
                 TargetGames    = targetGames,
             };
+        }
+
+        // Null-safe JSON scalar parsers. The Newtonsoft `?.` operator
+        // does NOT short-circuit on a JSON `null` value - `row["x"]`
+        // returns a JValue whose Type == Null, not a C# null reference,
+        // so a chained ?.ToObject<int>() throws on null-to-value. The
+        // new get_my_presets RPC emits explicit null for entry_count /
+        // author_version (non-pack rows) and allow_in_packs (pack rows),
+        // so without these helpers FetchMyPresetsAsync threw on the
+        // first row and the whole list came back null - which the UI
+        // surfaces as "Could not reach the community backend."
+        private static int AsInt(JToken t, int def = 0)
+        {
+            if (t == null || t.Type == JTokenType.Null) return def;
+            try { return t.ToObject<int>(); } catch { return def; }
+        }
+
+        private static double AsDouble(JToken t, double def = 0)
+        {
+            if (t == null || t.Type == JTokenType.Null) return def;
+            try { return t.ToObject<double>(); } catch { return def; }
+        }
+
+        private static bool AsBool(JToken t, bool def = false)
+        {
+            if (t == null || t.Type == JTokenType.Null) return def;
+            try { return t.ToObject<bool>(); } catch { return def; }
         }
 
         private bool ShouldSubmit(out string url, out string anonKey)
