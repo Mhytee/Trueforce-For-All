@@ -5,7 +5,12 @@
 //
 // Body replacement is opt-in: if you don't pick anything from the
 // "Replace body with..." dropdown, only metadata is sent.
+//
+// Game-preset variant adds a target-games picker (Universal vs explicit
+// list); the picker state is always emitted on save so the user's
+// chosen state is preserved.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -25,6 +30,34 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush HeaderFg = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
         private static readonly Brush BorderFg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
 
+        // Same well-known SimHub games list as PresetShareWindow uses.
+        private static readonly string[] WellKnownGames = new[]
+        {
+            "AssettoCorsa",
+            "AssettoCorsaCompetizione",
+            "AssettoCorsaRally",
+            "AssettoCorsaEVO",
+            "Automobilista2",
+            "BeamNgDrive",
+            "CodemastersGrid2019",
+            "EAWRC23",
+            "F12022",
+            "F12023",
+            "F12024",
+            "F12025",
+            "FM8",
+            "ForzaHorizon5",
+            "ForzaHorizon6",
+            "IRacing",
+            "LMU",
+            "PCars2",
+            "PCars3",
+            "RaceRoom",
+            "TDUSC",
+            "WRC10",
+            "WRCGenerations",
+        };
+
         public string  NewName        { get; private set; }
         public string  NewDescription { get; private set; }
         public JObject NewBody        { get; private set; }   // null = leave body alone
@@ -33,6 +66,10 @@ namespace TrueforceForAll.Plugin
         // = flip the row's allow_in_packs. update_preset honors this
         // semantics on the server side.
         public bool?   NewAllowInPacks { get; private set; }
+        // Game-preset only. null = no change; empty array = Universal;
+        // populated = tuned-for list. Game-preset ctor always sets this
+        // on save to the picker's current state per the spec.
+        public string[] NewTargetGames { get; private set; }
 
         public EditCommunityPresetWindow(
             string presetName, string presetDescription, string carId,
@@ -173,6 +210,251 @@ namespace TrueforceForAll.Plugin
             };
             btnRow.Children.Add(saveBtn);
             root.Children.Add(btnRow);
+        }
+
+        /// <summary>Game-preset edit mode. No body-replace picker (game
+        /// presets are whole-game snapshots, not per-car overrides);
+        /// adds a target-games picker pre-populated from the row.</summary>
+        public static EditCommunityPresetWindow ForGamePreset(
+            string presetName, string presetDescription,
+            string[] currentTargetGames, string activeGameSeed,
+            bool currentAllowInPacks = false)
+        {
+            return new EditCommunityPresetWindow(presetName, presetDescription,
+                currentTargetGames ?? new string[0], activeGameSeed,
+                currentAllowInPacks);
+        }
+
+        private EditCommunityPresetWindow(
+            string presetName, string presetDescription,
+            string[] currentTargetGames, string activeGameSeed,
+            bool currentAllowInPacks)
+        {
+            Title         = "Edit your community game preset";
+            Width         = 480;
+            SizeToContent = SizeToContent.Height;
+            Background    = WindowBg;
+            Foreground    = TextFg;
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            ShowInTaskbar = false;
+            ResizeMode    = ResizeMode.NoResize;
+
+            var root = new StackPanel { Margin = new Thickness(18, 16, 18, 14) };
+            Content = root;
+
+            root.Children.Add(new TextBlock {
+                Text = "Edit your community game preset",
+                Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+            root.Children.Add(new TextBlock {
+                Text = "Update the name, description, or which games this preset is tuned for. Existing votes and downloads stay on the preset.",
+                Foreground = MutedFg, FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 14),
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+            root.Children.Add(new TextBlock { Text = "Name", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
+            var nameInput = new TextBox {
+                Text = presetName ?? "",
+                Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                Padding = new Thickness(6, 4, 6, 4), FontSize = 13, MaxLength = 96,
+                Margin = new Thickness(0, 0, 0, 10),
+            };
+            nameInput.Loaded += (s, e) => { nameInput.Focus(); nameInput.SelectAll(); };
+            root.Children.Add(nameInput);
+
+            root.Children.Add(new TextBlock { Text = "Description", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
+            var descInput = new TextBox {
+                Text = presetDescription ?? "",
+                Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                Padding = new Thickness(6, 4, 6, 4), FontSize = 12, MaxLength = 1024,
+                AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 60,
+                Margin = new Thickness(0, 0, 0, 12),
+            };
+            root.Children.Add(descInput);
+
+            // Pack-inclusion permission (same semantics as the car ctor).
+            var allowInPacksCheck = new CheckBox
+            {
+                Content = "Allow others to include this in their packs",
+                Foreground = TextFg, FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 12),
+                IsChecked = currentAllowInPacks,
+            };
+            root.Children.Add(allowInPacksCheck);
+
+            // Target-games picker. Universal ON when the row currently
+            // has no targets; otherwise OFF with the existing entries
+            // pre-checked. Seed merges current + active + well-known
+            // (de-duped) so the user can add/remove without retyping.
+            root.Children.Add(new TextBlock
+            {
+                Text = "Which games is this tuned for?",
+                Foreground = MutedFg, FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+            bool startsUniversal = currentTargetGames == null || currentTargetGames.Length == 0;
+            var universalCheck = new CheckBox
+            {
+                Content = "Universal (any game)",
+                Foreground = TextFg, FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 6),
+                IsChecked = startsUniversal,
+            };
+            root.Children.Add(universalCheck);
+
+            var pickerStack = new StackPanel
+            {
+                Margin = new Thickness(0, 0, 0, 12),
+                Visibility = startsUniversal ? Visibility.Collapsed : Visibility.Visible,
+            };
+            var gamesList = new ListBox
+            {
+                Foreground = TextFg, Background = InputBg,
+                BorderBrush = BorderFg,
+                Height = 140,
+                Margin = new Thickness(0, 0, 0, 6),
+                SelectionMode = SelectionMode.Multiple,
+            };
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Pre-populate with current target games (pre-checked).
+            if (currentTargetGames != null)
+                foreach (var g in currentTargetGames)
+                {
+                    if (string.IsNullOrWhiteSpace(g)) continue;
+                    string val = g.Trim();
+                    if (!seen.Add(val)) continue;
+                    gamesList.Items.Add(MakeGameItem(val, true));
+                }
+            // Active game (only pre-checked when starting universal so we
+            // don't surprise-add it on first edit).
+            if (!string.IsNullOrWhiteSpace(activeGameSeed)
+                && seen.Add(activeGameSeed.Trim()))
+            {
+                gamesList.Items.Add(MakeGameItem(activeGameSeed.Trim(), startsUniversal));
+            }
+            foreach (var g in WellKnownGames)
+            {
+                if (!seen.Add(g)) continue;
+                gamesList.Items.Add(MakeGameItem(g, false));
+            }
+            pickerStack.Children.Add(gamesList);
+
+            var addRow = new StackPanel { Orientation = Orientation.Horizontal };
+            var addGameInput = new TextBox
+            {
+                Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                Padding = new Thickness(6, 4, 6, 4), FontSize = 12, MaxLength = 64,
+                Width = 260, Margin = new Thickness(0, 0, 6, 0),
+            };
+            var addGameBtn = new Button
+            {
+                Content = "Add", Padding = new Thickness(10, 3, 10, 3),
+                Foreground = TextFg, Background = PanelBg,
+            };
+            addRow.Children.Add(addGameInput);
+            addRow.Children.Add(addGameBtn);
+            pickerStack.Children.Add(addRow);
+
+            addGameBtn.Click += (s, e) =>
+            {
+                string raw = (addGameInput.Text ?? "").Trim();
+                if (string.IsNullOrEmpty(raw)) return;
+                if (raw.Length > 64) raw = raw.Substring(0, 64);
+                foreach (CheckBox existing in gamesList.Items)
+                {
+                    string txt = existing?.Content as string;
+                    if (!string.IsNullOrEmpty(txt)
+                        && string.Equals(txt, raw, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existing.IsChecked = true;
+                        addGameInput.Text = "";
+                        return;
+                    }
+                }
+                gamesList.Items.Add(MakeGameItem(raw, true));
+                addGameInput.Text = "";
+            };
+
+            root.Children.Add(pickerStack);
+
+            universalCheck.Checked   += (s, e) => { pickerStack.Visibility = Visibility.Collapsed; };
+            universalCheck.Unchecked += (s, e) => { pickerStack.Visibility = Visibility.Visible; };
+
+            var btnRow = new StackPanel {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
+            var cancelBtn = new Button {
+                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Margin = new Thickness(0, 0, 8, 0),
+                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+            };
+            cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
+            btnRow.Children.Add(cancelBtn);
+
+            var saveBtn = new Button {
+                Content = "Save", Padding = new Thickness(12, 5, 12, 5),
+                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+            };
+            saveBtn.Click += (s, e) =>
+            {
+                string n = (nameInput.Text ?? "").Trim();
+                if (n.Length < 2 || n.Length > 96)
+                {
+                    MessageBox.Show(this, "Name must be 2 to 96 characters.",
+                        "Edit preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                NewName = n;
+                NewDescription = (descInput.Text ?? "").Trim();
+                bool nowChecked = allowInPacksCheck.IsChecked == true;
+                if (nowChecked != currentAllowInPacks)
+                    NewAllowInPacks = nowChecked;
+                // Always emit picker state per spec: empty array when
+                // Universal, populated list otherwise. Server treats empty
+                // as "reset to universal" and the list as a replace.
+                NewTargetGames = CollectTargetGames(universalCheck, gamesList);
+                DialogResult = true;
+                Close();
+            };
+            btnRow.Children.Add(saveBtn);
+            root.Children.Add(btnRow);
+        }
+
+        private static CheckBox MakeGameItem(string gameName, bool preChecked)
+        {
+            return new CheckBox
+            {
+                Content    = gameName,
+                IsChecked  = preChecked,
+                Foreground = TextFg,
+                FontSize   = 12,
+                Margin     = new Thickness(2, 1, 2, 1),
+            };
+        }
+
+        // Universal ON => empty array; OFF => trimmed/deduped/capped list.
+        private static string[] CollectTargetGames(CheckBox universalCheck, ListBox gamesList)
+        {
+            if (universalCheck == null || gamesList == null) return new string[0];
+            if (universalCheck.IsChecked == true) return new string[0];
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var picked = new List<string>();
+            foreach (CheckBox cb in gamesList.Items)
+            {
+                if (cb?.IsChecked != true) continue;
+                string raw = cb.Content as string;
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                string val = raw.Trim();
+                if (val.Length > 64) val = val.Substring(0, 64);
+                if (val.Length == 0) continue;
+                if (!seen.Add(val)) continue;
+                picked.Add(val);
+                if (picked.Count >= 64) break;
+            }
+            return picked.ToArray();
         }
     }
 }

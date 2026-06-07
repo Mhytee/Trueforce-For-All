@@ -74,6 +74,11 @@ namespace TrueforceForAll.Plugin
         // and "don't redistribute" community items never accidentally
         // ride along.
         public bool   AllowInPacks   { get; set; }
+        // Game-preset-only: which games this preset is tuned for. Empty
+        // means universal (applies to any game). Used by the browser
+        // ranking + the "for <game>" / "Universal" / "Other games (N)"
+        // tier badges. Populated by migration 0022's get_game_presets_by_ids.
+        public string[] TargetGames  { get; set; } = new string[0];
     }
 
     /// <summary>Detail row: summary + full body. Returned by FetchPresetBody
@@ -770,7 +775,7 @@ namespace TrueforceForAll.Plugin
 
             string qs = "?game=eq." + Uri.EscapeDataString(game)
                       + "&select=id,name,author,description,game,effect_tags,"
-                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs,target_games"
                       + "&order=" + orderClause
                       + "&limit=" + Math.Max(1, Math.Min(limit, 100));
             string fullUrl = url.TrimEnd('/') + GamePresetsPath + qs;
@@ -802,7 +807,7 @@ namespace TrueforceForAll.Plugin
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             string orderClause = SortToOrderClause(sort);
             string qs = "?select=id,name,author,description,game,effect_tags,"
-                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs,target_games"
                       + "&order=" + orderClause
                       + "&limit=" + Math.Max(1, Math.Min(limit, 100));
             string fullUrl = url.TrimEnd('/') + GamePresetsPath + qs;
@@ -1123,7 +1128,8 @@ namespace TrueforceForAll.Plugin
             string name, string game, JObject body,
             string description, List<string> effectTags,
             int bodyVersion = 1, int timeoutMs = 15000,
-            bool allowInPacks = false)
+            bool allowInPacks = false,
+            string[] targetGames = null)
         {
             ResetUploadError();
             if (!ShouldSubmit(out var url, out var anonKey))
@@ -1145,6 +1151,8 @@ namespace TrueforceForAll.Plugin
                     p_body_version   = bodyVersion,
                     p_plugin_version = _pluginVersion,
                     p_allow_in_packs = allowInPacks,
+                    // Empty array = universal; non-empty = tuned-for list.
+                    p_target_games   = targetGames ?? new string[0],
                 }, _jsonSettings);
             }
             catch (Exception ex)
@@ -1203,7 +1211,8 @@ namespace TrueforceForAll.Plugin
         public async Task<bool> UpdateGamePresetAsync(string id,
             string name, string description, JObject body, List<string> effectTags,
             int? bodyVersion = null, int timeoutMs = 15000,
-            bool? allowInPacks = null)
+            bool? allowInPacks = null,
+            string[] targetGames = null)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return false;
             if (string.IsNullOrWhiteSpace(id)) return false;
@@ -1217,6 +1226,9 @@ namespace TrueforceForAll.Plugin
             string requestBody;
             try
             {
+                // null targetGames means "no change"; NullValueHandling.Ignore
+                // drops p_target_games from the payload. Empty array = reset
+                // to universal; populated = replace.
                 requestBody = JsonConvert.SerializeObject(new
                 {
                     p_game_preset_id = id,
@@ -1226,6 +1238,7 @@ namespace TrueforceForAll.Plugin
                     p_effect_tags    = effectTags,
                     p_body_version   = bodyVersion,
                     p_allow_in_packs = allowInPacks,
+                    p_target_games   = targetGames,
                 }, _jsonSettings);
             }
             catch (Exception ex)
@@ -2217,6 +2230,19 @@ namespace TrueforceForAll.Plugin
             if (tagToken is JArray ta)
                 foreach (var t in ta)
                     tags.Add(t?.ToString());
+            // target_games is game-preset-only; absent / null = universal (empty array).
+            string[] targetGames = new string[0];
+            var tgToken = row["target_games"];
+            if (tgToken is JArray tga)
+            {
+                var tgList = new List<string>(tga.Count);
+                foreach (var g in tga)
+                {
+                    string s = g?.ToString();
+                    if (!string.IsNullOrEmpty(s)) tgList.Add(s);
+                }
+                targetGames = tgList.ToArray();
+            }
             DateTime? created = null;
             string c = row["created_at"]?.ToString();
             if (!string.IsNullOrEmpty(c)
@@ -2248,6 +2274,7 @@ namespace TrueforceForAll.Plugin
                 EntryCount     = row["entry_count"]?.ToObject<int>() ?? 0,
                 AuthorVersion  = row["author_version"]?.ToString(),
                 AllowInPacks   = row["allow_in_packs"]?.ToObject<bool>() ?? false,
+                TargetGames    = targetGames,
             };
         }
 

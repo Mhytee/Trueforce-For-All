@@ -7834,12 +7834,14 @@ namespace TrueforceForAll.Plugin
         internal async Task<string> UploadGamePresetToCommunityAsync(
             string name, string game, JObject body,
             string description, List<string> effectTags, int bodyVersion = 1,
-            bool allowInPacks = false)
+            bool allowInPacks = false,
+            string[] targetGames = null)
         {
             if (_presetSharing == null) return null;
             return await _presetSharing.UploadGamePresetAsync(
                 name, game, body, description, effectTags, bodyVersion,
-                allowInPacks: allowInPacks);
+                allowInPacks: allowInPacks,
+                targetGames: targetGames);
         }
 
         internal List<PresetSummary> FetchCommunityGamePresetsForGame(
@@ -7861,12 +7863,14 @@ namespace TrueforceForAll.Plugin
         internal async Task<bool> UpdateCommunityGamePresetAsync(string id,
             string name, string description, JObject body,
             List<string> effectTags, int? bodyVersion = null,
-            bool? allowInPacks = null)
+            bool? allowInPacks = null,
+            string[] targetGames = null)
         {
             if (_presetSharing == null) return false;
             return await _presetSharing.UpdateGamePresetAsync(
                 id, name, description, body, effectTags, bodyVersion,
-                allowInPacks: allowInPacks);
+                allowInPacks: allowInPacks,
+                targetGames: targetGames);
         }
 
         internal Task<Dictionary<string, int>> FetchMyCommunityGameVotesAsync(IList<string> gamePresetIds)

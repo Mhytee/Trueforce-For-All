@@ -604,6 +604,8 @@
                         <DataGridTextColumn Header="Name"      Width="*"   MinWidth="160" Binding="{Binding Name}"/>
                         <DataGridTextColumn Header="Author"    Width="120" MinWidth="80"  Binding="{Binding Author}"/>
                         <DataGridTextColumn Header="Game"      Width="100" MinWidth="70"  Binding="{Binding Game}"/>
+                        <!-- Game-preset only: per-row tier badge from target_games. Blank for car-preset rows. -->
+                        <DataGridTextColumn Header="Scope"     Width="120" MinWidth="80"  Binding="{Binding TierBadge}"/>
                         <DataGridTextColumn Header="Car ID"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
                         <DataGridTextColumn Header="Downloads" Width="80"  MinWidth="60"  Binding="{Binding Downloads}"/>
                         <DataGridTextColumn Header="Sections"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>

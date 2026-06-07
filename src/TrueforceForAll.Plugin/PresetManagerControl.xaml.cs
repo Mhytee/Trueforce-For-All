@@ -2511,6 +2511,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             public string TagsLabel   => Summary?.EffectTags == null || Summary.EffectTags.Count == 0
                                           ? "" : string.Join(", ", Summary.EffectTags);
             public string Description => Summary?.Description ?? "";
+            // Pre-computed game-preset tier label set by the post-fetch
+            // ranking pass ("for <ActiveGame>" / "Universal" / "Other
+            // games (N)"). Empty for non-game rows and when no fetch has
+            // been ranked yet.
+            public string TierBadge   { get; set; } = "";
             // -1 / 0 / +1. Drives arrow colors + click semantics.
             public int    MyVote      { get; set; }
             public System.Windows.Media.Brush UpArrowBrush =>
@@ -2521,6 +2526,45 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 MyVote == -1
                     ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0x77, 0x77))
                     : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x80, 0x80, 0x80));
+        }
+
+        // Tiered ranking for the game-presets browse list: rows tuned for
+        // the active game first, Universal next, then Other. Within-tier
+        // order is the server's sort order, preserved via OrderBy's
+        // stability. When the plugin is idle (no ActiveGame), the Match
+        // tier is empty so Universal floats to the top.
+        private static List<PresetSummary> RankGamePresetsByTargetGames(
+            List<PresetSummary> rows, string activeGame)
+        {
+            if (rows == null || rows.Count == 0) return rows;
+            bool hasActive = !string.IsNullOrEmpty(activeGame);
+            int Tier(PresetSummary p)
+            {
+                if (p?.TargetGames == null || p.TargetGames.Length == 0) return hasActive ? 1 : 0;
+                if (hasActive)
+                {
+                    foreach (var g in p.TargetGames)
+                        if (string.Equals(g, activeGame, StringComparison.OrdinalIgnoreCase))
+                            return 0;
+                    return 2;
+                }
+                return 1;
+            }
+            return rows.OrderBy(Tier).ToList();
+        }
+
+        private static string ComputeTierBadge(PresetSummary p, string activeGame)
+        {
+            if (p == null) return "";
+            bool universal = p.TargetGames == null || p.TargetGames.Length == 0;
+            if (universal) return "Universal";
+            if (!string.IsNullOrEmpty(activeGame))
+            {
+                foreach (var g in p.TargetGames)
+                    if (string.Equals(g, activeGame, StringComparison.OrdinalIgnoreCase))
+                        return "for " + UiContentSanitizer.SafeDisplayText(activeGame, 32);
+            }
+            return "Other games (" + p.TargetGames.Length + ")";
         }
 
         private readonly System.Collections.ObjectModel.ObservableCollection<CommunityRow> _communityRows =
@@ -2816,8 +2860,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _communityFetchInFlight = false;
                 return;
             }
+            // Game-kind: apply the target_games tier ranking + per-row
+            // badge before the rows are inserted. Within-tier order is
+            // preserved from the server's sort (Wilson / newest / downloads).
+            if (capturedKind == "game")
+                results = RankGamePresetsByTargetGames(results, _plugin?.ActiveGame);
             foreach (var s in results)
-                _communityRows.Add(new CommunityRow { Summary = s });
+            {
+                var row = new CommunityRow { Summary = s };
+                if (capturedKind == "game")
+                    row.TierBadge = ComputeTierBadge(s, _plugin?.ActiveGame);
+                _communityRows.Add(row);
+            }
 
             // Bulk-pull the signed-in user's votes on these rows so the
             // Reddit arrows can show selected state.
@@ -2931,39 +2985,55 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (sel?.Summary == null || _plugin == null) return;
             if (!_plugin.AuthIsSignedIn) return;
 
-            // Build the list of the user's local car presets for the
-            // SAME car_id so the body-replacement picker only offers
-            // presets that make sense for this row's car.
-            var localPresets = new List<CarPresetEntry>();
-            if (!string.IsNullOrEmpty(sel.Summary.CarId))
+            string kind = sel.Summary.Kind ?? "car";
+            EditCommunityPresetWindow dlg;
+            bool isGameRow = kind == "game";
+            if (isGameRow)
             {
-                var perCar = _plugin.GetCarPresets(sel.Summary.CarId);
-                if (perCar != null)
-                    foreach (var kv in perCar)
-                        if (kv.Value != null && kv.Value.Override != null)
-                            localPresets.Add(kv.Value);
+                // Game-preset editor: no body replace; target-games picker
+                // pre-populated from the row.
+                dlg = EditCommunityPresetWindow.ForGamePreset(
+                    sel.Summary.Name, sel.Summary.Description,
+                    sel.Summary.TargetGames, _plugin.ActiveGame,
+                    sel.Summary.AllowInPacks);
+                dlg.Owner = Window.GetWindow(this);
             }
-
-            var dlg = new EditCommunityPresetWindow(
-                sel.Summary.Name, sel.Summary.Description, sel.Summary.CarId,
-                localPresets,
-                bodyBuilder: ovr =>
-                {
-                    var customs = _plugin.CollectReferencedCustomEngines(
-                        null, new[] { ovr });
-                    var body = new Newtonsoft.Json.Linq.JObject
-                    {
-                        ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(ovr),
-                    };
-                    if (customs != null && customs.Count > 0)
-                        body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
-                    return body;
-                },
-                tagsBuilder: BuildEffectTags,
-                currentAllowInPacks: sel.Summary.AllowInPacks)
+            else
             {
-                Owner = Window.GetWindow(this),
-            };
+                // Build the list of the user's local car presets for the
+                // SAME car_id so the body-replacement picker only offers
+                // presets that make sense for this row's car.
+                var localPresets = new List<CarPresetEntry>();
+                if (!string.IsNullOrEmpty(sel.Summary.CarId))
+                {
+                    var perCar = _plugin.GetCarPresets(sel.Summary.CarId);
+                    if (perCar != null)
+                        foreach (var kv in perCar)
+                            if (kv.Value != null && kv.Value.Override != null)
+                                localPresets.Add(kv.Value);
+                }
+
+                dlg = new EditCommunityPresetWindow(
+                    sel.Summary.Name, sel.Summary.Description, sel.Summary.CarId,
+                    localPresets,
+                    bodyBuilder: ovr =>
+                    {
+                        var customs = _plugin.CollectReferencedCustomEngines(
+                            null, new[] { ovr });
+                        var body = new Newtonsoft.Json.Linq.JObject
+                        {
+                            ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(ovr),
+                        };
+                        if (customs != null && customs.Count > 0)
+                            body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
+                        return body;
+                    },
+                    tagsBuilder: BuildEffectTags,
+                    currentAllowInPacks: sel.Summary.AllowInPacks)
+                {
+                    Owner = Window.GetWindow(this),
+                };
+            }
             bool? ok = dlg.ShowDialog();
             if (ok != true) return;
 
@@ -2971,10 +3041,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             bool success;
             try
             {
-                success = await _plugin.UpdateCommunityPresetAsync(
-                    sel.Summary.Id, dlg.NewName, dlg.NewDescription,
-                    dlg.NewBody, dlg.NewEffectTags,
-                    allowInPacks: dlg.NewAllowInPacks);
+                if (isGameRow)
+                {
+                    success = await _plugin.UpdateCommunityGamePresetAsync(
+                        sel.Summary.Id, dlg.NewName, dlg.NewDescription,
+                        dlg.NewBody, dlg.NewEffectTags,
+                        allowInPacks: dlg.NewAllowInPacks,
+                        targetGames: dlg.NewTargetGames);
+                }
+                else
+                {
+                    success = await _plugin.UpdateCommunityPresetAsync(
+                        sel.Summary.Id, dlg.NewName, dlg.NewDescription,
+                        dlg.NewBody, dlg.NewEffectTags,
+                        allowInPacks: dlg.NewAllowInPacks);
+                }
             }
             catch (Exception ex)
             {
@@ -2993,6 +3074,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             sel.Summary.Description = string.IsNullOrEmpty(dlg.NewDescription) ? null : dlg.NewDescription;
             if (dlg.NewEffectTags != null) sel.Summary.EffectTags = dlg.NewEffectTags;
             if (dlg.NewAllowInPacks.HasValue) sel.Summary.AllowInPacks = dlg.NewAllowInPacks.Value;
+            if (isGameRow && dlg.NewTargetGames != null) sel.Summary.TargetGames = dlg.NewTargetGames;
+            if (isGameRow) sel.TierBadge = ComputeTierBadge(sel.Summary, _plugin?.ActiveGame);
             int idx = _communityRows.IndexOf(sel);
             if (idx >= 0)
             {

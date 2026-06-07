@@ -40,6 +40,37 @@ namespace TrueforceForAll.Plugin
         private readonly Newtonsoft.Json.Linq.JObject _body;
         private readonly List<string> _effectTags;
 
+        // Well-known SimHub game identifiers we seed the target-games picker
+        // with. Mirrors IsNativeTrueforceGame + a few non-native titles
+        // common in the user base. The free-text Add input lets users name
+        // anything not on the list.
+        private static readonly string[] WellKnownGames = new[]
+        {
+            "AssettoCorsa",
+            "AssettoCorsaCompetizione",
+            "AssettoCorsaRally",
+            "AssettoCorsaEVO",
+            "Automobilista2",
+            "BeamNgDrive",
+            "CodemastersGrid2019",
+            "EAWRC23",
+            "F12022",
+            "F12023",
+            "F12024",
+            "F12025",
+            "FM8",
+            "ForzaHorizon5",
+            "ForzaHorizon6",
+            "IRacing",
+            "LMU",
+            "PCars2",
+            "PCars3",
+            "RaceRoom",
+            "TDUSC",
+            "WRC10",
+            "WRCGenerations",
+        };
+
         /// <summary>Modal for sharing a car preset. Body is the
         /// CarOverride payload + any referenced CustomEngineDefs.</summary>
         public static PresetShareWindow ForCar(
@@ -180,6 +211,112 @@ namespace TrueforceForAll.Plugin
             };
             root.Children.Add(allowInPacksCheck);
 
+            // Target-games picker: game-preset uploads only. Universal
+            // (no scope) by default; toggling Universal off reveals the
+            // checkbox list of well-known games + free-text Add.
+            CheckBox universalCheck = null;
+            ListBox gamesList = null;
+            TextBox addGameInput = null;
+            Button addGameBtn = null;
+            FrameworkElement gamesPanel = null;
+            if (isGame)
+            {
+                root.Children.Add(new TextBlock
+                {
+                    Text = "Which games is this tuned for?",
+                    Foreground = MutedFg, FontSize = 11,
+                    Margin = new Thickness(0, 0, 0, 4),
+                });
+                universalCheck = new CheckBox
+                {
+                    Content = "Universal (any game)",
+                    Foreground = TextFg, FontSize = 11,
+                    Margin = new Thickness(0, 0, 0, 6),
+                    IsChecked = true,
+                    IsEnabled = signedIn,
+                };
+                root.Children.Add(universalCheck);
+
+                var pickerStack = new StackPanel
+                {
+                    Margin = new Thickness(0, 0, 0, 12),
+                    Visibility = Visibility.Collapsed,
+                };
+                gamesPanel = pickerStack;
+                gamesList = new ListBox
+                {
+                    Foreground = TextFg, Background = InputBg,
+                    BorderBrush = BorderFg,
+                    Height = 140,
+                    Margin = new Thickness(0, 0, 0, 6),
+                    SelectionMode = SelectionMode.Multiple,
+                };
+                // Seed: active game (pre-checked) + well-known list (deduped, case-insensitive).
+                var seedSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                string activeGame = _plugin?.ActiveGame;
+                bool hasActive = !string.IsNullOrWhiteSpace(activeGame);
+                if (hasActive)
+                {
+                    seedSeen.Add(activeGame.Trim());
+                    var item = MakeGameItem(activeGame.Trim(), true);
+                    gamesList.Items.Add(item);
+                }
+                foreach (var g in WellKnownGames)
+                {
+                    if (string.IsNullOrWhiteSpace(g)) continue;
+                    if (!seedSeen.Add(g)) continue;
+                    gamesList.Items.Add(MakeGameItem(g, false));
+                }
+                pickerStack.Children.Add(gamesList);
+
+                var addRow = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+                addGameInput = new TextBox
+                {
+                    Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                    Padding = new Thickness(6, 4, 6, 4), FontSize = 12, MaxLength = 64,
+                    Width = 260,
+                    Margin = new Thickness(0, 0, 6, 0),
+                };
+                addGameBtn = new Button
+                {
+                    Content = "Add", Padding = new Thickness(10, 3, 10, 3),
+                    Foreground = TextFg, Background = PanelBg,
+                };
+                addRow.Children.Add(addGameInput);
+                addRow.Children.Add(addGameBtn);
+                pickerStack.Children.Add(addRow);
+
+                // Wire Add: append a new pre-checked entry if not already present.
+                addGameBtn.Click += (s, e) =>
+                {
+                    string raw = (addGameInput.Text ?? "").Trim();
+                    if (string.IsNullOrEmpty(raw)) return;
+                    if (raw.Length > 64) raw = raw.Substring(0, 64);
+                    foreach (CheckBox existing in gamesList.Items)
+                    {
+                        string txt = existing?.Content as string;
+                        if (!string.IsNullOrEmpty(txt)
+                            && string.Equals(txt, raw, StringComparison.OrdinalIgnoreCase))
+                        {
+                            existing.IsChecked = true;
+                            addGameInput.Text = "";
+                            return;
+                        }
+                    }
+                    gamesList.Items.Add(MakeGameItem(raw, true));
+                    addGameInput.Text = "";
+                };
+
+                root.Children.Add(pickerStack);
+
+                // Toggle: Universal hides the picker; off shows it.
+                universalCheck.Checked   += (s, e) => { pickerStack.Visibility = Visibility.Collapsed; };
+                universalCheck.Unchecked += (s, e) => { pickerStack.Visibility = Visibility.Visible; };
+            }
+
             // Status line for in-flight upload / errors. Wording shifts
             // based on whether the user is signed in.
             var statusText = new TextBlock {
@@ -283,6 +420,7 @@ namespace TrueforceForAll.Plugin
                         descInput.IsEnabled = true;
                         uploadBtn.IsEnabled = hasSections;
                         allowInPacksCheck.IsEnabled = true;
+                        if (universalCheck != null) universalCheck.IsEnabled = true;
                         statusText.Foreground = MutedFg;
                         statusText.Text = "Uploads are credited to your username.";
                         btnRow.Children.Remove(signInBtn);
@@ -326,9 +464,14 @@ namespace TrueforceForAll.Plugin
                         newId = await _plugin.UploadCustomEngineToCommunityAsync(
                             _presetName, _body, desc, allowInPacks: allowPacks);
                     else if (isGame)
+                    {
+                        // Empty array = Universal; otherwise collect the
+                        // checked-and-sanitized list from the picker.
+                        string[] tg = CollectTargetGames(universalCheck, gamesList);
                         newId = await _plugin.UploadGamePresetToCommunityAsync(
                             _presetName, _game, _body, desc, _effectTags,
-                            allowInPacks: allowPacks);
+                            allowInPacks: allowPacks, targetGames: tg);
+                    }
                     else
                         newId = await _plugin.UploadCarPresetToCommunityAsync(
                             _presetName, _game, _carId, _body,
@@ -360,6 +503,42 @@ namespace TrueforceForAll.Plugin
             };
             btnRow.Children.Add(uploadBtn);
             root.Children.Add(btnRow);
+        }
+
+        // Build a CheckBox row for one game entry in the target-games picker.
+        private static CheckBox MakeGameItem(string gameName, bool preChecked)
+        {
+            return new CheckBox
+            {
+                Content    = gameName,
+                IsChecked  = preChecked,
+                Foreground = TextFg,
+                FontSize   = 12,
+                Margin     = new Thickness(2, 1, 2, 1),
+            };
+        }
+
+        // Universal ON => empty array (universal). OFF => trimmed, deduped,
+        // capped list. Server re-sanitizes; the cap mirrors server hygiene.
+        private static string[] CollectTargetGames(CheckBox universalCheck, ListBox gamesList)
+        {
+            if (universalCheck == null || gamesList == null) return new string[0];
+            if (universalCheck.IsChecked == true) return new string[0];
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var picked = new List<string>();
+            foreach (CheckBox cb in gamesList.Items)
+            {
+                if (cb?.IsChecked != true) continue;
+                string raw = cb.Content as string;
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                string val = raw.Trim();
+                if (val.Length > 64) val = val.Substring(0, 64);
+                if (val.Length == 0) continue;
+                if (!seen.Add(val)) continue;
+                picked.Add(val);
+                if (picked.Count >= 64) break;
+            }
+            return picked.ToArray();
         }
 
         private FrameworkElement MakeFactLine(string label, string value)
