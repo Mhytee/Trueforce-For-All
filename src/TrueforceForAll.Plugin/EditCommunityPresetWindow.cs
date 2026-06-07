@@ -202,16 +202,18 @@ namespace TrueforceForAll.Plugin
         /// presets are whole-game snapshots, not per-car overrides);
         /// adds a target-games picker pre-populated from the row.</summary>
         public static EditCommunityPresetWindow ForGamePreset(
+            TrueforcePlugin plugin,
             string presetName, string presetDescription,
             string[] currentTargetGames, string activeGameSeed,
             bool currentAllowInPacks = false)
         {
-            return new EditCommunityPresetWindow(presetName, presetDescription,
+            return new EditCommunityPresetWindow(plugin, presetName, presetDescription,
                 currentTargetGames ?? new string[0], activeGameSeed,
                 currentAllowInPacks);
         }
 
         private EditCommunityPresetWindow(
+            TrueforcePlugin plugin,
             string presetName, string presetDescription,
             string[] currentTargetGames, string activeGameSeed,
             bool currentAllowInPacks)
@@ -303,27 +305,47 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 6),
                 SelectionMode = SelectionMode.Multiple,
             };
+            // Candidate set sourced from SimHub-known games on this
+            // install + the WellKnownGames fallback. Native-Trueforce
+            // titles filtered out (we yield to those). Free-text Add
+            // is the escape hatch for anything off-list.
+            var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (plugin?.Settings?.GameDefaults != null)
+                foreach (var k in plugin.Settings.GameDefaults.Keys)
+                    if (!string.IsNullOrWhiteSpace(k)) candidates.Add(k.Trim());
+            if (plugin?.Settings?.GameEnabled != null)
+                foreach (var k in plugin.Settings.GameEnabled.Keys)
+                    if (!string.IsNullOrWhiteSpace(k)) candidates.Add(k.Trim());
+            if (!string.IsNullOrWhiteSpace(activeGameSeed))
+                candidates.Add(activeGameSeed.Trim());
+            foreach (var g in WellKnownGames)
+                if (!string.IsNullOrWhiteSpace(g)) candidates.Add(g);
+            candidates.RemoveWhere(g => TrueforcePlugin.IsNativeTrueforceGame(g));
+
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            // Pre-populate with current target games (pre-checked).
+            // Pre-populate with current target games (pre-checked). The
+            // user's existing intent wins even over the native-TF filter.
             if (currentTargetGames != null)
-                foreach (var g in currentTargetGames)
+                foreach (var g in currentTargetGames
+                                    .Where(g => !string.IsNullOrWhiteSpace(g))
+                                    .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
                 {
-                    if (string.IsNullOrWhiteSpace(g)) continue;
                     string val = g.Trim();
                     if (!seen.Add(val)) continue;
                     gamesList.Items.Add(MakeGameItem(val, true));
                 }
-            // Active game (only pre-checked when starting universal so we
-            // don't surprise-add it on first edit).
-            if (!string.IsNullOrWhiteSpace(activeGameSeed)
-                && seen.Add(activeGameSeed.Trim()))
-            {
-                gamesList.Items.Add(MakeGameItem(activeGameSeed.Trim(), startsUniversal));
-            }
-            foreach (var g in WellKnownGames)
+            // Everything else sorted alphabetically, unchecked.
+            foreach (var g in candidates
+                                .Where(g => !seen.Contains(g))
+                                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
             {
                 if (!seen.Add(g)) continue;
-                gamesList.Items.Add(MakeGameItem(g, false));
+                // Active game is conventionally checked on first edit
+                // when starting Universal, so the user can quickly anchor
+                // to "current game" without typing.
+                bool preChecked = startsUniversal
+                    && string.Equals(g, activeGameSeed, StringComparison.OrdinalIgnoreCase);
+                gamesList.Items.Add(MakeGameItem(g, preChecked));
             }
             pickerStack.Children.Add(gamesList);
 

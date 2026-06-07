@@ -3209,6 +3209,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 // Game-preset editor: no body replace; target-games picker
                 // pre-populated from the row.
                 dlg = EditCommunityPresetWindow.ForGamePreset(
+                    _plugin,
                     sel.Summary.Name, sel.Summary.Description,
                     sel.Summary.TargetGames, _plugin.ActiveGame,
                     sel.Summary.AllowInPacks);

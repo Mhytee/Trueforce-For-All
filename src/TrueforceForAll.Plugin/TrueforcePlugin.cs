@@ -3304,7 +3304,7 @@ namespace TrueforceForAll.Plugin
         /// toggle if they prefer our effects layered on top. SimHub
         /// GameName values verified against the SimHub install
         /// (LookupTables and PluginsData folder names).</summary>
-        private static bool IsNativeTrueforceGame(string game)
+        public static bool IsNativeTrueforceGame(string game)
         {
             if (string.IsNullOrEmpty(game)) return false;
             // Forza Motorsport (2023 reboot, internally FM8) ships native

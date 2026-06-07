@@ -10,6 +10,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -263,23 +264,48 @@ namespace TrueforceForAll.Plugin
                     Margin = new Thickness(0, 0, 0, 6),
                     SelectionMode = SelectionMode.Multiple,
                 };
-                // Seed order: pre-checked default-bound games first (the
-                // user's existing intent), then active game (unchecked - a
-                // hint they can add it if they want), then well-known list.
-                // All deduped case-insensitively against each other.
+                // Build the candidate set from EVERY game SimHub has
+                // registered on this install (GameDefaults + GameEnabled
+                // keys + active game), plus a small WellKnownGames
+                // fallback for users who haven't interacted with any
+                // games yet. Filter out titles where Trueforce ships
+                // natively - we yield to those, so sharing for them
+                // gains nothing. The free-text Add input lets users
+                // type a name not on the list (a custom SimHub game,
+                // an opt-in driver-override scenario, etc).
+                var candidateSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (_plugin?.Settings?.GameDefaults != null)
+                    foreach (var k in _plugin.Settings.GameDefaults.Keys)
+                        if (!string.IsNullOrWhiteSpace(k)) candidateSet.Add(k.Trim());
+                if (_plugin?.Settings?.GameEnabled != null)
+                    foreach (var k in _plugin.Settings.GameEnabled.Keys)
+                        if (!string.IsNullOrWhiteSpace(k)) candidateSet.Add(k.Trim());
+                string activeGame = _plugin?.ActiveGame;
+                if (!string.IsNullOrWhiteSpace(activeGame))
+                    candidateSet.Add(activeGame.Trim());
+                foreach (var g in WellKnownGames)
+                    if (!string.IsNullOrWhiteSpace(g)) candidateSet.Add(g);
+                candidateSet.RemoveWhere(g => TrueforcePlugin.IsNativeTrueforceGame(g));
+
+                // Render order: pre-checked default-bound games first
+                // (user's existing intent), then everything else sorted
+                // alphabetically. Default-bound games always win even if
+                // the native-TF filter would normally remove them (the
+                // binding is the user's intent, not a fresh add).
                 var seedSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var g in defaultGames)
+                var defaultGamesOrdered = defaultGames
+                    .Where(g => !string.IsNullOrWhiteSpace(g))
+                    .OrderBy(g => g, StringComparer.OrdinalIgnoreCase);
+                foreach (var g in defaultGamesOrdered)
                 {
-                    if (string.IsNullOrWhiteSpace(g)) continue;
                     if (!seedSeen.Add(g)) continue;
                     gamesList.Items.Add(MakeGameItem(g, true));
                 }
-                string activeGame = _plugin?.ActiveGame;
-                if (!string.IsNullOrWhiteSpace(activeGame) && seedSeen.Add(activeGame.Trim()))
-                    gamesList.Items.Add(MakeGameItem(activeGame.Trim(), false));
-                foreach (var g in WellKnownGames)
+                var unchecked2 = candidateSet
+                    .Where(g => !seedSeen.Contains(g))
+                    .OrderBy(g => g, StringComparer.OrdinalIgnoreCase);
+                foreach (var g in unchecked2)
                 {
-                    if (string.IsNullOrWhiteSpace(g)) continue;
                     if (!seedSeen.Add(g)) continue;
                     gamesList.Items.Add(MakeGameItem(g, false));
                 }
