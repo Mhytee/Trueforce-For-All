@@ -160,7 +160,21 @@ values
   ('Calibrated Daily', 'GearGremlin', 'Moderate forces suitable for daily driving. Easy on the wrists over long sessions.',
    'AssettoCorsa', 'gravygarage_street_e36_touring',
    '{"override":{"EnginePulse":{"Enabled":true,"Gain":0.07}}}',
-   '{engine}', 24, 3, 0.62, 84, 'mock-seed', 'mock-seed-ip', false, '0.1.24', 1);
+   '{engine}', 24, 3, 0.62, 84, 'mock-seed', 'mock-seed-ip', false, '0.1.24', 1),
+
+  -- AssettoCorsa / bdc_streetspec_e36_v4 -- viral + popular + average
+  ('Drift Setup Pro', 'DriftKing', 'Aggressive traction loss + gear shift tuned for BDC drift sessions. Strong wheel kickback on grip break.',
+   'AssettoCorsa', 'bdc_streetspec_e36_v4',
+   '{"override":{"TractionLoss":{"Enabled":true,"Gain":0.78},"GearShift":{"Enabled":true,"Gain":0.7},"EnginePulse":{"Enabled":true,"Gain":0.082}}}',
+   '{tractionloss,gearshift,engine}', 251, 8, 0.92, 1290, 'mock-seed', 'mock-seed-ip', true, '0.1.24', 1),
+  ('Street Spec Calibrated', 'RaceCraft42', 'Balanced street-spec tune. Detailed engine pulse with road bump texture.',
+   'AssettoCorsa', 'bdc_streetspec_e36_v4',
+   '{"override":{"EnginePulse":{"Enabled":true,"Gain":0.075,"Freq":78.0},"RoadBumps":{"Enabled":true,"Gain":0.55}}}',
+   '{engine,roadbumps}', 67, 4, 0.78, 244, 'mock-seed', 'mock-seed-ip', true, '0.1.24', 1),
+  ('Cone Killer', 'GearGremlin', 'Autocross-oriented tune. Crisp abs click + collision feedback for tight courses.',
+   'AssettoCorsa', 'bdc_streetspec_e36_v4',
+   '{"override":{"AbsClick":{"Enabled":true,"Gain":0.55},"Collision":{"Enabled":true,"Gain":0.6}}}',
+   '{abs,collision}', 26, 4, 0.58, 92, 'mock-seed', 'mock-seed-ip', false, '0.1.24', 1);
 
 -- ===========================================================
 -- GAME PRESETS (10 total)
