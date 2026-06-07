@@ -2697,50 +2697,57 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
-                // Every other car's presets, GROUPED BY GAME (so you can tell
-                // which cars are Forza Horizon 6 vs Assetto Corsa, etc.). The
-                // active game's cars come first, then other games alphabetically.
-                // Each row is "<carId> · <preset>" so cars stay distinguishable
-                // within a game. Picking one pins that car for editing.
-                var allCars = _plugin.GetAllCarPresets();
-                if (allCars != null)
+                // No-car case: show every car the user can edit, grouped by
+                // game so they can pick which one to work on. Scoped to the
+                // active game when there is one (browsing your library while
+                // a game is loaded shouldn't surface cars for a different
+                // game; that lives in the Presets Manager). With no active
+                // game either, fall back to showing everything so the picker
+                // is still usable from the Settings tab outside a session.
+                // When a car IS detected, this block is skipped entirely -
+                // the picker stays focused on the active car. Use the
+                // Presets Manager to edit a different car's preset.
+                if (!carDetected)
                 {
-                    string activeGame = _plugin.ActiveGame ?? "";
-
-                    // Bucket the other cars by their game (a car's presets share
-                    // a game; take the first preset's GameName).
-                    var byGame = new Dictionary<string, List<KeyValuePair<string, IReadOnlyDictionary<string, CarPresetEntry>>>>();
-                    foreach (var carKv in allCars)
+                    var allCars = _plugin.GetAllCarPresets();
+                    if (allCars != null)
                     {
-                        if (carDetected && string.Equals(carKv.Key, carId, StringComparison.Ordinal)) continue;
-                        if (carKv.Value == null || carKv.Value.Count == 0) continue;
-                        string g = "";
-                        foreach (var p in carKv.Value) { g = p.Value.GameName ?? ""; break; }
-                        if (!byGame.TryGetValue(g, out var list))
-                        {
-                            list = new List<KeyValuePair<string, IReadOnlyDictionary<string, CarPresetEntry>>>();
-                            byGame[g] = list;
-                        }
-                        list.Add(carKv);
-                    }
+                        string activeGame = _plugin.ActiveGame ?? "";
+                        bool gameKnown = !string.IsNullOrEmpty(activeGame);
 
-                    // Active game first, then the rest by friendly name.
-                    foreach (var g in byGame.Keys
-                                 .OrderBy(x => string.Equals(x, activeGame, StringComparison.Ordinal) ? 0 : 1)
-                                 .ThenBy(GameDisplayName, StringComparer.OrdinalIgnoreCase))
-                    {
-                        HeaderCarPresetCombo.Items.Add(MakeSectionHeader($"── {GameDisplayName(g)} ──"));
-                        var cars = byGame[g];
-                        cars.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.OrdinalIgnoreCase));
-                        foreach (var carKv in cars)
+                        var byGame = new Dictionary<string, List<KeyValuePair<string, IReadOnlyDictionary<string, CarPresetEntry>>>>();
+                        foreach (var carKv in allCars)
                         {
-                            foreach (var entry in Ordered(carKv.Value))
+                            if (carKv.Value == null || carKv.Value.Count == 0) continue;
+                            string g = "";
+                            foreach (var p in carKv.Value) { g = p.Value.GameName ?? ""; break; }
+                            if (gameKnown && !string.Equals(g, activeGame, StringComparison.Ordinal))
+                                continue;
+                            if (!byGame.TryGetValue(g, out var list))
                             {
-                                HeaderCarPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem
+                                list = new List<KeyValuePair<string, IReadOnlyDictionary<string, CarPresetEntry>>>();
+                                byGame[g] = list;
+                            }
+                            list.Add(carKv);
+                        }
+
+                        foreach (var g in byGame.Keys
+                                     .OrderBy(x => string.Equals(x, activeGame, StringComparison.Ordinal) ? 0 : 1)
+                                     .ThenBy(GameDisplayName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            HeaderCarPresetCombo.Items.Add(MakeSectionHeader($"── {GameDisplayName(g)} ──"));
+                            var cars = byGame[g];
+                            cars.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.OrdinalIgnoreCase));
+                            foreach (var carKv in cars)
+                            {
+                                foreach (var entry in Ordered(carKv.Value))
                                 {
-                                    Content = $"{carKv.Key} · {ToBuiltinDisplay(entry.PresetName)}",
-                                    Tag     = new PresetPick { IsCar = true, CarId = carKv.Key, Name = entry.PresetName },
-                                });
+                                    HeaderCarPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem
+                                    {
+                                        Content = $"{carKv.Key} · {ToBuiltinDisplay(entry.PresetName)}",
+                                        Tag     = new PresetPick { IsCar = true, CarId = carKv.Key, Name = entry.PresetName },
+                                    });
+                                }
                             }
                         }
                     }
