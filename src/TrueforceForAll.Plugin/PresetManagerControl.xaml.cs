@@ -1302,7 +1302,7 @@ namespace TrueforceForAll.Plugin
 
         private static void AppendEffectLine(System.Text.StringBuilder sb, string label, object eff)
         {
-            if (eff == null) { sb.AppendLine($"{label}: (preset default)"); return; }
+            if (eff == null) { sb.AppendLine($"{label}: (effect default)"); return; }
             var t = eff.GetType();
             bool enabled = (t.GetProperty("Enabled")?.GetValue(eff) as bool?) ?? true;
             string gainStr = "";

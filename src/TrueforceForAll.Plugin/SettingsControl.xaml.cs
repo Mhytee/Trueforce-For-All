@@ -3101,8 +3101,13 @@ namespace TrueforceForAll.Plugin
         // Paint the score label + highlight the chosen arrow for myVote.
         private void RenderActiveCardVote(int myVote)
         {
+            // Net score only - matches the row-level community list
+            // (ScoreLabel = upvotes - downvotes). The arrows next to
+            // this number ARE the up/down chips, so repeating ▲/▼
+            // inside the number was redundant chrome.
             if (CommunityVoteScore != null)
-                CommunityVoteScore.Text = $"▲ {_activeCardVoteUp} / ▼ {_activeCardVoteDown}";
+                CommunityVoteScore.Text = (_activeCardVoteUp - _activeCardVoteDown)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (CommunityVoteUpArrow != null)
                 CommunityVoteUpArrow.Foreground = (myVote == 1)
                     ? new System.Windows.Media.SolidColorBrush(
