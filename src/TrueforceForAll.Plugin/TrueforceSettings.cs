@@ -1437,5 +1437,14 @@ namespace TrueforceForAll.Plugin
             = new Dictionary<string, string>();
         public Dictionary<string, string> OverrideCarDefaults { get; set; }
             = new Dictionary<string, string>();
+
+        // Explicit "None for this car" decisions the active user made.
+        // When the rebuild stacks factory + device-wide + slot-override
+        // for Settings.CarDefaults, any carId listed here is removed last
+        // so the user's None choice survives even when a factory built-in
+        // binding exists for that car. Cleared on SwitchActiveCarPreset
+        // (the user re-bound it explicitly so the suppression is gone).
+        public HashSet<string> SuppressedCarDefaults { get; set; }
+            = new HashSet<string>(StringComparer.Ordinal);
     }
 }

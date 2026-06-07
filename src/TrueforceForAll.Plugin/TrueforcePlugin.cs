@@ -5964,6 +5964,17 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            // User's explicit "None for this car" wins last over any factory
+            // built-in or device-wide binding. Without this pass, picking
+            // None for a car that has a factory built-in default silently
+            // bounces back to the factory pick the next time CarDefaults
+            // is rebuilt.
+            if (slot?.SuppressedCarDefaults != null && slot.SuppressedCarDefaults.Count > 0)
+            {
+                foreach (var carId in slot.SuppressedCarDefaults)
+                    Settings.CarDefaults.Remove(carId);
+            }
+
             if (migrated > 0)
                 SimHub.Logging.Current.Info(
                     $"[Trueforce] Car presets: migrated {migrated} legacy entries.");
@@ -6428,6 +6439,11 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
+            // The user just picked a binding for this car explicitly, so
+            // any prior "None" suppression for it is no longer their
+            // intent. Drop the slot's suppression marker if present.
+            var switchSlot = GetActiveUserSlot();
+            switchSlot?.SuppressedCarDefaults?.Remove(carId);
             if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
             return true;
         }
@@ -6507,6 +6523,16 @@ namespace TrueforceForAll.Plugin
             Settings.CarDefaults?.Remove(carId);
             Settings.CarOverrides?.Remove(carId);
             _lastPersistedCarOverrides?.Remove(carId);
+            // Record the user's explicit "None" decision in the active slot
+            // so the rebuild can suppress any factory built-in binding for
+            // this car. Without this the rebuild restores the factory
+            // default whenever one exists and the user's None pick bounces.
+            if (slot != null)
+            {
+                if (slot.SuppressedCarDefaults == null)
+                    slot.SuppressedCarDefaults = new HashSet<string>(StringComparer.Ordinal);
+                slot.SuppressedCarDefaults.Add(carId);
+            }
             // Re-derive the in-memory effective view so any inherited
             // device-wide default reappears (when an override was
             // cleared) or stays gone (when device-wide was cleared).
