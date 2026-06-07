@@ -31,31 +31,17 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush BorderFg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
 
         // Same well-known SimHub games list as PresetShareWindow uses.
+        // Strings match what SimHub emits as ActiveGame. Native-Trueforce
+        // titles are excluded since the plugin auto-yields for them; the
+        // free-text Add input still lets users name anything off-list.
         private static readonly string[] WellKnownGames = new[]
         {
             "AssettoCorsa",
-            "AssettoCorsaCompetizione",
-            "AssettoCorsaRally",
-            "AssettoCorsaEVO",
-            "Automobilista2",
-            "BeamNgDrive",
-            "CodemastersGrid2019",
-            "EAWRC23",
-            "F12022",
-            "F12023",
-            "F12024",
-            "F12025",
-            "FM8",
-            "ForzaHorizon5",
-            "ForzaHorizon6",
-            "IRacing",
-            "LMU",
+            "FH5",
+            "FH6",
+            "FM7",
             "PCars2",
-            "PCars3",
-            "RaceRoom",
-            "TDUSC",
-            "WRC10",
-            "WRCGenerations",
+            "Wreckfest2",
         };
 
         public string  NewName        { get; private set; }

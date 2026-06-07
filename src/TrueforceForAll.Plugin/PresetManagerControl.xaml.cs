@@ -1664,7 +1664,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             GameDuplicateBtn.IsEnabled    = anySelected   && checkedCount <= 1;
             GameDeleteBtn.IsEnabled       = checkedNonBuiltin > 0 || selEditable;
             GameSetDefaultBtn.IsEnabled   = anySelected   && checkedCount <= 1;
-            GameClearDefaultBtn.IsEnabled = anySelected   && checkedCount <= 1 && sel.Defaults.Count > 0;
             if (GameShareBtn != null)
             {
                 // Share gating mirrors CarShareBtn: community on + signed in
@@ -1990,10 +1989,16 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
         }
 
+        // Multi-select default-binding editor. Pre-checks the games this
+        // preset already auto-loads for, lets the user check/uncheck
+        // others, then applies the diff: every newly-checked game gets
+        // SetDefault to this preset, every newly-unchecked game (that
+        // was checked before) gets cleared. Replaces the older
+        // single-select Set + Clear button pair.
         private void GameSetDefault_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedGame;
-            if (sel == null) return;
+            if (sel == null || _plugin == null) return;
             var known = CollectKnownGames();
             if (known.Count == 0)
             {
@@ -2002,26 +2007,32 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     "Set default for game", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            string game = PickFromList("Set default for game",
-                $"Pick a game to auto-load preset '{sel.Name}' for. Listed games are ones SimHub has seen on your machine.",
-                known);
-            if (string.IsNullOrEmpty(game)) return;
-            _plugin.SetDefaultPresetForGame(game, sel.Name);
-            ReloadGames();
-            SelectGameByName(sel.Name);
-        }
+            var before = new HashSet<string>(sel.Defaults ?? new List<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            // Make sure any game the preset already binds to is listed
+            // even if SimHub hasn't seen it in this session (e.g. user
+            // hasn't launched it yet but we have a saved binding).
+            foreach (var g in before)
+                if (!string.IsNullOrEmpty(g)
+                    && !known.Any(k => string.Equals(k, g, StringComparison.OrdinalIgnoreCase)))
+                    known.Add(g);
+            known.Sort(StringComparer.OrdinalIgnoreCase);
 
-        private void GameClearDefault_Click(object sender, RoutedEventArgs e)
-        {
-            var sel = SelectedGame;
-            if (sel == null || sel.Defaults.Count == 0) return;
-            string game = sel.Defaults.Count == 1
-                ? sel.Defaults[0]
-                : PickFromList("Clear default for game",
-                    $"This preset is the default for multiple games. Pick which game's binding to clear.",
-                    sel.Defaults);
-            if (string.IsNullOrEmpty(game)) return;
-            _plugin.ClearDefaultPresetForGame(game);
+            var picked = PickMultipleFromList(
+                $"Set default games for '{sel.Name}'",
+                "Check every game this preset should auto-load for. Unchecking a game clears its current binding.",
+                known, before);
+            if (picked == null) return;
+
+            foreach (var g in known)
+            {
+                bool wasOn = before.Contains(g);
+                bool nowOn = picked.Contains(g);
+                if (nowOn && !wasOn)
+                    _plugin.SetDefaultPresetForGame(g, sel.Name);
+                else if (!nowOn && wasOn)
+                    _plugin.ClearDefaultPresetForGame(g);
+            }
             ReloadGames();
             SelectGameByName(sel.Name);
         }
@@ -2595,6 +2606,86 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             string result = null;
             ok.Click += (s, args) => { result = lb.SelectedItem as string; if (result != null) win.DialogResult = true; };
             lb.MouseDoubleClick += (s, args) => { result = lb.SelectedItem as string; if (result != null) win.DialogResult = true; };
+            return win.ShowDialog() == true ? result : null;
+        }
+
+        // Modal multi-select picker. Returns the chosen set or null on
+        // Cancel. preChecked pre-selects entries (case-insensitive
+        // matched against items). Used by the Set Default action so
+        // toggling games on/off is one trip instead of two buttons
+        // (Set + Clear) and N modal trips.
+        private HashSet<string> PickMultipleFromList(string title, string helpText,
+            IList<string> items, ICollection<string> preChecked)
+        {
+            var win = new Window
+            {
+                Title = title,
+                Width = 380,
+                Height = 420,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.CanResize,
+                ShowInTaskbar = false,
+                Owner = Window.GetWindow(this),
+            };
+            SettingsControl.ApplyDarkTheme(win);
+            var grid = new Grid { Margin = new Thickness(12) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var help = new TextBlock
+            {
+                Text = helpText,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 11,
+                Opacity = 0.6,
+                Margin = new Thickness(0, 0, 0, 8),
+            };
+            Grid.SetRow(help, 0);
+            grid.Children.Add(help);
+
+            var preSet = new HashSet<string>(preChecked ?? Array.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            var checks = new List<CheckBox>(items.Count);
+            var sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            var listPanel = new StackPanel();
+            foreach (var it in items)
+            {
+                var cb = new CheckBox
+                {
+                    Content = it,
+                    IsChecked = preSet.Contains(it),
+                    Margin = new Thickness(0, 2, 0, 2),
+                };
+                checks.Add(cb);
+                listPanel.Children.Add(cb);
+            }
+            sv.Content = listPanel;
+            Grid.SetRow(sv, 1);
+            grid.Children.Add(sv);
+
+            var btnRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 12, 0, 0),
+            };
+            var ok = new Button { Content = "OK", Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = "Cancel", Width = 70, IsCancel = true };
+            btnRow.Children.Add(ok);
+            btnRow.Children.Add(cancel);
+            Grid.SetRow(btnRow, 2);
+            grid.Children.Add(btnRow);
+            win.Content = grid;
+
+            HashSet<string> result = null;
+            ok.Click += (s, args) =>
+            {
+                result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var cb in checks)
+                    if (cb.IsChecked == true && cb.Content is string s2)
+                        result.Add(s2);
+                win.DialogResult = true;
+            };
             return win.ShowDialog() == true ? result : null;
         }
 

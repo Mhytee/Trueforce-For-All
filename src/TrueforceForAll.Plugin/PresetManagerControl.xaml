@@ -252,10 +252,8 @@
                             <Button x:Name="GameShareBtn"      Content="Share…"         Style="{StaticResource RowButton}" Click="GameShare_Click"      IsEnabled="False"
                                     ToolTip="Upload this game preset to the community so other drivers can find it. Needs Community Contributions on in Settings."/>
                             <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource RowButton}" Click="GameDelete_Click"     IsEnabled="False"/>
-                            <Button x:Name="GameSetDefaultBtn" Content="Set default…"   Style="{StaticResource RowButton}" Width="120" Click="GameSetDefault_Click" IsEnabled="False"
-                                    ToolTip="Bind this preset as the auto-load default for a game you've seen before."/>
-                            <Button x:Name="GameClearDefaultBtn" Content="Clear default…" Style="{StaticResource RowButton}" Width="120" Click="GameClearDefault_Click" IsEnabled="False"
-                                    ToolTip="Remove a game's auto-load binding to this preset."/>
+                            <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource RowButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
+                                    ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding. Replaces the older Set / Clear pair."/>
                             <Button x:Name="GamePromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>

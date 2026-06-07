@@ -41,34 +41,22 @@ namespace TrueforceForAll.Plugin
         private readonly List<string> _effectTags;
 
         // Well-known SimHub game identifiers we seed the target-games picker
-        // with. Mirrors IsNativeTrueforceGame + a few non-native titles
-        // common in the user base. The free-text Add input lets users name
-        // anything not on the list.
+        // with. Strings match what SimHub emits as ActiveGame (verified
+        // against the plugin's installed factory cars folder names).
+        // Excludes games where Trueforce ships natively (FM8, IRacing,
+        // ACC, AC Rally, AC EVO, Automobilista 2, F1 22+, LMU, etc) -
+        // see TrueforcePlugin.IsNativeTrueforceGame. Users sharing for
+        // those games would gain nothing since the plugin auto-yields
+        // there; if someone really wants to, the free-text Add input
+        // still lets them.
         private static readonly string[] WellKnownGames = new[]
         {
             "AssettoCorsa",
-            "AssettoCorsaCompetizione",
-            "AssettoCorsaRally",
-            "AssettoCorsaEVO",
-            "Automobilista2",
-            "BeamNgDrive",
-            "CodemastersGrid2019",
-            "EAWRC23",
-            "F12022",
-            "F12023",
-            "F12024",
-            "F12025",
-            "FM8",
-            "ForzaHorizon5",
-            "ForzaHorizon6",
-            "IRacing",
-            "LMU",
+            "FH5",
+            "FH6",
+            "FM7",
             "PCars2",
-            "PCars3",
-            "RaceRoom",
-            "TDUSC",
-            "WRC10",
-            "WRCGenerations",
+            "Wreckfest2",
         };
 
         /// <summary>Modal for sharing a car preset. Body is the
