@@ -693,17 +693,32 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="Rate this community preset:" FontSize="12"
                                        Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock x:Name="CommunityVoteUpArrow" Text="▲" FontSize="14"
-                                       Foreground="#888888" Cursor="Hand" VerticalAlignment="Center"
-                                       MouseLeftButtonUp="ActiveCardVoteUp_Click"
-                                       ToolTip="Good tune. Click again to undo your vote."/>
+                            <!-- Up/down chips are styled as obvious buttons (bordered,
+                                 padded, hover background) so the affordance reads. The
+                                 visible TextBlock inside carries the user-vote color
+                                 (CommunityVoteUpArrow / DownArrow) the C# code updates
+                                 via RenderActiveCardVote. -->
+                            <Border x:Name="CommunityVoteUpChip" Background="#33000000"
+                                    BorderBrush="#55FFFFFF" BorderThickness="1"
+                                    CornerRadius="3" Padding="8,2" Cursor="Hand"
+                                    MouseLeftButtonUp="ActiveCardVoteUp_Click"
+                                    ToolTip="Good tune. Click again to undo your vote.">
+                                <TextBlock x:Name="CommunityVoteUpArrow" Text="▲" FontSize="14"
+                                           Foreground="#888888" VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"/>
+                            </Border>
                             <TextBlock x:Name="CommunityVoteScore" Text="0 / 0" FontSize="12"
                                        Foreground="#CFCFCF" VerticalAlignment="Center"
                                        TextAlignment="Center" MinWidth="46" Margin="6,0,6,0"/>
-                            <TextBlock x:Name="CommunityVoteDownArrow" Text="▼" FontSize="14"
-                                       Foreground="#888888" Cursor="Hand" VerticalAlignment="Center"
-                                       MouseLeftButtonUp="ActiveCardVoteDown_Click"
-                                       ToolTip="Not for me. Click again to undo your vote."/>
+                            <Border x:Name="CommunityVoteDownChip" Background="#33000000"
+                                    BorderBrush="#55FFFFFF" BorderThickness="1"
+                                    CornerRadius="3" Padding="8,2" Cursor="Hand"
+                                    MouseLeftButtonUp="ActiveCardVoteDown_Click"
+                                    ToolTip="Not for me. Click again to undo your vote.">
+                                <TextBlock x:Name="CommunityVoteDownArrow" Text="▼" FontSize="14"
+                                           Foreground="#888888" VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"/>
+                            </Border>
                             <TextBlock x:Name="CommunityVoteStatus" Text="" FontSize="11"
                                        Foreground="#9E9E9E" VerticalAlignment="Center" Margin="12,0,0,0"/>
                         </StackPanel>

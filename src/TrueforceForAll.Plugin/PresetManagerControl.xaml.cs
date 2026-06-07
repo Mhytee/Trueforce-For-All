@@ -3481,8 +3481,19 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     // Mine-mode goes through an auth-bearer fetch, so
                     // call the async variant directly instead of
-                    // wrapping a sync-over-async in Task.Run.
-                    results = await _plugin.FetchMyCommunityPresetsAsync(capturedSort, 100);
+                    // wrapping a sync-over-async in Task.Run. The RPC
+                    // returns every kind unioned together; filter to
+                    // the active segment so toggling to My Uploads on
+                    // the Games tab shows only game-preset uploads,
+                    // not the whole bundle.
+                    var all = await _plugin.FetchMyCommunityPresetsAsync(capturedSort, 100);
+                    if (all != null)
+                    {
+                        string wantKind = string.IsNullOrEmpty(capturedKind) ? "car" : capturedKind;
+                        results = all.Where(s => string.Equals(
+                            string.IsNullOrEmpty(s?.Kind) ? "car" : s.Kind,
+                            wantKind, StringComparison.Ordinal)).ToList();
+                    }
                 }
                 else
                 {
@@ -3566,7 +3577,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // local). RelabelCommunityScopeRadio reads this on the next
             // tick.
             _lastFetchWasTrending = capturedTrending;
-            _communityListedCarKey = capturedMode == "mine" ? "mine"
+            _communityListedCarKey = capturedMode == "mine" ? "mine/" + capturedKind
                 : capturedKind == "engine" ? "engine"
                 : capturedKind == "pack"   ? "pack"
                 : capturedTrending         ? (capturedKind == "game" ? "trending-game" : "trending-car")
@@ -3627,7 +3638,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 string emptyMsg;
                 if (capturedMode == "mine")
-                    emptyMsg = "You haven't uploaded any presets yet.";
+                    emptyMsg = capturedKind == "game"
+                        ? "You haven't uploaded any game presets yet."
+                        : capturedKind == "engine"
+                            ? "You haven't uploaded any custom engines yet."
+                            : capturedKind == "pack"
+                                ? "You haven't uploaded any packs yet."
+                                : "You haven't uploaded any car presets yet.";
                 else if (capturedTrending)
                     emptyMsg = capturedKind == "game"
                         ? "No community game presets shared yet."

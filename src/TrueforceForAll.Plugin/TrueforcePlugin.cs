@@ -10084,7 +10084,26 @@ namespace TrueforceForAll.Plugin
             // UI's "Saved as X" status doesn't drift from the on-disk
             // truth. The PersistGamePresetToFolder warn-log records the
             // exception details.
-            if (!PersistGamePresetToFolder(presetName, SnapshotCurrentAsPreset())) return;
+            var fresh = SnapshotCurrentAsPreset();
+            // Carry forward community-upload tracking when we're overwriting
+            // an existing preset by name. SnapshotCurrentAsPreset() rebuilds
+            // from the live Settings.* fields, which don't hold per-preset
+            // upload metadata; without this carry-forward, every Save would
+            // null out CommunityUploadedById / etc and the Share button
+            // gate would think the preset was never uploaded - silently
+            // skipping the Update-vs-Share-as-new chooser on the next
+            // share, and starting a duplicate community row.
+            if (Settings.Presets != null
+                && Settings.Presets.TryGetValue(presetName, out var prior)
+                && prior != null)
+            {
+                fresh.CommunitySourceId          = prior.CommunitySourceId;
+                fresh.CommunityUploadedById      = prior.CommunityUploadedById;
+                fresh.CommunityUploadedByUserId  = prior.CommunityUploadedByUserId;
+                fresh.CommunityUploadedBodyHash  = prior.CommunityUploadedBodyHash;
+                fresh.CommunityUploadedVersion   = prior.CommunityUploadedVersion;
+            }
+            if (!PersistGamePresetToFolder(presetName, fresh)) return;
             _activePresetName = presetName;
             this.SaveCommonSettings("GeneralSettings", Settings);
             SimHub.Logging.Current.Info($"[Trueforce] Saved preset '{presetName}'.");
