@@ -605,28 +605,6 @@
                     <TextBlock x:Name="CommunityDescriptionText" Style="{StaticResource HelpText}"
                                TextWrapping="Wrap" Text=""/>
                 </DockPanel>
-                <!-- Pack-authoring funnel for the My Uploads view. Visibility
-                     is driven from CommunityRefreshAsync: shown only when
-                     _communityMode == "mine" AND the user has at least one
-                     upload listed. Click opens the same CreatePackWindow as
-                     the Packs-tab "Create a pack" button. -->
-                <Border x:Name="CreatePackFromUploadsBanner" DockPanel.Dock="Top"
-                        Visibility="Collapsed" Margin="0,0,0,8" Padding="10,8,10,8"
-                        Background="#3D8B40" BorderBrush="#5BB061" BorderThickness="1"
-                        CornerRadius="3">
-                    <DockPanel LastChildFill="True">
-                        <Button x:Name="CreatePackFromUploadsBtn" DockPanel.Dock="Right"
-                                Content="Create a pack" Width="120" Height="26"
-                                Margin="12,0,0,0" Click="CreatePackFromUploads_Click"
-                                ToolTip="Bundle eligible presets, custom engines, and game presets into a single downloadable pack."/>
-                        <StackPanel>
-                            <TextBlock Text="Build a pack from your uploads" FontWeight="SemiBold"
-                                       Foreground="#FFFFFF" FontSize="12"/>
-                            <TextBlock Text="Bundle your presets into one downloadable pack for the community."
-                                       Foreground="#E0E0E0" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </DockPanel>
-                </Border>
                 <DataGrid x:Name="CommunityList"
                           AutoGenerateColumns="False" CanUserAddRows="False"
                           CanUserDeleteRows="False" CanUserResizeRows="False"

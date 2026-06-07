@@ -743,33 +743,6 @@ namespace TrueforceForAll.Plugin
             finally { _shareInProgress = false; }
         }
 
-        // Funnel entry from the My Uploads banner in the Community panel.
-        // Same flow as the Packs-tab "Create a pack" button - kept as a
-        // separate handler so changes to one don't surprise the other.
-        // Calls CreatePack_Click as fire-and-forget; the async gate +
-        // modal sequence still runs correctly.
-        private void CreatePackFromUploads_Click(object sender, RoutedEventArgs e)
-        {
-            CreatePack_Click(sender, e);
-        }
-
-        // Toggle the My-Uploads pack-authoring banner. Visible only when
-        // (a) Community is enabled, (b) the panel is showing My Uploads
-        // mode, and (c) at least one upload is listed. Called from
-        // CommunityRefreshAsync after rows populate and from
-        // CommunityMode_Changed when the user flips modes.
-        private void UpdateCreatePackFromUploadsBannerVisibility()
-        {
-            if (CreatePackFromUploadsBanner == null) return;
-            bool show =
-                _plugin?.Settings?.CommunityEnabled == true
-                && _communityMode == "mine"
-                && _communityRows.Count > 0;
-            var want = show ? Visibility.Visible : Visibility.Collapsed;
-            if (CreatePackFromUploadsBanner.Visibility != want)
-                CreatePackFromUploadsBanner.Visibility = want;
-        }
-
         // ---- Installed packs grid (Library mode) -------------------------
 
         public sealed class PackRow
@@ -3550,7 +3523,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // trending); reset on mode flip so the next RelabelCommunityScopeRadio
             // call has a clean baseline until the new fetch overwrites it.
             _lastFetchWasTrending = false;
-            UpdateCreatePackFromUploadsBannerVisibility();
             // Update the help text immediately on mode switch so the
             // user sees the new mode's guidance (e.g., the Edit/Delete
             // hint in "mine" mode) without waiting for the fetch.
@@ -3578,7 +3550,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _communityRows.Clear();
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Community Contributions is off (toggle it in Settings).";
-                UpdateCreatePackFromUploadsBannerVisibility();
                 CommunityList_SelectionChanged(null, null);
                 return;
             }
@@ -3589,7 +3560,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _communityRows.Clear();
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Sign in (Account & community in Settings) to see your uploads.";
-                UpdateCreatePackFromUploadsBannerVisibility();
                 CommunityList_SelectionChanged(null, null);
                 return;
             }
@@ -3818,7 +3788,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CommunityStatusLabel.Text = _communityRows.Count == 0 ? emptyMsg : foundMsg;
             }
             UpdateEmptyShareCta(capturedKind, capturedMode, capturedTrending, capturedGame, capturedCar);
-            UpdateCreatePackFromUploadsBannerVisibility();
             // Repaint the scope radio + help text since the trending
             // flag may have just changed.
             RelabelCommunityScopeRadio();
