@@ -102,6 +102,16 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0),
             };
+            // Cancel: dismisses the modal without committing any per-
+            // row outcome. ShowDialog returns false so the caller skips
+            // the apply loop. Escape also fires this via IsCancel=true.
+            var cancelBtn = new Button {
+                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Margin = new Thickness(0, 0, 8, 0),
+                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+            };
+            cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
+            btnRow.Children.Add(cancelBtn);
             var skipAllBtn = new Button {
                 Content = "Skip all", Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
@@ -148,9 +158,9 @@ namespace TrueforceForAll.Plugin
 
             var info = new StackPanel();
             info.Children.Add(new TextBlock {
-                Text = server.Name, Foreground = TextFg, FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Text = UiContentSanitizer.SafeDisplayText(server.Name, 128) ?? "(unnamed)", Foreground = TextFg, FontSize = 13, FontWeight = FontWeights.SemiBold,
             });
-            string by = string.IsNullOrEmpty(server.Author) ? "(anonymous)" : "by " + server.Author;
+            string by = string.IsNullOrEmpty(server.Author) ? "(anonymous)" : "by " + UiContentSanitizer.SafeDisplayText(server.Author, 96);
             string ver = "v" + local.SeenContentVersion + " -> v" + server.ContentVersion;
             info.Children.Add(new TextBlock {
                 Text = by + "   |   " + server.Game + "   " + server.CarId + "   |   " + ver,

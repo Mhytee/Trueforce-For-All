@@ -242,8 +242,8 @@ namespace TrueforceForAll.Plugin
             int gameCount = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindGame) ?? 0;
             int carCount  = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindCar)  ?? 0;
             string title  = string.IsNullOrEmpty(p.PackName) ? "(unnamed pack)" : p.PackName;
-            string author = string.IsNullOrEmpty(p.Author) ? "" : $"  ·  {p.Author}";
-            string ver    = string.IsNullOrEmpty(p.AuthorVersion) ? "" : $"  ·  v{p.AuthorVersion}";
+            string author = string.IsNullOrEmpty(p.Author) ? "" : $"  ·  {UiContentSanitizer.SafeDisplayText(p.Author, 96)}";
+            string ver    = string.IsNullOrEmpty(p.AuthorVersion) ? "" : $"  ·  v{UiContentSanitizer.SafeDisplayText(p.AuthorVersion, 32)}";
             string counts = $"{gameCount} game · {carCount} car";
 
             var stack = new StackPanel { Margin = new Thickness(2) };
@@ -295,8 +295,8 @@ namespace TrueforceForAll.Plugin
             }
 
             // Header line (name + version, large).
-            string headerText = string.IsNullOrEmpty(p.PackName) ? "(unnamed pack)" : p.PackName;
-            if (!string.IsNullOrEmpty(p.AuthorVersion)) headerText += $"  v{p.AuthorVersion}";
+            string headerText = string.IsNullOrEmpty(p.PackName) ? "(unnamed pack)" : UiContentSanitizer.SafeDisplayText(p.PackName, 128);
+            if (!string.IsNullOrEmpty(p.AuthorVersion)) headerText += $"  v{UiContentSanitizer.SafeDisplayText(p.AuthorVersion, 32)}";
             _detailsPanel.Children.Add(new TextBlock
             {
                 Text = headerText,
@@ -307,10 +307,10 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
 
-            AddDetailRow("Author",      string.IsNullOrEmpty(p.Author)        ? "(unknown)" : p.Author);
+            AddDetailRow("Author",      string.IsNullOrEmpty(p.Author)        ? "(unknown)" : UiContentSanitizer.SafeDisplayText(p.Author, 96));
             AddDetailRow("Imported",    p.ImportedAt.ToString("yyyy-MM-dd HH:mm"));
             if (!string.IsNullOrEmpty(p.Description))
-                AddDetailRow("Description", p.Description, wrap: true);
+                AddDetailRow("Description", UiContentSanitizer.SafeMultiLineText(p.Description, 1024, 10) ?? "(no description)", wrap: true);
 
             int gameCount = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindGame) ?? 0;
             int carCount  = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindCar)  ?? 0;

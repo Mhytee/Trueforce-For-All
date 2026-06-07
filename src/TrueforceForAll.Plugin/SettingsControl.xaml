@@ -301,6 +301,18 @@
                         ToolTip="Re-poll GitHub for a newer release. The plugin also checks once automatically on startup."/>
                 <TextBlock x:Name="CheckForUpdatesStatus" Text="" FontSize="11" Opacity="0.6"
                            VerticalAlignment="Bottom" Margin="8,0,0,3"/>
+                <!-- "Check now" link for community preset updates: re-polls every
+                     downloaded community preset's content_version. Hidden by
+                     default; revealed in RefreshFromPlugin when community is
+                     enabled AND the user has at least one downloaded community
+                     preset. Separate from the GitHub Check For Updates button. -->
+                <Button x:Name="CommunityCheckNowBtn" Content="Check community for updates"
+                        Style="{StaticResource LinkButton}" Margin="20,0,0,3"
+                        VerticalAlignment="Bottom" Visibility="Collapsed"
+                        Click="CommunityCheckNowBtn_Click"
+                        ToolTip="Re-poll the community service for new revisions of presets you've downloaded."/>
+                <TextBlock x:Name="CommunityCheckNowStatus" Text="" FontSize="11" Opacity="0.6"
+                           VerticalAlignment="Bottom" Margin="8,0,0,3" Visibility="Collapsed"/>
                 <!-- Prominent inline CTA. Hidden until UpdateChecker confirms a
                      newer GitHub release; visibility + label are driven from
                      RefreshFromPlugin. Click opens the same modal that the
@@ -505,9 +517,37 @@
                  wheel/stream/telemetry strings live in Diagnostics. -->
             <Border Background="#22FFFFFF" CornerRadius="4" Padding="12" Margin="0,0,0,12">
                 <StackPanel>
-                    <CheckBox x:Name="PluginEnabledCheck" FontSize="14" FontWeight="SemiBold"
-                              Content="Plugin enabled"
-                              Checked="PluginEnabled_Changed" Unchecked="PluginEnabled_Changed"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="PluginEnabledCheck" FontSize="14" FontWeight="SemiBold"
+                                  VerticalAlignment="Center"
+                                  Content="Plugin enabled"
+                                  Checked="PluginEnabled_Changed" Unchecked="PluginEnabled_Changed"/>
+                        <!-- Account chip. Always visible: a lightweight, persistent
+                             entry point to community sign-in that doubles as an
+                             identity readout, riding on every tab via this header
+                             card. Signed out -> "Sign in" opens the sign-in dialog.
+                             Signed in -> shows the username; clicking drops a small
+                             menu (Account settings / Sign out). The full Account
+                             section still lives on the Settings tab; this is just a
+                             shortcut. Driven by RefreshAccountChip. -->
+                        <Button Grid.Column="1" x:Name="AccountChipButton"
+                                VerticalAlignment="Center" Height="26" Padding="10,0" Cursor="Hand"
+                                Click="AccountChip_Click"
+                                ToolTip="Sign in to share presets and use community car data.">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="AccountChipIcon" Text="◯" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,6,0" Visibility="Collapsed"/>
+                                <TextBlock x:Name="AccountChipText" Text="Sign in" FontSize="12"
+                                           FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="AccountChipCaret" Text="▾" FontSize="10"
+                                           VerticalAlignment="Center" Margin="5,0,0,0" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                     <TextBlock x:Name="PluginEnabledHint" FontSize="11" Opacity="0.6"
                                TextWrapping="Wrap" Margin="22,4,0,10"
                                Text="Auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."/>
@@ -532,7 +572,20 @@
                                     Padding="6,0,6,0" FontSize="10" Height="18"
                                     VerticalAlignment="Center" Visibility="Collapsed"
                                     Click="HeaderCarRename_Click"
-                                    ToolTip="Give this car a human-readable name. Saved locally and (if community is on) shared so other drivers see it too."/>
+                                    ToolTip="Give this car a human-readable name. Always saved locally; also submitted to the community when Community Contributions is on."/>
+                            <!-- Discoverability surface for community tunes.
+                                 Shown only when community is on, a car is
+                                 detected, and the count fetch returned > 0.
+                                 Click opens a popover with the top 3-5 (one-
+                                 click Apply + See all). Updated by
+                                 RefreshCarCommunityCountAsync. -->
+                            <Button x:Name="HeaderCarCommunityCountBtn" Margin="10,0,0,0"
+                                    Padding="6,1,6,1" FontSize="10" Height="18"
+                                    VerticalAlignment="Center" Visibility="Collapsed"
+                                    Foreground="#FFE5C04A" Background="Transparent" BorderBrush="#FFE5C04A"
+                                    Cursor="Hand" Content="★ 0 community"
+                                    Click="HeaderCarCommunityCount_Click"
+                                    ToolTip="See top community presets for this car. Click for the popover; 'See all' inside opens the full Community list."/>
                         </StackPanel>
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Game preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
@@ -558,6 +611,13 @@
                                     Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
                                     Click="SaveAsPreset_Click"
                                     ToolTip="Save current tuning under a new preset name (doesn't overwrite the active one)."/>
+                            <!-- Conditional: visible when community is on AND the
+                                 active preset is user-owned (not a built-in).
+                                 Hidden in UpdateHeaderShareButtons. -->
+                            <Button x:Name="HeaderGameShareBtn" Content="Share…" Visibility="Collapsed"
+                                    Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    Click="HeaderGameShare_Click"
+                                    ToolTip="Share this game preset with the community. Requires sign-in."/>
                         </StackPanel>
                         <TextBlock Grid.Row="3" Grid.Column="0" Text="Car preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
@@ -576,6 +636,14 @@
                                     Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
                                     Click="CarSaveAsNew_Click"
                                     ToolTip="Save this car's current tuning as a new car preset (doesn't overwrite the active one)."/>
+                            <!-- Conditional: visible when community is on AND a
+                                 real car preset is selected (not "(none)" /
+                                 not a built-in). Hidden in
+                                 UpdateHeaderShareButtons. -->
+                            <Button x:Name="HeaderCarShareBtn" Content="Share…" Visibility="Collapsed"
+                                    Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    Click="HeaderCarShare_Click"
+                                    ToolTip="Share this car preset with the community. Requires sign-in."/>
                         </StackPanel>
                     </Grid>
 
@@ -683,7 +751,7 @@
                                  specific USBPcap-interface mismatch can flip
                                  it back on with MANUALPIN. -->
                             <Button Grid.Column="2" x:Name="FfbTapPickerBannerButton"
-                                    Content="Pick device manually..."
+                                    Content="Pick device manually…"
                                     Width="170" Height="28" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapPickDevice_Click"
@@ -2254,7 +2322,7 @@
                                  point at a non-standard install, or reinstall the
                                  driver from the bundled setup without re-running our
                                  installer. Toggled from code-behind on the tick. -->
-                            <Button x:Name="UsbPcapBrowseButton" Content="Browse..."
+                            <Button x:Name="UsbPcapBrowseButton" Content="Browse…"
                                     Style="{StaticResource LinkButton}" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapBrowse_Click"
@@ -2277,7 +2345,7 @@
                                  the FfbTapPicker banner stays available, since
                                  it only appears when the tap genuinely can't
                                  find the wheel. -->
-                            <Button x:Name="UsbPcapPickDeviceButton" Content="Pick device manually..."
+                            <Button x:Name="UsbPcapPickDeviceButton" Content="Pick device manually…"
                                     Style="{StaticResource LinkButton}" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapPickDevice_Click"
@@ -2511,6 +2579,7 @@
                              VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="4,0"
                              Background="#FF2D2D30" Foreground="White" CaretBrush="White"
                              BorderBrush="#FF7A7A7A" BorderThickness="1"
+                             ToolTip="If you don't know what this is for, you don't need it."
                              LostFocus="AccessCode_Changed" KeyDown="AccessCode_KeyDown"/>
                     <TextBlock x:Name="AccessCodeStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
                 </StackPanel>

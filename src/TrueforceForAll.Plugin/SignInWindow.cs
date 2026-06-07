@@ -51,7 +51,51 @@ namespace TrueforceForAll.Plugin
             ShowInTaskbar = false;
             ResizeMode    = ResizeMode.NoResize;
 
-            ShowEmailStep();
+            // Start with a value-prop preview so the user understands
+            // what sign-in unlocks BEFORE typing an email address.
+            // "Use a different email" on the verify step calls
+            // ShowEmailStep directly, so re-entry skips this preview.
+            ShowPreviewStep();
+        }
+
+        // ---- Stage 0: value-prop preview ---------------------------------
+
+        private void ShowPreviewStep()
+        {
+            var root = new StackPanel { Margin = new Thickness(18, 16, 18, 14) };
+            Content = root;
+
+            root.Children.Add(new TextBlock {
+                Text = "Sign in",
+                Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+            root.Children.Add(new TextBlock {
+                Text = "Sign in to share your presets, vote, and manage your uploads. We email a 6-digit code (no password).",
+                Foreground = MutedFg, FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 18),
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+            var btnRow = new StackPanel {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
+            var cancelBtn = new Button {
+                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Margin = new Thickness(0, 0, 8, 0),
+                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+            };
+            cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
+            btnRow.Children.Add(cancelBtn);
+
+            var continueBtn = new Button {
+                Content = "Continue", Padding = new Thickness(12, 5, 12, 5),
+                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+            };
+            continueBtn.Click += (s, e) => ShowEmailStep();
+            btnRow.Children.Add(continueBtn);
+            root.Children.Add(btnRow);
         }
 
         // ---- Stage A: email entry ----------------------------------------

@@ -32,19 +32,61 @@ namespace TrueforceForAll.Plugin
         public string UploadedPresetId { get; private set; }
 
         private readonly TrueforcePlugin _plugin;
+        private readonly string _kind;        // "car" or "game"
         private readonly string _presetName;
         private readonly string _game;
-        private readonly string _carId;
-        private readonly string _carDisplay;
+        private readonly string _carId;       // "" for game presets
+        private readonly string _carDisplay;  // "" for game presets
         private readonly Newtonsoft.Json.Linq.JObject _body;
         private readonly List<string> _effectTags;
 
+        /// <summary>Modal for sharing a car preset. Body is the
+        /// CarOverride payload + any referenced CustomEngineDefs.</summary>
+        public static PresetShareWindow ForCar(
+            TrueforcePlugin plugin,
+            string presetName, string game, string carId, string carDisplay,
+            Newtonsoft.Json.Linq.JObject body, List<string> effectTags)
+            => new PresetShareWindow(plugin, "car",
+                presetName, game, carId, carDisplay, body, effectTags);
+
+        /// <summary>Modal for sharing a game preset (a whole-game
+        /// settings snapshot). Body is a serialized
+        /// GameSettingsSnapshot.</summary>
+        public static PresetShareWindow ForGame(
+            TrueforcePlugin plugin,
+            string presetName, string game,
+            Newtonsoft.Json.Linq.JObject body, List<string> effectTags)
+            => new PresetShareWindow(plugin, "game",
+                presetName, game, "", "", body, effectTags);
+
+        /// <summary>Modal for sharing a custom engine. Body is a
+        /// serialized CustomEngineDef. Game-agnostic, so no game /
+        /// car readout rows; just name + description + permission +
+        /// the same auth-gate / sign-in flow.</summary>
+        public static PresetShareWindow ForEngine(
+            TrueforcePlugin plugin,
+            string engineName,
+            Newtonsoft.Json.Linq.JObject body)
+            => new PresetShareWindow(plugin, "engine",
+                engineName, "", "", "", body, new List<string>());
+
+        // Back-compat: existing car call sites that haven't migrated
+        // to ForCar yet still work via the legacy ctor signature.
         public PresetShareWindow(
             TrueforcePlugin plugin,
             string presetName, string game, string carId, string carDisplay,
             Newtonsoft.Json.Linq.JObject body, List<string> effectTags)
+            : this(plugin, "car", presetName, game, carId, carDisplay, body, effectTags)
+        { }
+
+        private PresetShareWindow(
+            TrueforcePlugin plugin, string kind,
+            string presetName, string game, string carId, string carDisplay,
+            Newtonsoft.Json.Linq.JObject body, List<string> effectTags)
         {
             _plugin     = plugin;
+            string lk = (kind ?? "car").ToLowerInvariant();
+            _kind       = lk == "game" || lk == "engine" ? lk : "car";
             _presetName = presetName ?? "";
             _game       = game ?? "";
             _carId      = carId ?? "";
@@ -52,7 +94,13 @@ namespace TrueforceForAll.Plugin
             _body       = body;
             _effectTags = effectTags ?? new List<string>();
 
-            Title         = "Share preset with the community";
+            bool isGame   = _kind == "game";
+            bool isEngine = _kind == "engine";
+            Title         = isEngine
+                ? "Share custom engine with the community"
+                : isGame
+                    ? "Share game preset with the community"
+                    : "Share preset with the community";
             Width         = 480;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -65,30 +113,41 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Share preset with the community",
+                Text = isEngine
+                    ? "Share custom engine with the community"
+                    : isGame
+                        ? "Share game preset with the community"
+                        : "Share preset with the community",
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 12),
             });
 
             // What we're sharing - a passive readout so the user can't
-            // forget which preset is going up.
-            root.Children.Add(MakeFactLine("Preset",  _presetName));
-            root.Children.Add(MakeFactLine("Game",    _game));
-            root.Children.Add(MakeFactLine("Car",     _carDisplay));
-            root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0
-                ? "(none)" : string.Join(", ", _effectTags)));
+            // forget which preset is going up. Engines are game-agnostic
+            // so neither Game nor Car nor Sections apply. Game presets
+            // skip the Car row.
+            root.Children.Add(MakeFactLine(isEngine ? "Engine" : "Preset", _presetName));
+            if (!isEngine)
+            {
+                root.Children.Add(MakeFactLine("Game", _game));
+                if (!isGame)
+                    root.Children.Add(MakeFactLine("Car", _carDisplay));
+                root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0
+                    ? "(none)" : string.Join(", ", _effectTags)));
+            }
 
-            // Identity is server-authoritative: signed-in users upload
-            // under their username, anonymous users upload as "Anonymous".
-            // No freeform Author field; read-only display so the user
-            // sees exactly how the upload will be credited.
-            string sharingAs = _plugin?.AuthIsSignedIn == true
+            // Identity is server-authoritative: the server stamps
+            // author = profiles.username from the signed-in user's
+            // session. Read-only display so the user sees exactly how
+            // the upload will be credited.
+            bool signedIn = _plugin?.AuthIsSignedIn == true;
+            string sharingAs = signedIn
                 ? (_plugin?.Settings?.SharingAuthor ?? "(your username)")
-                : "Anonymous";
+                : "(sign in required)";
             root.Children.Add(MakeFactLine("Sharing as", sharingAs));
 
             root.Children.Add(new TextBlock {
-                Text = "Description (optional, what makes this tune feel good):",
+                Text = "Description (optional, what makes this preset feel good):",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 2),
             });
@@ -100,13 +159,35 @@ namespace TrueforceForAll.Plugin
                 MinHeight = 60,
                 Margin = new Thickness(0, 0, 0, 12),
             };
+            descInput.IsEnabled = signedIn;
+            // Description is the only editable field on this modal -
+            // grab focus on open so the user starts typing immediately.
+            if (signedIn)
+                descInput.Loaded += (s, e) => descInput.Focus();
             root.Children.Add(descInput);
 
-            // Status line for in-flight upload / errors. Initially blank.
+            // Permission toggle: opt this preset in to being re-bundled
+            // inside someone else's pack. Off by default (conservative).
+            // Pack creators only see entries with this on (or items the
+            // creator owns); built-ins and "no-redistribute" community
+            // items never accidentally ride along.
+            var allowInPacksCheck = new CheckBox
+            {
+                Content = "Allow others to include this in their packs",
+                Foreground = TextFg, FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 12),
+                IsEnabled = signedIn,
+            };
+            root.Children.Add(allowInPacksCheck);
+
+            // Status line for in-flight upload / errors. Wording shifts
+            // based on whether the user is signed in.
             var statusText = new TextBlock {
-                Foreground = MutedFg, FontSize = 11,
+                Foreground = signedIn ? MutedFg : ErrFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 8),
-                Text = "Anonymous beyond the Author field. No account needed.",
+                Text = signedIn
+                    ? "Uploads are credited to your username."
+                    : "Sign in to share. Click \"Sign in...\" below.",
                 TextWrapping = TextWrapping.Wrap,
             };
             root.Children.Add(statusText);
@@ -115,6 +196,19 @@ namespace TrueforceForAll.Plugin
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
+            // Sign-in button only renders when the user is signed out.
+            // Clicking it opens SignInWindow modally; on success we
+            // re-enable Upload + flip the status copy.
+            Button signInBtn = null;
+            if (!signedIn)
+            {
+                signInBtn = new Button {
+                    Content = "Sign in...", Padding = new Thickness(12, 5, 12, 5),
+                    Margin = new Thickness(0, 0, 8, 0),
+                    Foreground = TextFg, Background = PanelBg,
+                };
+                btnRow.Children.Add(signInBtn);
+            }
             var cancelBtn = new Button {
                 Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
@@ -123,10 +217,94 @@ namespace TrueforceForAll.Plugin
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);
 
+            // Empty-preset gate: car + game presets with no effect
+            // sections selected would otherwise upload an empty body
+            // that adds nothing for downloaders. Engines have no
+            // sections concept, so they bypass this check (Upload is
+            // enabled whenever signed in).
+            bool hasSections = isEngine || _effectTags.Count > 0;
             var uploadBtn = new Button {
                 Content = "Upload", Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                IsEnabled = signedIn && hasSections,
             };
+            // Tooltip explains the disabled state when no sections
+            // are picked. ShowOnDisabled=true so the user actually
+            // sees it; WPF hides tooltips on disabled controls by
+            // default.
+            if (!isEngine && !hasSections)
+            {
+                uploadBtn.ToolTip = "Pick at least one effect section to share. An empty preset has nothing for downloaders to apply.";
+                System.Windows.Controls.ToolTipService.SetShowOnDisabled(uploadBtn, true);
+            }
+
+            // Wire up the sign-in click after uploadBtn exists so we
+            // can re-enable Upload + flip status when sign-in succeeds.
+            if (signInBtn != null)
+            {
+                signInBtn.Click += async (s, e) =>
+                {
+                    var dlg = new SignInWindow(_plugin) { Owner = this };
+                    bool? ok = dlg.ShowDialog();
+                    // Check ok==true (matches every other SignInWindow
+                    // caller) AND AuthIsSignedIn for defence-in-depth:
+                    // ok==true is set only after VerifyOtpAsync succeeds
+                    // AND SaveSession ran, so AuthIsSignedIn should agree;
+                    // the belt-and-suspenders check guards against a
+                    // future drift between dialog result and auth state.
+                    if (ok == true && _plugin?.AuthIsSignedIn == true)
+                    {
+                        // Brand-new accounts have no profile.username
+                        // yet; uploading would error out as "set a
+                        // username first" from the server. Bootstrap
+                        // it here so the inline sign-in stays parity
+                        // with Settings panel sign-in.
+                        try { await PickUsernameWindow.EnsureUsernameAsync(_plugin, this); }
+                        catch { /* user cancelled / network blip; checked below */ }
+                        // If the bootstrap couldn't populate a
+                        // SharingAuthor (cancelled picker / network),
+                        // surface a clear status and KEEP Upload
+                        // disabled - otherwise the user clicks Upload
+                        // and gets a raw "set a username first" from
+                        // the server.
+                        if (string.IsNullOrWhiteSpace(_plugin?.Settings?.SharingAuthor))
+                        {
+                            statusText.Foreground = ErrFg;
+                            statusText.Text =
+                                "Signed in, but no username yet. Pick one in Settings > Account & community, then re-open this dialog.";
+                            return;
+                        }
+                        // Flip into signed-in state without re-opening
+                        // the window. Update the readout, enable the
+                        // form, drop the Sign in button. Re-apply the
+                        // empty-preset gate so a fresh sign-in on a
+                        // car/game preset with no sections doesn't
+                        // suddenly enable Upload past that check.
+                        descInput.IsEnabled = true;
+                        uploadBtn.IsEnabled = hasSections;
+                        allowInPacksCheck.IsEnabled = true;
+                        statusText.Foreground = MutedFg;
+                        statusText.Text = "Uploads are credited to your username.";
+                        btnRow.Children.Remove(signInBtn);
+                        // Rebuild the Sharing-as line in place. Cheap
+                        // since the parent StackPanel preserves order.
+                        for (int i = 0; i < root.Children.Count; i++)
+                        {
+                            if (root.Children[i] is Grid g
+                                && g.Children.Count >= 1
+                                && g.Children[0] is TextBlock label
+                                && label.Text == "Sharing as")
+                            {
+                                root.Children.RemoveAt(i);
+                                root.Children.Insert(i, MakeFactLine(
+                                    "Sharing as",
+                                    _plugin?.Settings?.SharingAuthor ?? "(your username)"));
+                                break;
+                            }
+                        }
+                    }
+                };
+            }
             uploadBtn.Click += async (s, e) =>
             {
                 uploadBtn.IsEnabled = false;
@@ -137,13 +315,25 @@ namespace TrueforceForAll.Plugin
                 string desc = (descInput.Text ?? "").Trim();
                 // Author is server-authoritative now: profile.username if
                 // signed in, null otherwise. We pass null and the server
-                // stamps the right value.
+                // stamps the right value. Routing branches on kind so
+                // car presets hit upload_preset and game presets hit
+                // upload_game_preset (separate table + RPC).
+                bool allowPacks = allowInPacksCheck?.IsChecked == true;
                 string newId = null;
                 try
                 {
-                    newId = await _plugin.UploadCarPresetToCommunityAsync(
-                        _presetName, _game, _carId, _body,
-                        null, desc, _effectTags);
+                    if (isEngine)
+                        newId = await _plugin.UploadCustomEngineToCommunityAsync(
+                            _presetName, _body, desc, allowInPacks: allowPacks);
+                    else if (isGame)
+                        newId = await _plugin.UploadGamePresetToCommunityAsync(
+                            _presetName, _game, _body, desc, _effectTags,
+                            allowInPacks: allowPacks);
+                    else
+                        newId = await _plugin.UploadCarPresetToCommunityAsync(
+                            _presetName, _game, _carId, _body,
+                            null, desc, _effectTags,
+                            allowInPacks: allowPacks);
                 }
                 catch (Exception ex)
                 {
@@ -157,7 +347,7 @@ namespace TrueforceForAll.Plugin
                 if (string.IsNullOrEmpty(newId))
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Upload failed (network or rate limit). Try again later.";
+                    statusText.Text = _plugin.DescribeLastUploadError();
                     uploadBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     return;

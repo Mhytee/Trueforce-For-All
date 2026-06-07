@@ -213,9 +213,11 @@ namespace TrueforceForAll.Plugin
         // as motor torque and ignores ep0 whenever active packets are
         // streaming, so this means zero motor force from our path
         // appropriate ONLY for games that drive the wheel's motor through
-        // their own native ep3 path (Forza Horizon, AC Rally, iRacing). For
-        // games that rely on ep0 for FFB (vanilla AC, F1, PC2), enabling
-        // this kills FFB entirely. Default off.
+        // their own native ep3 path (AC Rally, iRacing). For games that rely
+        // on ep0 for FFB (vanilla AC, FH6, F1, PC2), enabling this kills FFB
+        // entirely. Note: with a native-ep3 game we do NOT coexist on ep3, we
+        // clash with its own stream, so this is only usable when that game's
+        // Trueforce output is fully disabled. Default off.
         public bool  SkipFfbPassthrough       { get; set; } = false;
 
         // Optional absolute path to USBPcapCMD.exe, set when the user picks a
@@ -436,8 +438,39 @@ namespace TrueforceForAll.Plugin
         // versions on plugin-load. The "Skip" action in the update
         // notification bumps SeenContentVersion to the latest so a
         // single dismissal lasts until the NEXT real edit.
+        //
+        // PER-USER PARTITION: when more than one Supabase account uses
+        // the same install (a shared family PC, a sim rig at a friend's
+        // place), each account keeps its OWN copy of this dict + its
+        // own SharingAuthor in Settings.UserSlots. At any given moment
+        // the field below is a reference to UserSlots[ActiveSlotKey]'s
+        // dict, so existing read/write call sites are unaffected. A
+        // future cloud-sync feature will push/pull each slot to the
+        // server; for now slots are local-only and survive sign-out.
         public Dictionary<string, DownloadedPresetRecord> DownloadedCommunityPresets { get; set; }
             = new Dictionary<string, DownloadedPresetRecord>();
+
+        // Per-local-user data slots. Key = lower-cased email (the
+        // user's Supabase identity) or "" for anonymous activity.
+        // Mounting / migration is handled by TrueforcePlugin's slot
+        // manager, NOT by direct dictionary mutation; treat this as
+        // backing storage.
+        public Dictionary<string, UserDataSlot> UserSlots { get; set; }
+            = new Dictionary<string, UserDataSlot>();
+
+        // The key whose slot is currently mounted into the legacy
+        // DownloadedCommunityPresets + SharingAuthor fields. Empty
+        // string = anonymous. Set by the slot manager on sign-in /
+        // sign-out; do not write directly.
+        public string ActiveSlotKey { get; set; } = "";
+
+        // One-time migration latch: the first run after the slot
+        // feature ships moves any pre-existing DownloadedCommunityPresets
+        // + SharingAuthor into the appropriate slot.
+        public bool UserSlotsMigratedV1 { get; set; } = false;
+
+        // Snapshot of the email that owned legacy (pre-slot) data; set once on first sign-in so migration targets the right slot even if the user re-auths before EnsureUserSlotsMounted runs.
+        public string LegacyDataOwnerEmail { get; set; } = "";
 
         // ---- Per-effect "NEW" badges + changelog banner (see EffectChangelog) ----
 
@@ -602,6 +635,17 @@ namespace TrueforceForAll.Plugin
         /// FiringPatternDb.ParseCustom. Empty string is treated as silence.</summary>
         public string Pattern { get; set; } = "";
 
+        /// <summary>Server uuid of the community row this engine was
+        /// downloaded from. Null when the user authored it locally.
+        /// Survives rename / duplicate / edit and is the identity the
+        /// pack creator + Share-button gate look up against (so they
+        /// trust ids, not local names). Stamped by
+        /// SaveImportedCommunityCustomEngine and the pack import
+        /// path; cleared if the user explicitly forks the engine.
+        /// Tier 3 community metadata; pre-existing engines deserialize
+        /// it as null so legacy library files keep loading unchanged.</summary>
+        public string CommunitySourceId { get; set; }
+
         /// <summary>Optional credit field. Set on export by stamping the
         /// curator's SharingAuthor when the def doesn't already have one,
         /// preserved on import so a recipient who acquires "MyV12 by Mhytee"
@@ -728,6 +772,14 @@ namespace TrueforceForAll.Plugin
         public string   GameName            { get; set; }
         public int      SeenContentVersion  { get; set; } = 1;
         public DateTime DownloadedAt        { get; set; }
+        // "car" / "game" / "engine" / "pack". Determines which server
+        // table the id lives in for the update-check pass.
+        public string   Kind                { get; set; } = "car";
+        // Permission the original author set at upload. The pack
+        // creator UI uses this to decide whether a downloaded item
+        // may be re-bundled in a pack the local user is building.
+        // Conservative default false matches the server default.
+        public bool     AllowInPacks        { get; set; } = false;
     }
 
     /// <summary>Truth about a single car: chassis-level facts plus a list
@@ -804,6 +856,13 @@ namespace TrueforceForAll.Plugin
         public string AuthorVersion { get; set; }
         public string PackName      { get; set; }
         public string Description   { get; set; }
+
+        /// <summary>Server uuid of the community row this game preset
+        /// snapshot was downloaded from. Null = locally authored.
+        /// Used by the pack creator + Share-button gate to identify
+        /// the item by stable server id instead of fuzzy local name,
+        /// surviving rename / duplicate / edit.</summary>
+        public string CommunitySourceId { get; set; }
     }
 
     public sealed class AudioCaptureSettings
@@ -1339,10 +1398,44 @@ namespace TrueforceForAll.Plugin
         public AudioCaptureSettings AudioCapture { get; set; }
         public AirborneSettings     Airborne     { get; set; }
 
+        /// <summary>Server uuid of the community row this car preset
+        /// override was downloaded from. Null = locally authored.
+        /// Used by the pack creator + Share-button gate to identify
+        /// the item by stable server id instead of fuzzy local name,
+        /// surviving rename / duplicate / edit.</summary>
+        public string CommunitySourceId { get; set; }
+
         public bool IsEmpty =>
             EnginePulse == null && RoadBumps == null && TractionLoss == null &&
             GearShift   == null && AbsClick  == null && AudioCapture == null &&
             PitLimiter  == null && Drs       == null && Collision    == null &&
             RevLimiter  == null && Airborne  == null;
+    }
+
+    /// <summary>Per-local-user data partition. Holds the state that
+    /// belongs to a specific Supabase account on this install, so a
+    /// sign-out doesn't lose the user's data and a second user signing
+    /// in on the same machine doesn't see the first user's history.
+    /// Keyed in Settings.UserSlots by lower-cased email (or "" for
+    /// anonymous activity). Designed so a future cloud-sync feature
+    /// can push/pull a slot to the server without changing call
+    /// sites.</summary>
+    public sealed class UserDataSlot
+    {
+        public Dictionary<string, DownloadedPresetRecord> DownloadedCommunityPresets { get; set; }
+            = new Dictionary<string, DownloadedPresetRecord>();
+        public string SharingAuthor { get; set; } = "";
+
+        // Per-user OVERRIDE of game / car preset defaults. Sparse: only
+        // contains entries the user explicitly set after the device-
+        // wide baseline (stored on disk in the user-library folder's
+        // game-defaults.json / car-defaults.json) was first established.
+        // Read precedence: slot override -> device-wide file -> factory
+        // seed. Effective view is rebuilt into Settings.GameDefaults /
+        // CarDefaults on every slot mount.
+        public Dictionary<string, string> OverrideGameDefaults { get; set; }
+            = new Dictionary<string, string>();
+        public Dictionary<string, string> OverrideCarDefaults { get; set; }
+            = new Dictionary<string, string>();
     }
 }

@@ -422,7 +422,8 @@ namespace TrueforceForAll.Plugin
                 || (_audioSlider != null && IsBusy(_audioSlider)))
                 return;
             _pendingPersist = false;
-            try { _plugin.PersistSettings(); } catch { }
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
         }
 
         private void RemoveBox()

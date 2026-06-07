@@ -45,7 +45,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 6),
             });
             root.Children.Add(new TextBlock {
-                Text = "This update adds shared tunes, crowd-sourced car data, and per-car corrections. Sign in to get the most from it - or stay anonymous and use it for free.",
+                Text = "This update adds shared presets, crowd-sourced car data, and per-car corrections. Sign in to get the most from it - or stay anonymous and use it for free.",
                 Foreground = MutedFg, FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 18),
                 TextWrapping = TextWrapping.Wrap,
@@ -56,7 +56,7 @@ namespace TrueforceForAll.Plugin
                 "Engine layouts, redlines, and car names other drivers have confirmed for the cars you load. Right values appear automatically; no setup."));
             root.Children.Add(MakeBullet(
                 "Community presets",
-                "Browse and download tunes other drivers have shared for the car you're driving. Take just the sections you want."));
+                "Browse and download presets other drivers have shared for the car you're driving. Take just the sections you want."));
             root.Children.Add(MakeBullet(
                 "Your contributions count",
                 "When you correct a redline or share a preset, your contribution flows to everyone else loading that car. Sign in to put your username on what you share and keep your uploads yours."));

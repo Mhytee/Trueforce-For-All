@@ -82,6 +82,9 @@
          export/import flow (.tfpack zip files). -->
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <!-- ProtectedData (DPAPI) for B5/F03 AuthSession token encryption
+         at rest. Lives in System.Security.dll on net48, not auto-referenced. -->
+    <Reference Include="System.Security" />
   </ItemGroup>
   <ItemGroup>
     <!-- Compile-time only. SimHub bundles the full NAudio 2.2.1 set in its

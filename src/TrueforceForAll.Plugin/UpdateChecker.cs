@@ -188,10 +188,20 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(DownloadUrl))
                 throw new InvalidOperationException("No installer URL on the latest release.");
+            // Refuse any DownloadUrl that doesn't match the canonical
+            // Mhytee/Trueforce-For-All release-download path. Stops a
+            // hostile or compromised release feed from redirecting the
+            // user to an attacker-controlled installer.
+            if (!ChannelValidation.IsTrustedGitHubReleaseUrl(DownloadUrl))
+                throw new InvalidOperationException($"Untrusted download URL: {DownloadUrl}");
 
             EnableTls12();
             string fileName = $"TrueforceForAll-Setup-{LatestVersionDisplay}.exe";
-            string destPath = Path.Combine(Path.GetTempPath(), fileName);
+            // TOCTOU defense: write into a GUID-named .tmp first so a
+            // pre-existing predictable-name file at the destination can't
+            // be swapped in before we open it. The final move + hidden attr
+            // happens once the bytes are fully on disk.
+            string destPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".tmp");
 
             // Per-request timeout is intentionally generous (slow connections
             // pulling a multi-MB installer); cancellationToken is the fast path
@@ -206,6 +216,7 @@ namespace TrueforceForAll.Plugin
                     using (var src = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false))
                     using (var dst = File.Create(destPath))
                     {
+                        try { File.SetAttributes(destPath, FileAttributes.Hidden); } catch { }
                         var buf = new byte[81920];
                         long received = 0;
                         int read;
@@ -217,6 +228,14 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+                // Move the verified temp file to its final name. .NET 4.8 has no
+                // 3-arg File.Move overload, so delete-then-move is the portable
+                // pattern. Best-effort: if delete fails, the move will surface
+                // the real error.
+                string finalPath = Path.Combine(Path.GetTempPath(), fileName);
+                try { if (File.Exists(finalPath)) File.Delete(finalPath); } catch { }
+                File.Move(destPath, finalPath);
+                destPath = finalPath;
             }
             Log($"Downloaded installer to {destPath}");
             return destPath;

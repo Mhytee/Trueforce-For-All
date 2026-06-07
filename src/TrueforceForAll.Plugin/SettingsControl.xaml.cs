@@ -36,6 +36,13 @@ namespace TrueforceForAll.Plugin
         private RedlineConsensus _engineRedlineCache;
         private string _lastShownCarId;
         private string _lastShownGame;
+        // One-shot per-session latch so the networked-welcome modal can
+        // re-fire from the active-car/game change path (so upgraders who
+        // never open Settings still see it) without being spammed every
+        // time the user switches cars in the same session. Set true once
+        // we attempt the show, regardless of outcome - the modal's own
+        // HasSeenNetworkedWelcome / WelcomeNextShowAt gates still apply.
+        private bool _welcomeTriggeredThisSession;
 
         // Forza "Not receiving packets?" auto-open. _forzaZeroSinceTicks marks
         // when the source first read zero packets (0 = not currently at zero);
@@ -210,7 +217,12 @@ namespace TrueforceForAll.Plugin
                 // First-time welcome modal: shown once per (install,
                 // user) on first open of a build that introduced the
                 // community features. Defer via Dispatcher so the panel
-                // is fully composited before the modal pops on top.
+                // is fully composited before the modal pops on top. The
+                // latch lives inside MaybeShowNetworkedWelcome itself,
+                // set only after the show-gates pass - so a pre-game
+                // Loaded that returns early (e.g., backend not yet
+                // configured) leaves the latch clear, and the later
+                // active-game car-change path can still re-trigger it.
                 Dispatcher.BeginInvoke(new Action(MaybeShowNetworkedWelcome),
                     System.Windows.Threading.DispatcherPriority.Background);
                 // After the welcome modal (if any), check for community
@@ -223,6 +235,12 @@ namespace TrueforceForAll.Plugin
                 {
                     _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally += OnMasterGainChangedExternally;
+                    // Auth identity change (sign-in, sign-out, refresh
+                    // that flipped to a different email) must reset
+                    // the per-session latches so the next user's
+                    // welcome modal / community-update check don't get
+                    // silently suppressed by the prior user's gate.
+                    _plugin.AuthIdentityChanged += OnAuthIdentityChanged;
                 }
                 // SimHub caches this control, so navigating away and back does NOT
                 // rebuild it. Re-pull values on every (re)load so edits made
@@ -235,10 +253,37 @@ namespace TrueforceForAll.Plugin
                 _meterTimer.Stop();
                 if (_plugin != null)
                 {
+                    _plugin.AuthIdentityChanged -= OnAuthIdentityChanged;
                     _plugin.AutoRatchetBumped -= OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally -= OnMasterGainChangedExternally;
                 }
             };
+        }
+
+        // The active local user changed (sign-in, sign-out, refresh
+        // that flipped to a different email). Reset every per-session
+        // latch + last-shown marker that would otherwise carry the
+        // prior user's state into the next user's experience. The slot
+        // manager in TrueforcePlugin has already mounted the new
+        // user's DownloadedCommunityPresets + SharingAuthor before we
+        // get here, so an immediate re-fire of MaybeShowCommunityUpdates
+        // would scope to the right data set.
+        private void OnAuthIdentityChanged(string newSlotKey)
+        {
+            _welcomeTriggeredThisSession        = false;
+            _communityUpdatesCheckedThisSession = false;
+            // Forget the last-shown car/game so RefreshFromPlugin's
+            // per-change-driven nudges (welcome trigger, refresh) run
+            // again for the new user instead of being suppressed.
+            _lastShownCarId = null;
+            _lastShownGame  = null;
+            // Invalidate any in-flight account stats fetch from the prior user.
+            unchecked { ++_accountStatsGen; }
+            // Refresh visible UI state immediately - the new user's
+            // sharing author + community count + account expander
+            // should reflect the new identity.
+            try { RefreshAccountRow(); } catch { }
+            try { RefreshFromPlugin(); } catch { }
         }
 
         // A bound controller button (Controls tab) nudged master gain while the
@@ -413,6 +458,12 @@ namespace TrueforceForAll.Plugin
                     HeaderCarRenameBtn.Visibility = carDetected
                         ? System.Windows.Visibility.Visible
                         : System.Windows.Visibility.Collapsed;
+
+                // Discoverability surface: hide the count chip eagerly, then
+                // kick a background fetch on car/game change. The fetch sets
+                // visibility + content when results arrive (or stays hidden
+                // when count == 0 / community is off / no car).
+                MaybeRefreshCarCommunityCountAsync();
 
                 // Skip-passthrough makes the FFB tuning controls (scale/smooth/invert/
                 // safety limiters) irrelevant (game writes the wheel directly). Grey
@@ -991,6 +1042,34 @@ namespace TrueforceForAll.Plugin
                     CheckForUpdatesStatus.Visibility = System.Windows.Visibility.Visible;
                 }
 
+                // Community-update "Check now" link. Visible only when
+                // community is enabled AND the user has at least one
+                // downloaded community preset (otherwise nothing to check).
+                bool wantCommunityCheck =
+                    _plugin?.Settings?.CommunityEnabled == true
+                    && _plugin.Settings.DownloadedCommunityPresets != null
+                    && _plugin.Settings.DownloadedCommunityPresets.Count > 0;
+                if (CommunityCheckNowBtn != null)
+                {
+                    var want = wantCommunityCheck ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    if (CommunityCheckNowBtn.Visibility != want) CommunityCheckNowBtn.Visibility = want;
+                }
+                if (CommunityCheckNowStatus != null)
+                {
+                    // The status TextBlock follows the button - hide it when
+                    // the button is hidden, and clear stale text so the
+                    // pending 5s fade in CommunityCheckNowBtn_Click doesn't
+                    // race a downloaded-list emptying that hides the button
+                    // (the "captured == Text" guard would be wrong if the
+                    // button reappeared later with old text still set).
+                    if (!wantCommunityCheck && !string.IsNullOrEmpty(CommunityCheckNowStatus.Text))
+                        CommunityCheckNowStatus.Text = "";
+                    bool showStatus = wantCommunityCheck
+                        && !string.IsNullOrEmpty(CommunityCheckNowStatus.Text);
+                    var want = showStatus ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    if (CommunityCheckNowStatus.Visibility != want) CommunityCheckNowStatus.Visibility = want;
+                }
+
                 // "What's new" banner + per-effect NEW badges. Both driven by
                 // the plugin's SeenEffects / LastSeenVersion state.
                 RefreshChangelogBanner();
@@ -1345,6 +1424,7 @@ namespace TrueforceForAll.Plugin
             string game  = _plugin?.ActiveGame;
             if (carId != _lastShownCarId || game != _lastShownGame)
             {
+                bool gameChanged = game != _lastShownGame;
                 _lastShownCarId = carId;
                 _lastShownGame  = game;
                 // Game change → plugin may have auto-applied a preset for the
@@ -1353,6 +1433,29 @@ namespace TrueforceForAll.Plugin
                 // user hasn't changed anything yet.
                 ClearDirty();
                 RefreshFromPlugin();
+                // Notify the preset manager so its community panel can
+                // re-scope its label + (when looking at car-kind or a
+                // game-kind where the game changed) refresh the list.
+                // PresetManagerControl decides internally whether to skip
+                // the fetch for car-agnostic kinds.
+                _presetManager?.OnActiveCarChanged(gameChanged);
+
+                // First active-car/game change of the session: nudge the
+                // networked-welcome modal so an upgrader who never opens
+                // Settings still sees the community pitch. The modal's own
+                // HasSeenNetworkedWelcome + WelcomeNextShowAt + backend-config
+                // gates short-circuit redundant pops; the session latch
+                // additionally prevents a re-fire when the user switches cars
+                // mid-session. Defer via Dispatcher so the meter tick isn't
+                // blocked by ShowDialog.
+                if (!_welcomeTriggeredThisSession
+                    && _plugin?.Settings != null
+                    && !_plugin.Settings.HasSeenNetworkedWelcome)
+                {
+                    _welcomeTriggeredThisSession = true;
+                    Dispatcher.BeginInvoke(new Action(MaybeShowNetworkedWelcome),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                }
             }
         }
 
@@ -1907,6 +2010,454 @@ namespace TrueforceForAll.Plugin
                 HeaderSaveAsNewBtn.Visibility = (any && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
             if (HeaderCarSaveAsNewBtn != null)
                 HeaderCarSaveAsNewBtn.Visibility = carDirty ? Visibility.Visible : Visibility.Collapsed;
+
+            UpdateHeaderShareButtons();
+        }
+
+        // Gates the Share... buttons next to the game-preset combo and
+        // the car-preset combo. Both stay hidden unless community is on
+        // AND the user is the eligible sharer of what's active:
+        //   * built-in presets are never shareable (already ship to
+        //     everyone)
+        //   * presets the user downloaded from someone else's
+        //     community upload are not shareable as their own
+        //     (they'd be claiming someone else's work). Identity is
+        //     by stable CommunitySourceId on the snapshot/override,
+        //     not by local name -- rename/duplicate don't re-enable
+        //     Share. The original uploader can re-share via their
+        //     own library; downstream users can re-bundle inside a
+        //     pack only when the author opted in via allow_in_packs.
+        private void UpdateHeaderShareButtons()
+        {
+            bool community = _plugin?.Settings?.CommunityEnabled == true;
+
+            if (HeaderGameShareBtn != null)
+            {
+                string activePreset = _plugin?.ActivePresetName ?? "";
+                bool present     = !string.IsNullOrEmpty(activePreset);
+                bool isBuiltin   = present && (_plugin?.IsBuiltinPreset(activePreset) ?? false);
+                bool isCommunity = present && IsActiveGamePresetCommunitySourced(activePreset);
+                bool shareable   = community && present && !isBuiltin && !isCommunity;
+                // Visible-but-disabled with a tooltip explains why
+                // Share is greyed out (built-in vs downloaded) instead
+                // of silently collapsing it. Hidden entirely only
+                // when community is off or no preset is active.
+                if (community && present)
+                {
+                    HeaderGameShareBtn.Visibility = Visibility.Visible;
+                    HeaderGameShareBtn.IsEnabled  = shareable;
+                    HeaderGameShareBtn.ToolTip = shareable
+                        ? "Share this game preset with the community. Requires sign-in."
+                        : isBuiltin
+                            ? "This is a built-in preset and ships with the plugin -- no need to re-share."
+                            : "Shared by another driver. Duplicate to make your own version and share that.";
+                }
+                else
+                {
+                    HeaderGameShareBtn.Visibility = Visibility.Collapsed;
+                }
+            }
+
+            if (HeaderCarShareBtn != null)
+            {
+                var pick = HeaderCarPresetCombo?.SelectedItem
+                    is System.Windows.Controls.ComboBoxItem ci
+                    ? ci.Tag as PresetPick : null;
+                bool present = pick != null && pick.IsCar
+                    && !pick.ClearCar
+                    && !string.IsNullOrEmpty(pick.Name)
+                    && !string.IsNullOrEmpty(pick.CarId);
+                bool isCommunity = present && IsCarPresetCommunitySourced(pick.CarId, pick.Name);
+                bool shareable   = community && present && !isCommunity;
+                if (community && present)
+                {
+                    HeaderCarShareBtn.Visibility = Visibility.Visible;
+                    HeaderCarShareBtn.IsEnabled  = shareable;
+                    HeaderCarShareBtn.ToolTip = shareable
+                        ? "Share this car preset with the community. Requires sign-in."
+                        : "Shared by another driver. Duplicate to make your own version and share that.";
+                }
+                else
+                {
+                    HeaderCarShareBtn.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+
+        // True when the named game preset's snapshot carries a
+        // CommunitySourceId (i.e. it arrived via community download
+        // or pack import). Identity walks the in-memory snapshot;
+        // rename/duplicate that doesn't touch CommunitySourceId stays
+        // gated, closing the rename-to-reshare permission hole.
+        private bool IsActiveGamePresetCommunitySourced(string presetName)
+        {
+            if (string.IsNullOrEmpty(presetName)) return false;
+            if (_plugin?.Settings?.Presets == null) return false;
+            return _plugin.Settings.Presets.TryGetValue(presetName, out var snap)
+                && snap != null
+                && !string.IsNullOrEmpty(snap.CommunitySourceId);
+        }
+
+        // True when the (carId, presetName) car preset's override
+        // carries a CommunitySourceId. Same id-based identity model
+        // as the game-preset gate.
+        private bool IsCarPresetCommunitySourced(string carId, string presetName)
+        {
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
+            var perCar = _plugin?.GetCarPresets(carId);
+            if (perCar == null) return false;
+            return perCar.TryGetValue(presetName, out var entry)
+                && entry?.Override != null
+                && !string.IsNullOrEmpty(entry.Override.CommunitySourceId);
+        }
+
+        // Share the currently-active GAME preset (the whole-game
+        // settings snapshot under _plugin.ActivePresetName). Body is
+        // a serialized GameSettingsSnapshot; the receiver re-hydrates
+        // it via Settings.Presets on download.
+        // Reentrancy guard for the two header share buttons. async void
+        // + an await before the modal opens means a rapid double-click
+        // can otherwise spawn two share dialogs in sequence.
+        private bool _headerShareInProgress;
+
+        private async void HeaderGameShare_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            if (_headerShareInProgress) return;
+            // Set the reentrancy guard BEFORE any validation, and move
+            // the validation MessageBoxes INSIDE the try block so any
+            // throw from MessageBox.Show / Settings access cannot
+            // leak out of the async-void handler.
+            _headerShareInProgress = true;
+            try
+            {
+            if (_plugin.Settings.CommunityEnabled != true)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Enable Community Contributions in Settings to share presets.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            string name = _plugin.ActivePresetName;
+            if (string.IsNullOrEmpty(name)
+                || _plugin.Settings.Presets == null
+                || !_plugin.Settings.Presets.TryGetValue(name, out var snap)
+                || snap == null)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "No game preset is currently active. Save your tuning as a preset first.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var owner = Window.GetWindow(this);
+            if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+            {
+                MessageBox.Show(owner,
+                    "Pick a username before sharing (Settings > Account & community).",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var body = new Newtonsoft.Json.Linq.JObject
+            {
+                ["snapshot"] = Newtonsoft.Json.Linq.JToken.FromObject(snap),
+            };
+            // Mirror PresetManagerControl.CarShare_Click + pack share:
+            // bundle any CustomEngineDefs the snapshot references
+            // (via EnginePulse.CustomEngineId or per-car-override
+            // engine ids) so a recipient whose library doesn't have
+            // the engine doesn't fall back to silence on import.
+            var customs = _plugin.CollectReferencedCustomEngines(
+                new[] { snap }, null);
+            if (customs != null && customs.Count > 0)
+                body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
+
+            // Effect tags from non-null sections on the snapshot. Same
+            // whitelist the server enforces, same order as car presets.
+            var tags = new List<string>(11);
+            if (snap.EnginePulse  != null) tags.Add("engine");
+            if (snap.RevLimiter   != null) tags.Add("revlimiter");
+            if (snap.RoadBumps    != null) tags.Add("roadbumps");
+            if (snap.TractionLoss != null) tags.Add("tractionloss");
+            if (snap.GearShift    != null) tags.Add("gearshift");
+            if (snap.AbsClick     != null) tags.Add("abs");
+            if (snap.PitLimiter   != null) tags.Add("pitlimiter");
+            if (snap.Drs          != null) tags.Add("drs");
+            if (snap.Collision    != null) tags.Add("collision");
+            if (snap.AudioCapture != null) tags.Add("audio");
+            if (snap.Airborne     != null) tags.Add("airborne");
+
+            string game = _plugin.ActiveGame ?? "";
+            var dialog = PresetShareWindow.ForGame(_plugin, name, game, body, tags);
+            dialog.Owner = owner;
+            dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                // async-void event handler: an uncaught exception here
+                // would propagate to the WPF dispatcher and crash the
+                // plugin. Show the user a recoverable error instead.
+                SimHub.Logging.Current.Info("[Trueforce] Share preset failed: " + ex.Message);
+                var owner = Window.GetWindow(this);
+                MessageBox.Show(owner,
+                    "Share preset failed: " + ex.Message,
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _headerShareInProgress = false; }
+        }
+
+        // Share the car preset currently selected in HeaderCarPresetCombo.
+        // Same bundling shape as PresetManagerControl.CarShare_Click so
+        // receivers parse a single uniform body schema (override +
+        // optional custom_engines).
+        private async void HeaderCarShare_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            if (_headerShareInProgress) return;
+            // Set the reentrancy guard BEFORE validation so a throw in
+            // any MessageBox / Settings access during validation goes
+            // through the catch instead of out the async-void edge.
+            _headerShareInProgress = true;
+            try
+            {
+            if (_plugin.Settings.CommunityEnabled != true)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Enable Community Contributions in Settings to share presets.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var pick = HeaderCarPresetCombo?.SelectedItem
+                is System.Windows.Controls.ComboBoxItem ci
+                ? ci.Tag as PresetPick : null;
+            if (pick == null || !pick.IsCar || pick.ClearCar
+                || string.IsNullOrEmpty(pick.Name) || string.IsNullOrEmpty(pick.CarId))
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Pick a real car preset (not \"None\") before sharing.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var perCar = _plugin.GetCarPresets(pick.CarId);
+            if (perCar == null
+                || !perCar.TryGetValue(pick.Name, out var entry)
+                || entry == null
+                || entry.Override == null)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    $"Could not load preset '{pick.Name}' for car '{pick.CarId}'.",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var owner = Window.GetWindow(this);
+            if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+            {
+                MessageBox.Show(owner,
+                    "Pick a username before sharing (Settings > Account & community).",
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var customs = _plugin.CollectReferencedCustomEngines(
+                null, new[] { entry.Override });
+
+            var body = new Newtonsoft.Json.Linq.JObject
+            {
+                ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(entry.Override),
+            };
+            if (customs != null && customs.Count > 0)
+                body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
+
+            var tags = new List<string>(11);
+            if (entry.Override.EnginePulse  != null) tags.Add("engine");
+            if (entry.Override.RevLimiter   != null) tags.Add("revlimiter");
+            if (entry.Override.RoadBumps    != null) tags.Add("roadbumps");
+            if (entry.Override.TractionLoss != null) tags.Add("tractionloss");
+            if (entry.Override.GearShift    != null) tags.Add("gearshift");
+            if (entry.Override.AbsClick     != null) tags.Add("abs");
+            if (entry.Override.PitLimiter   != null) tags.Add("pitlimiter");
+            if (entry.Override.Drs          != null) tags.Add("drs");
+            if (entry.Override.Collision    != null) tags.Add("collision");
+            if (entry.Override.AudioCapture != null) tags.Add("audio");
+            if (entry.Override.Airborne     != null) tags.Add("airborne");
+
+            // Prefer the community CarName when available (parallels
+            // PresetManagerControl.ResolveCarNameForRow); fall back to
+            // the raw car id so the modal always shows something.
+            string carDisplay = pick.CarId;
+            if (!string.IsNullOrEmpty(entry.GameName)
+                && _plugin.Settings.CarFacts != null
+                && _plugin.Settings.CarFacts.TryGetValue(
+                    entry.GameName + "/" + pick.CarId, out var bundle)
+                && bundle != null
+                && !string.IsNullOrEmpty(bundle.CarName))
+            {
+                carDisplay = bundle.CarName;
+            }
+
+            var dialog = PresetShareWindow.ForCar(_plugin,
+                pick.Name, entry.GameName ?? "",
+                pick.CarId, carDisplay, body, tags);
+            dialog.Owner = owner;
+            dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                // async-void handler: any uncaught throw would crash
+                // the WPF dispatcher. Show a recoverable error instead.
+                SimHub.Logging.Current.Info("[Trueforce] Share preset failed: " + ex.Message);
+                var ownerWnd = Window.GetWindow(this);
+                MessageBox.Show(ownerWnd,
+                    "Share preset failed: " + ex.Message,
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _headerShareInProgress = false; }
+        }
+
+        // ===================== Header car community count chip =====================
+        // Discoverability surface: when the user loads a car and the
+        // community has tunes for it, the header chip "* N community"
+        // surfaces them inline. Click -> popover with the top 5; each
+        // row has a one-click Apply that downloads + imports + flips
+        // the active car preset. "See all" inside the popover jumps to
+        // the full Preset Manager Cars-Community view.
+
+        private string _lastResolvedCarKey;    // "game/carId" of the last successful fetch
+        private List<PresetSummary> _cachedTopForActiveCar;
+
+        // Kicked off from RefreshFromPlugin whenever the active car /
+        // game / community-enabled state may have changed. Hides the
+        // chip up front; the async fetch reveals it on count > 0.
+        // The GET RPC is anonymous-friendly so we still fetch when
+        // CommunityEnabled is false - the click handler offers a
+        // one-shot "enable community + open popover" flow so first-
+        // time users discover that the feature exists at all.
+        private void MaybeRefreshCarCommunityCountAsync()
+        {
+            if (HeaderCarCommunityCountBtn == null) return;
+            HeaderCarCommunityCountBtn.Visibility = System.Windows.Visibility.Collapsed;
+            if (_plugin?.Settings == null) return;
+            // Skip the fetch only when the backend is not configured at
+            // all - we still want the discovery surface to fire even
+            // when community is off (the count is publicly readable).
+            if (string.IsNullOrEmpty(_plugin.Settings.CommunityBackendUrl)
+                || string.IsNullOrEmpty(_plugin.Settings.CommunityBackendAnonKey))
+                return;
+            string game  = _plugin.ActiveGame;
+            string carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+
+            string carKey = game + "/" + carId;
+            // Same car as last fetch and we already have a cache - reuse.
+            if (string.Equals(carKey, _lastResolvedCarKey, StringComparison.Ordinal)
+                && _cachedTopForActiveCar != null)
+            {
+                RenderCarCommunityChip(_cachedTopForActiveCar.Count);
+                return;
+            }
+
+            string capturedGame  = game;
+            string capturedCarId = carId;
+            string capturedKey   = carKey;
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                List<PresetSummary> rows = null;
+                try
+                {
+                    rows = _plugin.FetchCommunityPresetsForCar(
+                        capturedGame, capturedCarId, sort: "wilson", limit: 5);
+                }
+                catch { /* swallow; chip stays hidden */ }
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    // Stale-fetch guard: car changed mid-flight, drop.
+                    if (!string.Equals(capturedKey,
+                            (_plugin?.ActiveGame ?? "") + "/" + (_plugin?.ActiveCarId ?? ""),
+                            StringComparison.Ordinal))
+                        return;
+                    _lastResolvedCarKey      = capturedKey;
+                    _cachedTopForActiveCar   = rows ?? new List<PresetSummary>();
+                    RenderCarCommunityChip(_cachedTopForActiveCar.Count);
+                }));
+            });
+        }
+
+        private void RenderCarCommunityChip(int count)
+        {
+            if (HeaderCarCommunityCountBtn == null) return;
+            if (count <= 0)
+            {
+                HeaderCarCommunityCountBtn.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+            bool communityOn = _plugin?.Settings?.CommunityEnabled == true;
+            HeaderCarCommunityCountBtn.Content = count == 1
+                ? "★ 1 community preset"
+                : $"★ {count} community presets";
+            // Different tooltip when community is off so the user
+            // understands the click will offer to enable it. (The
+            // chip itself stays visible so fresh users can discover
+            // that community presets exist for their car.)
+            HeaderCarCommunityCountBtn.ToolTip = communityOn
+                ? "See top community presets for this car. Click for the popover; 'See all' inside opens the full Community list."
+                : "Community Contributions are off. Click to enable them and browse these presets.";
+            HeaderCarCommunityCountBtn.Visibility = System.Windows.Visibility.Visible;
+        }
+
+        private void HeaderCarCommunityCount_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            // Community off: offer the user a one-click enable so they
+            // can browse what they were teased with, rather than telling
+            // them to go hunt the toggle.
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                var enable = MessageBox.Show(Window.GetWindow(this),
+                    "Community Contributions are off, so the popover won't fetch live data. " +
+                    "Enable Community Contributions now and browse these presets?",
+                    "Community presets", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (enable != MessageBoxResult.Yes) return;
+                _plugin.SetCommunityEnabled(true);
+                if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
+                // Fall through to open the popover with the cached rows
+                // we already fetched for the chip.
+            }
+            string carId = _plugin.ActiveCarId;
+            string game  = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
+
+            // Use whatever's cached. If a fresh fetch is in-flight or
+            // the user clicked very fast, fall back to whatever rows
+            // we have (even if empty). The popover itself handles the
+            // empty case.
+            var rows = _cachedTopForActiveCar ?? new List<PresetSummary>();
+
+            // Resolve a friendly car name if we have one in CarFacts.
+            string carDisplay = _plugin.ActiveCarDisplayName;
+            if (string.IsNullOrEmpty(carDisplay)
+                && _plugin.Settings.CarFacts != null
+                && _plugin.Settings.CarFacts.TryGetValue(game + "/" + carId, out var bundle)
+                && bundle != null
+                && !string.IsNullOrEmpty(bundle.CarName))
+                carDisplay = bundle.CarName;
+
+            var popover = new CommunityForCarPopover(_plugin, carId, game, carDisplay, rows)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            bool? ok = popover.ShowDialog();
+            // Refresh the header in case an Apply happened, so the
+            // car-preset combo + active preset text catch up.
+            RefreshFromPlugin();
+            if (popover.SeeAllRequested)
+                ShowPresetManager(PresetManagerControl.InitialTab.CarPresets);
+            // After landing on the Cars tab, flip the sub-pill to
+            // Community so the user lands on the browse view, not
+            // their Library.
+            if (popover.SeeAllRequested)
+                _presetManager?.OpenCarCommunity();
         }
 
         // Both header "Save all" buttons open the same target chooser (save to
@@ -2262,6 +2813,12 @@ namespace TrueforceForAll.Plugin
             if (!(item.Tag is PresetPick pick)) return;
 
             // "None" row: clear this car's preset back to the game preset.
+            // Under the per-user defaults model, ClearActiveCarPreset
+            // drops the active user's override first (they fall back to
+            // any install-wide binding) and only touches the device-
+            // wide file if they have no override - so on a shared
+            // install, clearing your binding won't unbind it for the
+            // other accounts.
             if (pick.ClearCar)
             {
                 // No-op if the car already has no active preset.
@@ -4001,6 +4558,16 @@ namespace TrueforceForAll.Plugin
                 if (_plugin.Settings.CustomEngines == null)
                     _plugin.Settings.CustomEngines = new List<CustomEngineDef>();
                 _plugin.Settings.CustomEngines.Add(def);
+                // Persist the new engine definition. Apply() marks the
+                // current preset dirty (saves on user Save) but does not
+                // persist the CustomEngines list - without this call the
+                // newly-created engine vanishes on plugin restart.
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[Trueforce] Persist new custom engine failed: " + ex.Message);
+                }
 
                 var es = _plugin.ActiveEngine;
                 es.Layout         = Effects.EngineLayout.Custom;
@@ -4107,8 +4674,14 @@ namespace TrueforceForAll.Plugin
         private void CommunityEnabled_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
-            _plugin.SetCommunityEnabled(CommunityEnabledCheck.IsChecked == true);
+            bool newOn = CommunityEnabledCheck.IsChecked == true;
+            _plugin.SetCommunityEnabled(newOn);
+            // Re-toggling community ON should allow the update-check to
+            // re-run; otherwise the per-session latch keeps the
+            // notification suppressed until the next plugin restart.
+            if (newOn) _communityUpdatesCheckedThisSession = false;
             RefreshAccountRow();
+            UpdateHeaderShareButtons();
         }
 
         // Sync the Account expander to the current plugin auth state.
@@ -4119,6 +4692,10 @@ namespace TrueforceForAll.Plugin
         // Identity = signed-in username OR anonymous. No freeform.
         private void RefreshAccountRow()
         {
+            // Keep the header-card chip in lockstep with the Settings-tab
+            // Account section. The chip has its own null guards, so refresh
+            // it even when the Account section's controls aren't realized.
+            RefreshAccountChip();
             if (AccountStatusLabel == null || _plugin == null) return;
             if (_plugin.AuthIsSignedIn)
             {
@@ -4153,6 +4730,88 @@ namespace TrueforceForAll.Plugin
             AccountAuthBtn.IsEnabled = true;
         }
 
+        // Header-card account chip. Signed out -> "Sign in" (no icon/caret).
+        // Signed in -> the username (or email prefix) with a circle + caret
+        // hinting at the dropdown. Tooltip switches to match.
+        private void RefreshAccountChip()
+        {
+            if (AccountChipButton == null || _plugin == null) return;
+            if (_plugin.AuthIsSignedIn)
+            {
+                string uname = _plugin.Settings?.SharingAuthor;
+                string label = !string.IsNullOrEmpty(uname)
+                    ? uname
+                    : EmailPrefix(_plugin.AuthSignedInEmail);
+                if (string.IsNullOrEmpty(label)) label = "Account";
+                if (AccountChipText  != null) AccountChipText.Text       = label;
+                if (AccountChipIcon  != null) AccountChipIcon.Visibility  = System.Windows.Visibility.Visible;
+                if (AccountChipCaret != null) AccountChipCaret.Visibility = System.Windows.Visibility.Visible;
+                string email = _plugin.AuthSignedInEmail;
+                AccountChipButton.ToolTip = string.IsNullOrEmpty(email)
+                    ? "Signed in. Click for account options."
+                    : "Signed in as " + email + ". Click for account options.";
+            }
+            else
+            {
+                if (AccountChipText  != null) AccountChipText.Text       = "Sign in";
+                if (AccountChipIcon  != null) AccountChipIcon.Visibility  = System.Windows.Visibility.Collapsed;
+                if (AccountChipCaret != null) AccountChipCaret.Visibility = System.Windows.Visibility.Collapsed;
+                AccountChipButton.ToolTip = "Sign in to share presets and use community car data.";
+            }
+        }
+
+        // Signed out -> open the sign-in dialog (same flow as the Settings-tab
+        // Account button). Signed in -> drop a small menu: jump to the full
+        // Account section, or sign out.
+        private void AccountChip_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (!_plugin.AuthIsSignedIn)
+            {
+                var dialog = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
+                bool? ok = dialog.ShowDialog();
+                if (ok == true)
+                {
+                    BootstrapUsernameAfterSignIn();
+                    RefreshAccountRow();
+                }
+                return;
+            }
+
+            var menu = new ContextMenu();
+            var manage = new MenuItem { Header = "Account settings…" };
+            manage.Click += (s, ev) => OpenAccountSection();
+            var signOut = new MenuItem { Header = "Sign out" };
+            signOut.Click += (s, ev) =>
+            {
+                var confirm = MessageBox.Show(
+                    Window.GetWindow(this),
+                    "Sign out of your community account?",
+                    "Sign out", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.Yes) return;
+                _plugin.AuthSignOut();
+                RefreshAccountRow();
+            };
+            menu.Items.Add(manage);
+            menu.Items.Add(signOut);
+            menu.PlacementTarget = AccountChipButton;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+
+        // Bring the Settings tab forward and expand the Account & community
+        // section (the chip's "Account settings…" target).
+        private void OpenAccountSection()
+        {
+            if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
+            if (AccountExpander != null)
+            {
+                AccountExpander.IsExpanded = true;
+                Dispatcher.BeginInvoke(new Action(() => AccountExpander.BringIntoView()),
+                    System.Windows.Threading.DispatcherPriority.Background);
+            }
+        }
+
         // Rename your username. Opens PickUsernameWindow seeded with
         // the current value; server enforces uniqueness via set_username.
         private async void AccountChangeUsername_Click(object sender, RoutedEventArgs e)
@@ -4172,7 +4831,8 @@ namespace TrueforceForAll.Plugin
             if (ok == true && !string.IsNullOrEmpty(picker.ChosenUsername))
             {
                 _plugin.Settings.SharingAuthor = picker.ChosenUsername;
-                try { _plugin.PersistSettings(); } catch { }
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
                 RefreshAccountRow();
@@ -4276,7 +4936,8 @@ namespace TrueforceForAll.Plugin
             {
                 // Server has a username; make local Author match.
                 _plugin.Settings.SharingAuthor = username;
-                try { _plugin.PersistSettings(); } catch { }
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = username;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = username;
                 return;
@@ -4294,15 +4955,28 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrWhiteSpace(preferred)) preferred = _plugin.Settings.SharingAuthor ?? "";
             string seed = await ResolveAvailableUsernameSeedAsync(preferred);
 
-            var picker = new PickUsernameWindow(_plugin, seed)
+            // Owner re-fetch after the await: SimHub caches the control,
+            // so this async-void path may resume on an unloaded control
+            // (Window.GetWindow returns null). Bail rather than open an
+            // un-owned floaty picker. Log the skip so a later "set a
+            // username first" upload error can be traced back to this
+            // missed bootstrap (otherwise it surfaces as an opaque
+            // backend error with no breadcrumb).
+            var owner = Window.GetWindow(this);
+            if (owner == null)
             {
-                Owner = Window.GetWindow(this),
-            };
+                SimHub.Logging.Current.Info(
+                    "[Trueforce] Username prompt skipped: Trueforce panel unloaded before bootstrap finished. " +
+                    "Re-open Settings > Account & community to pick a username.");
+                return;
+            }
+            var picker = new PickUsernameWindow(_plugin, seed) { Owner = owner };
             bool? ok = picker.ShowDialog();
             if (ok == true && !string.IsNullOrEmpty(picker.ChosenUsername))
             {
                 _plugin.Settings.SharingAuthor = picker.ChosenUsername;
-                try { _plugin.PersistSettings(); } catch { }
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
             }
@@ -4317,7 +4991,15 @@ namespace TrueforceForAll.Plugin
         //     boxes update. On failure the box reverts and a hint shows.
         private async void AccountAuthor_Changed(object sender, RoutedEventArgs e)
         {
+            // Outer try/catch: this is async void, so any uncaught
+            // exception (server error, JSON parse, control-unloaded
+            // null deref) propagates to the dispatcher and crashes
+            // the plugin. Wrap with a generic recovery.
+            try
+            {
             if (_suppressEvents || _plugin?.Settings == null || AccountAuthorBox == null) return;
+            // Snapshot active slot so a sign-in/out during the await below can't land the write in the wrong partition.
+            string slotKeyAtEntry = _plugin.Settings.ActiveSlotKey ?? "";
             string newAuthor = (AccountAuthorBox.Text ?? "").Trim();
             string oldAuthor = (_plugin.Settings.SharingAuthor ?? "").Trim();
             if (string.Equals(newAuthor, oldAuthor, System.StringComparison.Ordinal))
@@ -4354,16 +5036,41 @@ namespace TrueforceForAll.Plugin
                 AccountAuthorBox.Text = oldAuthor;
                 return;
             }
+            // Abort if the active slot swapped during the await; otherwise SharingAuthor lands in the wrong partition.
+            if ((_plugin.Settings.ActiveSlotKey ?? "") != slotKeyAtEntry)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] AccountAuthor_Changed aborted: slot changed during server call");
+                AccountAuthorBox.Text = oldAuthor;
+                if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
+                return;
+            }
             if (result == UsernameAvailability.Available
                 || result == UsernameAvailability.SelfOwned)
             {
                 _plugin.Settings.SharingAuthor = newAuthor;
-                try { _plugin.PersistSettings(); } catch { }
+                // Server already accepted the username; if local persist
+                // fails, surface it so the user knows the disk copy is
+                // out of sync (they may need to investigate disk perms).
+                bool persisted = true;
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex)
+                {
+                    persisted = false;
+                    SimHub.Logging.Current.Info("[Trueforce] Persist username failed: " + ex.Message);
+                }
                 if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
                 if (AccountAuthorStatus != null)
                 {
-                    AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0xCC, 0x88));
-                    AccountAuthorStatus.Text = "Saved.";
+                    if (persisted)
+                    {
+                        AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0xCC, 0x88));
+                        AccountAuthorStatus.Text = "Saved.";
+                    }
+                    else
+                    {
+                        AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
+                        AccountAuthorStatus.Text = "Accepted on the server, but the local save failed.";
+                    }
                 }
                 return;
             }
@@ -4382,6 +5089,16 @@ namespace TrueforceForAll.Plugin
                         AccountAuthorStatus.Text = "Taken. Pick another."; break;
                     default:
                         AccountAuthorStatus.Text = "Could not save."; break;
+                }
+            }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] AccountAuthor_Changed failed: " + ex.Message);
+                if (AccountAuthorStatus != null)
+                {
+                    AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
+                    AccountAuthorStatus.Text = "Save failed. " + ex.Message;
                 }
             }
         }
@@ -4470,8 +5187,20 @@ namespace TrueforceForAll.Plugin
         // Pull account stats on demand. Cheap RPC; no caching here so
         // edits made elsewhere (a fresh upload, a new vote) show up next
         // time the expander opens.
+        // Generation counter so a stale in-flight fetch can't overwrite
+        // a newer Expander-open's UI. Bumped on every entry to
+        // RefreshAccountStats; the post-await code only renders if it
+        // still matches.
+        private int _accountStatsGen;
+
         private async void RefreshAccountStats()
         {
+            // Outer try/catch: async void called from expander open;
+            // any uncaught throw (JSON parse, control unloaded, etc.)
+            // would crash the dispatcher. Falls back to a friendly
+            // "Could not load stats" line.
+            try
+            {
             if (_plugin == null || AccountStatsBox == null) return;
             if (!_plugin.AuthIsSignedIn)
             {
@@ -4482,6 +5211,7 @@ namespace TrueforceForAll.Plugin
             }
             AccountStatsBox.Visibility = Visibility.Visible;
             if (AccountDangerZone != null) AccountDangerZone.Visibility = Visibility.Visible;
+            int gen = unchecked(++_accountStatsGen);
             // Initial copy while the RPC runs.
             AccountStatsCreated.Text   = "Loading...";
             AccountStatsUploads.Text   = "";
@@ -4491,6 +5221,12 @@ namespace TrueforceForAll.Plugin
             Newtonsoft.Json.Linq.JObject root = null;
             try { root = await _plugin.FetchAccountStatsAsync(); }
             catch { /* fall through */ }
+            // Drop stale results: the user collapsed + re-opened the
+            // expander while we were awaiting, OR signed out / a
+            // different user mounted, OR the panel unloaded. In any of
+            // those cases the newer RefreshAccountStats call owns the
+            // UI now.
+            if (gen != _accountStatsGen) return;
             if (root == null)
             {
                 AccountStatsCreated.Text = "Could not load stats.";
@@ -4532,6 +5268,12 @@ namespace TrueforceForAll.Plugin
                     ? "Token expires: " + exp.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
                       + "  (refreshes automatically)"
                     : "Token expires: (unknown)";
+            }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] RefreshAccountStats failed: " + ex.Message);
+                if (AccountStatsCreated != null) AccountStatsCreated.Text = "Could not load stats.";
             }
         }
 
@@ -4633,7 +5375,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin.Settings != null)
             {
                 _plugin.Settings.SharingAuthor = "";
-                try { _plugin.PersistSettings(); } catch { }
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
             }
             if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
             if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
@@ -4668,10 +5411,17 @@ namespace TrueforceForAll.Plugin
             }
             if (updates == null || updates.Count == 0) return;
 
-            var dialog = new PresetUpdatesAvailableWindow(updates)
-            {
-                Owner = Window.GetWindow(this),
-            };
+            // Owner-null guard: this method is async void scheduled on
+            // the Dispatcher and may resume after SimHub navigated away
+            // from the Trueforce panel, at which point Window.GetWindow
+            // returns null and any modal we'd open would orphan. The
+            // captured owner is reused for both the updates dialog and
+            // the summary MessageBox to keep them anchored to the same
+            // window through the async tail.
+            var owner = Window.GetWindow(this);
+            if (owner == null) return;
+
+            var dialog = new PresetUpdatesAvailableWindow(updates) { Owner = owner };
             bool? ok = dialog.ShowDialog();
             if (ok != true) return;
 
@@ -4697,7 +5447,7 @@ namespace TrueforceForAll.Plugin
             }
             if (applied + skipped > 0)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                MessageBox.Show(owner,
                     $"Updates: {applied} applied, {skipped} skipped.",
                     "Community preset updates", MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -4738,14 +5488,17 @@ namespace TrueforceForAll.Plugin
                 outcome.LocalPresetName,
                 full.Summary.Game ?? _plugin.ActiveGame,
                 ovr,
-                full.Summary.Author, full.Summary.Description);
+                full.Summary.Author, full.Summary.Description,
+                communitySourceId: full.Summary.Id);
             _plugin.AcknowledgeCommunityPresetVersion(outcome.Id, outcome.ServerContentVersion);
             return true;
         }
 
         // Number of days to wait before re-prompting after a "Maybe later"
         // dismissal. Two declines total then we stop forever.
-        private const int WelcomeReshowDays = 14;
+        // Backed by TrueforcePlugin.WelcomeReshowDays so the init-side
+        // path and the panel-side path share the same cadence.
+        private const int WelcomeReshowDays = TrueforcePlugin.WelcomeReshowDays;
 
         // Conditional welcome modal. Shown up to twice:
         //   * First plugin load with backend configured + HasSeen=false +
@@ -4757,43 +5510,100 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin?.Settings == null) return;
             if (_plugin.Settings.HasSeenNetworkedWelcome) return;
-            // Backend not configured - nothing to pitch yet.
+            // Backend not configured - nothing to pitch yet. Don't latch
+            // _welcomeTriggeredThisSession on this branch so a later
+            // car-change can re-attempt once the backend is in place.
             if (string.IsNullOrEmpty(_plugin.Settings.CommunityBackendUrl)
                 || string.IsNullOrEmpty(_plugin.Settings.CommunityBackendAnonKey))
                 return;
-            // Re-show delay enforcement.
+            // Re-show delay enforcement. Same not-yet-actionable rule
+            // as above: do not consume the per-session latch.
             var nextAt = _plugin.Settings.WelcomeNextShowAt;
             if (nextAt.HasValue && nextAt.Value > DateTime.UtcNow) return;
+            // Owner-null guard: this method is invoked via
+            // Dispatcher.BeginInvoke from both Loaded and MeterTimer_Tick.
+            // SimHub caches the control across navigations, so the
+            // dispatched action can fire after Unloaded - by which point
+            // Window.GetWindow(this) returns null. ShowDialog with a null
+            // Owner detaches the dialog from the parent window, which
+            // breaks the modal contract. Bail rather than show an
+            // orphaned dialog; the next session's Loaded will retry.
+            var owner = Window.GetWindow(this);
+            if (owner == null) return;
 
-            var welcome = new WelcomeWindow { Owner = Window.GetWindow(this) };
+            // We're committed to showing the dialog: consume the session
+            // latch so concurrent dispatches from Loaded + MeterTimer
+            // don't queue a second one behind this.
+            _welcomeTriggeredThisSession = true;
+
+            var welcome = new WelcomeWindow { Owner = owner };
             bool? ok = welcome.ShowDialog();
 
+            // User picked "Sign in now": run sign-in BEFORE committing
+            // HasSeenNetworkedWelcome or enabling Community, so a
+            // cancelled sign-in doesn't silently flip Community on and
+            // remove the welcome forever. authConfirmed is the explicit
+            // gate; only on a true value do we treat the welcome as
+            // accepted. signInCancelled lets us nudge the user that
+            // their decline was registered (otherwise the dialog just
+            // vanishes and they get no feedback).
+            bool authConfirmed = false;
+            bool signInCancelled = false;
             if (ok == true && welcome.SignInRequested)
             {
-                // User wants in - never pitch again, take them through
-                // sign-in. We auto-enable Community when needed because
-                // the user clicked the explicit "Sign in now" CTA.
+                if (_plugin.AuthIsSignedIn)
+                {
+                    // Already signed in (e.g., session restored from a
+                    // prior install): treat the welcome click as
+                    // confirmation. Still run username bootstrap because
+                    // the restored session may not have a server-side
+                    // username yet (so we don't latch HasSeen=true and
+                    // then surface "set a username first" on the user's
+                    // first upload).
+                    BootstrapUsernameAfterSignIn();
+                    authConfirmed = true;
+                }
+                else
+                {
+                    var signIn = new SignInWindow(_plugin) { Owner = owner };
+                    bool? signedIn = signIn.ShowDialog();
+                    if (signedIn == true && _plugin.AuthIsSignedIn)
+                    {
+                        BootstrapUsernameAfterSignIn();
+                        authConfirmed = true;
+                    }
+                    else
+                    {
+                        signInCancelled = true;
+                    }
+                }
+            }
+
+            if (authConfirmed)
+            {
+                // Commit the welcome only after the user authenticated.
+                // Auto-enable Community here is consent: they completed
+                // sign-in, so the community pipeline is OK to wake up.
                 _plugin.Settings.HasSeenNetworkedWelcome = true;
                 _plugin.Settings.WelcomeNextShowAt = null;
-                try { _plugin.PersistSettings(); } catch { }
                 if (_plugin.Settings.CommunityEnabled != true)
                 {
                     _plugin.SetCommunityEnabled(true);
                     if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
                 }
                 if (AccountExpander != null) AccountExpander.IsExpanded = true;
-                if (!_plugin.AuthIsSignedIn)
-                {
-                    var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
-                    bool? signedIn = signIn.ShowDialog();
-                    if (signedIn == true) BootstrapUsernameAfterSignIn();
-                }
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
                 RefreshAccountRow();
                 return;
             }
 
-            // "Maybe later" path. Increment decline count; second
-            // decline ends the pitch permanently.
+            // "Maybe later" path covers three cases: (1) user clicked
+            // Maybe later directly, (2) user clicked Sign in now but
+            // cancelled the sign-in dialog, (3) sign-in dialog
+            // completed but auth state never flipped (verify-otp
+            // failure). Treat all as a decline so the welcome re-shows
+            // later, and importantly: do not touch CommunityEnabled.
             _plugin.Settings.WelcomeDeclineCount++;
             if (_plugin.Settings.WelcomeDeclineCount >= 2)
             {
@@ -4805,7 +5615,20 @@ namespace TrueforceForAll.Plugin
                 _plugin.Settings.WelcomeNextShowAt =
                     DateTime.UtcNow.AddDays(WelcomeReshowDays);
             }
-            try { _plugin.PersistSettings(); } catch { }
+            try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+
+            // Sign-in cancel path: confirm the decline was registered
+            // and point at the Account row in case they change their
+            // mind. Without this, the cancellation feels like the app
+            // forgot what they clicked.
+            if (signInCancelled)
+            {
+                MessageBox.Show(owner,
+                    "We'll remind you about community features later. Sign in anytime from Account & community in Settings.",
+                    "Community features",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the
@@ -5527,7 +6350,8 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             _plugin.Settings.SharingAuthor = newAuthor;
-            try { _plugin.PersistSettings(); } catch { }
+            try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
 
             // Blank-to-set transition: offer to backfill existing local
             // presets the user authored before setting the name. Stays
@@ -5565,6 +6389,7 @@ namespace TrueforceForAll.Plugin
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
             "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
+            "WELCOME        Reset the networked-welcome modal seen state and re-trigger it now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt all cleared).\n" +
             "PREVIEW        Render the release-notes markdown on your clipboard exactly as the in-app 'What's new' will (copy the GitHub notes first, then type PREVIEW).\n" +
             "UPDATE         Simulate an available update (banner + update dialog).\n" +
             "CLOSESIM       Pick an installer and run it with /CloseSimHub=1 to test the silent SimHub auto-close. Closes SimHub.\n" +
@@ -5580,6 +6405,7 @@ namespace TrueforceForAll.Plugin
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).\n" +
+            "F8SWEEP / F8   Experimental: sweep the rev LEDs via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.";
 
         private void CommitAccessCode()
@@ -5722,6 +6548,36 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Dev-only: toggle the experimental legacy "F8 12" rev-LED sweep on
+            // the wheel's gamepad/DirectInput collection (off the HID++ FFB pipe).
+            // Confirms on hardware whether the legacy LED command lights the strip
+            // AND coexists with live FFB -- a non-contending LED path we could use
+            // in every game, not just iRacing+MAIRA. Toggle: type it again to stop
+            // (LEDs off). See LegacyLedF8Channel + project_led_ffb_contention_model.
+            {
+                var f8parts = code.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                string f8cmd = f8parts.Length > 0 ? f8parts[0].ToUpperInvariant() : string.Empty;
+                if (f8cmd == "F8SWEEP" || f8cmd == "F8" || f8cmd == "F8FAST"
+                    || f8cmd == "F8SPAM" || f8cmd == "F8SLOW")
+                {
+                    AccessCodeBox.Text = string.Empty;
+                    int? resend = null;        // null => simple on/off toggle (paced)
+                    if (f8cmd == "F8FAST" || f8cmd == "F8SPAM") resend = 16;
+                    else if (f8cmd == "F8SLOW") resend = 0;
+                    else if (f8parts.Length > 1)
+                    {
+                        string a = f8parts[1].ToUpperInvariant();
+                        if (a == "FAST" || a == "SPAM") resend = 16;
+                        else if (a == "SLOW") resend = 0;
+                        else if (int.TryParse(f8parts[1], out int ms))
+                            resend = Math.Max(0, Math.Min(1000, ms));
+                    }
+                    string status = _plugin?.ToggleF8LedSweep(resend) ?? "(plugin not ready)";
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = status;
+                    return;
+                }
+            }
+
             // Dev-only: unlock the Developer panel (built-in folder
             // maintenance: export/import/reseed/validate/open). Persisted so it
             // stays on across restarts on a dev machine. Toggle.
@@ -5819,6 +6675,28 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Changelog state reset: the 'What's new' banner and all NEW effect badges are showing again (banner lists full history).";
+                return;
+            }
+
+            // Dev-only: reset the networked-welcome modal seen state so
+            // the pitch fires again immediately. Clears all three
+            // gating fields: HasSeenNetworkedWelcome (the hard latch),
+            // WelcomeDeclineCount (the second-decline-locks counter),
+            // and WelcomeNextShowAt (the 14-day re-show timer).
+            if (code.Equals("WELCOME", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.HasSeenNetworkedWelcome = false;
+                _plugin.Settings.WelcomeDeclineCount     = 0;
+                _plugin.Settings.WelcomeNextShowAt       = null;
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Networked-welcome state reset: opening the modal now.";
+                // Re-trigger via the same gate the normal startup path
+                // uses so any preconditions (backend URL configured,
+                // etc.) apply identically.
+                MaybeShowNetworkedWelcome();
                 return;
             }
 
@@ -7063,7 +7941,8 @@ namespace TrueforceForAll.Plugin
             if (newAuthor != (plugin.Settings.SharingAuthor ?? ""))
             {
                 plugin.Settings.SharingAuthor = newAuthor;
-                try { plugin.PersistSettings(); } catch { }
+                try { plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
             }
             return true;
         }
@@ -8315,6 +9194,101 @@ namespace TrueforceForAll.Plugin
             await Task.Delay(TimeSpan.FromSeconds(4));
             if (CheckForUpdatesStatus != null && CheckForUpdatesStatus.Text == captured)
                 CheckForUpdatesStatus.Text = "";
+        }
+
+        // Manual "Check now" for community preset updates. Resets the
+        // per-session latch and re-invokes the same sweep that runs on
+        // Loaded, so users don't have to reload the panel to re-check.
+        // The auto-check on Loaded only fires once; this handler is the
+        // user-driven retry path.
+        private async void CommunityCheckNowBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (CommunityCheckNowBtn == null || CommunityCheckNowStatus == null) return;
+
+            CommunityCheckNowBtn.IsEnabled = false;
+            CommunityCheckNowStatus.Visibility = System.Windows.Visibility.Visible;
+            CommunityCheckNowStatus.Text = "Checking…";
+            // Consume the auto-check session latch up front: if the
+            // auto-check on Loaded races this one (control reload
+            // mid-flight) it should defer to the user's explicit click.
+            _communityUpdatesCheckedThisSession = true;
+
+            int found = 0;
+            string finalText;
+            try
+            {
+                var updates = await _plugin.FindCommunityPresetUpdatesAsync();
+                found = updates?.Count ?? 0;
+                if (found == 0)
+                {
+                    finalText = "You're up to date";
+                }
+                else
+                {
+                    // Owner may go null if the user navigated away from
+                    // the Trueforce panel during the async fetch; if so
+                    // skip the dialog and just report the count.
+                    var owner = Window.GetWindow(this);
+                    if (owner == null)
+                    {
+                        finalText = found == 1 ? "1 update available" : $"{found} updates available";
+                    }
+                    else
+                    {
+                        var dialog = new PresetUpdatesAvailableWindow(updates) { Owner = owner };
+                        bool? ok = dialog.ShowDialog();
+                        if (ok != true)
+                        {
+                            // User explicitly dismissed without picking
+                            // anything - don't lie that updates are
+                            // "available" (they rejected them).
+                            finalText = "";
+                        }
+                        else
+                        {
+                            int applied = 0, skipped = 0;
+                            foreach (var o in dialog.Outcomes)
+                            {
+                                if (o.Action == PresetUpdatesAvailableWindow.RowAction.Skip)
+                                {
+                                    _plugin.AcknowledgeCommunityPresetVersion(o.Id, o.ServerContentVersion);
+                                    skipped++;
+                                    continue;
+                                }
+                                if (o.Action != PresetUpdatesAvailableWindow.RowAction.Update) continue;
+                                try
+                                {
+                                    if (await ApplyCommunityUpdate(o)) applied++;
+                                }
+                                catch (Exception ex)
+                                {
+                                    SimHub.Logging.Current.Info(
+                                        "[Trueforce] Apply update failed for " + o.Id + ": " + ex.Message);
+                                }
+                            }
+                            finalText = $"{applied} applied, {skipped} skipped";
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Manual update check failed: " + ex.Message);
+                finalText = "Check failed";
+            }
+            finally
+            {
+                if (CommunityCheckNowBtn != null) CommunityCheckNowBtn.IsEnabled = true;
+            }
+
+            if (CommunityCheckNowStatus != null)
+                CommunityCheckNowStatus.Text = finalText;
+
+            string captured = CommunityCheckNowStatus?.Text;
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            if (CommunityCheckNowStatus != null && CommunityCheckNowStatus.Text == captured)
+                CommunityCheckNowStatus.Text = "";
         }
 
         /// <summary>True when there are unsaved tuning changes (a Save / Revert

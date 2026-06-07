@@ -32,6 +32,13 @@ namespace TrueforceForAll.Plugin
         public string   UserId       { get; set; }
         public string   Email        { get; set; }
         public DateTime ExpiresAt    { get; set; }
+        // B5/F07: idle expiry. Updated on every successful
+        // GetAccessTokenAsync return; if > 30 days since the last use,
+        // the session is cleared at the next refresh.
+        public DateTime LastUsedAt   { get; set; } = DateTime.MinValue;
+        // B5/F07: device binding. Captured at VerifyOtpAsync success and
+        // compared on every token return; mismatch clears the session.
+        public string   DeviceFingerprint { get; set; } = "";
     }
 
     /// <summary>Categorized auth call outcome so the modal can pick
@@ -76,10 +83,29 @@ namespace TrueforceForAll.Plugin
         private readonly Func<TrueforceSettings> _settingsProvider;
         private readonly Action _persistSettings;
         private readonly Action<string> _log;
+        // Fired after the authenticated identity changes (sign-in,
+        // sign-out, refresh that flips to a different email). The
+        // TrueforcePlugin slot manager uses this to mount the right
+        // per-user data slot; UI panels reset their per-session
+        // latches. The string is the new active slot key: lower-cased
+        // email or "" for anonymous.
+        public event Action<string> ActiveIdentityChanged;
 
         // Serialize refreshes so two concurrent RPCs don't both try to
         // burn the refresh_token.
         private readonly SemaphoreSlim _refreshLock = new SemaphoreSlim(1, 1);
+
+        // Refresh-failure backoff. Without this, every RPC that calls
+        // GetAccessTokenAsync re-attempts the refresh during a backend
+        // outage; the _refreshLock serializes them, but the UI still
+        // wedges for minutes as each one waits for HttpClient to fail.
+        // After any refresh failure we stamp the time and short-circuit
+        // future GetAccessTokenAsync calls (returning the cached token
+        // if non-expired, or null) until the cooldown elapses. Cleared
+        // on a successful refresh, on VerifyOtpAsync success, and on
+        // SignOut so the next session starts clean.
+        private DateTime? _lastRefreshFailureAt;
+        private static readonly TimeSpan RefreshCooldown = TimeSpan.FromSeconds(60);
 
         public CommunityAuth(Func<TrueforceSettings> settingsProvider,
             Action persistSettings, Action<string> log)
@@ -97,6 +123,30 @@ namespace TrueforceForAll.Plugin
                 var s = _settingsProvider()?.AuthSession;
                 return s != null && !string.IsNullOrEmpty(s.AccessToken);
             }
+        }
+
+        /// <summary>B5/F03 migration: legacy installs persisted plaintext
+        /// tokens. Wrap them via DPAPI on first plugin load after B5
+        /// ships so users stay signed in but their on-disk tokens are
+        /// no longer readable by other processes. Idempotent (Protect
+        /// skips already-marked values), safe to call on every Init.
+        /// Returns true if anything was actually rewritten.</summary>
+        public bool MigrateLegacyPlaintextSession()
+        {
+            var settings = _settingsProvider();
+            var s = settings?.AuthSession;
+            if (s == null) return false;
+            bool needsEncryption =
+                (!string.IsNullOrEmpty(s.AccessToken) && !DpapiCipher.IsProtected(s.AccessToken))
+                || (!string.IsNullOrEmpty(s.RefreshToken) && !DpapiCipher.IsProtected(s.RefreshToken));
+            if (!needsEncryption) return false;
+            // Route the existing session back through SaveSession so it
+            // re-encrypts in place. We pass the same instance, not a
+            // copy: SaveSession mutates AccessToken/RefreshToken to the
+            // "dpapi:" form and persists. Single Info-level log line.
+            _log?.Invoke("[Trueforce] Migration: encrypting legacy plaintext AuthSession");
+            SaveSession(s);
+            return true;
         }
 
         public string SignedInEmail
@@ -206,7 +256,20 @@ namespace TrueforceForAll.Plugin
                         }
                         var session = ParseSession(respBody, email);
                         if (session == null) return AuthCallResult.Generic;
+                        // B5/F07: bind the new session to this device + stamp
+                        // sign-in time so the idle window starts at sign-in,
+                        // not at the first token refresh.
+                        session.DeviceFingerprint = DeviceFingerprint.Compute();
+                        session.LastUsedAt = DateTime.UtcNow;
                         SaveSession(session);
+                        // Successful fresh sign-in: clear any stale
+                        // refresh-failure backoff so the next RPC can
+                        // use the new token immediately (rather than
+                        // waiting for the prior cooldown to elapse).
+                        _lastRefreshFailureAt = null;
+                        // Notify subscribers (slot manager + UI panels)
+                        // that the active identity is now this email.
+                        FireIdentityChanged(SlotKeyFromEmail(session.Email));
                         return AuthCallResult.Ok;
                     }
                 }
@@ -245,37 +308,142 @@ namespace TrueforceForAll.Plugin
         /// cleared).</summary>
         public async Task<string> GetAccessTokenAsync()
         {
-            var s = _settingsProvider()?.AuthSession;
-            if (s == null || string.IsNullOrEmpty(s.AccessToken)) return null;
-
-            if (s.ExpiresAt > DateTime.UtcNow.AddSeconds(60))
-                return s.AccessToken;
-
-            // Near expiry - try to refresh once. Serialized so concurrent
-            // RPCs don't both burn the refresh_token.
+            // B5 (reviewer fix): all decrypt + validation runs INSIDE
+            // _refreshLock so concurrent SignOut / SaveSession(null)
+            // callers cannot clear the session between our checks and
+            // our return. The lock was already required for the refresh
+            // path; extending it to cover the fast path costs a
+            // semaphore wait (microseconds) per RPC. DPAPI Unprotect is
+            // also microsecond-cheap relative to the network RPC it
+            // gates, so we don't cache the decrypted token in memory.
             await _refreshLock.WaitAsync().ConfigureAwait(false);
             try
             {
-                // Re-read after taking the lock; another caller may have
-                // refreshed already.
-                s = _settingsProvider()?.AuthSession;
+                var s = _settingsProvider()?.AuthSession;
                 if (s == null || string.IsNullOrEmpty(s.AccessToken)) return null;
-                if (s.ExpiresAt > DateTime.UtcNow.AddSeconds(60))
-                    return s.AccessToken;
-                if (string.IsNullOrEmpty(s.RefreshToken))
+
+                // B5/F03: decrypt the access token. Legacy plaintext
+                // tokens (no "dpapi:" marker) pass through unchanged so
+                // installs that upgrade through B5 don't lose their
+                // session. Decrypt failure on a marker-prefixed value
+                // means the user's DPAPI scope changed (different user,
+                // wiped profile, etc.); clear the session and force
+                // re-sign-in.
+                string decryptedAccessToken;
+                if (DpapiCipher.IsProtected(s.AccessToken))
                 {
+                    decryptedAccessToken = DpapiCipher.Unprotect(s.AccessToken);
+                    if (string.IsNullOrEmpty(decryptedAccessToken))
+                    {
+                        _log?.Invoke("[Trueforce] Auth session decrypt failed; clearing session");
+                        SaveSession(null);
+                        return null;
+                    }
+                }
+                else
+                {
+                    decryptedAccessToken = s.AccessToken;
+                }
+
+                // B5/F07: 30-day idle expiry. LastUsedAt == MinValue is
+                // tolerated (legacy session pre-B5; the first successful
+                // call below stamps a real timestamp).
+                if (s.LastUsedAt != DateTime.MinValue
+                    && DateTime.UtcNow - s.LastUsedAt > TimeSpan.FromDays(30))
+                {
+                    _log?.Invoke("[Trueforce] Auth session idle expiry (30d); clearing session");
                     SaveSession(null);
                     return null;
                 }
+
+                // B5/F07: device binding. Empty fingerprint = legacy
+                // session or unusual registry setup; skip the check
+                // (fail-open) so we don't lock users out unexpectedly.
+                if (!string.IsNullOrEmpty(s.DeviceFingerprint))
+                {
+                    string currentDevice = DeviceFingerprint.Compute();
+                    if (!string.IsNullOrEmpty(currentDevice)
+                        && !string.Equals(currentDevice, s.DeviceFingerprint, StringComparison.Ordinal))
+                    {
+                        _log?.Invoke("[Trueforce] Auth device mismatch; clearing session");
+                        SaveSession(null);
+                        return null;
+                    }
+                }
+
+                // B5/F01: JWT email claim vs persisted Settings.Email.
+                // The persisted Email is what slot routing and UI display
+                // use; if an attacker swapped Settings.AuthSession.Email
+                // to spoof a different identity locally, the JWT's claim
+                // still says the real owner. Compare both sides
+                // case-insensitively (Supabase stores lowercased; JWTs
+                // may preserve original case).
+                string jwtEmail = JwtClaimDecoder.DecodeEmailClaim(decryptedAccessToken);
+                if (!string.IsNullOrEmpty(jwtEmail)
+                    && !string.IsNullOrEmpty(s.Email)
+                    && !string.Equals(jwtEmail, s.Email, StringComparison.OrdinalIgnoreCase))
+                {
+                    _log?.Invoke("[Trueforce] Auth email claim mismatch; clearing session");
+                    SaveSession(null);
+                    return null;
+                }
+
+                // Fast path: token is fresh enough. Stamp LastUsedAt and
+                // return the decrypted bearer.
+                if (s.ExpiresAt > DateTime.UtcNow.AddSeconds(60))
+                {
+                    s.LastUsedAt = DateTime.UtcNow;
+                    SaveSession(s);
+                    return decryptedAccessToken;
+                }
+
+                // Refresh cooldown: if we (or another caller) recently
+                // failed to refresh, short-circuit to null so callers
+                // take their unauthenticated / "not signed in" fallback
+                // paths fast instead of stacking up multi-second
+                // HttpClient waits while the backend is out.
+                if (_lastRefreshFailureAt.HasValue
+                    && DateTime.UtcNow < _lastRefreshFailureAt.Value.Add(RefreshCooldown))
+                {
+                    return null;
+                }
+
+                // Decrypt the refresh token for the refresh RPC.
+                string refreshTokenPlain;
+                if (DpapiCipher.IsProtected(s.RefreshToken))
+                {
+                    refreshTokenPlain = DpapiCipher.Unprotect(s.RefreshToken);
+                    if (string.IsNullOrEmpty(refreshTokenPlain))
+                    {
+                        _log?.Invoke("[Trueforce] Auth refresh-token decrypt failed; clearing session");
+                        SaveSession(null);
+                        _lastRefreshFailureAt = DateTime.UtcNow;
+                        return null;
+                    }
+                }
+                else
+                {
+                    refreshTokenPlain = s.RefreshToken;
+                }
+                if (string.IsNullOrEmpty(refreshTokenPlain))
+                {
+                    SaveSession(null);
+                    _lastRefreshFailureAt = DateTime.UtcNow;
+                    return null;
+                }
                 if (!ShouldRun(out var url, out var anonKey))
-                    return s.AccessToken;  // best-effort; let the RPC try
+                    return decryptedAccessToken;  // best-effort; let the RPC try
 
                 string body;
                 try
                 {
-                    body = JsonConvert.SerializeObject(new { refresh_token = s.RefreshToken });
+                    body = JsonConvert.SerializeObject(new { refresh_token = refreshTokenPlain });
                 }
-                catch { return null; }
+                catch
+                {
+                    _lastRefreshFailureAt = DateTime.UtcNow;
+                    return null;
+                }
 
                 try
                 {
@@ -291,24 +459,43 @@ namespace TrueforceForAll.Plugin
                                 : "";
                             if (!resp.IsSuccessStatusCode)
                             {
-                                // 4xx on refresh = the token is dead.
-                                // Clear the session so the UI prompts a
-                                // fresh sign-in.
-                                _log?.Invoke($"[Trueforce] Auth refresh failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
-                                if ((int)resp.StatusCode >= 400 && (int)resp.StatusCode < 500)
+                                // Only nuke the session on a DEFINITIVE
+                                // refresh-token rejection. Generic 4xx
+                                // (network blip, server overload, rate
+                                // limit) leaves the saved session alone
+                                // so a later retry can succeed. Wiping
+                                // on every 4xx silently signed users
+                                // out on transient errors.
+                                // F19: log error category instead of raw response body to avoid leaking token fragments.
+                                string errorCategory = ClassifyAuthError((int)resp.StatusCode, respBody).ToString();
+                                _log?.Invoke($"[Trueforce] Auth refresh failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {errorCategory}");
+                                if (IsDefinitiveRefreshRejection(resp.StatusCode, respBody))
                                     SaveSession(null);
+                                _lastRefreshFailureAt = DateTime.UtcNow;
                                 return null;
                             }
                             var refreshed = ParseSession(respBody, s.Email);
-                            if (refreshed == null) return null;
+                            if (refreshed == null)
+                            {
+                                _lastRefreshFailureAt = DateTime.UtcNow;
+                                return null;
+                            }
+                            // B5: preserve device binding + stamp idle
+                            // clock on refresh. The new tokens get
+                            // encrypted by SaveSession.
+                            refreshed.DeviceFingerprint = s.DeviceFingerprint;
+                            refreshed.LastUsedAt = DateTime.UtcNow;
+                            string newPlainAccessToken = refreshed.AccessToken;
                             SaveSession(refreshed);
-                            return refreshed.AccessToken;
+                            _lastRefreshFailureAt = null;
+                            return newPlainAccessToken;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
                     _log?.Invoke($"[Trueforce] Auth refresh exception: {ex.Message}");
+                    _lastRefreshFailureAt = DateTime.UtcNow;
                     return null;
                 }
             }
@@ -519,8 +706,16 @@ namespace TrueforceForAll.Plugin
             if (s == null || string.IsNullOrEmpty(s.AccessToken)) return (null, null, null);
             try
             {
+                // B5/F03: persisted token may be DPAPI-wrapped; decrypt
+                // for the JWT decode. Legacy plaintext passes through.
+                string accessToken = s.AccessToken;
+                if (DpapiCipher.IsProtected(accessToken))
+                {
+                    accessToken = DpapiCipher.Unprotect(accessToken);
+                    if (string.IsNullOrEmpty(accessToken)) return (null, null, null);
+                }
                 // JWT format: header.payload.signature, payload is base64url-encoded JSON.
-                string[] parts = s.AccessToken.Split('.');
+                string[] parts = accessToken.Split('.');
                 if (parts.Length < 2) return (null, null, null);
                 string payload = parts[1];
                 // base64url -> base64 padding fix
@@ -552,13 +747,39 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Drop the local session. Best-effort server logout
         /// (fire-and-forget) so the refresh_token gets invalidated;
-        /// failure doesn't block the local clear.</summary>
+        /// failure doesn't block the local clear. Also clears the
+        /// cached SharingAuthor so the next sign-up's username picker
+        /// doesn't pre-fill with the prior account's name.</summary>
         public void SignOut()
         {
-            var s = _settingsProvider()?.AuthSession;
+            var settings = _settingsProvider();
+            var s = settings?.AuthSession;
             if (s == null) return;
+            // B5/F03 (reviewer fix): the persisted AccessToken may be
+            // DPAPI-wrapped; the logout RPC needs the plaintext bearer.
+            // Decrypt before clearing the session. If decrypt fails on
+            // a marker-prefixed value we skip the server logout (the
+            // local clear still happens below).
             string token = s.AccessToken;
+            if (DpapiCipher.IsProtected(token))
+            {
+                token = DpapiCipher.Unprotect(token);
+            }
             SaveSession(null);
+            // Sign-out resets the refresh-failure backoff so a follow-up
+            // sign-in attempt doesn't inherit a stale cooldown.
+            _lastRefreshFailureAt = null;
+            // Identity change fires BEFORE per-slot data is moved. The
+            // slot manager subscriber will stash the current user's
+            // data under their key and mount the anonymous slot so
+            // SharingAuthor + DownloadedCommunityPresets reflect the
+            // anon view from here on (and the prior user's data is
+            // preserved for re-sign-in, not lost).
+            FireIdentityChanged("");
+            if (settings != null)
+            {
+                try { _persistSettings?.Invoke(); } catch { }
+            }
 
             if (!ShouldRun(out var url, out var anonKey) || string.IsNullOrEmpty(token))
                 return;
@@ -582,6 +803,28 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---- Helpers -------------------------------------------------------
+
+        // Recognize the GoTrue error codes that mean "this refresh
+        // token is permanently dead": revoked, used twice past the
+        // rotation reuse interval, user no longer exists. Everything
+        // else (network blips, 500s, rate limits, the occasional 403
+        // from a JWT skew) is treated as transient.
+        private static bool IsDefinitiveRefreshRejection(
+            System.Net.HttpStatusCode status, string respBody)
+        {
+            int code = (int)status;
+            if (code < 400 || code >= 500) return false;
+            if (string.IsNullOrEmpty(respBody)) return false;
+            // GoTrue returns JSON with either `error` (legacy) or
+            // `error_code` / `code` (current). Match the strings that
+            // mean the refresh token cannot recover.
+            string lower = respBody.ToLowerInvariant();
+            return lower.Contains("invalid_grant")
+                || lower.Contains("refresh_token_not_found")
+                || lower.Contains("refresh_token_already_used")
+                || lower.Contains("user_not_found")
+                || lower.Contains("user_banned");
+        }
 
         private CommunityAuthSession ParseSession(string respBody, string fallbackEmail)
         {
@@ -622,6 +865,19 @@ namespace TrueforceForAll.Plugin
         {
             var s = _settingsProvider();
             if (s == null) return;
+            if (session != null)
+            {
+                // B5/F03: encrypt tokens at rest before persist. Protect
+                // is idempotent (skips already-marked values), so passing
+                // a session whose tokens are already wrapped is a no-op.
+                // Protect returns null on DPAPI failure; in that case
+                // keep the original value rather than dropping the
+                // session entirely.
+                string protectedAccess = DpapiCipher.Protect(session.AccessToken);
+                if (!string.IsNullOrEmpty(protectedAccess)) session.AccessToken = protectedAccess;
+                string protectedRefresh = DpapiCipher.Protect(session.RefreshToken);
+                if (!string.IsNullOrEmpty(protectedRefresh)) session.RefreshToken = protectedRefresh;
+            }
             s.AuthSession = session;
             try { _persistSettings?.Invoke(); }
             catch (Exception ex) { _log?.Invoke($"[Trueforce] Auth session persist failed: {ex.Message}"); }
@@ -634,7 +890,23 @@ namespace TrueforceForAll.Plugin
             if (s == null) return false;
             url = (s.CommunityBackendUrl ?? "").Trim();
             anonKey = (s.CommunityBackendAnonKey ?? "").Trim();
-            return !(string.IsNullOrEmpty(url) || string.IsNullOrEmpty(anonKey));
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(anonKey)) return false;
+            if (!ChannelValidation.IsTrustedSupabaseUrl(url))
+            {
+                _log?.Invoke($"[Trueforce] Rejecting untrusted backend URL: {url}");
+                return false;
+            }
+            return true;
+        }
+
+        // Email -> stable lower-cased slot key. "" = anonymous.
+        internal static string SlotKeyFromEmail(string email)
+            => string.IsNullOrEmpty(email) ? "" : email.Trim().ToLowerInvariant();
+
+        private void FireIdentityChanged(string newKey)
+        {
+            try { ActiveIdentityChanged?.Invoke(newKey ?? ""); }
+            catch (Exception ex) { _log?.Invoke($"[Trueforce] ActiveIdentityChanged subscriber threw: {ex.Message}"); }
         }
     }
 }

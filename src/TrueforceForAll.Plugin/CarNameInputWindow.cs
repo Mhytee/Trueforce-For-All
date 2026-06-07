@@ -93,8 +93,8 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(btnRow);
 
             // Enter inside the textbox commits via IsDefault on saveBtn;
-            // Escape via the cancel button's IsCancel = false would need an
-            // explicit handler. Set it now to mirror modal expectations.
+            // Escape dismisses the modal via the cancel button's
+            // IsCancel = true (mirrors every other modal in the plugin).
             cancelBtn.IsCancel = true;
 
             // Keyboard shortcut: Ctrl+Enter also saves (some users have

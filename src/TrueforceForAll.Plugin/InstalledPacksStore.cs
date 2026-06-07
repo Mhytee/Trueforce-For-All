@@ -104,6 +104,13 @@ namespace TrueforceForAll.Plugin
     {
         public const string FileName = "installed-packs.json";
 
+        // JSON deserializer settings capped at depth 64 to prevent unbounded
+        // recursion / DoS through a deeply nested malicious installed-packs file.
+        internal static readonly JsonSerializerSettings SafeJsonSettings = new JsonSerializerSettings
+        {
+            MaxDepth = 64
+        };
+
         // Lazy: the user library folder path can be set/changed after the
         // store is constructed, so look it up on each access via the provider.
         private readonly Func<string> _rootFolderProvider;
@@ -133,7 +140,7 @@ namespace TrueforceForAll.Plugin
                 string path = FilePath;
                 if (File.Exists(path))
                 {
-                    var parsed = JsonConvert.DeserializeObject<InstalledPacksFile>(File.ReadAllText(path));
+                    var parsed = JsonConvert.DeserializeObject<InstalledPacksFile>(File.ReadAllText(path), SafeJsonSettings);
                     if (parsed != null)
                     {
                         if (parsed.Packs == null) parsed.Packs = new List<InstalledPack>();

@@ -153,6 +153,9 @@ namespace TrueforceForAll.Plugin
                 Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg,
+                // Escape dismisses the modal - mirrors every other
+                // modal in the plugin.
+                IsCancel = true,
             };
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);

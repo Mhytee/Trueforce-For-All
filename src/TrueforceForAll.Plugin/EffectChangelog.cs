@@ -215,7 +215,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 (PlayStation and Xbox) fully supported",
-                        Description = "Both G923 variants are now confirmed working by owners: Trueforce effects and in-game force feedback together. The Xbox/PC G923's force-feedback fix from 0.1.17 (it delivers FFB as the same Logitech HID++ message the G PRO uses, but over a different USB transport and feature index) is now verified on Xbox G923 hardware. If the G923 feels light, raise master or Trueforce gain: it is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it. Other wheels are unaffected.",
+                        Description = "Both G923 variants are now confirmed working by owners: the plugin's effects and in-game force feedback together. The Xbox/PC G923's force-feedback fix from 0.1.17 (it delivers FFB as the same Logitech HID++ message the G PRO uses, but over a different USB transport and feature index) is now verified on Xbox G923 hardware. If the G923 feels light, raise master or Trueforce gain: it is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it. Other wheels are unaffected.",
                     },
                 },
             },
@@ -226,11 +226,11 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 (PS/PC) confirmed working by an owner",
-                        Description = "A PlayStation/PC G923 owner has confirmed the wheel working end to end: Trueforce effects and in-game force feedback together. If it feels light, raise master or Trueforce gain. The G923 is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it.",
+                        Description = "A PlayStation/PC G923 owner has confirmed the wheel working end to end: the plugin's effects and in-game force feedback together. If it feels light, raise master or Trueforce gain. The G923 is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it.",
                     },
                     new ChangelogEntry {
                         Headline = "Xbox G923: force-feedback fix included, not yet confirmed",
-                        Description = "The Xbox/PC G923 delivers its force feedback as the same Logitech HID++ message the G PRO uses, but over a different USB transport and at a different feature index, so the plugin's tap missed it entirely and the Trueforce stream silenced the wheel's own force feedback instead of carrying it. The plugin now also reads that interrupt-endpoint HID++ path and auto-resolves its feature index the same way it does for the RS50. This was decoded from a community-submitted USB capture and is not yet confirmed on Xbox G923 hardware. Xbox G923 owners: please report whether in-game force feedback now works alongside the Trueforce effects. Other wheels are unaffected; the new path only fires on traffic shaped this way.",
+                        Description = "The Xbox/PC G923 delivers its force feedback as the same Logitech HID++ message the G PRO uses, but over a different USB transport and at a different feature index, so the plugin's tap missed it entirely and the Trueforce stream silenced the wheel's own force feedback instead of carrying it. The plugin now also reads that interrupt-endpoint HID++ path and auto-resolves its feature index the same way it does for the RS50. This was decoded from a community-submitted USB capture and is not yet confirmed on Xbox G923 hardware. Xbox G923 owners: please report whether in-game force feedback now works alongside the plugin's effects. Other wheels are unaffected; the new path only fires on traffic shaped this way.",
                     },
                 },
             },
@@ -241,7 +241,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 wheels recognized, ready for testing",
-                        Description = "The Logitech G923 is now detected. Its protocol was decoded from USB captures: the G923's Trueforce motor uses the same protocol as the G PRO, and the plugin now taps the force-feedback path the G923 uses in non-Trueforce games so in-game FFB and Trueforce effects can coexist. This is built from confirmed captures but has not been tested on a physical G923 yet. G923 (PS/PC): please try it and report how it feels (effects playing, in-game FFB still present, direction and strength sensible). G923 (Xbox/PC): experimental, supported by inference only. If Trueforce effects work but your game's force feedback is silent, report it via Feedback then Report an issue with Export logs attached.",
+                        Description = "The Logitech G923 is now detected. Its protocol was decoded from USB captures: the G923's Trueforce motor uses the same protocol as the G PRO, and the plugin now taps the force-feedback path the G923 uses in non-Trueforce games so in-game FFB and the plugin's effects can coexist. This is built from confirmed captures but has not been tested on a physical G923 yet. G923 (PS/PC): please try it and report how it feels (effects playing, in-game FFB still present, direction and strength sensible). G923 (Xbox/PC): experimental, supported by inference only. If the plugin's effects work but your game's force feedback is silent, report it via Feedback then Report an issue with Export logs attached.",
                     },
                 },
             },

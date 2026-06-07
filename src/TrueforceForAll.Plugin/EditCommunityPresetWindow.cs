@@ -29,12 +29,17 @@ namespace TrueforceForAll.Plugin
         public string  NewDescription { get; private set; }
         public JObject NewBody        { get; private set; }   // null = leave body alone
         public List<string> NewEffectTags { get; private set; }   // null = leave alone
+        // null = no change (leave server's current value alone); bool
+        // = flip the row's allow_in_packs. update_preset honors this
+        // semantics on the server side.
+        public bool?   NewAllowInPacks { get; private set; }
 
         public EditCommunityPresetWindow(
             string presetName, string presetDescription, string carId,
             List<CarPresetEntry> userPresetsForCar,
             System.Func<CarOverride, JObject> bodyBuilder,
-            System.Func<CarOverride, List<string>> tagsBuilder)
+            System.Func<CarOverride, List<string>> tagsBuilder,
+            bool currentAllowInPacks = false)
         {
             Title         = "Edit your community preset";
             Width         = 480;
@@ -54,7 +59,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "Update the name or description, and optionally replace the body with one of your local tunes. Existing votes + downloads stay on the preset.",
+                Text = "Update the name or description, and optionally replace the body with one of your local presets. Existing votes + downloads stay on the preset.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,
@@ -67,6 +72,10 @@ namespace TrueforceForAll.Plugin
                 Padding = new Thickness(6, 4, 6, 4), FontSize = 13, MaxLength = 96,
                 Margin = new Thickness(0, 0, 0, 10),
             };
+            // Grab focus + select-all on open so the user can start
+            // editing immediately, matching the pattern in
+            // PickUsernameWindow / CarNameInputWindow.
+            nameInput.Loaded += (s, e) => { nameInput.Focus(); nameInput.SelectAll(); };
             root.Children.Add(nameInput);
 
             root.Children.Add(new TextBlock { Text = "Description", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
@@ -106,6 +115,19 @@ namespace TrueforceForAll.Plugin
             };
             root.Children.Add(helpText);
 
+            // Pack-inclusion permission. Initial state mirrors the
+            // server's current setting; only sent on save when the
+            // user actually toggled it (so unchecked-but-already-false
+            // doesn't burn a content_version bump).
+            var allowInPacksCheck = new CheckBox
+            {
+                Content = "Allow others to include this in their packs",
+                Foreground = TextFg, FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 12),
+                IsChecked = currentAllowInPacks,
+            };
+            root.Children.Add(allowInPacksCheck);
+
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -139,6 +161,13 @@ namespace TrueforceForAll.Plugin
                     NewBody = bodyBuilder?.Invoke(entry.Override);
                     NewEffectTags = tagsBuilder?.Invoke(entry.Override);
                 }
+                // Only emit NewAllowInPacks when the user actually
+                // changed the checkbox; matches the update_preset RPC
+                // "null = no change" semantics so we don't bump
+                // content_version on a no-op edit.
+                bool nowChecked = allowInPacksCheck.IsChecked == true;
+                if (nowChecked != currentAllowInPacks)
+                    NewAllowInPacks = nowChecked;
                 DialogResult = true;
                 Close();
             };

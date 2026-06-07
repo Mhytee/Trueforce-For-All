@@ -717,7 +717,10 @@ namespace TrueforceForAll.Plugin.Effects
         {
             if (string.IsNullOrWhiteSpace(text)) return null;
             var parts = text.Split(',');
-            if (parts.Length < 1) return null;
+            // Hard cap: realistic engines have at most ~16 cylinders, exotic multi-rotor
+            // designs ~50. 64 leaves comfortable headroom and prevents OOM / runaway
+            // parse from a malicious preset string with millions of entries.
+            if (parts.Length < 1 || parts.Length > 64) return null;
 
             var positions  = new double[parts.Length];
             var amplitudes = new double[parts.Length];
@@ -731,6 +734,9 @@ namespace TrueforceForAll.Plugin.Effects
                 string ampStr = colon < 0 ? null : p.Substring(colon + 1).Trim();
                 if (!double.TryParse(posStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var pos))
                     return null;
+                // Gate NaN/Inf before the modulo wraps them into something that
+                // looks valid but isn't.
+                pos = SafeMath.SafeDouble(pos, -1.0, 2.0, 0.0);
                 pos = pos % 1.0;
                 if (pos < 0) pos += 1.0;
                 positions[i] = pos;
@@ -738,8 +744,7 @@ namespace TrueforceForAll.Plugin.Effects
                 {
                     if (!double.TryParse(ampStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var amp))
                         return null;
-                    if (amp < 0) amp = 0;
-                    if (amp > 4) amp = 4;
+                    amp = SafeMath.SafeDouble(amp, 0.0, 4.0, 1.0);
                     amplitudes[i] = amp;
                     anyAmpSet = true;
                 }

@@ -513,8 +513,9 @@ namespace TrueforceForAll.Plugin
         }
 
         // True iff a submission should actually go out: community is enabled
-        // AND both URL and anon key are non-blank. Identity is server-derived
-        // so the client has nothing to lazy-init here.
+        // AND both URL and anon key are non-blank AND the URL points at a
+        // trusted Supabase host. Identity is server-derived so the client has
+        // nothing to lazy-init here.
         private bool ShouldSubmit(out string url, out string anonKey)
         {
             url = ""; anonKey = "";
@@ -523,6 +524,11 @@ namespace TrueforceForAll.Plugin
             url = (s.CommunityBackendUrl ?? "").Trim();
             anonKey = (s.CommunityBackendAnonKey ?? "").Trim();
             if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(anonKey)) return false;
+            if (!ChannelValidation.IsTrustedSupabaseUrl(url))
+            {
+                _log?.Invoke($"[Trueforce] Rejecting untrusted backend URL: {url}");
+                return false;
+            }
             return true;
         }
 

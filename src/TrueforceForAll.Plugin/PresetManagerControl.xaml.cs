@@ -86,6 +86,8 @@ namespace TrueforceForAll.Plugin
                     CarPromoteBuiltinBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
                 if (DevBar != null)
                     DevBar.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+                if (DevModeBanner != null)
+                    DevModeBanner.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
                 if (DevFolderPathText != null)
                     DevFolderPathText.Text = _plugin?.BuiltinFolderPath ?? "";
                 RefreshGameButtons();
@@ -497,23 +499,423 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Open the Cars segment and flip the inline Library|
+        /// Community sub-pill to Community. Used by the header
+        /// "See all" affordance off the active-car community count
+        /// chip so the user lands directly on the browse view.</summary>
+        public void OpenCarCommunity()
+        {
+            if (SegCar != null) SegCar.IsChecked = true;
+            if (CarModeCommunity != null) CarModeCommunity.IsChecked = true;
+        }
+
         // Segmented selector clicked (or set programmatically). Show the chosen
-        // view, hide the other two. Guarded so it's a no-op during the XAML
-        // load pass, when SegGame's default IsChecked fires before the panels
-        // exist (initial visibility is set in XAML instead).
+        // view, hide the others. Community is no longer a separate top
+        // segment; it's inlined under Cars (and later Games) via the
+        // Mine|Community sub-pill. Guarded so it's a no-op during the
+        // XAML load pass.
         private void Segment_Checked(object sender, RoutedEventArgs e)
         {
             if (GamePanel == null || CarPanel == null || CustomPanel == null
                 || CommunityPanel == null) return;
-            GamePanel.Visibility      = SegGame.IsChecked      == true ? Visibility.Visible : Visibility.Collapsed;
-            CarPanel.Visibility       = SegCar.IsChecked       == true ? Visibility.Visible : Visibility.Collapsed;
-            CustomPanel.Visibility    = SegCustom.IsChecked    == true ? Visibility.Visible : Visibility.Collapsed;
-            CommunityPanel.Visibility = SegCommunity.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-            // Lazy-load the community list the first time the user opens
-            // the segment so the panel-open isn't tied to plugin startup.
-            if (SegCommunity.IsChecked == true && _communityRows.Count == 0
-                && !_communityFetchInFlight)
-                _ = CommunityRefreshAsync();
+
+            bool carActive    = SegCar.IsChecked    == true;
+            bool gameActive   = SegGame.IsChecked   == true;
+            bool customActive = SegCustom.IsChecked == true;
+            bool packsActive  = SegPacks?.IsChecked == true;
+
+            // Sub-pills appear alongside their owning top segment only.
+            if (CarModeWrap    != null) CarModeWrap.Visibility    = carActive    ? Visibility.Visible : Visibility.Collapsed;
+            if (GameModeWrap   != null) GameModeWrap.Visibility   = gameActive   ? Visibility.Visible : Visibility.Collapsed;
+            if (CustomModeWrap != null) CustomModeWrap.Visibility = customActive ? Visibility.Visible : Visibility.Collapsed;
+            if (PacksModeWrap  != null) PacksModeWrap.Visibility  = packsActive  ? Visibility.Visible : Visibility.Collapsed;
+
+            if (carActive)
+            {
+                GamePanel.Visibility = Visibility.Collapsed;
+                CustomPanel.Visibility = Visibility.Collapsed;
+                if (PacksPanel != null) PacksPanel.Visibility = Visibility.Collapsed;
+                CarMode_Checked(null, null);
+                return;
+            }
+            if (gameActive)
+            {
+                CarPanel.Visibility = Visibility.Collapsed;
+                CustomPanel.Visibility = Visibility.Collapsed;
+                if (PacksPanel != null) PacksPanel.Visibility = Visibility.Collapsed;
+                GameMode_Checked(null, null);
+                return;
+            }
+            if (customActive)
+            {
+                GamePanel.Visibility = Visibility.Collapsed;
+                CarPanel.Visibility  = Visibility.Collapsed;
+                if (PacksPanel != null) PacksPanel.Visibility = Visibility.Collapsed;
+                CustomMode_Checked(null, null);
+                return;
+            }
+            if (packsActive)
+            {
+                GamePanel.Visibility   = Visibility.Collapsed;
+                CarPanel.Visibility    = Visibility.Collapsed;
+                CustomPanel.Visibility = Visibility.Collapsed;
+                PacksMode_Checked(null, null);
+                return;
+            }
+            // No segment matched (shouldn't happen; defensive).
+            GamePanel.Visibility      = Visibility.Collapsed;
+            CarPanel.Visibility       = Visibility.Collapsed;
+            CustomPanel.Visibility    = Visibility.Collapsed;
+            if (PacksPanel != null) PacksPanel.Visibility = Visibility.Collapsed;
+            CommunityPanel.Visibility = Visibility.Collapsed;
+        }
+
+        // Inline Library|Community sub-pill on the Packs segment.
+        // Library shows a compact intro panel that defers to the
+        // existing PackManagerWindow ("Open installed packs..."); the
+        // full install / set-as-default / remove flow already lives
+        // there. Community swaps in the shared CommunityPanel re-scoped
+        // to pack bundles.
+        private void PacksMode_Checked(object sender, RoutedEventArgs e)
+        {
+            if (PacksPanel == null || CommunityPanel == null) return;
+            if (SegPacks?.IsChecked != true) return;
+
+            bool community = PacksModeCommunity?.IsChecked == true;
+            PacksPanel.Visibility     = community ? Visibility.Collapsed : Visibility.Visible;
+            CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
+            if (community)
+            {
+                bool kindSwitched = _communityKind != "pack";
+                _communityKind = "pack";
+                // Pack kind is always global; clear any leftover
+                // trending state from a prior car/game fetch so the
+                // scope radio label baselines cleanly.
+                _lastFetchWasTrending = false;
+                RelabelCommunityScopeRadio();
+                if ((kindSwitched || _communityRows.Count == 0) && !_communityFetchInFlight)
+                    _ = CommunityRefreshAsync();
+            }
+            else
+            {
+                // Library mode: refresh the inline installed-packs grid
+                // every time the user lands here so renames / removes
+                // via the older PackManagerWindow flow stay in sync.
+                ReloadPacks();
+            }
+        }
+
+        // Reentrancy guard for the share/pack handlers. Each handler is
+        // async void with an EnsureUsernameBeforeShareAsync await before
+        // ShowDialog, so a rapid double-click could otherwise start a
+        // second handler before the first reaches its modal. We flip
+        // this on entry, off in finally.
+        private bool _shareInProgress;
+
+        // Open the CreatePackWindow so the user can bundle eligible
+        // entries from their library + upload as a community pack.
+        // Permission-eligible = not built-in, AND (user-owned OR
+        // community-sourced with AllowInPacks=true).
+        private async void CreatePack_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (_shareInProgress) return;
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Enable Community Contributions in Settings to share packs.",
+                    "Create pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            _shareInProgress = true;
+            try
+            {
+                var owner = Window.GetWindow(this);
+                // Username gate: signed-in users who never set a username
+                // would otherwise see a raw backend "set a username first"
+                // error from the eventual upload. Prompt now; abort cleanly
+                // on cancel.
+                if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+                {
+                    MessageBox.Show(owner,
+                        "Pick a username before sharing (Settings > Account & community).",
+                        "Create pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                var dlg = new CreatePackWindow(_plugin) { Owner = owner };
+                dlg.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Create pack failed: " + ex.Message);
+                MessageBox.Show(Window.GetWindow(this),
+                    "Create pack failed: " + ex.Message,
+                    "Create pack", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _shareInProgress = false; }
+        }
+
+        // Funnel entry from the My Uploads banner in the Community panel.
+        // Same flow as the Packs-tab "Create a pack" button - kept as a
+        // separate handler so changes to one don't surprise the other.
+        // Calls CreatePack_Click as fire-and-forget; the async gate +
+        // modal sequence still runs correctly.
+        private void CreatePackFromUploads_Click(object sender, RoutedEventArgs e)
+        {
+            CreatePack_Click(sender, e);
+        }
+
+        // Toggle the My-Uploads pack-authoring banner. Visible only when
+        // (a) Community is enabled, (b) the panel is showing My Uploads
+        // mode, and (c) at least one upload is listed. Called from
+        // CommunityRefreshAsync after rows populate and from
+        // CommunityMode_Changed when the user flips modes.
+        private void UpdateCreatePackFromUploadsBannerVisibility()
+        {
+            if (CreatePackFromUploadsBanner == null) return;
+            bool show =
+                _plugin?.Settings?.CommunityEnabled == true
+                && _communityMode == "mine"
+                && _communityRows.Count > 0;
+            var want = show ? Visibility.Visible : Visibility.Collapsed;
+            if (CreatePackFromUploadsBanner.Visibility != want)
+                CreatePackFromUploadsBanner.Visibility = want;
+        }
+
+        // ---- Installed packs grid (Library mode) -------------------------
+
+        public sealed class PackRow
+        {
+            internal InstalledPack Pack;
+            public string Name          { get; set; }
+            public string Author        { get; set; }
+            public string Version       { get; set; }
+            public int    EntryCount    { get; set; }
+            public string ImportedLabel { get; set; }
+        }
+
+        private readonly System.Collections.ObjectModel.ObservableCollection<PackRow> _packRows
+            = new System.Collections.ObjectModel.ObservableCollection<PackRow>();
+        private bool _packsListInitialized;
+
+        private void EnsurePacksListBound()
+        {
+            if (_packsListInitialized || PacksList == null) return;
+            PacksList.ItemsSource = _packRows;
+            _packsListInitialized = true;
+        }
+
+        private void ReloadPacks()
+        {
+            if (PacksList == null) return;
+            EnsurePacksListBound();
+            _packRows.Clear();
+            var file = _plugin?.LoadInstalledPacks();
+            if (file?.Packs == null) return;
+            foreach (var p in file.Packs)
+            {
+                if (p == null) continue;
+                _packRows.Add(new PackRow
+                {
+                    Pack          = p,
+                    Name          = p.PackName ?? "(unnamed)",
+                    Author        = p.Author ?? "",
+                    Version       = p.AuthorVersion ?? "",
+                    EntryCount    = p.Entries?.Count ?? 0,
+                    ImportedLabel = p.ImportedAt == default(DateTime)
+                                      ? ""
+                                      : p.ImportedAt.ToLocalTime().ToString("yyyy-MM-dd"),
+                });
+            }
+            // Selection may now point at a removed pack; clear + re-eval
+            // the action buttons.
+            PacksList_SelectionChanged(null, null);
+        }
+
+        private void PacksList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            bool any = PacksList?.SelectedItem is PackRow;
+            if (PacksSetDefaultsBtn != null) PacksSetDefaultsBtn.IsEnabled = any;
+            if (PacksRemoveBtn      != null) PacksRemoveBtn.IsEnabled      = any;
+        }
+
+        private void PacksSetDefaults_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(PacksList?.SelectedItem is PackRow row) || row.Pack == null || _plugin == null) return;
+            var summary = _plugin.SetPackAsDefaults(row.Pack);
+            if (summary == null) return;
+            int total = summary.GameDefaultsSet + summary.CarDefaultsSet
+                + summary.GameDefaultsOverwritten + summary.CarDefaultsOverwritten;
+            string copy = total == 0
+                ? "No default bindings changed."
+                : $"Set {summary.GameDefaultsSet + summary.GameDefaultsOverwritten} game default(s) and "
+                  + $"{summary.CarDefaultsSet + summary.CarDefaultsOverwritten} car default(s).";
+            if (summary.GamePresetsSkipped > 0)
+                copy += $"\nSkipped {summary.GamePresetsSkipped} game preset(s) the pack didn't tag with a target game.";
+            MessageBox.Show(Window.GetWindow(this), copy,
+                "Set pack as defaults", MessageBoxButton.OK, MessageBoxImage.Information);
+            LibraryChanged?.Invoke();
+        }
+
+        private void PacksRemove_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(PacksList?.SelectedItem is PackRow row) || row.Pack == null || _plugin == null) return;
+            if (MessageBox.Show(Window.GetWindow(this),
+                $"Remove pack '{row.Name}'?\n\n"
+                + "Every preset the pack installed will be deleted, except entries you've edited (those are preserved).",
+                "Remove pack", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+            var summary = _plugin.RemovePack(row.Pack);
+            if (summary == null) return;
+            MessageBox.Show(Window.GetWindow(this),
+                $"Removed pack. Deleted {summary.EntriesDeleted} entr{(summary.EntriesDeleted == 1 ? "y" : "ies")}; "
+                + $"kept {summary.EntriesKept} edited entr{(summary.EntriesKept == 1 ? "y" : "ies")}.",
+                "Remove pack", MessageBoxButton.OK, MessageBoxImage.Information);
+            ReloadPacks();
+            ReloadGames();
+            ReloadCars();
+            ReloadCustoms();
+            LibraryChanged?.Invoke();
+        }
+
+        // Inline Library|Community sub-pill on the Custom engines
+        // segment. Library shows the local CustomPanel; Community
+        // swaps in the shared CommunityPanel re-scoped to engines
+        // (no game/car filter; engines are global).
+        private void CustomMode_Checked(object sender, RoutedEventArgs e)
+        {
+            if (CustomPanel == null || CommunityPanel == null) return;
+            if (SegCustom?.IsChecked != true) return;
+
+            bool community = CustomModeCommunity?.IsChecked == true;
+            CustomPanel.Visibility    = community ? Visibility.Collapsed : Visibility.Visible;
+            CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
+            if (community)
+            {
+                bool kindSwitched = _communityKind != "engine";
+                _communityKind = "engine";
+                // Engine kind is always global; clear any leftover
+                // trending state so the scope radio baselines cleanly.
+                _lastFetchWasTrending = false;
+                RelabelCommunityScopeRadio();
+                if ((kindSwitched || _communityRows.Count == 0) && !_communityFetchInFlight)
+                    _ = CommunityRefreshAsync();
+            }
+        }
+
+        // Inline Library|Community sub-pill on the Cars segment.
+        // Library shows the local CarPanel; Community swaps in
+        // CommunityPanel scoped to the active car (lazy-loaded on
+        // first reveal).
+        private void CarMode_Checked(object sender, RoutedEventArgs e)
+        {
+            if (CarPanel == null || CommunityPanel == null) return;
+            if (SegCar?.IsChecked != true) return;  // pill is hidden outside Cars
+
+            bool community = CarModeCommunity?.IsChecked == true;
+            CarPanel.Visibility       = community ? Visibility.Collapsed : Visibility.Visible;
+            CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
+            if (community)
+            {
+                // Flip the kind so CommunityRefreshAsync hits the car
+                // preset RPC. Refresh if the cached list is stale (kind
+                // mismatch) or empty.
+                bool kindSwitched = _communityKind != "car";
+                _communityKind = "car";
+                // Reset the trending flag so the scope radio doesn't
+                // briefly mislabel using state from the prior kind's
+                // last fetch; the post-fetch RelabelCommunityScopeRadio
+                // will rewrite it from the new fetch's outcome.
+                _lastFetchWasTrending = false;
+                RelabelCommunityScopeRadio();
+                if ((kindSwitched || _communityRows.Count == 0) && !_communityFetchInFlight)
+                    _ = CommunityRefreshAsync();
+            }
+        }
+
+        // Inline Library|Community sub-pill on the Games segment.
+        // Library shows the local GamePanel; Community swaps in the
+        // shared CommunityPanel re-scoped to game presets for the
+        // active game (lazy-loaded on first reveal).
+        private void GameMode_Checked(object sender, RoutedEventArgs e)
+        {
+            if (GamePanel == null || CommunityPanel == null) return;
+            if (SegGame?.IsChecked != true) return;
+
+            bool community = GameModeCommunity?.IsChecked == true;
+            GamePanel.Visibility      = community ? Visibility.Collapsed : Visibility.Visible;
+            CommunityPanel.Visibility = community ? Visibility.Visible   : Visibility.Collapsed;
+            if (community)
+            {
+                bool kindSwitched = _communityKind != "game";
+                _communityKind = "game";
+                // Reset the trending flag so a prior car-kind trending
+                // fetch doesn't bleed through into the new game-kind
+                // scope label; the post-fetch RelabelCommunityScopeRadio
+                // will rewrite it from the new fetch's outcome.
+                _lastFetchWasTrending = false;
+                RelabelCommunityScopeRadio();
+                if ((kindSwitched || _communityRows.Count == 0) && !_communityFetchInFlight)
+                    _ = CommunityRefreshAsync();
+            }
+        }
+
+        // Keep the "For this car / For this game / All engines" radio
+        // label in sync with the active kind. The Mine radio's copy
+        // is kind-neutral ("My uploads") since FetchMyPresets returns
+        // all three kinds in one set, each row tagged with Summary.Kind.
+        private void RelabelCommunityScopeRadio()
+        {
+            if (CommunityModeForCar == null) return;
+            // When the last completed fetch fell back to trending (no
+            // active game/car), reflect that in the scope radio's label
+            // so the user understands why they see cross-game results.
+            bool trending = _lastFetchWasTrending && _communityMode == "for-car";
+            switch (_communityKind)
+            {
+                case "game":   CommunityModeForCar.Content = trending ? "Trending games" : "For this game"; break;
+                case "engine": CommunityModeForCar.Content = "All engines";   break;
+                case "pack":   CommunityModeForCar.Content = "All packs";     break;
+                default:       CommunityModeForCar.Content = trending ? "Trending cars" : "For this car";  break;
+            }
+            if (CommunityHelpText != null)
+            {
+                // "Mine" mode gets its own help text that surfaces the
+                // Edit/Delete affordance (those buttons are collapsed
+                // until a row you own is selected, which is otherwise
+                // hard to discover).
+                if (_communityMode == "mine")
+                {
+                    CommunityHelpText.Text =
+                        "Your community uploads across every game and car. Select a row to reveal Edit and Delete; "
+                        + "use Edit to update a preset's name, description, or body without resetting its votes and downloads.";
+                }
+                else switch (_communityKind)
+                {
+                    case "game":
+                        CommunityHelpText.Text = trending
+                            ? "No game loaded, so showing trending game presets from across the community. Load a game and refresh to see scoped results."
+                            : "Browse + download community game presets for the game you're playing, or switch to your own uploads to manage them. "
+                              + "Pick a row and Download to import; you'll get a section picker so you can take just the parts you want.";
+                        break;
+                    case "engine":
+                        CommunityHelpText.Text =
+                            "Browse + download community custom engines (cylinder patterns + layout), or switch to your own uploads to manage them. "
+                            + "Pick a row and Download to add it to your library.";
+                        break;
+                    case "pack":
+                        CommunityHelpText.Text =
+                            "Browse + download community packs (bundles of game presets, car presets, and custom engines), or switch to your own uploads to manage them. "
+                            + "Pick a row and Download to import every entry into the matching part of your library.";
+                        break;
+                    default:
+                        CommunityHelpText.Text = trending
+                            ? "No car loaded, so showing trending car presets from across the community. Load a car in your game and refresh to see scoped results."
+                            : "Browse + download community presets for the car you're driving, or switch to your own uploads to manage them. "
+                              + "Pick a row and Download to import; you'll get a section picker so you can take just the parts you want.";
+                        break;
+                }
+            }
         }
 
         // Last preset the user clicked Edit on. Kept for reference; the actual
@@ -566,6 +968,9 @@ namespace TrueforceForAll.Plugin
                 });
             }
             GameList_SelectionChanged(null, null);
+            if (GameListEmpty != null)
+                GameListEmpty.Visibility = _gameRows.Count == 0
+                    ? Visibility.Visible : Visibility.Collapsed;
             MaybeNotifyChanged();
         }
 
@@ -623,6 +1028,9 @@ namespace TrueforceForAll.Plugin
                 _carGameFilter = null;
             RebuildCarGameChips();
             CarList_SelectionChanged(null, null);
+            if (CarListEmpty != null)
+                CarListEmpty.Visibility = _carRows.Count == 0
+                    ? Visibility.Visible : Visibility.Collapsed;
             MaybeNotifyChanged();
         }
 
@@ -636,6 +1044,9 @@ namespace TrueforceForAll.Plugin
                     if (c != null) _customRows.Add(new CustomRow { Def = c });
             }
             CustomList_SelectionChanged(null, null);
+            if (CustomListEmpty != null)
+                CustomListEmpty.Visibility = _customRows.Count == 0
+                    ? Visibility.Visible : Visibility.Collapsed;
             MaybeNotifyChanged();
         }
 
@@ -1285,13 +1696,36 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // session (server now requires it), and a row. The upload
             // itself also checks the backend URL + anon key; at the UI
             // layer the toggle + sign-in are the visible contract.
+            // Additionally: presets the user downloaded from someone
+            // else's community upload aren't shareable as their own --
+            // gate by Override.CommunitySourceId (same identity model
+            // as the header-bar Share buttons).
             bool communityOn = _plugin?.Settings?.CommunityEnabled == true;
             bool signedIn    = _plugin?.AuthIsSignedIn == true;
-            CarShareBtn.IsEnabled = anySelected && checkedCount <= 1 && communityOn && signedIn;
+            bool isBuiltinSel = sel?.Builtin == true;
+            // Resolve the selected row's CarOverride via the per-car
+            // store so we can read its CommunitySourceId stamp.
+            bool isCommunitySourced = false;
+            if (anySelected && checkedCount <= 1 && sel != null
+                && !string.IsNullOrEmpty(sel.CarId)
+                && !string.IsNullOrEmpty(sel.PresetName))
+            {
+                var perCar = _plugin?.GetCarPresets(sel.CarId);
+                if (perCar != null && perCar.TryGetValue(sel.PresetName, out var entry)
+                    && entry?.Override != null
+                    && !string.IsNullOrEmpty(entry.Override.CommunitySourceId))
+                    isCommunitySourced = true;
+            }
+            CarShareBtn.IsEnabled = anySelected && checkedCount <= 1
+                && communityOn && signedIn && !isCommunitySourced && !isBuiltinSel;
             if (!communityOn)
                 CarShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
             else if (!signedIn)
                 CarShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
+            else if (isBuiltinSel)
+                CarShareBtn.ToolTip = "Built-in presets ship with the plugin -- no need to re-share.";
+            else if (isCommunitySourced)
+                CarShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
             else
                 CarShareBtn.ToolTip = "Upload this car preset to the community so other drivers can find it.";
             CarDeleteBtn.IsEnabled    = checkedNonBuiltin > 0 || carSelEditable;
@@ -1327,6 +1761,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             bool  any          = SelectedCustom != null;
 
             CustomEditBtn.IsEnabled   = any && checkedCount <= 1;
+            // Share is single-row, requires community on. The button
+            // itself stays in the DOM; just enable when actionable.
+            if (CustomShareBtn != null)
+                CustomShareBtn.IsEnabled = any && checkedCount <= 1
+                    && _plugin?.Settings?.CommunityEnabled == true;
             CustomDeleteBtn.IsEnabled = checkedCount > 0 || any;
 
             CustomCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
@@ -1532,6 +1971,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedCar;
             if (sel == null || _plugin == null) return;
+            if (_shareInProgress) return;
             if (_plugin.Settings?.CommunityEnabled != true)
             {
                 MessageBox.Show(Window.GetWindow(this),
@@ -1540,60 +1980,79 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 return;
             }
 
-            // Resolve the CarOverride from the preset library (user + builtins).
-            var perCar = _plugin.GetCarPresets(sel.CarId);
-            if (perCar == null
-                || !perCar.TryGetValue(sel.PresetName, out var entry)
-                || entry == null
-                || entry.Override == null)
+            _shareInProgress = true;
+            try
             {
-                MessageBox.Show(Window.GetWindow(this),
-                    $"Could not load preset '{sel.PresetName}' for car '{sel.CarId}'.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                // Resolve + serialize INSIDE the try block so a
+                // JsonSerializationException on JToken.FromObject can't
+                // leak past the catch and crash the dispatcher.
+                var perCar = _plugin.GetCarPresets(sel.CarId);
+                if (perCar == null
+                    || !perCar.TryGetValue(sel.PresetName, out var entry)
+                    || entry == null
+                    || entry.Override == null)
+                {
+                    MessageBox.Show(Window.GetWindow(this),
+                        $"Could not load preset '{sel.PresetName}' for car '{sel.CarId}'.",
+                        "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var customs = _plugin.CollectReferencedCustomEngines(
+                    null, new[] { entry.Override });
+
+                // Serialize as JObject so the upload RPC sees pure JSON. The
+                // server doesn't crack the body; receivers parse it back into
+                // CarOverride + List<CustomEngineDef> on download.
+                var body = new Newtonsoft.Json.Linq.JObject
+                {
+                    ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(entry.Override),
+                };
+                if (customs != null && customs.Count > 0)
+                    body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
+
+                // Effect tags from non-null sections on the override.
+                var tags = new List<string>(8);
+                if (entry.Override.EnginePulse  != null) tags.Add("engine");
+                if (entry.Override.RevLimiter   != null) tags.Add("revlimiter");
+                if (entry.Override.RoadBumps    != null) tags.Add("roadbumps");
+                if (entry.Override.TractionLoss != null) tags.Add("tractionloss");
+                if (entry.Override.GearShift    != null) tags.Add("gearshift");
+                if (entry.Override.AbsClick     != null) tags.Add("abs");
+                if (entry.Override.PitLimiter   != null) tags.Add("pitlimiter");
+                if (entry.Override.Drs          != null) tags.Add("drs");
+                if (entry.Override.Collision    != null) tags.Add("collision");
+                if (entry.Override.AudioCapture != null) tags.Add("audio");
+                if (entry.Override.Airborne     != null) tags.Add("airborne");
+
+                string carDisplay = ResolveCarNameForRow(sel.GameName, sel.CarId);
+                if (string.IsNullOrEmpty(carDisplay)) carDisplay = sel.CarId;
+
+                var owner = Window.GetWindow(this);
+                if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+                {
+                    MessageBox.Show(owner,
+                        "Pick a username before sharing (Settings > Account & community).",
+                        "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                var dialog = new PresetShareWindow(
+                    _plugin, sel.PresetName, sel.GameName ?? "",
+                    sel.CarId, carDisplay, body, tags)
+                {
+                    Owner = owner,
+                };
+                dialog.ShowDialog();
+                // The modal handles its own success/failure messaging.
             }
-
-            var customs = _plugin.CollectReferencedCustomEngines(
-                null, new[] { entry.Override });
-
-            // Serialize as JObject so the upload RPC sees pure JSON. The
-            // server doesn't crack the body; receivers parse it back into
-            // CarOverride + List<CustomEngineDef> on download.
-            var body = new Newtonsoft.Json.Linq.JObject
+            catch (Exception ex)
             {
-                ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(entry.Override),
-            };
-            if (customs != null && customs.Count > 0)
-                body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
-
-            // Effect tags from non-null sections on the override.
-            var tags = new List<string>(8);
-            if (entry.Override.EnginePulse  != null) tags.Add("engine");
-            if (entry.Override.RevLimiter   != null) tags.Add("revlimiter");
-            if (entry.Override.RoadBumps    != null) tags.Add("roadbumps");
-            if (entry.Override.TractionLoss != null) tags.Add("tractionloss");
-            if (entry.Override.GearShift    != null) tags.Add("gearshift");
-            if (entry.Override.AbsClick     != null) tags.Add("abs");
-            if (entry.Override.PitLimiter   != null) tags.Add("pitlimiter");
-            if (entry.Override.Drs          != null) tags.Add("drs");
-            if (entry.Override.Collision    != null) tags.Add("collision");
-            if (entry.Override.AudioCapture != null) tags.Add("audio");
-            if (entry.Override.Airborne     != null) tags.Add("airborne");
-
-            string carDisplay = ResolveCarNameForRow(sel.GameName, sel.CarId);
-            if (string.IsNullOrEmpty(carDisplay)) carDisplay = sel.CarId;
-
-            var dialog = new PresetShareWindow(
-                _plugin, sel.PresetName, sel.GameName ?? "",
-                sel.CarId, carDisplay, body, tags)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            bool? ok = dialog.ShowDialog();
-            // The modal handles its own success/failure messaging; nothing
-            // else needs to happen here on close. Keep the async signature
-            // so future hooks (e.g. refresh after upload) have a place.
-            await Task.CompletedTask;
+                SimHub.Logging.Current.Info("[Trueforce] Share preset failed: " + ex.Message);
+                MessageBox.Show(Window.GetWindow(this),
+                    "Share preset failed: " + ex.Message,
+                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _shareInProgress = false; }
         }
 
         // Per-car (not per-preset) rename: opens the styled
@@ -1826,6 +2285,49 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
         }
 
+        // Upload the selected custom engine via PresetShareWindow.ForEngine
+        // so engines get the same Name / Description / Allow-in-packs /
+        // inline-sign-in flow as car + game presets, instead of the
+        // older YesNoCancel MessageBox + no-description path.
+        private async void CustomShare_Click(object sender, RoutedEventArgs e)
+        {
+            var row = SelectedCustom;
+            if (row?.Def == null || _plugin == null) return;
+            if (_shareInProgress) return;
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Enable Community Contributions in Settings to share custom engines.",
+                    "Share custom engine", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            _shareInProgress = true;
+            try
+            {
+                var owner = Window.GetWindow(this);
+                if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+                {
+                    MessageBox.Show(owner,
+                        "Pick a username before sharing (Settings > Account & community).",
+                        "Share custom engine", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                var body = Newtonsoft.Json.Linq.JObject.FromObject(row.Def);
+                var dialog = PresetShareWindow.ForEngine(_plugin,
+                    row.Def.Name ?? "Custom engine", body);
+                dialog.Owner = owner;
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Share custom engine failed: " + ex.Message);
+                MessageBox.Show(Window.GetWindow(this),
+                    "Share custom engine failed: " + ex.Message,
+                    "Share custom engine", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _shareInProgress = false; }
+        }
+
         private void CustomDelete_Click(object sender, RoutedEventArgs e)
         {
             var bulk = _customRows.Where(r => r.IsChecked && r.Def != null).ToList();
@@ -2031,6 +2533,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // "for-car" (browse by active car) vs "mine" (signed-in user's
         // own uploads, across every car/game).
         private string _communityMode = "for-car";
+        // Discovery kind: "car" (community car presets scoped to the
+        // active car) or "game" (community game presets scoped to the
+        // active game). Driven by which segment's Community sub-pill
+        // is active. "Mine" mode is independent of kind and lives in
+        // the Account expander; here we only browse.
+        private string _communityKind = "car";
+        // Set true after a CommunityRefreshAsync completes successfully
+        // using the trending fallback (for-car mode + no game/car).
+        // Decoupled from per-fetch locals so the synchronous label
+        // updates in RelabelCommunityScopeRadio have a stable value
+        // between fetches.
+        private bool _lastFetchWasTrending;
 
         private CommunityRow SelectedCommunity =>
             CommunityList?.SelectedItem as CommunityRow;
@@ -2038,19 +2552,46 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // Called from the host (SettingsControl) when active car changes
         // so the community panel can show "Showing presets for: X" with
         // the live name + refresh when visible.
-        public void OnActiveCarChanged()
+        /// <summary>Called by the host when the active car (and possibly
+        /// game) changed. gameAlsoChanged distinguishes a pure car
+        /// switch within the same game from a game switch (which may
+        /// or may not also bring a new car). Different community kinds
+        /// have different scope sensitivity:
+        ///   car   - game+car scoped, refresh on any change
+        ///   game  - game-scoped, refresh only when game changed
+        ///   engine, pack - global, never refresh on this signal
+        /// </summary>
+        public void OnActiveCarChanged(bool gameAlsoChanged = true)
         {
             UpdateCommunityActiveCarLabel();
-            // If the user is currently looking at the Community panel,
-            // immediately refresh so the list reflects the new car.
-            if (CommunityPanel != null && CommunityPanel.Visibility == Visibility.Visible
-                && _plugin != null)
+            if (CommunityPanel == null
+                || CommunityPanel.Visibility != Visibility.Visible
+                || _plugin == null)
+                return;
+            bool shouldRefresh =
+                _communityKind == "car"
+                || (_communityKind == "game" && gameAlsoChanged);
+            if (shouldRefresh)
                 _ = CommunityRefreshAsync();
         }
 
         private void UpdateCommunityActiveCarLabel()
         {
             if (CommunityCarLabel == null || _plugin == null) return;
+            bool isGameKind = _communityKind == "game";
+            // Swap the leading label too so the row reads cleanly in
+            // both modes ("Active game:" vs "Active car:").
+            if (CommunityScopeLabel != null && _communityMode != "mine")
+                CommunityScopeLabel.Text = isGameKind ? "Active game:" : "Active car:";
+
+            if (isGameKind)
+            {
+                string game = _plugin.ActiveGame;
+                CommunityCarLabel.Text = string.IsNullOrEmpty(game)
+                    ? "(none - load a game first)"
+                    : game;
+                return;
+            }
             string carId = _plugin.ActiveCarId;
             string display = _plugin.ActiveCarDisplayName;
             if (string.IsNullOrEmpty(carId))
@@ -2086,6 +2627,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // Label swap + refresh.
             if (CommunityScopeLabel != null)
                 CommunityScopeLabel.Text = newMode == "mine" ? "Your uploads:" : "Active car:";
+            // Clear the row set immediately so the banner-visibility
+            // call below doesn't evaluate against stale for-car rows
+            // when the user just switched into "mine" mode (the count
+            // check would otherwise flash the banner visible against the
+            // prior tab's contents before the fetch repopulates).
+            _communityRows.Clear();
+            // Trending state is per-mode (only the for-car mode can be
+            // trending); reset on mode flip so the next RelabelCommunityScopeRadio
+            // call has a clean baseline until the new fetch overwrites it.
+            _lastFetchWasTrending = false;
+            UpdateCreatePackFromUploadsBannerVisibility();
+            // Update the help text immediately on mode switch so the
+            // user sees the new mode's guidance (e.g., the Edit/Delete
+            // hint in "mine" mode) without waiting for the fetch.
+            RelabelCommunityScopeRadio();
             UpdateCommunityActiveCarLabel();
             _ = CommunityRefreshAsync();
         }
@@ -2109,6 +2665,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _communityRows.Clear();
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Community Contributions is off (toggle it in Settings).";
+                UpdateCreatePackFromUploadsBannerVisibility();
                 CommunityList_SelectionChanged(null, null);
                 return;
             }
@@ -2119,35 +2676,78 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _communityRows.Clear();
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Sign in (Account & community in Settings) to see your uploads.";
+                UpdateCreatePackFromUploadsBannerVisibility();
                 CommunityList_SelectionChanged(null, null);
                 return;
             }
 
             string game  = _plugin.ActiveGame;
             string carId = _plugin.ActiveCarId;
-            if (_communityMode == "for-car" && (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)))
+            // Scope requirements differ by kind: car needs game+car;
+            // game needs only game; engine + pack are global (no scope).
+            bool isGameKind   = _communityKind == "game";
+            bool isEngineKind = _communityKind == "engine";
+            bool isPackKind   = _communityKind == "pack";
+            // Trending fallback: for-car mode normally needs a game+car
+            // (or just game for game-kind), but when none is loaded the
+            // panel used to dead-end. Engines + packs already browse
+            // globally, so the asymmetry read as broken. Detect the
+            // empty-scope case and pivot to a cross-game trending fetch
+            // instead of bailing.
+            bool useTrendingFallback = false;
+            if (_communityMode == "for-car" && !isEngineKind && !isPackKind)
             {
-                _communityRows.Clear();
-                if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Load a car in the game to see community presets.";
-                CommunityList_SelectionChanged(null, null);
-                return;
+                bool scopeMissing = string.IsNullOrEmpty(game)
+                    || (!isGameKind && string.IsNullOrEmpty(carId));
+                if (scopeMissing) useTrendingFallback = true;
             }
 
             _communityFetchInFlight = true;
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = "Loading...";
+                CommunityStatusLabel.Text = useTrendingFallback
+                    ? "Loading trending..."
+                    : "Loading...";
 
             string capturedMode = _communityMode;
+            string capturedKind = _communityKind;
             string capturedGame = game;
             string capturedCar  = carId;
             string capturedSort = SortKey();
+            bool capturedTrending = useTrendingFallback;
             List<PresetSummary> results = null;
             try
             {
-                results = await Task.Run(() => capturedMode == "mine"
-                    ? _plugin.FetchMyCommunityPresets(capturedSort, 100)
-                    : _plugin.FetchCommunityPresetsForCar(capturedGame, capturedCar, capturedSort, 50));
+                if (capturedMode == "mine")
+                {
+                    // Mine-mode goes through an auth-bearer fetch, so
+                    // call the async variant directly instead of
+                    // wrapping a sync-over-async in Task.Run.
+                    results = await _plugin.FetchMyCommunityPresetsAsync(capturedSort, 100);
+                }
+                else
+                {
+                    results = await Task.Run(() =>
+                    {
+                        if (capturedTrending)
+                        {
+                            // Trending fallback - cross-game, no car/game filter.
+                            return capturedKind == "game"
+                                ? _plugin.FetchCommunityTrendingGamePresets(capturedSort, 50)
+                                : _plugin.FetchCommunityTrendingCarPresets(capturedSort, 50);
+                        }
+                        switch (capturedKind)
+                        {
+                            case "game":
+                                return _plugin.FetchCommunityGamePresetsForGame(capturedGame, capturedSort, 50);
+                            case "engine":
+                                return _plugin.FetchCommunityCustomEngines(capturedSort, 50);
+                            case "pack":
+                                return _plugin.FetchCommunityPacks(capturedSort, 50);
+                            default:
+                                return _plugin.FetchCommunityPresetsForCar(capturedGame, capturedCar, capturedSort, 50);
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -2157,22 +2757,56 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 return;
             }
 
-            // Stale-fetch guard for for-car mode: if the user switched
-            // cars while the fetch was in flight, drop the result.
-            if (capturedMode == "for-car"
-                && (_plugin.ActiveGame != capturedGame || _plugin.ActiveCarId != capturedCar))
+            // Stale-fetch guard: if context shifted mid-flight, drop
+            // the result. Car-kind cares about both game + car; game-
+            // kind only about game; engine + pack + mine-mode about
+            // neither. Trending: discard if a game/car has since
+            // populated, since the next refresh would be scoped and
+            // showing global rows would confuse the reader.
+            if (capturedMode == "for-car" && capturedKind != "engine" && capturedKind != "pack")
             {
-                _communityFetchInFlight = false;
-                return;
+                if (capturedTrending)
+                {
+                    // Discard the trending fetch if ANY scope now
+                    // applies: for game-kind that's an active game, for
+                    // car-kind that's an active game (a game-scoped
+                    // refresh would now be more useful than a global
+                    // trending list). The user's next refresh will pick
+                    // up the scoped path.
+                    bool scopeNowPresent = !string.IsNullOrEmpty(_plugin.ActiveGame);
+                    if (scopeNowPresent)
+                    {
+                        _communityFetchInFlight = false;
+                        return;
+                    }
+                }
+                else if (capturedKind == "game"
+                    ? _plugin.ActiveGame != capturedGame
+                    : (_plugin.ActiveGame != capturedGame || _plugin.ActiveCarId != capturedCar))
+                {
+                    _communityFetchInFlight = false;
+                    return;
+                }
             }
-            // Drop result if mode changed mid-flight.
-            if (_communityMode != capturedMode)
+            // Drop result if mode or kind changed mid-flight.
+            if (_communityMode != capturedMode || _communityKind != capturedKind)
             {
                 _communityFetchInFlight = false;
                 return;
             }
 
-            _communityListedCarKey = capturedMode == "for-car" ? capturedGame + "/" + capturedCar : "mine";
+            // Persist trending-vs-scoped for label state (the radio /
+            // scope label is repainted synchronously from segment
+            // changes, so it needs a class-level flag, not a per-fetch
+            // local). RelabelCommunityScopeRadio reads this on the next
+            // tick.
+            _lastFetchWasTrending = capturedTrending;
+            _communityListedCarKey = capturedMode == "mine" ? "mine"
+                : capturedKind == "engine" ? "engine"
+                : capturedKind == "pack"   ? "pack"
+                : capturedTrending         ? (capturedKind == "game" ? "trending-game" : "trending-car")
+                : capturedKind == "game"   ? "game/" + capturedGame
+                : capturedGame + "/" + capturedCar;
             _communityRows.Clear();
             if (results == null)
             {
@@ -2193,7 +2827,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 foreach (var r in _communityRows)
                     if (!string.IsNullOrEmpty(r.Summary?.Id)) ids.Add(r.Summary.Id);
                 Dictionary<string, int> map = null;
-                try { map = await Task.Run(() => _plugin.FetchMyCommunityVotes(ids)); }
+                // Direct await (the underlying FetchMyVotesAsync handles
+                // its own threading); the Task.Run wrapper used to be
+                // a band-aid for the sync-over-async pattern.
+                try { map = await _plugin.FetchMyCommunityVotesAsync(ids); }
                 catch { /* leave votes at 0 */ }
                 if (map != null)
                 {
@@ -2211,11 +2848,35 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
 
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = _communityRows.Count == 0
-                    ? (capturedMode == "mine"
-                        ? "You haven't uploaded any presets yet."
-                        : "No community presets for this car yet. Be the first to share.")
+            {
+                string emptyMsg;
+                if (capturedMode == "mine")
+                    emptyMsg = "You haven't uploaded any presets yet.";
+                else if (capturedTrending)
+                    emptyMsg = capturedKind == "game"
+                        ? "No trending game presets yet."
+                        : capturedKind == "engine"
+                            ? "No trending custom engines yet."
+                            : capturedKind == "pack"
+                                ? "No trending packs yet."
+                                : "No trending car presets yet.";
+                else
+                    emptyMsg = capturedKind == "game"
+                        ? "No community game presets yet. Be the first to share."
+                        : capturedKind == "engine"
+                            ? "No community custom engines yet. Be the first to share."
+                            : capturedKind == "pack"
+                                ? "No community packs yet. Be the first to share."
+                                : "No community presets for this car yet. Be the first to share.";
+                string foundMsg = capturedTrending
+                    ? $"{_communityRows.Count} preset(s) found (trending - load a game/car for scoped results)."
                     : $"{_communityRows.Count} preset(s) found.";
+                CommunityStatusLabel.Text = _communityRows.Count == 0 ? emptyMsg : foundMsg;
+            }
+            UpdateCreatePackFromUploadsBannerVisibility();
+            // Repaint the scope radio + help text since the trending
+            // flag may have just changed.
+            RelabelCommunityScopeRadio();
             CommunityList_SelectionChanged(null, null);
             _communityFetchInFlight = false;
         }
@@ -2258,6 +2919,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
         private async void CommunityEdit_Click(object sender, RoutedEventArgs e)
         {
+            // Outer try/catch: the bodyBuilder lambda is invoked from
+            // inside ShowDialog when the user clicks Save, so a
+            // JsonSerializationException could surface here AFTER the
+            // existing inner try/catch around UpdateCommunityPresetAsync.
+            // Wrap the whole handler so neither path crashes the
+            // dispatcher.
+            try
+            {
             var sel = SelectedCommunity;
             if (sel?.Summary == null || _plugin == null) return;
             if (!_plugin.AuthIsSignedIn) return;
@@ -2290,7 +2959,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
                     return body;
                 },
-                tagsBuilder: BuildEffectTags)
+                tagsBuilder: BuildEffectTags,
+                currentAllowInPacks: sel.Summary.AllowInPacks)
             {
                 Owner = Window.GetWindow(this),
             };
@@ -2303,7 +2973,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 success = await _plugin.UpdateCommunityPresetAsync(
                     sel.Summary.Id, dlg.NewName, dlg.NewDescription,
-                    dlg.NewBody, dlg.NewEffectTags);
+                    dlg.NewBody, dlg.NewEffectTags,
+                    allowInPacks: dlg.NewAllowInPacks);
             }
             catch (Exception ex)
             {
@@ -2321,6 +2992,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             sel.Summary.Name = dlg.NewName;
             sel.Summary.Description = string.IsNullOrEmpty(dlg.NewDescription) ? null : dlg.NewDescription;
             if (dlg.NewEffectTags != null) sel.Summary.EffectTags = dlg.NewEffectTags;
+            if (dlg.NewAllowInPacks.HasValue) sel.Summary.AllowInPacks = dlg.NewAllowInPacks.Value;
             int idx = _communityRows.IndexOf(sel);
             if (idx >= 0)
             {
@@ -2330,6 +3002,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = dlg.NewBody != null ? "Updated (body replaced)." : "Updated.";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] CommunityEdit failed: " + ex.Message);
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Edit failed: " + ex.Message;
+            }
         }
 
         // Reusable: compute effect_tags from a CarOverride's non-null
@@ -2410,13 +3089,24 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             ToggleVote((sender as FrameworkElement)?.Tag as CommunityRow, -1);
         }
 
-        private void ToggleVote(CommunityRow row, int clicked)
+        private async void ToggleVote(CommunityRow row, int clicked)
         {
             if (row?.Summary == null || _plugin == null) return;
             if (!_plugin.AuthIsSignedIn)
             {
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Sign in (Account & community in Settings) to vote.";
+                return;
+            }
+            // A refresh mid-fetch would replace _communityRows with new
+            // CommunityRow objects, so RepaintCommunityRow's IndexOf
+            // on the captured 'row' returns -1 and the optimistic rollback
+            // would silently fail to repaint. Reject the vote with a
+            // friendly nudge.
+            if (_communityFetchInFlight)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Refresh in progress. Try voting again in a moment.";
                 return;
             }
             int prev = row.MyVote;
@@ -2427,21 +3117,61 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (next == 1)  row.Summary.Upvotes   += 1;
             if (next == -1) row.Summary.Downvotes += 1;
             row.MyVote = next;
+            RepaintCommunityRow(row);
+            if (CommunityStatusLabel != null)
+                CommunityStatusLabel.Text = next == 0
+                    ? "Sending vote retraction..."
+                    : (next == 1 ? "Sending upvote..." : "Sending downvote...");
 
-            _plugin.VoteCommunityPreset(row.Summary.Id, next);
-
-            // Force the row to repaint the arrow brushes + score.
-            int idx = _communityRows.IndexOf(row);
-            if (idx >= 0)
+            // Await the server. On failure roll the counters back to
+            // 'prev' so the row doesn't lie about being voted on.
+            string kind = row.Summary.Kind ?? _communityKind;
+            bool ok = false;
+            try
             {
-                _communityRows.RemoveAt(idx);
-                _communityRows.Insert(idx, row);
-                if (CommunityList != null) CommunityList.SelectedIndex = idx;
+                switch (kind)
+                {
+                    case "game":   ok = await _plugin.TryVoteCommunityGamePresetAsync(row.Summary.Id, next); break;
+                    case "engine": ok = await _plugin.TryVoteCommunityCustomEngineAsync(row.Summary.Id, next); break;
+                    case "pack":   ok = await _plugin.TryVoteCommunityPackAsync(row.Summary.Id, next); break;
+                    default:       ok = await _plugin.TryVoteCommunityPresetAsync(row.Summary.Id, next); break;
+                }
             }
+            catch (Exception ex)
+            {
+                ok = false;
+                SimHub.Logging.Current.Info("[Trueforce] Vote failed: " + ex.Message);
+            }
+
+            if (!ok)
+            {
+                // Roll back to prev so UI matches reality.
+                if (next == 1)  row.Summary.Upvotes   = Math.Max(0, row.Summary.Upvotes   - 1);
+                if (next == -1) row.Summary.Downvotes = Math.Max(0, row.Summary.Downvotes - 1);
+                if (prev == 1)  row.Summary.Upvotes   += 1;
+                if (prev == -1) row.Summary.Downvotes += 1;
+                row.MyVote = prev;
+                RepaintCommunityRow(row);
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Vote didn't go through. Sign-in may have expired; try again.";
+                return;
+            }
+
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = next == 0
                     ? "Vote retracted."
                     : (next == 1 ? "Upvote recorded." : "Downvote recorded.");
+        }
+
+        // Force the grid to rebuild the row so WPF re-resolves arrow
+        // brush + score bindings.
+        private void RepaintCommunityRow(CommunityRow row)
+        {
+            int idx = _communityRows.IndexOf(row);
+            if (idx < 0) return;
+            _communityRows.RemoveAt(idx);
+            _communityRows.Insert(idx, row);
+            if (CommunityList != null) CommunityList.SelectedIndex = idx;
         }
 
         private void CommunityReport_Click(object sender, RoutedEventArgs e)
@@ -2452,9 +3182,19 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 $"Report '{sel.Summary.Name}' for moderator review?",
                 "Report preset", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm != MessageBoxResult.Yes) return;
-            _plugin.ReportCommunityPreset(sel.Summary.Id);
+            switch (sel.Summary.Kind ?? _communityKind)
+            {
+                case "game":   _plugin.ReportCommunityGamePreset(sel.Summary.Id); break;
+                case "engine": _plugin.ReportCommunityCustomEngine(sel.Summary.Id); break;
+                case "pack":   _plugin.ReportCommunityPack(sel.Summary.Id); break;
+                default:       _plugin.ReportCommunityPreset(sel.Summary.Id); break;
+            }
+            // Report RPCs are fire-and-forget at this layer; they log
+            // internally on failure but never roundtrip a success
+            // boolean here. Phrase the status as "submitted" rather
+            // than "received" so we don't claim a confirmed delivery.
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = "Reported. Thanks for flagging.";
+                CommunityStatusLabel.Text = "Report submitted. Thanks for flagging.";
         }
 
         // Open the preview window: read-only view of the preset's
@@ -2466,9 +3206,22 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (sel?.Summary == null || _plugin == null) return;
             if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Loading preview...";
 
-            string capturedId = sel.Summary.Id;
+            string capturedId   = sel.Summary.Id;
+            string capturedKind = sel.Summary.Kind ?? _communityKind ?? "car";
             PresetFull full = null;
-            try { full = await Task.Run(() => _plugin.FetchCommunityPresetBody(capturedId)); }
+            try
+            {
+                full = await Task.Run(() =>
+                {
+                    switch (capturedKind)
+                    {
+                        case "game":   return _plugin.FetchCommunityGamePresetBody(capturedId);
+                        case "engine": return _plugin.FetchCommunityCustomEngineBody(capturedId);
+                        case "pack":   return _plugin.FetchCommunityPackBody(capturedId);
+                        default:       return _plugin.FetchCommunityPresetBody(capturedId);
+                    }
+                });
+            }
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
@@ -2498,11 +3251,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = "Downloading...";
 
-            string capturedId = sel.Summary.Id;
+            string capturedId   = sel.Summary.Id;
+            string capturedKind = sel.Summary.Kind ?? _communityKind ?? "car";
             PresetFull full = null;
             try
             {
-                full = await Task.Run(() => _plugin.FetchCommunityPresetBody(capturedId));
+                full = await Task.Run(() =>
+                {
+                    switch (capturedKind)
+                    {
+                        case "game":   return _plugin.FetchCommunityGamePresetBody(capturedId);
+                        case "engine": return _plugin.FetchCommunityCustomEngineBody(capturedId);
+                        case "pack":   return _plugin.FetchCommunityPackBody(capturedId);
+                        default:       return _plugin.FetchCommunityPresetBody(capturedId);
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -2514,6 +3277,363 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Download returned no body.";
+                return;
+            }
+
+            // Game presets take a different import shape entirely:
+            // body = { snapshot: GameSettingsSnapshot }. Save as a
+            // user game preset and stamp the download tracker, then
+            // bail; the car-preset section picker doesn't apply.
+            if (capturedKind == "game")
+            {
+                GameSettingsSnapshot snap = null;
+                List<CustomEngineDef> gameCustoms = null;
+                try
+                {
+                    var snapToken = full.Body["snapshot"];
+                    if (snapToken != null)
+                        snap = snapToken.ToObject<GameSettingsSnapshot>();
+                    // HeaderGameShare now piggybacks custom engines on
+                    // the snapshot body; import them or recipients fall
+                    // back to silence on any EnginePulse that points at
+                    // a curator-only engine.
+                    var ceToken = full.Body["custom_engines"];
+                    if (ceToken is Newtonsoft.Json.Linq.JArray gca)
+                        gameCustoms = gca.ToObject<List<CustomEngineDef>>();
+                }
+                catch (Exception ex)
+                {
+                    if (CommunityStatusLabel != null)
+                        CommunityStatusLabel.Text = "Body parse failed: " + ex.Message;
+                    return;
+                }
+                if (snap == null)
+                {
+                    if (CommunityStatusLabel != null)
+                        CommunityStatusLabel.Text = "Body had no snapshot section.";
+                    return;
+                }
+
+                if (gameCustoms != null && gameCustoms.Count > 0)
+                    _plugin.ImportCommunityCustomEngines(gameCustoms);
+
+                // Dedup against an existing local snapshot with the
+                // same server uuid -- re-downloading shouldn't pile up
+                // copies. Update detection still surfaces author edits
+                // via FindCommunityPresetUpdatesAsync.
+                if (_plugin.Settings?.Presets != null)
+                {
+                    foreach (var kv in _plugin.Settings.Presets)
+                        if (kv.Value != null
+                            && string.Equals(kv.Value.CommunitySourceId, full.Summary.Id,
+                                             StringComparison.Ordinal))
+                        {
+                            if (CommunityStatusLabel != null)
+                                CommunityStatusLabel.Text = $"You already have this preset as '{kv.Key}'.";
+                            return;
+                        }
+                }
+
+                string gpBase = full.Summary.Name + " (community)";
+                string gpName = gpBase;
+                int gn = 2;
+                while (_plugin.Settings?.Presets != null
+                    && _plugin.Settings.Presets.ContainsKey(gpName))
+                {
+                    gpName = gpBase + " " + gn;
+                    gn++;
+                }
+                bool saved = _plugin.SaveImportedCommunityGamePreset(
+                    gpName, snap, full.Summary.Author, full.Summary.Description,
+                    communitySourceId: full.Summary.Id);
+                if (!saved)
+                {
+                    if (CommunityStatusLabel != null)
+                        CommunityStatusLabel.Text =
+                            "Couldn't save the preset. Check disk space and permissions, then try again.";
+                    return;
+                }
+                _plugin.RecordCommunityGamePresetDownload(capturedId);
+                _plugin.RecordDownloadedCommunityPreset(
+                    full.Summary.Id, gpName,
+                    carId: "*", gameName: _plugin.ActiveGame,
+                    contentVersion: full.Summary.ContentVersion, kind: "game",
+                    allowInPacks: full.Summary.AllowInPacks);
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = $"Saved as '{gpName}'.";
+                LibraryChanged?.Invoke();
+                return;
+            }
+
+            // Packs: body bundles multiple entries across kinds.
+            // Each entry is imported in turn (skipping anything malformed),
+            // then the bundle is recorded so the standard Installed
+            // packs flow knows about it.
+            if (capturedKind == "pack")
+            {
+                int imported = 0;
+                int errors   = 0;
+                int skipped  = 0;  // entries already in the library (by CommunitySourceId)
+
+                // Game presets (entries: { name, snapshot,
+                // source_id?, source_author?, allow_in_packs? }). Per-
+                // entry try/catch so one broken row doesn't bail the
+                // whole import. Per-entry RecordDownloadedCommunityPreset
+                // so each item lands in the tracker. If the user already
+                // has the item (matching CommunitySourceId), skip the
+                // save entirely so packs don't duplicate locally-owned
+                // entries on every import.
+                if (full.Body["game_presets"] is Newtonsoft.Json.Linq.JArray gpArr)
+                {
+                    foreach (var entry in gpArr)
+                    {
+                        try
+                        {
+                            string name = entry?["name"]?.ToString();
+                            var snap = entry?["snapshot"]?.ToObject<GameSettingsSnapshot>();
+                            if (string.IsNullOrWhiteSpace(name) || snap == null) continue;
+                            string entrySourceId = entry?["source_id"]?.ToString();
+                            string entryAuthor   = entry?["source_author"]?.ToString() ?? full.Summary.Author;
+                            bool   entryAllowPacks = entry?["allow_in_packs"]?.ToObject<bool>() ?? false;
+                            // Dedup by CommunitySourceId: if the user
+                            // already has a snapshot pointing at the
+                            // same server uuid, leave it alone.
+                            if (!string.IsNullOrEmpty(entrySourceId)
+                                && _plugin.Settings?.Presets != null)
+                            {
+                                bool already = false;
+                                foreach (var kv in _plugin.Settings.Presets)
+                                    if (kv.Value != null
+                                        && string.Equals(kv.Value.CommunitySourceId, entrySourceId,
+                                                         StringComparison.Ordinal))
+                                    { already = true; break; }
+                                if (already) { skipped++; continue; }
+                            }
+                            string useName = name + " (community)";
+                            int gpN = 2;
+                            while (_plugin.Settings?.Presets != null
+                                && _plugin.Settings.Presets.ContainsKey(useName))
+                            {
+                                useName = name + " (community) " + gpN;
+                                gpN++;
+                            }
+                            bool entrySaved = _plugin.SaveImportedCommunityGamePreset(
+                                useName, snap, entryAuthor, full.Summary.Description,
+                                communitySourceId: entrySourceId);
+                            if (!entrySaved)
+                            {
+                                errors++;
+                                SimHub.Logging.Current.Info(
+                                    $"[Trueforce] Pack entry (game) persist failed for '{useName}'.");
+                                continue;
+                            }
+                            if (!string.IsNullOrEmpty(entrySourceId))
+                            {
+                                _plugin.RecordDownloadedCommunityPreset(
+                                    entrySourceId, useName,
+                                    carId: "*", gameName: _plugin.ActiveGame,
+                                    contentVersion: 1, kind: "game",
+                                    allowInPacks: entryAllowPacks);
+                            }
+                            imported++;
+                        }
+                        catch (Exception ex)
+                        {
+                            errors++;
+                            SimHub.Logging.Current.Info($"[Trueforce] Pack entry (game) import failed: {ex.Message}");
+                        }
+                    }
+                }
+                // Car presets (entries: { car_id, preset_name, game_name,
+                // override, source_id?, source_author?, allow_in_packs? }).
+                if (full.Body["car_presets"] is Newtonsoft.Json.Linq.JArray cpArr)
+                {
+                    foreach (var entry in cpArr)
+                    {
+                        try
+                        {
+                            string cid    = entry?["car_id"]?.ToString();
+                            string pname  = entry?["preset_name"]?.ToString();
+                            string gname  = entry?["game_name"]?.ToString() ?? _plugin.ActiveGame ?? "";
+                            var carOvr = entry?["override"]?.ToObject<CarOverride>();
+                            if (string.IsNullOrWhiteSpace(cid) || string.IsNullOrWhiteSpace(pname) || carOvr == null) continue;
+                            string entrySourceId = entry?["source_id"]?.ToString();
+                            string entryAuthor   = entry?["source_author"]?.ToString() ?? full.Summary.Author;
+                            bool   entryAllowPacks = entry?["allow_in_packs"]?.ToObject<bool>() ?? false;
+                            // Dedup: any car preset under any car id
+                            // whose Override.CommunitySourceId matches.
+                            // (Same car can have presets under different
+                            // names, so we scan; cheap because GetCarPresets
+                            // is in-memory.)
+                            if (!string.IsNullOrEmpty(entrySourceId))
+                            {
+                                var existingPerCar = _plugin.GetCarPresets(cid);
+                                bool already = false;
+                                if (existingPerCar != null)
+                                    foreach (var kv in existingPerCar)
+                                        if (kv.Value?.Override != null
+                                            && string.Equals(kv.Value.Override.CommunitySourceId, entrySourceId,
+                                                             StringComparison.Ordinal))
+                                        { already = true; break; }
+                                if (already) { skipped++; continue; }
+                            }
+                            string useName = pname + " (community)";
+                            int cpN = 2;
+                            var carExisting = _plugin.GetCarPresets(cid);
+                            while (carExisting != null && carExisting.ContainsKey(useName))
+                            {
+                                useName = pname + " (community) " + cpN;
+                                cpN++;
+                            }
+                            _plugin.SaveImportedCommunityCarPreset(
+                                cid, useName, gname, carOvr,
+                                entryAuthor, full.Summary.Description,
+                                communitySourceId: entrySourceId);
+                            if (!string.IsNullOrEmpty(entrySourceId))
+                            {
+                                _plugin.RecordDownloadedCommunityPreset(
+                                    entrySourceId, useName,
+                                    carId: cid, gameName: gname,
+                                    contentVersion: 1, kind: "car",
+                                    allowInPacks: entryAllowPacks);
+                            }
+                            imported++;
+                        }
+                        catch (Exception ex)
+                        {
+                            errors++;
+                            SimHub.Logging.Current.Info($"[Trueforce] Pack entry (car) import failed: {ex.Message}");
+                        }
+                    }
+                }
+                // Custom engines (entries are bare CustomEngineDef +
+                // optional source_id / allow_in_packs siblings). Engine
+                // dedup is now naturally id-keyed because
+                // SaveImportedCommunityCustomEngine uses the community
+                // uuid AS the local Id and MergeImportedCustomEngines
+                // skips duplicates -- so the same library scan would be
+                // redundant. Track the skip count via the merge return.
+                if (full.Body["custom_engines"] is Newtonsoft.Json.Linq.JArray ceArr)
+                {
+                    foreach (var entry in ceArr)
+                    {
+                        try
+                        {
+                            var def = entry?.ToObject<CustomEngineDef>();
+                            if (def == null || string.IsNullOrWhiteSpace(def.Name)) continue;
+                            string entrySourceId = entry?["source_id"]?.ToString();
+                            bool   entryAllowPacks = entry?["allow_in_packs"]?.ToObject<bool>() ?? false;
+                            // Pre-check the library: engine merge dedups
+                            // by Id (which Save*Imported sets to the
+                            // server uuid), but we still want a
+                            // skipped++ tally for the post-import summary.
+                            bool already = false;
+                            if (!string.IsNullOrEmpty(entrySourceId)
+                                && _plugin.Settings?.CustomEngines != null)
+                            {
+                                foreach (var local in _plugin.Settings.CustomEngines)
+                                    if (local != null
+                                        && (string.Equals(local.CommunitySourceId, entrySourceId, StringComparison.Ordinal)
+                                            || string.Equals(local.Id, entrySourceId, StringComparison.Ordinal)))
+                                    { already = true; break; }
+                            }
+                            if (already) { skipped++; continue; }
+                            _plugin.SaveImportedCommunityCustomEngine(def,
+                                communitySourceId: entrySourceId);
+                            if (!string.IsNullOrEmpty(entrySourceId))
+                            {
+                                _plugin.RecordDownloadedCommunityPreset(
+                                    entrySourceId, def.Name,
+                                    carId: "*", gameName: "",
+                                    contentVersion: 1, kind: "engine",
+                                    allowInPacks: entryAllowPacks);
+                            }
+                            imported++;
+                        }
+                        catch (Exception ex)
+                        {
+                            errors++;
+                            SimHub.Logging.Current.Info($"[Trueforce] Pack entry (engine) import failed: {ex.Message}");
+                        }
+                    }
+                }
+
+                // Bump the server-side download counter only when at
+                // least one entry actually imported AND nothing failed
+                // - partial-failure attempts shouldn't inflate the
+                // pack's popularity. The local tracker still records
+                // (with contentVersion=0 below) so the next plugin
+                // load re-surfaces it as "needs re-import."
+                if (errors == 0 && imported > 0)
+                    _plugin.RecordCommunityPackDownload(capturedId);
+                // Only record the pack tracker at full ContentVersion
+                // when every entry imported cleanly. On partial failure
+                // we stamp SeenContentVersion=0 so the next plugin-load
+                // update sweep treats the pack as "needs re-import" and
+                // surfaces it again.
+                _plugin.RecordDownloadedCommunityPreset(
+                    full.Summary.Id, full.Summary.Name ?? "Pack",
+                    carId: "*", gameName: "",
+                    contentVersion: errors > 0 ? 0 : full.Summary.ContentVersion,
+                    kind: "pack");
+                if (CommunityStatusLabel != null)
+                {
+                    string s = $"'{full.Summary.Name}': ";
+                    if (imported > 0) s += $"imported {imported}";
+                    if (skipped  > 0) s += (imported > 0 ? ", " : "") + $"{skipped} already in your library";
+                    if (errors   > 0) s += (imported + skipped > 0 ? ", " : "") + $"{errors} failed (check log)";
+                    if (imported == 0 && skipped == 0 && errors == 0)
+                        s += "no recognized entries";
+                    CommunityStatusLabel.Text = s + ".";
+                }
+                LibraryChanged?.Invoke();
+                return;
+            }
+
+            // Custom engines: body is a serialized CustomEngineDef.
+            // Import path mirrors the piggyback ImportCommunityCustomEngines
+            // pipeline that car-preset downloads use for referenced
+            // engines. The Settings.CustomEngines dedup is content-aware.
+            if (capturedKind == "engine")
+            {
+                CustomEngineDef def = null;
+                try { def = full.Body.ToObject<CustomEngineDef>(); }
+                catch (Exception ex)
+                {
+                    if (CommunityStatusLabel != null)
+                        CommunityStatusLabel.Text = "Body parse failed: " + ex.Message;
+                    return;
+                }
+                if (def == null || string.IsNullOrWhiteSpace(def.Name))
+                {
+                    if (CommunityStatusLabel != null)
+                        CommunityStatusLabel.Text = "Engine body was empty or invalid.";
+                    return;
+                }
+                // Dedup against the local engine library by server uuid.
+                if (_plugin.Settings?.CustomEngines != null)
+                {
+                    foreach (var local in _plugin.Settings.CustomEngines)
+                        if (local != null
+                            && (string.Equals(local.CommunitySourceId, full.Summary.Id, StringComparison.Ordinal)
+                                || string.Equals(local.Id, full.Summary.Id, StringComparison.Ordinal)))
+                        {
+                            if (CommunityStatusLabel != null)
+                                CommunityStatusLabel.Text = $"You already have this engine as '{local.Name}'.";
+                            return;
+                        }
+                }
+                _plugin.SaveImportedCommunityCustomEngine(def,
+                    communitySourceId: full.Summary.Id);
+                _plugin.RecordCommunityCustomEngineDownload(capturedId);
+                _plugin.RecordDownloadedCommunityPreset(
+                    full.Summary.Id, def.Name,
+                    carId: "*", gameName: "",
+                    contentVersion: full.Summary.ContentVersion, kind: "engine",
+                    allowInPacks: full.Summary.AllowInPacks);
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = $"Saved engine '{def.Name}' to your library.";
+                LibraryChanged?.Invoke();
                 return;
             }
 
@@ -2577,6 +3697,22 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (customs != null && customs.Count > 0)
                 _plugin.ImportCommunityCustomEngines(customs);
 
+            // Dedup against the user's local library for this car by
+            // server uuid -- re-download shouldn't pile up copies.
+            var existing = _plugin.GetCarPresets(_plugin.ActiveCarId);
+            if (existing != null)
+            {
+                foreach (var kv in existing)
+                    if (kv.Value?.Override != null
+                        && string.Equals(kv.Value.Override.CommunitySourceId, full.Summary.Id,
+                                         StringComparison.Ordinal))
+                    {
+                        if (CommunityStatusLabel != null)
+                            CommunityStatusLabel.Text = $"You already have this preset as '{kv.Key}'.";
+                        return;
+                    }
+            }
+
             // Save the preset under a community-distinct name. Append
             // " (community)" so the preset manager row makes the
             // source clear. If a same-named preset already exists for
@@ -2584,7 +3720,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             string baseName = full.Summary.Name + " (community)";
             string presetName = baseName;
             int n = 2;
-            var existing = _plugin.GetCarPresets(_plugin.ActiveCarId);
             while (existing != null && existing.ContainsKey(presetName))
             {
                 presetName = baseName + " " + n;
@@ -2592,7 +3727,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             _plugin.SaveImportedCommunityCarPreset(
                 _plugin.ActiveCarId, presetName, _plugin.ActiveGame, apply,
-                full.Summary.Author, full.Summary.Description);
+                full.Summary.Author, full.Summary.Description,
+                communitySourceId: full.Summary.Id);
             _plugin.RecordCommunityPresetDownload(capturedId);
             // Track the download so the next plugin-load update check
             // knows where to look. Re-records on every download (the
@@ -2601,7 +3737,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _plugin.RecordDownloadedCommunityPreset(
                 full.Summary.Id, presetName,
                 _plugin.ActiveCarId, _plugin.ActiveGame,
-                full.Summary.ContentVersion);
+                full.Summary.ContentVersion, kind: "car",
+                allowInPacks: full.Summary.AllowInPacks);
 
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text =

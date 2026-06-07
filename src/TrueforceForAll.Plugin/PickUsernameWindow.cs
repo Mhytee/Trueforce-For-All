@@ -107,12 +107,22 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(btnRow);
 
             // Debounce typing so we don't hammer the server on every
-            // keystroke. 300ms is the standard SaaS-app feel.
+            // keystroke. 300ms is the standard SaaS-app feel. Outer
+            // try/catch on the async-void tick keeps any uncaught
+            // exception (e.g., something CheckAndRender's internal
+            // try/catch doesn't cover) from crashing the dispatcher
+            // and leaving the UI stuck on "Checking...".
             _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
             _debounce.Tick += async (s, e) =>
             {
                 _debounce.Stop();
-                await CheckAndRender(input.Text, hint, saveBtn);
+                try { await CheckAndRender(input.Text, hint, saveBtn); }
+                catch (Exception ex)
+                {
+                    hint.Foreground = ErrFg;
+                    hint.Text = "Check failed: " + ex.Message;
+                    saveBtn.IsEnabled = false;
+                }
             };
             input.TextChanged += (s, e) =>
             {
@@ -156,10 +166,19 @@ namespace TrueforceForAll.Plugin
                 saveBtn.IsEnabled = false;
             };
 
-            // Kick off the first check so the seeded value shows feedback.
+            // Kick off the first check so the seeded value shows
+            // feedback. Outer try/catch matches the Tick handler so a
+            // network glitch on the seeded value can't crash the
+            // dispatcher.
             Dispatcher.BeginInvoke(new Action(async () =>
             {
-                await CheckAndRender(input.Text, hint, saveBtn);
+                try { await CheckAndRender(input.Text, hint, saveBtn); }
+                catch (Exception ex)
+                {
+                    hint.Foreground = ErrFg;
+                    hint.Text = "Check failed: " + ex.Message;
+                    saveBtn.IsEnabled = false;
+                }
             }), DispatcherPriority.Background);
         }
 
@@ -232,6 +251,69 @@ namespace TrueforceForAll.Plugin
             if (clean.Length < 3) clean = "";
             if (clean.Length > 32) clean = clean.Substring(0, 32);
             return clean;
+        }
+
+        /// <summary>Pre-modal gate for share flows. When the user is
+        /// signed in but has no SharingAuthor yet, prompts the picker
+        /// before letting the share dialog open, so the upload doesn't
+        /// later surface a raw "set a username first" backend error.
+        /// Returns false only when the user cancels the picker; the
+        /// caller should abort with a friendly status in that case.
+        /// Not-signed-in returns true so the share dialog can run its
+        /// own inline sign-in (which already calls EnsureUsernameAsync
+        /// on success).</summary>
+        public static async Task<bool> EnsureUsernameBeforeShareAsync(
+            TrueforcePlugin plugin, Window owner)
+        {
+            if (plugin?.Settings == null) return false;
+            if (!plugin.AuthIsSignedIn) return true;
+            if (!string.IsNullOrWhiteSpace(plugin.Settings.SharingAuthor)) return true;
+            // Owner-null guard: if the calling control unloaded during
+            // the await chain (or the caller never had a window), an
+            // un-owned picker would float free without modal focus.
+            // Bail and let the caller surface a friendly message
+            // rather than orphan a dialog.
+            if (owner == null) return false;
+            try { await EnsureUsernameAsync(plugin, owner); }
+            catch { return false; }
+            return !string.IsNullOrWhiteSpace(plugin.Settings.SharingAuthor);
+        }
+
+        /// <summary>Shared post-sign-in flow: sync SharingAuthor from
+        /// profile.username, or open this picker when the server has
+        /// no username yet. Used by both the Settings panel's sign-in
+        /// row and inline sign-ins from share/upload modals so they
+        /// can't bypass it -- without this, a freshly-signed-up user's
+        /// first upload errors out as "set a username first" from the
+        /// server.</summary>
+        public static async Task EnsureUsernameAsync(TrueforcePlugin plugin, Window owner)
+        {
+            if (plugin?.Settings == null || !plugin.AuthIsSignedIn) return;
+            bool signedIn = false; string username = null;
+            try { (signedIn, _, username) = await plugin.AuthGetMyProfileAsync(); }
+            catch { /* fall through to prompt */ }
+            if (!signedIn) return;
+            if (!string.IsNullOrWhiteSpace(username))
+            {
+                plugin.Settings.SharingAuthor = username;
+                try { plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                return;
+            }
+
+            // No username yet - seed the picker with the email prefix.
+            string emailLocal = plugin.AuthSignedInEmail ?? "";
+            int atIdx = emailLocal.IndexOf('@');
+            string seed = atIdx > 0 ? emailLocal.Substring(0, atIdx) : emailLocal;
+
+            var picker = new PickUsernameWindow(plugin, seed) { Owner = owner };
+            bool? ok = picker.ShowDialog();
+            if (ok == true && !string.IsNullOrEmpty(picker.ChosenUsername))
+            {
+                plugin.Settings.SharingAuthor = picker.ChosenUsername;
+                try { plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+            }
         }
     }
 }
