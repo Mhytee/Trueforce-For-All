@@ -146,7 +146,21 @@ values
   ('Restrained', 'RaceCraft42', 'Light forces; chassis does the talking.',
    'AssettoCorsa', 'prvvy_mustang_2024_tuned',
    '{"override":{}}',
-   '{}', 2, 0, 0.12, 8, 'mock-seed', 'mock-seed-ip', false, '0.1.24', 1);
+   '{}', 2, 0, 0.12, 8, 'mock-seed', 'mock-seed-ip', false, '0.1.24', 1),
+
+  -- AssettoCorsa / gravygarage_street_e36_touring -- viral + popular + average
+  ('Touring Sweet Spot', 'NightShift', 'Balanced setup tuned for the E36 touring chassis. Smooth road feel, detailed engine pulse, abs click on the threshold.',
+   'AssettoCorsa', 'gravygarage_street_e36_touring',
+   '{"override":{"EnginePulse":{"Enabled":true,"Gain":0.076,"Freq":80.0},"RoadBumps":{"Enabled":true,"Gain":0.55,"Freq":62.0},"AbsClick":{"Enabled":true,"Gain":0.48}}}',
+   '{engine,roadbumps,abs}', 264, 9, 0.92, 1340, 'mock-seed', 'mock-seed-ip', true, '0.1.24', 1),
+  ('Aggressive Street', 'DriftKing', 'Punchier engine pulse + stronger gear shift for street-style aggression.',
+   'AssettoCorsa', 'gravygarage_street_e36_touring',
+   '{"override":{"EnginePulse":{"Enabled":true,"Gain":0.088},"GearShift":{"Enabled":true,"Gain":0.72},"TractionLoss":{"Enabled":true,"Gain":0.6}}}',
+   '{engine,gearshift,tractionloss}', 78, 5, 0.80, 312, 'mock-seed', 'mock-seed-ip', true, '0.1.24', 1),
+  ('Calibrated Daily', 'GearGremlin', 'Moderate forces suitable for daily driving. Easy on the wrists over long sessions.',
+   'AssettoCorsa', 'gravygarage_street_e36_touring',
+   '{"override":{"EnginePulse":{"Enabled":true,"Gain":0.07}}}',
+   '{engine}', 24, 3, 0.62, 84, 'mock-seed', 'mock-seed-ip', false, '0.1.24', 1);
 
 -- ===========================================================
 -- GAME PRESETS (10 total)
