@@ -2397,8 +2397,130 @@ namespace TrueforceForAll.Plugin
                     _lastResolvedCarKey      = capturedKey;
                     _cachedTopForActiveCar   = rows ?? new List<PresetSummary>();
                     RenderCarCommunityChip(_cachedTopForActiveCar.Count);
+                    // Re-render the car preset picker so the new top-
+                    // community section becomes visible (the synchronous
+                    // pass that ran before the fetch couldn't include
+                    // them).
+                    RefreshCarPresetPicker();
                 }));
             });
+        }
+
+        // Picker click on a "── Top community presets ──" row routes here.
+        // Mirrors PresetManagerControl.CommunityPreview_Click + the car-
+        // preset download branch: fetch the body, open PresetPreviewWindow
+        // (the safe-default UX the owner picked), if the user confirms,
+        // run CommunitySectionPickerWindow so they choose which sections
+        // to import, then save under "<name> (community)" with the
+        // community source id stamped so the permission gate + update
+        // tracker recognise it. Silent on any failure beyond a status-
+        // label hint; this is a discovery surface, not a workflow that
+        // should pop up errors mid-drive.
+        private async System.Threading.Tasks.Task OpenCommunityPreviewFromPickerAsync(string communityId)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(communityId)) return;
+            PresetSummary summary = null;
+            if (_cachedTopForActiveCar != null)
+            {
+                foreach (var s in _cachedTopForActiveCar)
+                    if (s != null && string.Equals(s.Id, communityId, StringComparison.Ordinal))
+                    { summary = s; break; }
+            }
+            if (summary == null) return;
+
+            PresetFull full = null;
+            try
+            {
+                full = await System.Threading.Tasks.Task.Run(
+                    () => _plugin.FetchCommunityPresetBody(communityId));
+            }
+            catch { return; }
+            if (full?.Body == null || full.Summary == null) return;
+
+            var owner = Window.GetWindow(this);
+            var win = new PresetPreviewWindow(full.Summary, full.Body)
+            {
+                Owner = owner,
+            };
+            bool? ok = win.ShowDialog();
+            if (ok != true || !win.DownloadRequested) return;
+
+            // Parse the override + bundled custom engines off the body the
+            // same way PresetManagerControl's download path does.
+            CarOverride ovr = null;
+            List<CustomEngineDef> customs = null;
+            try
+            {
+                var ovrToken = full.Body["override"];
+                if (ovrToken != null)
+                    ovr = ovrToken.ToObject<CarOverride>();
+                var ceToken = full.Body["custom_engines"];
+                if (ceToken is Newtonsoft.Json.Linq.JArray ja)
+                    customs = ja.ToObject<List<CustomEngineDef>>();
+            }
+            catch { return; }
+            if (ovr == null) return;
+
+            var picker = new CommunitySectionPickerWindow(
+                full.Summary.Name, full.Summary.Author, ovr)
+            {
+                Owner = owner,
+            };
+            if (picker.ShowDialog() != true) return;
+            var chosen = picker.ChosenSections;
+
+            var apply = new CarOverride();
+            if (chosen.Contains("engine"))       apply.EnginePulse  = ovr.EnginePulse;
+            if (chosen.Contains("revlimiter"))   apply.RevLimiter   = ovr.RevLimiter;
+            if (chosen.Contains("roadbumps"))    apply.RoadBumps    = ovr.RoadBumps;
+            if (chosen.Contains("tractionloss")) apply.TractionLoss = ovr.TractionLoss;
+            if (chosen.Contains("gearshift"))    apply.GearShift    = ovr.GearShift;
+            if (chosen.Contains("abs"))          apply.AbsClick     = ovr.AbsClick;
+            if (chosen.Contains("pitlimiter"))   apply.PitLimiter   = ovr.PitLimiter;
+            if (chosen.Contains("drs"))          apply.Drs          = ovr.Drs;
+            if (chosen.Contains("collision"))    apply.Collision    = ovr.Collision;
+            if (chosen.Contains("audio"))        apply.AudioCapture = ovr.AudioCapture;
+            if (chosen.Contains("airborne"))     apply.Airborne     = ovr.Airborne;
+
+            if (customs != null && customs.Count > 0)
+                _plugin.ImportCommunityCustomEngines(customs);
+
+            string activeCarId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(activeCarId)) return;
+            var existing = _plugin.GetCarPresets(activeCarId);
+            if (existing != null)
+            {
+                foreach (var kv in existing)
+                    if (kv.Value?.Override != null
+                        && string.Equals(kv.Value.Override.CommunitySourceId, full.Summary.Id,
+                                         StringComparison.Ordinal))
+                        return;
+            }
+
+            string baseName = full.Summary.Name + " (community)";
+            string presetName = baseName;
+            int n = 2;
+            while (existing != null && existing.ContainsKey(presetName))
+            {
+                presetName = baseName + " " + n;
+                n++;
+            }
+            _plugin.SaveImportedCommunityCarPreset(
+                activeCarId, presetName, _plugin.ActiveGame ?? "", apply,
+                full.Summary.Author, full.Summary.Description,
+                communitySourceId: full.Summary.Id);
+            _plugin.RecordCommunityPresetDownload(full.Summary.Id);
+            _plugin.RecordDownloadedCommunityPreset(
+                full.Summary.Id, presetName,
+                activeCarId, _plugin.ActiveGame ?? "",
+                full.Summary.ContentVersion, kind: "car",
+                allowInPacks: full.Summary.AllowInPacks);
+
+            // Refresh the picker so the freshly-imported preset appears
+            // under "── This car ──" and the user can flip the combo to
+            // it. We intentionally do NOT auto-bind, so the user keeps
+            // explicit control over which preset becomes the car's default.
+            RefreshCarPresetPicker();
         }
 
         private void RenderCarCommunityChip(int count)
@@ -2551,6 +2673,10 @@ namespace TrueforceForAll.Plugin
             public string CarId;    // the car a car-preset belongs to
             public string Name;
             public bool   ClearCar; // true = the "None" row: clear this car's selection
+            // When non-empty, the row is a community top-pick suggestion;
+            // clicking opens PresetPreviewWindow (download confirms inside
+            // the modal) rather than persisting a binding directly.
+            public string CommunityId;
         }
 
         // Rebuild the GAME-preset picker in the header: just the game-library
@@ -2685,6 +2811,7 @@ namespace TrueforceForAll.Plugin
                     toSelect = noneRow;
 
                     HeaderCarPresetCombo.Items.Add(MakeSectionHeader($"── This car: {carId} ──"));
+                    int localCount = 0;
                     foreach (var entry in Ordered(_plugin.GetCarPresets(carId)))
                     {
                         var ci = new System.Windows.Controls.ComboBoxItem
@@ -2694,6 +2821,37 @@ namespace TrueforceForAll.Plugin
                         };
                         HeaderCarPresetCombo.Items.Add(ci);
                         if (string.Equals(entry.PresetName, activeCar, StringComparison.Ordinal)) toSelect = ci;
+                        localCount++;
+                    }
+
+                    // Top community presets for this (game, carId), sourced from
+                    // the same cache that fills the community-count header chip
+                    // (MaybeRefreshCarCommunityCountAsync, populated on car change).
+                    // Selecting a community row opens PresetPreviewWindow so the
+                    // user can read the description / sections / author before
+                    // committing to a download (consistent with the Community
+                    // panel's Preview action). If the local section is empty we
+                    // already added the "── This car ──" header above it; the
+                    // community section gets its own header underneath either
+                    // way so the source of each suggestion is obvious.
+                    string activeKey = (_plugin.ActiveGame ?? "") + "/" + carId;
+                    if (string.Equals(activeKey, _lastResolvedCarKey, StringComparison.Ordinal)
+                        && _cachedTopForActiveCar != null
+                        && _cachedTopForActiveCar.Count > 0)
+                    {
+                        HeaderCarPresetCombo.Items.Add(MakeSectionHeader(localCount > 0
+                            ? "── Top community presets ──"
+                            : "── Top community presets (no local presets yet) ──"));
+                        foreach (var s in _cachedTopForActiveCar)
+                        {
+                            if (s == null || string.IsNullOrEmpty(s.Id)) continue;
+                            string author = string.IsNullOrEmpty(s.Author) ? "anonymous" : s.Author;
+                            HeaderCarPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem
+                            {
+                                Content = $"{s.Name} - by {author}",
+                                Tag     = new PresetPick { IsCar = true, CarId = carId, Name = s.Name, CommunityId = s.Id },
+                            });
+                        }
                     }
                 }
 
@@ -2835,6 +2993,19 @@ namespace TrueforceForAll.Plugin
             if (!(HeaderCarPresetCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item)) return;
             // Ignore the display-only rows (e.g. "Select a car..." prompt, Tag=null).
             if (!(item.Tag is PresetPick pick)) return;
+
+            // Community-row click: hand off to PresetPreviewWindow. The
+            // preview modal owns the download decision so the user reads
+            // the description / sections / author before anything binds.
+            // Reverts the combo selection to its prior state so the picker
+            // doesn't look like the community row "stuck" when in fact
+            // nothing was applied yet.
+            if (!string.IsNullOrEmpty(pick.CommunityId))
+            {
+                _ = OpenCommunityPreviewFromPickerAsync(pick.CommunityId);
+                RefreshCarPresetPicker();
+                return;
+            }
 
             // "None" row: clear this car's preset back to the game preset.
             // Under the per-user defaults model, ClearActiveCarPreset
