@@ -7146,6 +7146,43 @@ namespace TrueforceForAll.Plugin
                         return pool[i];
             }
 
+            // Signature match: when telemetry has reported a cylinder
+            // count, prefer the variant whose (Cylinders, RedlineRpm)
+            // matches it before falling through to raw priority. This
+            // is what lets a Forza in-game swap automatically apply the
+            // V12 variant when the user is actually driving the V12, vs
+            // always picking the highest-priority entry. A variant with
+            // no RedlineRpm matches any telemetry redline (community
+            // entries often don't carry redline, and we don't want them
+            // disqualified by that). Priority + Confirmations rank
+            // within the matching subset.
+            int? telCyl = EnginePulse?.ObservedCyl;
+            if (telCyl.HasValue && telCyl.Value >= 1 && telCyl.Value <= 16)
+            {
+                int telRedBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
+                EngineVariant sigMatch = null;
+                int sigPriority = int.MinValue;
+                int sigConf = int.MinValue;
+                for (int i = 0; i < pool.Count; i++)
+                {
+                    var cand = pool[i];
+                    if (cand.Cylinders != telCyl.Value) continue;
+                    if (cand.RedlineRpm.HasValue
+                        && telRedBand > 0
+                        && BandRpm(cand.RedlineRpm.Value) != telRedBand)
+                        continue;
+                    int prio = SourcePriority(cand.Source);
+                    if (prio > sigPriority
+                        || (prio == sigPriority && cand.Confirmations > sigConf))
+                    {
+                        sigMatch = cand;
+                        sigPriority = prio;
+                        sigConf = cand.Confirmations;
+                    }
+                }
+                if (sigMatch != null) return sigMatch;
+            }
+
             EngineVariant best = null;
             int bestPriority = int.MinValue;
             int bestConf = int.MinValue;
@@ -7638,6 +7675,26 @@ namespace TrueforceForAll.Plugin
             });
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
+
+            // Fire-and-forget community submission so other drivers
+            // who hit the same Forza swap signature pick up the engine
+            // layout (and redline) without having to re-discover it
+            // themselves. Gated by CommunityEnabled inside the
+            // SubmitX wrappers; no sign-in required (submit_car_fact
+            // is IP-pseudonymous, not bearer-authenticated). Submitting
+            // both cyl-derived layout AND redline mirrors what the
+            // legacy save-prompt path does for User-source corrections.
+            try
+            {
+                var layout = Effects.FiringPatternDb.LayoutFromLegacy(cylinders, config, false);
+                SubmitEngineLayoutToCommunity(_activeGame, _activeCarId, layout);
+                if (redlineRpm.HasValue && redlineRpm.Value >= 500)
+                    SubmitRedlineToCommunity(_activeGame, _activeCarId, redlineRpm.Value);
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Submit new variant to community failed: " + ex.Message);
+            }
             return true;
         }
 
