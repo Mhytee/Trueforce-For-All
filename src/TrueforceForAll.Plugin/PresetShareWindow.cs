@@ -160,7 +160,13 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(MakeFactLine(isEngine ? "Engine" : "Preset", _presetName));
             if (!isEngine)
             {
-                root.Children.Add(MakeFactLine("Game", _game));
+                // Game presets aren't game-specific (per the data model -
+                // target_games is a per-share assertion the user makes in
+                // the picker below); the active-game readout was
+                // misleading. Skip the Game line for game presets and let
+                // the picker carry that decision.
+                if (!isGame)
+                    root.Children.Add(MakeFactLine("Game", _game));
                 if (!isGame)
                     root.Children.Add(MakeFactLine("Car", _carDisplay));
                 root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0
@@ -227,12 +233,30 @@ namespace TrueforceForAll.Plugin
                     Foreground = MutedFg, FontSize = 11,
                     Margin = new Thickness(0, 0, 0, 4),
                 });
+                // Default the picker from the user's own GameDefaults: any
+                // game keyed to this preset name reflects intent ("I use this
+                // preset for X"). Active game is just whatever's running; not
+                // a reliable signal of what the preset is tuned for. Universal
+                // is the right default only when the user hasn't bound this
+                // preset to any game.
+                var defaultGames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var gameDefaultsMap = _plugin?.Settings?.GameDefaults;
+                if (gameDefaultsMap != null)
+                {
+                    foreach (var kv in gameDefaultsMap)
+                    {
+                        if (string.IsNullOrEmpty(kv.Key)) continue;
+                        if (string.Equals(kv.Value, _presetName, StringComparison.Ordinal))
+                            defaultGames.Add(kv.Key.Trim());
+                    }
+                }
+                bool startUniversal = defaultGames.Count == 0;
                 universalCheck = new CheckBox
                 {
                     Content = "Universal (any game)",
                     Foreground = TextFg, FontSize = 11,
                     Margin = new Thickness(0, 0, 0, 6),
-                    IsChecked = true,
+                    IsChecked = startUniversal,
                     IsEnabled = signedIn,
                 };
                 root.Children.Add(universalCheck);
@@ -240,7 +264,7 @@ namespace TrueforceForAll.Plugin
                 var pickerStack = new StackPanel
                 {
                     Margin = new Thickness(0, 0, 0, 12),
-                    Visibility = Visibility.Collapsed,
+                    Visibility = startUniversal ? Visibility.Collapsed : Visibility.Visible,
                 };
                 gamesPanel = pickerStack;
                 gamesList = new ListBox
@@ -251,16 +275,20 @@ namespace TrueforceForAll.Plugin
                     Margin = new Thickness(0, 0, 0, 6),
                     SelectionMode = SelectionMode.Multiple,
                 };
-                // Seed: active game (pre-checked) + well-known list (deduped, case-insensitive).
+                // Seed order: pre-checked default-bound games first (the
+                // user's existing intent), then active game (unchecked - a
+                // hint they can add it if they want), then well-known list.
+                // All deduped case-insensitively against each other.
                 var seedSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                string activeGame = _plugin?.ActiveGame;
-                bool hasActive = !string.IsNullOrWhiteSpace(activeGame);
-                if (hasActive)
+                foreach (var g in defaultGames)
                 {
-                    seedSeen.Add(activeGame.Trim());
-                    var item = MakeGameItem(activeGame.Trim(), true);
-                    gamesList.Items.Add(item);
+                    if (string.IsNullOrWhiteSpace(g)) continue;
+                    if (!seedSeen.Add(g)) continue;
+                    gamesList.Items.Add(MakeGameItem(g, true));
                 }
+                string activeGame = _plugin?.ActiveGame;
+                if (!string.IsNullOrWhiteSpace(activeGame) && seedSeen.Add(activeGame.Trim()))
+                    gamesList.Items.Add(MakeGameItem(activeGame.Trim(), false));
                 foreach (var g in WellKnownGames)
                 {
                     if (string.IsNullOrWhiteSpace(g)) continue;
