@@ -2067,15 +2067,18 @@ namespace TrueforceForAll.Plugin
                     && !pick.ClearCar
                     && !string.IsNullOrEmpty(pick.Name)
                     && !string.IsNullOrEmpty(pick.CarId);
+                bool isBuiltin   = present && IsCarPresetBuiltin(pick.CarId, pick.Name);
                 bool isCommunity = present && IsCarPresetCommunitySourced(pick.CarId, pick.Name);
-                bool shareable   = community && present && !isCommunity;
+                bool shareable   = community && present && !isBuiltin && !isCommunity;
                 if (community && present)
                 {
                     HeaderCarShareBtn.Visibility = Visibility.Visible;
                     HeaderCarShareBtn.IsEnabled  = shareable;
                     HeaderCarShareBtn.ToolTip = shareable
                         ? "Share this car preset with the community. Requires sign-in."
-                        : "Shared by another driver. Duplicate to make your own version and share that.";
+                        : isBuiltin
+                            ? "This is a built-in car preset and ships with the plugin. Duplicate it to make your own version, then share that."
+                            : "Shared by another driver. Duplicate to make your own version and share that.";
                 }
                 else
                 {
@@ -2109,6 +2112,20 @@ namespace TrueforceForAll.Plugin
             return perCar.TryGetValue(presetName, out var entry)
                 && entry?.Override != null
                 && !string.IsNullOrEmpty(entry.Override.CommunitySourceId);
+        }
+
+        // True when the (carId, presetName) car preset is a built-in
+        // (ships with the plugin). Built-ins are never shareable because
+        // everyone already has them. Parallels IsBuiltinPreset for game
+        // presets; the per-car CarPresetEntry carries the IsBuiltin flag.
+        private bool IsCarPresetBuiltin(string carId, string presetName)
+        {
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
+            var perCar = _plugin?.GetCarPresets(carId);
+            if (perCar == null) return false;
+            return perCar.TryGetValue(presetName, out var entry)
+                && entry != null
+                && entry.IsBuiltin;
         }
 
         // Share the currently-active GAME preset (the whole-game
