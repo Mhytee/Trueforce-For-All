@@ -1,0 +1,17 @@
+<!-- Trueforce For All - email OTP template.
+     The plugin has no web app, so the magic-link URL would 404 to
+     localhost. Show only the 6-digit code; users paste it into the
+     plugin's sign-in window. Variables documented at
+     https://supabase.com/docs/guides/auth/auth-email-templates -->
+<div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; color: #222;">
+  <h2 style="margin: 0 0 16px 0; font-size: 20px;">Your Trueforce For All sign-in code</h2>
+  <p style="margin: 0 0 14px 0; font-size: 15px;">
+    Enter this 6-digit code in the plugin to finish signing in:
+  </p>
+  <p style="font-family: Consolas, 'Courier New', monospace; font-size: 32px; letter-spacing: 6px; font-weight: bold; padding: 14px 20px; background: #f3f3f3; border-radius: 6px; display: inline-block; margin: 8px 0 18px 0; color: #111;">
+    {{ .Token }}
+  </p>
+  <p style="margin: 0; color: #666; font-size: 13px;">
+    This code expires in 1 hour. If you didn't request it, you can ignore this email.
+  </p>
+</div>
