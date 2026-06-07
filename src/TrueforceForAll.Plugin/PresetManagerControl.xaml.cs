@@ -1860,7 +1860,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         private async void GameShare_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedGame;
-            if (sel == null || _plugin == null) return;
+            if (sel == null) return;
+            await ShareGamePresetByNameAsync(sel.Name);
+        }
+
+        // Shared by GameShare_Click and the empty-state CTA in the
+        // community panel. Sharing by name lets both the row-driven
+        // path (selected row in the Game preset list) and the CTA
+        // path (the user's currently-active game preset, surfaced
+        // when the community list is empty) hit the same flow.
+        private async System.Threading.Tasks.Task ShareGamePresetByNameAsync(string presetName)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(presetName)) return;
             if (_shareInProgress) return;
             if (_plugin.Settings?.CommunityEnabled != true)
             {
@@ -1873,11 +1884,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             try
             {
                 if (_plugin.Settings?.Presets == null
-                    || !_plugin.Settings.Presets.TryGetValue(sel.Name, out var snap)
+                    || !_plugin.Settings.Presets.TryGetValue(presetName, out var snap)
                     || snap == null)
                 {
                     MessageBox.Show(Window.GetWindow(this),
-                        $"Could not load game preset '{sel.Name}'.",
+                        $"Could not load game preset '{presetName}'.",
                         "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
@@ -1912,7 +1923,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (snap.Airborne     != null) tags.Add("airborne");
 
                 string game = _plugin.ActiveGame ?? "";
-                var dialog = PresetShareWindow.ForGame(_plugin, sel.Name, game, body, tags);
+                var dialog = PresetShareWindow.ForGame(_plugin, presetName, game, body, tags);
                 dialog.Owner = owner;
                 dialog.ShowDialog();
             }
@@ -2086,7 +2097,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         private async void CarShare_Click(object sender, RoutedEventArgs e)
         {
             var sel = SelectedCar;
-            if (sel == null || _plugin == null) return;
+            if (sel == null) return;
+            await ShareCarPresetByNameAsync(sel.CarId, sel.PresetName, sel.GameName);
+        }
+
+        // Shared by CarShare_Click and the empty-state CTA. The CTA
+        // passes the currently-active car's binding (carId from
+        // ActiveCarId, presetName from CarDefaults, game from
+        // ActiveGame) so a user looking at an empty community list
+        // can publish their own tune in one click.
+        private async System.Threading.Tasks.Task ShareCarPresetByNameAsync(string carId, string presetName, string gameName)
+        {
+            if (_plugin == null || string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
             if (_shareInProgress) return;
             if (_plugin.Settings?.CommunityEnabled != true)
             {
@@ -2095,21 +2117,17 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-
             _shareInProgress = true;
             try
             {
-                // Resolve + serialize INSIDE the try block so a
-                // JsonSerializationException on JToken.FromObject can't
-                // leak past the catch and crash the dispatcher.
-                var perCar = _plugin.GetCarPresets(sel.CarId);
+                var perCar = _plugin.GetCarPresets(carId);
                 if (perCar == null
-                    || !perCar.TryGetValue(sel.PresetName, out var entry)
+                    || !perCar.TryGetValue(presetName, out var entry)
                     || entry == null
                     || entry.Override == null)
                 {
                     MessageBox.Show(Window.GetWindow(this),
-                        $"Could not load preset '{sel.PresetName}' for car '{sel.CarId}'.",
+                        $"Could not load preset '{presetName}' for car '{carId}'.",
                         "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
@@ -2117,9 +2135,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var customs = _plugin.CollectReferencedCustomEngines(
                     null, new[] { entry.Override });
 
-                // Serialize as JObject so the upload RPC sees pure JSON. The
-                // server doesn't crack the body; receivers parse it back into
-                // CarOverride + List<CustomEngineDef> on download.
                 var body = new Newtonsoft.Json.Linq.JObject
                 {
                     ["override"] = Newtonsoft.Json.Linq.JToken.FromObject(entry.Override),
@@ -2127,7 +2142,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (customs != null && customs.Count > 0)
                     body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
 
-                // Effect tags from non-null sections on the override.
                 var tags = new List<string>(8);
                 if (entry.Override.EnginePulse  != null) tags.Add("engine");
                 if (entry.Override.RevLimiter   != null) tags.Add("revlimiter");
@@ -2141,8 +2155,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (entry.Override.AudioCapture != null) tags.Add("audio");
                 if (entry.Override.Airborne     != null) tags.Add("airborne");
 
-                string carDisplay = ResolveCarNameForRow(sel.GameName, sel.CarId);
-                if (string.IsNullOrEmpty(carDisplay)) carDisplay = sel.CarId;
+                string resolvedGame = string.IsNullOrEmpty(gameName)
+                    ? entry.GameName ?? _plugin.ActiveGame ?? ""
+                    : gameName;
+                string carDisplay = ResolveCarNameForRow(resolvedGame, carId);
+                if (string.IsNullOrEmpty(carDisplay)) carDisplay = carId;
 
                 var owner = Window.GetWindow(this);
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
@@ -2153,13 +2170,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     return;
                 }
                 var dialog = new PresetShareWindow(
-                    _plugin, sel.PresetName, sel.GameName ?? "",
-                    sel.CarId, carDisplay, body, tags)
+                    _plugin, presetName, resolvedGame,
+                    carId, carDisplay, body, tags)
                 {
                     Owner = owner,
                 };
                 dialog.ShowDialog();
-                // The modal handles its own success/failure messaging.
             }
             catch (Exception ex)
             {
@@ -2169,6 +2185,85 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             finally { _shareInProgress = false; }
+        }
+
+        // CTA click handler. EmptyShareCtaBtn.Tag carries an
+        // EmptyShareCtaPayload set by UpdateEmptyShareCta describing
+        // what to share for the current empty-state scope.
+        private async void EmptyShareCta_Click(object sender, RoutedEventArgs e)
+        {
+            var payload = EmptyShareCtaBtn?.Tag as EmptyShareCtaPayload;
+            if (payload == null) return;
+            if (payload.Kind == "game")
+                await ShareGamePresetByNameAsync(payload.PresetName);
+            else if (payload.Kind == "car")
+                await ShareCarPresetByNameAsync(payload.CarId, payload.PresetName, payload.GameName);
+        }
+
+        private sealed class EmptyShareCtaPayload
+        {
+            public string Kind;        // "game" or "car"
+            public string PresetName;
+            public string CarId;       // car only
+            public string GameName;    // car only
+        }
+
+        // Compute + apply visibility for the empty-state share CTA.
+        // Shown when the community list is empty for a scope where
+        // the user already has a local non-builtin preset they could
+        // share - i.e. they likely have tuning others would benefit
+        // from. Quietly hidden otherwise.
+        private void UpdateEmptyShareCta(string kind, string mode, bool trending,
+                                         string scopeGame, string scopeCar)
+        {
+            if (EmptyShareCtaBtn == null) return;
+            EmptyShareCtaBtn.Visibility = System.Windows.Visibility.Collapsed;
+            EmptyShareCtaBtn.Tag = null;
+            if (_communityRows.Count > 0) return;
+            if (mode == "mine") return;
+            if (trending) return;
+            if (_plugin == null) return;
+            if (_plugin.Settings?.CommunityEnabled != true) return;
+            if (_plugin.AuthIsSignedIn != true) return;
+
+            EmptyShareCtaPayload payload = null;
+            string label = null;
+            if (kind == "game")
+            {
+                if (string.IsNullOrEmpty(_plugin.ActiveGame)) return;
+                string activeName = _plugin.ActivePresetName;
+                if (string.IsNullOrEmpty(activeName)) return;
+                if (_plugin.IsBuiltinPreset(activeName)) return;
+                payload = new EmptyShareCtaPayload { Kind = "game", PresetName = activeName };
+                label = "★ Share your '" + activeName + "' tune";
+            }
+            else if (kind == "car")
+            {
+                string activeCar = _plugin.ActiveCarId;
+                string activeGame = _plugin.ActiveGame;
+                if (string.IsNullOrEmpty(activeCar) || string.IsNullOrEmpty(activeGame)) return;
+                if (!string.Equals(activeGame, scopeGame, StringComparison.Ordinal)) return;
+                if (!string.Equals(activeCar,  scopeCar,  StringComparison.Ordinal)) return;
+                string activeName = _plugin.GetActiveCarPresetName(activeCar);
+                if (string.IsNullOrEmpty(activeName)) return;
+                var perCar = _plugin.GetCarPresets(activeCar);
+                if (perCar == null
+                    || !perCar.TryGetValue(activeName, out var entry)
+                    || entry == null
+                    || entry.IsBuiltin)
+                    return;
+                payload = new EmptyShareCtaPayload
+                {
+                    Kind = "car", PresetName = activeName,
+                    CarId = activeCar, GameName = activeGame,
+                };
+                label = "★ Share your '" + activeName + "' tune";
+            }
+            else return;
+
+            EmptyShareCtaBtn.Tag = payload;
+            EmptyShareCtaBtn.Content = label;
+            EmptyShareCtaBtn.Visibility = System.Windows.Visibility.Visible;
         }
 
         // Per-car (not per-preset) rename: opens the styled
@@ -3128,6 +3223,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     : $"{_communityRows.Count} preset(s) found.";
                 CommunityStatusLabel.Text = _communityRows.Count == 0 ? emptyMsg : foundMsg;
             }
+            UpdateEmptyShareCta(capturedKind, capturedMode, capturedTrending, capturedGame, capturedCar);
             UpdateCreatePackFromUploadsBannerVisibility();
             // Repaint the scope radio + help text since the trending
             // flag may have just changed.

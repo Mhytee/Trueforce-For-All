@@ -248,6 +248,48 @@
              the game / car preset pickers. Shown only when that target has
              unsaved tuning; each saves every changed section at once to its
              own target (game default vs this car). -->
+        <!-- Share is a CTA. Brighter brand-gold pill so users notice
+             the share affordance next to the picker; sister to
+             HeaderSaveAllButton's deeper amber so "outbound" (share to
+             community) is visually distinct from "inbound" (save your
+             work). -->
+        <Style x:Key="HeaderShareButton" TargetType="Button">
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="14,2"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#1A1A1A"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="#E5C04A" BorderBrush="#E5C04A" BorderThickness="1" CornerRadius="8" SnapsToDevicePixels="True"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F2D165"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#F2D165"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#C9A53A"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#C9A53A"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#3F3727"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3F3727"/>
+                                <Setter Property="Foreground" Value="#7A6D4D"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="HeaderSaveAllButton" TargetType="Button">
             <Setter Property="Height" Value="26"/>
             <Setter Property="Margin" Value="8,0,0,0"/>
@@ -607,8 +649,8 @@
                             <!-- Conditional: visible when community is on AND the
                                  active preset is user-owned (not a built-in).
                                  Hidden in UpdateHeaderShareButtons. -->
-                            <Button x:Name="HeaderGameShareBtn" Content="Share…" Visibility="Collapsed"
-                                    Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
+                            <Button x:Name="HeaderGameShareBtn" Content="★ Share" Visibility="Collapsed"
+                                    Style="{StaticResource HeaderShareButton}"
                                     Click="HeaderGameShare_Click"
                                     ToolTip="Share this game preset with the community. Requires sign-in."/>
                         </StackPanel>
@@ -633,8 +675,8 @@
                                  real car preset is selected (not "(none)" /
                                  not a built-in). Hidden in
                                  UpdateHeaderShareButtons. -->
-                            <Button x:Name="HeaderCarShareBtn" Content="Share…" Visibility="Collapsed"
-                                    Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
+                            <Button x:Name="HeaderCarShareBtn" Content="★ Share" Visibility="Collapsed"
+                                    Style="{StaticResource HeaderShareButton}"
                                     Click="HeaderCarShare_Click"
                                     ToolTip="Share this car preset with the community. Requires sign-in."/>
                         </StackPanel>
