@@ -678,7 +678,20 @@ namespace TrueforceForAll.Plugin
                     req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                     using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
                     {
-                        if (resp.IsSuccessStatusCode) return AuthCallResult.Ok;
+                        if (resp.IsSuccessStatusCode)
+                        {
+                            // F25: a change-email request often signals "I
+                            // suspect this account is compromised" - so
+                            // invalidate every OTHER active session for the
+                            // user. Supabase's GoTrue logout endpoint
+                            // supports scope=others which leaves the current
+                            // session alone while revoking everyone else's
+                            // refresh tokens. Fire-and-forget; the email
+                            // change itself already succeeded and we don't
+                            // want a logout RPC blip to mask that.
+                            _ = InvalidateOtherSessionsAsync(url, anonKey, bearer);
+                            return AuthCallResult.Ok;
+                        }
                         string detail = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                             : "";
@@ -691,6 +704,31 @@ namespace TrueforceForAll.Plugin
             {
                 _log?.Invoke($"[Trueforce] Auth update-email exception: {ex.Message}");
                 return AuthCallResult.NetworkFailure;
+            }
+        }
+
+        // Best-effort POST /auth/v1/logout?scope=others. Revokes every
+        // refresh token for the user EXCEPT the one tied to this bearer
+        // (our current session stays valid). Failures only log; the
+        // caller has already committed the success-side state.
+        private async Task InvalidateOtherSessionsAsync(string url, string anonKey, string bearer)
+        {
+            try
+            {
+                using (var req = new HttpRequestMessage(HttpMethod.Post, url.TrimEnd('/') + LogoutPath + "?scope=others"))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode)
+                            _log?.Invoke($"[Trueforce] Invalidate-other-sessions failed: {(int)resp.StatusCode}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Invalidate-other-sessions exception: {ex.Message}");
             }
         }
 
