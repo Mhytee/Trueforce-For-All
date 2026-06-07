@@ -11437,7 +11437,7 @@ namespace TrueforceForAll.Plugin
             IEnumerable<string> presetNames,
             IEnumerable<(string CarId, string PresetName)> carPresets,
             string author = null, string description = null, string authorVersion = null,
-            string packName = null)
+            string packName = null, bool? allowInPacks = null)
         {
             if (Settings == null) return (0, 0);
 
@@ -11479,7 +11479,12 @@ namespace TrueforceForAll.Plugin
                     {
                         if (pickedPresets != null && !pickedPresets.Contains(kv.Key)) continue;
                         if (kv.Value == null) continue;
-                        includedSnapshots.Add(kv.Value);
+                        // Clone + stamp the per-entry snapshot so the
+                        // live library copy stays unrestricted while the
+                        // file (and any downstream importer) carries the
+                        // pack curator's "ok to re-bundle" choice.
+                        var snapForExport = StampSnapshotForExport(CloneSnapshot(kv.Value), allowInPacks);
+                        includedSnapshots.Add(snapForExport);
 
                         string entryName = "presets/" + SanitizeForZip(kv.Key) + ".tfpreset";
                         // PackName at the per-preset level = the pack-level
@@ -11494,11 +11499,11 @@ namespace TrueforceForAll.Plugin
                         var file = new PresetFile
                         {
                             PresetName    = kv.Key,
-                            Snapshot      = kv.Value,
+                            Snapshot      = snapForExport,
                             PackName      = normPack,
-                            Author        = NullIfBlank(kv.Value.Author)        ?? normAuthor,
-                            Description   = NullIfBlank(kv.Value.Description)   ?? normDesc,
-                            AuthorVersion = NullIfBlank(kv.Value.AuthorVersion) ?? normVer,
+                            Author        = NullIfBlank(snapForExport.Author)        ?? normAuthor,
+                            Description   = NullIfBlank(snapForExport.Description)   ?? normDesc,
+                            AuthorVersion = NullIfBlank(snapForExport.AuthorVersion) ?? normVer,
                         };
                         WriteJsonZipEntry(zip, entryName, file);
                         manifest.Presets.Add(entryName);
@@ -11517,7 +11522,13 @@ namespace TrueforceForAll.Plugin
                             var entry = pKv.Value;
                             var key = (entry.CarId, entry.PresetName);
                             if (pickedCars != null && !pickedCars.Contains(key)) continue;
-                            if (entry.Override != null) includedOverrides.Add(entry.Override);
+                            // Same clone+stamp pattern as game-preset path
+                            // above: live override unrestricted, file copy
+                            // stamped with the curator's permission.
+                            var ovrForExport = entry.Override != null
+                                ? StampCarOverrideForExport(CloneCarOverride(entry.Override), allowInPacks)
+                                : null;
+                            if (ovrForExport != null) includedOverrides.Add(ovrForExport);
 
                             string entryName = "cars/" + SanitizeForZip(entry.CarId) + "~"
                                 + SanitizeForZip(entry.PresetName) + ".tfcar.json";
@@ -11537,7 +11548,7 @@ namespace TrueforceForAll.Plugin
                                 Author        = NullIfBlank(entry.Author)        ?? normAuthor,
                                 Description   = NullIfBlank(entry.Description)   ?? normDesc,
                                 AuthorVersion = NullIfBlank(entry.AuthorVersion) ?? normVer,
-                                Override      = entry.Override,
+                                Override      = ovrForExport,
                             };
                             WriteJsonZipEntry(zip, entryName, file);
                             manifest.Cars.Add(new PackedCarPreset
@@ -11554,8 +11565,13 @@ namespace TrueforceForAll.Plugin
 
                 // Attach the deduped CustomEngineDefs referenced by any of
                 // the packed snapshots/overrides so a recipient gets the
-                // pattern data, not just dangling CustomEngineIds.
-                manifest.CustomEngines = CollectReferencedCustomEngines(includedSnapshots, includedOverrides);
+                // pattern data, not just dangling CustomEngineIds. Each
+                // def is cloned + stamped with the curator's permission
+                // so the engine carries the same re-bundle intent as the
+                // presets that reference it.
+                manifest.CustomEngines = StampCustomEnginesForExport(
+                    CollectReferencedCustomEngines(includedSnapshots, includedOverrides),
+                    allowInPacks);
 
                 WriteJsonZipEntry(zip, "manifest.json", manifest);
 
@@ -11626,12 +11642,19 @@ namespace TrueforceForAll.Plugin
         /// already stamped on the snapshot is preserved when present so the
         /// original contributor keeps credit.</summary>
         public void ExportSinglePreset(string path, string presetName,
-            string author = null, string description = null, string authorVersion = null)
+            string author = null, string description = null, string authorVersion = null,
+            bool? allowInPacks = null)
         {
             if (string.IsNullOrEmpty(path)) throw new ArgumentException("Output path is empty.", nameof(path));
             if (string.IsNullOrEmpty(presetName)) throw new ArgumentException("Preset name is empty.", nameof(presetName));
-            if (Settings?.Presets == null || !Settings.Presets.TryGetValue(presetName, out var snap) || snap == null)
+            if (Settings?.Presets == null || !Settings.Presets.TryGetValue(presetName, out var liveSnap) || liveSnap == null)
                 throw new InvalidOperationException($"Preset '{presetName}' no longer exists in the library.");
+
+            // Clone the snapshot before stamping so the LIVE in-library copy
+            // doesn't pick up the export's CommunitySourceId / AllowInPacks -
+            // the author should keep an unrestricted local copy they can
+            // re-export with a different permission later.
+            var snap = StampSnapshotForExport(CloneSnapshot(liveSnap), allowInPacks);
 
             // Per-preset author: keep the snapshot's own when present; only
             // fall back to the curator's author for unattributed presets.
@@ -11646,11 +11669,66 @@ namespace TrueforceForAll.Plugin
                 Author        = finalAuthor,
                 Description   = finalDesc,
                 AuthorVersion = finalVer,
-                CustomEngines = CollectReferencedCustomEngines(new[] { snap }, carOverrides: null),
+                CustomEngines = StampCustomEnginesForExport(
+                    CollectReferencedCustomEngines(new[] { snap }, carOverrides: null),
+                    allowInPacks),
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
             SimHub.Logging.Current.Info($"[Trueforce] Exported single preset '{presetName}' to {path}.");
+        }
+
+        // Clone-and-stamp a list of CustomEngineDefs for export. Mirrors
+        // StampSnapshotForExport / StampCarOverrideForExport so single-
+        // preset exports carry the same permission stamp on referenced
+        // engines as the pack-export path does.
+        private static List<CustomEngineDef> StampCustomEnginesForExport(
+            List<CustomEngineDef> engines, bool? allowInPacks)
+        {
+            if (engines == null) return null;
+            var stamped = new List<CustomEngineDef>(engines.Count);
+            foreach (var def in engines)
+            {
+                if (def == null) continue;
+                var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomEngineDef>(
+                    Newtonsoft.Json.JsonConvert.SerializeObject(def));
+                stamped.Add(StampCustomEngineForExport(clone, allowInPacks));
+            }
+            return stamped;
+        }
+
+        // Set the AllowInPacks toggle the user picked at export and mint
+        // a peer provenance id when the snapshot doesn't already carry a
+        // CommunitySourceId. The "p2p-" prefix makes peer-source rows
+        // obviously distinguishable from real community uuids in logs
+        // and update checks; existing CommunitySourceId values
+        // (community downloads being forwarded) are preserved so the
+        // original author's permission travels intact.
+        private static GameSettingsSnapshot StampSnapshotForExport(GameSettingsSnapshot snap, bool? allowInPacks)
+        {
+            if (snap == null) return null;
+            if (allowInPacks.HasValue) snap.CommunityAllowInPacks = allowInPacks;
+            if (string.IsNullOrEmpty(snap.CommunitySourceId))
+                snap.CommunitySourceId = "p2p-" + Guid.NewGuid().ToString("N");
+            return snap;
+        }
+
+        private static CarOverride StampCarOverrideForExport(CarOverride ovr, bool? allowInPacks)
+        {
+            if (ovr == null) return null;
+            if (allowInPacks.HasValue) ovr.CommunityAllowInPacks = allowInPacks;
+            if (string.IsNullOrEmpty(ovr.CommunitySourceId))
+                ovr.CommunitySourceId = "p2p-" + Guid.NewGuid().ToString("N");
+            return ovr;
+        }
+
+        private static CustomEngineDef StampCustomEngineForExport(CustomEngineDef def, bool? allowInPacks)
+        {
+            if (def == null) return null;
+            if (allowInPacks.HasValue) def.CommunityAllowInPacks = allowInPacks;
+            if (string.IsNullOrEmpty(def.CommunitySourceId))
+                def.CommunitySourceId = "p2p-" + Guid.NewGuid().ToString("N");
+            return def;
         }
 
         /// <summary>Write a single car preset to a .tfcar.json file at the
@@ -11660,7 +11738,8 @@ namespace TrueforceForAll.Plugin
         /// falling back to the export-metadata dialog values only when the
         /// source itself was unattributed.</summary>
         public void ExportSingleCarPreset(string path, string carId, string presetName,
-            string author = null, string description = null, string authorVersion = null)
+            string author = null, string description = null, string authorVersion = null,
+            bool? allowInPacks = null)
         {
             if (_carStore == null) throw new InvalidOperationException("Car preset store is not initialised.");
             if (string.IsNullOrEmpty(path))       throw new ArgumentException("Output path is empty.", nameof(path));
@@ -11672,6 +11751,11 @@ namespace TrueforceForAll.Plugin
                 || !perCar.TryGetValue(presetName, out var entry)
                 || entry == null || entry.Override == null)
                 throw new InvalidOperationException($"Car preset '{carId}/{presetName}' no longer exists in the library.");
+
+            // Clone before stamping (parity with ExportSinglePreset): the
+            // author's local override stays unstamped so they keep an
+            // unrestricted copy for self-rebundling.
+            var ovr = StampCarOverrideForExport(CloneCarOverride(entry.Override), allowInPacks);
 
             string finalAuthor = NullIfBlank(entry.Author)        ?? NullIfBlank(author);
             string finalDesc   = NullIfBlank(entry.Description)   ?? NullIfBlank(description);
@@ -11688,8 +11772,10 @@ namespace TrueforceForAll.Plugin
                 Author        = finalAuthor,
                 Description   = finalDesc,
                 AuthorVersion = finalVer,
-                Override      = entry.Override,
-                CustomEngines = CollectReferencedCustomEngines(snapshots: null, carOverrides: new[] { entry.Override }),
+                Override      = ovr,
+                CustomEngines = StampCustomEnginesForExport(
+                    CollectReferencedCustomEngines(snapshots: null, carOverrides: new[] { ovr }),
+                    allowInPacks),
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));

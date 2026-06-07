@@ -361,7 +361,7 @@ namespace TrueforceForAll.Plugin
                 string name = kv.Key;
                 var snap = kv.Value;
                 if (_plugin.IsBuiltinPreset(name)) continue;
-                if (!IsRedistributable(snap?.CommunitySourceId, snap?.CommunityAllowInPacks))
+                if (!IsRedistributable(snap?.CommunitySourceId, snap?.CommunityAllowInPacks, snap?.CommunityUploadedByUserId))
                 {
                     list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(name, 128) + "  (community item, not redistributable)"));
                     continue;
@@ -412,7 +412,7 @@ namespace TrueforceForAll.Plugin
                     if (carEntry == null) continue;
                     if (carEntry.IsBuiltin) continue;
                     string gameName = carEntry.GameName ?? "";
-                    if (!IsRedistributable(carEntry.Override?.CommunitySourceId, carEntry.Override?.CommunityAllowInPacks))
+                    if (!IsRedistributable(carEntry.Override?.CommunitySourceId, carEntry.Override?.CommunityAllowInPacks, carEntry.Override?.CommunityUploadedByUserId))
                     {
                         list.Children.Add(MakeIneligibleRow($"{UiContentSanitizer.SafeDisplayText(carId, 96)} :: {UiContentSanitizer.SafeDisplayText(presetName, 96)}  (community item, not redistributable)"));
                         continue;
@@ -459,7 +459,7 @@ namespace TrueforceForAll.Plugin
             foreach (var def in engines.OrderBy(d => d?.Name, StringComparer.OrdinalIgnoreCase))
             {
                 if (def == null || string.IsNullOrWhiteSpace(def.Name)) continue;
-                if (!IsRedistributable(def.CommunitySourceId, def.CommunityAllowInPacks))
+                if (!IsRedistributable(def.CommunitySourceId, def.CommunityAllowInPacks, def.CommunityUploadedByUserId))
                 {
                     list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(def.Name, 128) + "  (community engine, not redistributable)"));
                     continue;
@@ -496,11 +496,25 @@ namespace TrueforceForAll.Plugin
         /// permission holes. Built-ins are pre-filtered by the section
         /// builders. communitySourceId=null means the user authored
         /// this item locally.</summary>
-        private bool IsRedistributable(string communitySourceId, bool? presetAllowInPacks)
+        private bool IsRedistributable(string communitySourceId, bool? presetAllowInPacks,
+            string communityUploadedByUserId)
         {
-            // Locally authored items (no source) are always redistributable
-            // by the local author - they own the preset.
+            // Self-uploaded short-circuit: if THIS user uploaded the
+            // preset to community, they're the author and can re-bundle
+            // their own work regardless of what AllowInPacks says (which
+            // is a permission meant for OTHERS). Resolved via the local
+            // CommunityUploadedByUserId stamp written by Stamp*AsUploaded.
+            if (!string.IsNullOrEmpty(communityUploadedByUserId)
+                && _plugin?.AuthIsSignedIn == true
+                && string.Equals(communityUploadedByUserId,
+                                 _plugin.AuthSignedInUserId,
+                                 StringComparison.Ordinal))
+                return true;
+
+            // Locally authored, never uploaded, never imported from
+            // anywhere -> the local user owns it outright.
             if (string.IsNullOrEmpty(communitySourceId)) return true;
+
             // Preset-level field is authoritative when set: it travels
             // with export/import and survives a missing tracker entry.
             // Stamped at download from PresetSummary.AllowInPacks and at

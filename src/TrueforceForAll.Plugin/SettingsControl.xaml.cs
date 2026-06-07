@@ -8674,15 +8674,17 @@ namespace TrueforceForAll.Plugin
         internal static bool PromptForExportMetadata(Window owner, TrueforcePlugin plugin,
             string title, string subjectKind,
             out string author, out string description, out string authorVersion,
-            out string packName,
+            out string packName, out bool allowInPacks,
             bool includePackName = false)
         {
             author = description = authorVersion = packName = null;
+            allowInPacks = false;
             if (plugin?.Settings == null) return false;
 
             var dlg = new PresetMetadataDialog(title, subjectKind,
                 plugin.Settings.SharingAuthor, "", "",
-                includePackName: includePackName, defaultPackName: null)
+                includePackName: includePackName, defaultPackName: null,
+                defaultAllowInPacks: false)
             {
                 Owner = owner,
             };
@@ -8693,6 +8695,7 @@ namespace TrueforceForAll.Plugin
             description   = dlg.Description;
             authorVersion = dlg.AuthorVersion;
             packName      = dlg.PackName;
+            allowInPacks  = dlg.AllowInPacks;
 
             string newAuthor = author?.Trim() ?? "";
             if (newAuthor != (plugin.Settings.SharingAuthor ?? ""))
@@ -8704,6 +8707,17 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        // Back-compat overload without allowInPacks / packName. Callers
+        // that pre-date the export-permission toggle don't need it.
+        internal static bool PromptForExportMetadata(Window owner, TrueforcePlugin plugin,
+            string title, string subjectKind,
+            out string author, out string description, out string authorVersion,
+            out string packName,
+            bool includePackName = false)
+            => PromptForExportMetadata(owner, plugin, title, subjectKind,
+                out author, out description, out authorVersion, out packName, out _,
+                includePackName: includePackName);
+
         // Back-compat overload (no packName out / no Pack Name field).
         // Lets ManagePresetsDialog's per-row Export buttons keep their
         // 4-arg signature without bringing in the new pack-name plumbing.
@@ -8711,7 +8725,7 @@ namespace TrueforceForAll.Plugin
             string title, string subjectKind,
             out string author, out string description, out string authorVersion)
             => PromptForExportMetadata(owner, plugin, title, subjectKind,
-                out author, out description, out authorVersion, out _,
+                out author, out description, out authorVersion, out _, out _,
                 includePackName: false);
 
         /// <summary>Tiny inline name-prompt dialog. WPF has no built-in
@@ -8915,7 +8929,7 @@ namespace TrueforceForAll.Plugin
             if (!PromptForExportMetadata(owner, plugin, "Export",
                 isPack ? "pack" : "preset",
                 out string author, out string desc, out string ver,
-                out string packName,
+                out string packName, out bool allowInPacks,
                 includePackName: isPack)) return;
 
             if (!isPack)
@@ -8936,7 +8950,7 @@ namespace TrueforceForAll.Plugin
                     if (dlg1.ShowDialog(owner) != true) return;
                     try
                     {
-                        plugin.ExportSinglePreset(dlg1.FileName, nm, author, desc, ver);
+                        plugin.ExportSinglePreset(dlg1.FileName, nm, author, desc, ver, allowInPacks);
                         MessageBox.Show(owner, $"Exported preset '{nm}' to:\n{dlg1.FileName}",
                             "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
@@ -8959,7 +8973,7 @@ namespace TrueforceForAll.Plugin
                     if (dlg2.ShowDialog(owner) != true) return;
                     try
                     {
-                        plugin.ExportSingleCarPreset(dlg2.FileName, car.CarId, car.PresetName, author, desc, ver);
+                        plugin.ExportSingleCarPreset(dlg2.FileName, car.CarId, car.PresetName, author, desc, ver, allowInPacks);
                         MessageBox.Show(owner, $"Exported car preset '{car.PresetName}' for '{car.CarId}' to:\n{dlg2.FileName}",
                             "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
@@ -8989,7 +9003,7 @@ namespace TrueforceForAll.Plugin
                     dlg.FileName,
                     pickedPresets,
                     pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)),
-                    author, desc, ver, packName);
+                    author, desc, ver, packName, allowInPacks);
                 MessageBox.Show(owner, $"Exported {p} preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
                                 "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
             }
