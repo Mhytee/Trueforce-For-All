@@ -710,9 +710,10 @@ namespace TrueforceForAll.Plugin
             if (_shareInProgress) return;
             if (_plugin.Settings?.CommunityEnabled != true)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Create pack",
                     "Enable Community Contributions in Settings to share packs.",
-                    "Create pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
             _shareInProgress = true;
@@ -725,9 +726,10 @@ namespace TrueforceForAll.Plugin
                 // on cancel.
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
-                    MessageBox.Show(owner,
+                    TrueforceDialog.Show(owner,
+                        "Create pack",
                         "Pick a username before sharing (Settings > Account & community).",
-                        "Create pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                        DialogKind.Info);
                     return;
                 }
                 var dlg = new CreatePackWindow(_plugin) { Owner = owner };
@@ -2288,9 +2290,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (_shareInProgress) return;
             if (_plugin.Settings?.CommunityEnabled != true)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share preset",
                     "Enable Community Contributions in Settings to share presets.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
             _shareInProgress = true;
@@ -2308,9 +2311,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var owner = Window.GetWindow(this);
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
-                    MessageBox.Show(owner,
+                    TrueforceDialog.Show(owner,
+                        "Share preset",
                         "Pick a username before sharing (Settings > Account & community).",
-                        "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                        DialogKind.Info);
                     return;
                 }
                 var body = new Newtonsoft.Json.Linq.JObject
@@ -2606,9 +2610,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var owner = Window.GetWindow(this);
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
-                    MessageBox.Show(owner,
+                    TrueforceDialog.Show(owner,
+                        "Share pack",
                         "Pick a username before sharing (Settings > Account & community).",
-                        "Share pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                        DialogKind.Info);
                     return;
                 }
                 var dlg = new CreatePackWindow(_plugin) { Owner = owner };
@@ -2637,9 +2642,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var owner = Window.GetWindow(this);
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
-                    MessageBox.Show(owner,
+                    TrueforceDialog.Show(owner,
+                        "Share pack",
                         "Pick a username before sharing (Settings > Account & community).",
-                        "Share pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                        DialogKind.Info);
                     return;
                 }
                 var dlg = new CreatePackWindow(_plugin) { Owner = owner };
@@ -2667,9 +2673,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (_shareInProgress) return;
             if (_plugin.Settings?.CommunityEnabled != true)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share preset",
                     "Enable Community Contributions in Settings to share presets.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
             _shareInProgress = true;
@@ -2719,9 +2726,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var owner = Window.GetWindow(this);
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
-                    MessageBox.Show(owner,
+                    TrueforceDialog.Show(owner,
+                        "Share preset",
                         "Pick a username before sharing (Settings > Account & community).",
-                        "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                        DialogKind.Info);
                     return;
                 }
                 string shareName = presetName;
@@ -3116,9 +3124,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (_shareInProgress) return;
             if (_plugin.Settings?.CommunityEnabled != true)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share custom engine",
                     "Enable Community Contributions in Settings to share custom engines.",
-                    "Share custom engine", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
             _shareInProgress = true;
@@ -3127,9 +3136,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var owner = Window.GetWindow(this);
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
-                    MessageBox.Show(owner,
+                    TrueforceDialog.Show(owner,
+                        "Share custom engine",
                         "Pick a username before sharing (Settings > Account & community).",
-                        "Share custom engine", MessageBoxButton.OK, MessageBoxImage.Information);
+                        DialogKind.Info);
                     return;
                 }
                 var body = Newtonsoft.Json.Linq.JObject.FromObject(row.Def);

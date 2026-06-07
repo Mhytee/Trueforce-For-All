@@ -897,8 +897,10 @@ namespace TrueforceForAll.Plugin
             var existing = _plugin.GetCarPresets(carId);
             if (existing != null && existing.ContainsKey(newName))
             {
-                if (MessageBox.Show($"A preset called '{newName}' already exists for this car. Overwrite?",
-                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                if (TrueforceDialog.Show(Window.GetWindow(this),
+                    "Overwrite preset?",
+                    $"A preset called '{newName}' already exists for this car. Overwrite?",
+                    DialogKind.Confirm) != true) return;
                 _plugin.DeleteCarPreset(carId, newName);
             }
             if (!_plugin.ExitOfflineEditCarSaveAs(newName))
@@ -926,8 +928,10 @@ namespace TrueforceForAll.Plugin
             newName = newName.Trim();
             if (_plugin.Settings?.Presets?.ContainsKey(newName) == true)
             {
-                if (MessageBox.Show($"A preset called '{newName}' already exists. Overwrite?",
-                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                if (TrueforceDialog.Show(Window.GetWindow(this),
+                    "Overwrite preset?",
+                    $"A preset called '{newName}' already exists. Overwrite?",
+                    DialogKind.Confirm) != true) return;
                 _plugin.DeletePreset(newName);
             }
             if (!_plugin.ExitOfflineEditSaveAs(newName))
@@ -2204,9 +2208,10 @@ namespace TrueforceForAll.Plugin
             {
             if (_plugin.Settings.CommunityEnabled != true)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share preset",
                     "Enable Community Contributions in Settings to share presets.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
             string name = _plugin.ActivePresetName;
@@ -2223,9 +2228,10 @@ namespace TrueforceForAll.Plugin
             var owner = Window.GetWindow(this);
             if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
             {
-                MessageBox.Show(owner,
+                TrueforceDialog.Show(owner,
+                    "Share preset",
                     "Pick a username before sharing (Settings > Account & community).",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
 
@@ -2347,9 +2353,10 @@ namespace TrueforceForAll.Plugin
             {
             if (_plugin.Settings.CommunityEnabled != true)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share preset",
                     "Enable Community Contributions in Settings to share presets.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
 
@@ -2379,9 +2386,10 @@ namespace TrueforceForAll.Plugin
             var owner = Window.GetWindow(this);
             if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
             {
-                MessageBox.Show(owner,
+                TrueforceDialog.Show(owner,
+                    "Share preset",
                     "Pick a username before sharing (Settings > Account & community).",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
 
@@ -3239,10 +3247,10 @@ namespace TrueforceForAll.Plugin
                 name = rec.LocalPresetName;
             if (string.IsNullOrEmpty(name)) name = "this preset";
 
-            var r = MessageBox.Show(Window.GetWindow(this),
+            if (TrueforceDialog.Show(Window.GetWindow(this),
+                "Remove preset",
                 $"Remove \"{name}\" and revert to your previous setup?",
-                "Remove preset", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (r != MessageBoxResult.Yes) return;   // keep the downvote, leave it applied
+                DialogKind.Confirm) != true) return;   // keep the downvote, leave it applied
 
             _plugin.ClearActiveCarPreset(carId);
             RefreshFromPlugin();
@@ -3379,10 +3387,10 @@ namespace TrueforceForAll.Plugin
             // Unsaved-changes confirm (mirrors PresetCombo_Changed).
             if (_dirty)
             {
-                var r = MessageBox.Show(
-                    $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
-                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (r != MessageBoxResult.Yes)
+                if (TrueforceDialog.Show(Window.GetWindow(this),
+                        "Discard unsaved tuning?",
+                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
+                        DialogKind.Confirm) != true)
                 {
                     // Cancelled: revert the picker selection without re-entering
                     // this handler.
@@ -3437,10 +3445,11 @@ namespace TrueforceForAll.Plugin
                     return;
                 if (_dirty)
                 {
-                    var rc = MessageBox.Show(
-                        "Clear this car's preset and use the game preset? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
-                        "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (rc != MessageBoxResult.Yes) { RefreshCarPresetPicker(); return; }
+                    if (TrueforceDialog.Show(Window.GetWindow(this),
+                            "Clear car preset?",
+                            "Clear this car's preset and use the game preset? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
+                            DialogKind.Confirm) != true)
+                    { RefreshCarPresetPicker(); return; }
                 }
                 _plugin.ClearActiveCarPreset(pick.CarId);
                 ClearDirty();
@@ -3460,10 +3469,10 @@ namespace TrueforceForAll.Plugin
             // Unsaved-changes confirm (mirrors PresetCombo_Changed).
             if (_dirty)
             {
-                var r = MessageBox.Show(
-                    $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
-                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (r != MessageBoxResult.Yes)
+                if (TrueforceDialog.Show(Window.GetWindow(this),
+                        "Discard unsaved tuning?",
+                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
+                        DialogKind.Confirm) != true)
                 {
                     // Cancelled: revert the picker selection without re-entering
                     // this handler.
@@ -8222,8 +8231,10 @@ namespace TrueforceForAll.Plugin
             bool exists = false;
             if (_plugin.PresetNames != null)
                 foreach (var n in _plugin.PresetNames) { if (n == name) { exists = true; break; } }
-            if (exists && MessageBox.Show($"A preset called '{name}' already exists. Overwrite?",
-                                          "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            if (exists && TrueforceDialog.Show(Window.GetWindow(this),
+                    "Overwrite preset?",
+                    $"A preset called '{name}' already exists. Overwrite?",
+                    DialogKind.Confirm) != true)
                 return;
             _plugin.SavePresetAs(name);
             // Bind it as this game's default so the save actually sticks across
@@ -8544,8 +8555,10 @@ namespace TrueforceForAll.Plugin
             bool exists = false;
             if (_plugin.PresetNames != null)
                 foreach (var n in _plugin.PresetNames) { if (n == name) { exists = true; break; } }
-            if (exists && MessageBox.Show($"A preset called '{name}' already exists. Overwrite?",
-                                          "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            if (exists && TrueforceDialog.Show(Window.GetWindow(this),
+                    "Overwrite preset?",
+                    $"A preset called '{name}' already exists. Overwrite?",
+                    DialogKind.Confirm) != true)
                 return;
 
             _plugin.SavePresetAs(name);
