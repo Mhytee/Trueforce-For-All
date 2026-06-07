@@ -1985,21 +1985,40 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     gShareMatchesUpload = string.Equals(
                         gShareCurrentHash, gShareSnap.CommunityUploadedBodyHash, StringComparison.Ordinal);
                 }
-                GameShareBtn.IsEnabled = anySelected && checkedCount <= 1
-                    && !sel.Builtin && gShareCommunityOn && gShareSignedIn
-                    && !gShareMatchesUpload;
-                if (!gShareCommunityOn)
-                    GameShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
-                else if (!gShareSignedIn)
-                    GameShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
-                else if (anySelected && sel.Builtin)
-                    GameShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
-                else if (gShareMatchesUpload)
-                    GameShareBtn.ToolTip = $"This matches your last upload ({gShareSnap.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
-                else if (gShareHasPriorUpload)
-                    GameShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                // Multi-checked + all eligible -> repurpose into "Share pack"
+                // (parity with CarShareBtn). Bypass the single-row gating
+                // and route to CreatePackWindow on click.
+                bool gameBulkPackEligible = checkedCount >= 2 && checkedNonBuiltin == checkedCount;
+                _gameShareIsPackMode = gameBulkPackEligible;
+                if (gameBulkPackEligible)
+                {
+                    GameShareBtn.Content   = "★ Share pack";
+                    GameShareBtn.IsEnabled = gShareCommunityOn && gShareSignedIn;
+                    GameShareBtn.ToolTip   = !gShareCommunityOn
+                        ? "Enable Community Contributions in Settings to share presets."
+                        : !gShareSignedIn
+                            ? "Sign in (Account & community in Settings) to share presets."
+                            : $"Bundle these {checkedCount} presets into a community pack.";
+                }
                 else
-                    GameShareBtn.ToolTip = "Upload this game preset to the community so other drivers can find it.";
+                {
+                    GameShareBtn.Content = "★ Share";
+                    GameShareBtn.IsEnabled = anySelected && checkedCount <= 1
+                        && !sel.Builtin && gShareCommunityOn && gShareSignedIn
+                        && !gShareMatchesUpload;
+                    if (!gShareCommunityOn)
+                        GameShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
+                    else if (!gShareSignedIn)
+                        GameShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
+                    else if (anySelected && sel.Builtin)
+                        GameShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
+                    else if (gShareMatchesUpload)
+                        GameShareBtn.ToolTip = $"This matches your last upload ({gShareSnap.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                    else if (gShareHasPriorUpload)
+                        GameShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                    else
+                        GameShareBtn.ToolTip = "Upload this game preset to the community so other drivers can find it.";
+                }
             }
             // Promote works on the checked set when there is one (bulk), else
             // the highlighted row, so multi-select is supported, not blocked.
@@ -2080,6 +2099,28 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 carShareMatchesUpload = string.Equals(
                     carShareCurrentHash, carShareOvr.CommunityUploadedBodyHash, StringComparison.Ordinal);
             }
+            // Multi-checked + all eligible (not built-in) repurposes
+            // Share into "Share pack" - the button feels like the
+            // natural surface for "do something with this multi-select"
+            // and pack-creation is exactly that. Eligibility is the
+            // not-built-in gate; community-sourced rows without
+            // AllowInPacks would just be silently dropped by the
+            // CreatePackWindow filter so we don't need to test that
+            // here.
+            bool carBulkPackEligible = checkedCount >= 2 && checkedNonBuiltin == checkedCount;
+            _carShareIsPackMode = carBulkPackEligible;
+            if (carBulkPackEligible)
+            {
+                CarShareBtn.Content   = "★ Share pack";
+                CarShareBtn.IsEnabled = communityOn && signedIn;
+                CarShareBtn.ToolTip   = !communityOn
+                    ? "Enable Community Contributions in Settings to share presets."
+                    : !signedIn
+                        ? "Sign in (Account & community in Settings) to share presets."
+                        : $"Bundle these {checkedCount} presets into a community pack.";
+                return;
+            }
+            CarShareBtn.Content = "★ Share";
             CarShareBtn.IsEnabled = anySelected && checkedCount <= 1
                 && communityOn && signedIn && !isCommunitySourced && !isBuiltinSel
                 && !carShareMatchesUpload;
@@ -2220,6 +2261,17 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // can share any saved preset without first making it active.
         private async void GameShare_Click(object sender, RoutedEventArgs e)
         {
+            // Bulk-checked + all eligible -> the button is in pack mode
+            // (see RefreshGameButtons), open CreatePackWindow with the
+            // checked rows pre-ticked.
+            if (_gameShareIsPackMode)
+            {
+                OpenSharePackWindowForGames(_gameRows
+                    .Where(r => r.IsChecked && !r.Builtin)
+                    .Select(r => r.Name)
+                    .ToList());
+                return;
+            }
             var sel = SelectedGame;
             if (sel == null) return;
             await ShareGamePresetByNameAsync(sel.Name);
@@ -2513,9 +2565,93 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // / error state inline.
         private async void CarShare_Click(object sender, RoutedEventArgs e)
         {
+            // Bulk-checked + all eligible: the button is in pack mode
+            // (see RefreshCarButtons), so open CreatePackWindow with
+            // the checked rows pre-ticked.
+            if (_carShareIsPackMode)
+            {
+                OpenSharePackWindowForCars(_carRows
+                    .Where(r => r.IsChecked && !r.Builtin)
+                    .Select(r => new KeyValuePair<string, string>(r.CarId, r.PresetName))
+                    .ToList());
+                return;
+            }
             var sel = SelectedCar;
             if (sel == null) return;
             await ShareCarPresetByNameAsync(sel.CarId, sel.PresetName, sel.GameName);
+        }
+
+        // Tracks whether CarShareBtn is currently relabeled as "Share
+        // pack" so its click handler knows to route to the pack flow
+        // instead of the single-row share flow. Flipped in
+        // RefreshCarButtons based on the multi-select gate.
+        private bool _carShareIsPackMode;
+        private bool _gameShareIsPackMode;
+
+        // Open the create-pack modal with the given car rows pre-checked.
+        // Shares the same gate (CommunityEnabled + username) as the
+        // standalone CreatePack_Click entry point so the experience is
+        // identical from either trigger.
+        private async void OpenSharePackWindowForCars(
+            List<KeyValuePair<string, string>> carRows)
+        {
+            if (_plugin == null || carRows == null || carRows.Count == 0) return;
+            if (_shareInProgress) return;
+            if (_plugin.Settings?.CommunityEnabled != true) return;
+            _shareInProgress = true;
+            try
+            {
+                var owner = Window.GetWindow(this);
+                if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+                {
+                    MessageBox.Show(owner,
+                        "Pick a username before sharing (Settings > Account & community).",
+                        "Share pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                var dlg = new CreatePackWindow(_plugin) { Owner = owner };
+                dlg.PrecheckCarPresets(carRows);
+                dlg.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Share pack (car bulk) failed: " + ex.Message);
+                MessageBox.Show(Window.GetWindow(this),
+                    "Share pack failed: " + ex.Message,
+                    "Share pack", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _shareInProgress = false; }
+        }
+
+        // Same flow as the car bulk path but for the Games segment.
+        private async void OpenSharePackWindowForGames(List<string> gamePresetNames)
+        {
+            if (_plugin == null || gamePresetNames == null || gamePresetNames.Count == 0) return;
+            if (_shareInProgress) return;
+            if (_plugin.Settings?.CommunityEnabled != true) return;
+            _shareInProgress = true;
+            try
+            {
+                var owner = Window.GetWindow(this);
+                if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
+                {
+                    MessageBox.Show(owner,
+                        "Pick a username before sharing (Settings > Account & community).",
+                        "Share pack", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                var dlg = new CreatePackWindow(_plugin) { Owner = owner };
+                dlg.PrecheckGamePresets(gamePresetNames);
+                dlg.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Share pack (game bulk) failed: " + ex.Message);
+                MessageBox.Show(Window.GetWindow(this),
+                    "Share pack failed: " + ex.Message,
+                    "Share pack", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _shareInProgress = false; }
         }
 
         // Shared by CarShare_Click and the empty-state CTA. The CTA

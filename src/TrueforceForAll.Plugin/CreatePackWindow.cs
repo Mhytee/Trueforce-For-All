@@ -505,5 +505,34 @@ namespace TrueforceForAll.Plugin
                 && rec != null
                 && rec.AllowInPacks;
         }
+
+        /// <summary>Pre-check car-preset entries by (carId, presetName).
+        /// Called by the manager's bulk-share-pack path so the user's
+        /// already-selected rows arrive in the window already ticked;
+        /// rows that aren't pack-eligible (built-in, or non-redistributable
+        /// community import) are skipped silently because they were never
+        /// added to <see cref="_carEntries"/>.</summary>
+        public void PrecheckCarPresets(IEnumerable<KeyValuePair<string, string>> targets)
+        {
+            if (targets == null) return;
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var t in targets) set.Add(t.Key + "|" + t.Value);
+            foreach (var e in _carEntries)
+                if (e?.Box != null && set.Contains(e.CarId + "|" + e.PresetName))
+                    e.Box.IsChecked = true;
+        }
+
+        /// <summary>Pre-check game-preset entries by name. Mirror of
+        /// <see cref="PrecheckCarPresets"/> for the Games-segment bulk
+        /// share-pack path.</summary>
+        public void PrecheckGamePresets(IEnumerable<string> presetNames)
+        {
+            if (presetNames == null) return;
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var n in presetNames) if (!string.IsNullOrEmpty(n)) set.Add(n);
+            foreach (var e in _gameEntries)
+                if (e?.Box != null && set.Contains(e.Name))
+                    e.Box.IsChecked = true;
+        }
     }
 }

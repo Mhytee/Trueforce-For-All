@@ -294,15 +294,17 @@
                          panel here, so the list never has to shrink. -->
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <!-- Order mirrors the Car action bar: apply, edit,
+                                 share, destructive last, DEV trailing. -->
+                            <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource RowButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
+                                    ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding. Replaces the older Set / Clear pair."/>
                             <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
                                     ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Edit and save the usual way; Done returns you to your previously-active preset (saving over a built-in forks a copy)."/>
-                            <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
                             <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
+                            <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
                             <Button x:Name="GameShareBtn"      Content="★ Share"        Style="{StaticResource SharePrimaryButton}" Click="GameShare_Click"      IsEnabled="False"
                                     ToolTip="Upload this game preset to the community so other drivers can find it. Needs Community Contributions on in Settings."/>
                             <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource RowButton}" Click="GameDelete_Click"     IsEnabled="False"/>
-                            <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource RowButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
-                                    ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding. Replaces the older Set / Clear pair."/>
                             <Button x:Name="GamePromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>
@@ -379,18 +381,23 @@
                          whatever space is left. -->
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <!-- Order: apply (Set as default, Edit) -> edit
+                                 (Duplicate, Rename, Rename car) -> share -> destructive
+                                 (Delete) -> DEV. Groups read left-to-right by
+                                 frequency / role; destructive last so a stray
+                                 click doesn't blow away work. -->
+                            <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource RowButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
+                                    ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten. With multiple rows checked, sets each as its corresponding car's default (one default per car; the operation refuses if two rows target the same car)."/>
                             <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
                                     ToolTip="Open this car preset for editing: loads it on the Effects tab with a Save / Save as new / Discard banner, and freezes this car so a live car change can't clobber the edit. Saving over a built-in forks a copy."/>
+                            <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
                             <Button x:Name="CarRenameBtn"    Content="Rename…"      Style="{StaticResource RowButton}" Click="CarRename_Click"    IsEnabled="False"
                                     ToolTip="Rename this PRESET (e.g. 'Wet setup' to 'Endurance'). Doesn't change the car's name."/>
                             <Button x:Name="CarRenameCarBtn" Content="Rename car…"  Style="{StaticResource RowButton}" Click="CarRenameCar_Click" IsEnabled="False"
                                     ToolTip="Give this car a human-readable name (e.g. carId 'Car_242' becomes '1997 Mazda RX-7'). Saved locally and submitted to the community if community contributions are on."/>
-                            <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
                             <Button x:Name="CarShareBtn"     Content="★ Share"      Style="{StaticResource SharePrimaryButton}" Click="CarShare_Click"     IsEnabled="False"
                                     ToolTip="Upload this car preset to the community so other drivers can find it. Needs Community Contributions on in Settings."/>
                             <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource RowButton}" Click="CarDelete_Click"    IsEnabled="False"/>
-                            <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource RowButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
-                                    ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten. With multiple rows checked, sets each as its corresponding car's default (one default per car; the operation refuses if two rows target the same car)."/>
                             <Button x:Name="CarPromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this car preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>
