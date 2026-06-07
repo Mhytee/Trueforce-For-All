@@ -187,6 +187,11 @@ namespace TrueforceForAll.Plugin
             _presetManager = new PresetManagerControl();
             _presetManager.Init(_plugin);
             _presetManager.LibraryChanged += OnPresetLibraryChanged;
+            // Drop the active-card top-community cache when the user
+            // refreshes the community panel for the active car. Without
+            // this the dropdown shows stale rows until the plugin
+            // restarts.
+            _presetManager.CarCommunityListRefreshed += OnCarCommunityListRefreshed;
             _presetManager.EditPresetRequested += name => EnterOfflineEditMode(name);
             _presetManager.EditCarPresetRequested += (carId, name) => EnterOfflineEditModeForCar(carId, name);
             PresetManagerHost.Children.Add(_presetManager);
@@ -2346,19 +2351,17 @@ namespace TrueforceForAll.Plugin
 
         // Kicked off from RefreshFromPlugin whenever the active car /
         // game / community-enabled state may have changed. Hides the
-        // chip up front; the async fetch reveals it on count > 0.
-        // The GET RPC is anonymous-friendly so we still fetch when
-        // CommunityEnabled is false - the click handler offers a
-        // one-shot "enable community + open popover" flow so first-
-        // time users discover that the feature exists at all.
+        // Populates _cachedTopForActiveCar so the active-card car
+        // preset dropdown's "── Top community presets ──" section has
+        // data when (game, carId) changes. Used to also drive a header
+        // count chip; that chip is gone, the cache stays. The GET RPC
+        // is anonymous-friendly so we still fetch when CommunityEnabled
+        // is false (the dropdown only renders when the cache fills, so
+        // there's no visible noise either way; surfacing the section
+        // for first-time users is the discovery surface).
         private void MaybeRefreshCarCommunityCountAsync()
         {
-            if (HeaderCarCommunityCountBtn == null) return;
-            HeaderCarCommunityCountBtn.Visibility = System.Windows.Visibility.Collapsed;
             if (_plugin?.Settings == null) return;
-            // Skip the fetch only when the backend is not configured at
-            // all - we still want the discovery surface to fire even
-            // when community is off (the count is publicly readable).
             if (string.IsNullOrEmpty(_plugin.Settings.CommunityBackendUrl)
                 || string.IsNullOrEmpty(_plugin.Settings.CommunityBackendAnonKey))
                 return;
@@ -2368,12 +2371,11 @@ namespace TrueforceForAll.Plugin
 
             string carKey = game + "/" + carId;
             // Same car as last fetch and we already have a cache - reuse.
+            // Cache invalidation on community-panel refresh nulls
+            // _lastResolvedCarKey so the next call here re-fetches.
             if (string.Equals(carKey, _lastResolvedCarKey, StringComparison.Ordinal)
                 && _cachedTopForActiveCar != null)
-            {
-                RenderCarCommunityChip(_cachedTopForActiveCar.Count);
                 return;
-            }
 
             string capturedGame  = game;
             string capturedCarId = carId;
@@ -2386,7 +2388,7 @@ namespace TrueforceForAll.Plugin
                     rows = _plugin.FetchCommunityPresetsForCar(
                         capturedGame, capturedCarId, sort: "wilson", limit: 5);
                 }
-                catch { /* swallow; chip stays hidden */ }
+                catch { /* swallow; dropdown section stays empty */ }
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     // Stale-fetch guard: car changed mid-flight, drop.
@@ -2396,11 +2398,8 @@ namespace TrueforceForAll.Plugin
                         return;
                     _lastResolvedCarKey      = capturedKey;
                     _cachedTopForActiveCar   = rows ?? new List<PresetSummary>();
-                    RenderCarCommunityChip(_cachedTopForActiveCar.Count);
                     // Re-render the car preset picker so the new top-
-                    // community section becomes visible (the synchronous
-                    // pass that ran before the fetch couldn't include
-                    // them).
+                    // community section becomes visible.
                     RefreshCarPresetPicker();
                 }));
             });
@@ -2523,81 +2522,12 @@ namespace TrueforceForAll.Plugin
             RefreshCarPresetPicker();
         }
 
-        private void RenderCarCommunityChip(int count)
-        {
-            if (HeaderCarCommunityCountBtn == null) return;
-            if (count <= 0)
-            {
-                HeaderCarCommunityCountBtn.Visibility = System.Windows.Visibility.Collapsed;
-                return;
-            }
-            bool communityOn = _plugin?.Settings?.CommunityEnabled == true;
-            HeaderCarCommunityCountBtn.Content = count == 1
-                ? "★ 1 community preset"
-                : $"★ {count} community presets";
-            // Different tooltip when community is off so the user
-            // understands the click will offer to enable it. (The
-            // chip itself stays visible so fresh users can discover
-            // that community presets exist for their car.)
-            HeaderCarCommunityCountBtn.ToolTip = communityOn
-                ? "See top community presets for this car. Click for the popover; 'See all' inside opens the full Community list."
-                : "Community Contributions are off. Click to enable them and browse these presets.";
-            HeaderCarCommunityCountBtn.Visibility = System.Windows.Visibility.Visible;
-        }
-
-        private void HeaderCarCommunityCount_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            // Community off: offer the user a one-click enable so they
-            // can browse what they were teased with, rather than telling
-            // them to go hunt the toggle.
-            if (_plugin.Settings?.CommunityEnabled != true)
-            {
-                var enable = MessageBox.Show(Window.GetWindow(this),
-                    "Community Contributions are off, so the popover won't fetch live data. " +
-                    "Enable Community Contributions now and browse these presets?",
-                    "Community presets", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (enable != MessageBoxResult.Yes) return;
-                _plugin.SetCommunityEnabled(true);
-                if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
-                // Fall through to open the popover with the cached rows
-                // we already fetched for the chip.
-            }
-            string carId = _plugin.ActiveCarId;
-            string game  = _plugin.ActiveGame;
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
-
-            // Use whatever's cached. If a fresh fetch is in-flight or
-            // the user clicked very fast, fall back to whatever rows
-            // we have (even if empty). The popover itself handles the
-            // empty case.
-            var rows = _cachedTopForActiveCar ?? new List<PresetSummary>();
-
-            // Resolve a friendly car name if we have one in CarFacts.
-            string carDisplay = _plugin.ActiveCarDisplayName;
-            if (string.IsNullOrEmpty(carDisplay)
-                && _plugin.Settings.CarFacts != null
-                && _plugin.Settings.CarFacts.TryGetValue(game + "/" + carId, out var bundle)
-                && bundle != null
-                && !string.IsNullOrEmpty(bundle.CarName))
-                carDisplay = bundle.CarName;
-
-            var popover = new CommunityForCarPopover(_plugin, carId, game, carDisplay, rows)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            bool? ok = popover.ShowDialog();
-            // Refresh the header in case an Apply happened, so the
-            // car-preset combo + active preset text catch up.
-            RefreshFromPlugin();
-            if (popover.SeeAllRequested)
-                ShowPresetManager(PresetManagerControl.InitialTab.CarPresets);
-            // After landing on the Cars tab, flip the sub-pill to
-            // Community so the user lands on the browse view, not
-            // their Library.
-            if (popover.SeeAllRequested)
-                _presetManager?.OpenCarCommunity();
-        }
+        // Removed: RenderCarCommunityChip + HeaderCarCommunityCount_Click.
+        // The header chip + CommunityForCarPopover (direct-apply path)
+        // were redundant with the picker's "── Top community presets ──"
+        // section and bypassed the preview-first apply flow. Cache fill
+        // logic stays in MaybeRefreshCarCommunityCountAsync since the
+        // dropdown reads it.
 
         // Both header "Save all" buttons open the same target chooser (save to
         // this car / game default / both). The button's PLACEMENT (next to the
@@ -4804,6 +4734,19 @@ namespace TrueforceForAll.Plugin
             RebuildEngineLayoutDropdown();
             Apply(EffectKind.Engine);
             UpdateFiringPatternReadout(_plugin.ActiveEngine);
+        }
+
+        // Community-list refresh for the active car landed. Drop the
+        // (game, carId) cache so the next MaybeRefreshCarCommunityCountAsync
+        // re-fetches, then re-fire it + rebuild the active-card car
+        // preset picker so the dropdown's "Top community presets"
+        // section reflects the new rows immediately.
+        private void OnCarCommunityListRefreshed()
+        {
+            _lastResolvedCarKey    = null;
+            _cachedTopForActiveCar = null;
+            MaybeRefreshCarCommunityCountAsync();
+            RefreshCarPresetPicker();
         }
 
         // "Edit" on a car-preset row: enter car offline-edit mode (freezes the

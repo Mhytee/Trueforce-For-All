@@ -40,6 +40,14 @@ namespace TrueforceForAll.Plugin
         // Init load so the host isn't churned on first display.
         public event Action LibraryChanged;
 
+        // Raised after a successful community-list refresh for the
+        // car-kind for-car view. Lets the host (SettingsControl) drop
+        // the active-card top-community cache so its dropdown picks up
+        // any new community presets without waiting for a plugin
+        // restart. Library is not changing, so LibraryChanged would be
+        // the wrong signal; this is a separate event.
+        public event Action CarCommunityListRefreshed;
+
         // Raised when the user clicks Edit on a game-preset row. The host
         // transitions the live panel into offline-edit mode for the named preset.
         public event Action<string> EditPresetRequested;
@@ -3035,6 +3043,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             RelabelCommunityScopeRadio();
             CommunityList_SelectionChanged(null, null);
             _communityFetchInFlight = false;
+
+            // Tell the host its active-card top-community cache may be
+            // stale: a car-kind for-car fetch for the currently active
+            // car just landed (scoped fetch, not trending). Without this
+            // signal, a Refresh click here doesn't propagate to the
+            // active card's dropdown until a plugin restart.
+            if (capturedKind == "car"
+                && capturedMode == "for-car"
+                && !capturedTrending
+                && _plugin != null
+                && string.Equals(capturedGame, _plugin.ActiveGame, StringComparison.Ordinal)
+                && string.Equals(capturedCar,  _plugin.ActiveCarId, StringComparison.Ordinal))
+            {
+                CarCommunityListRefreshed?.Invoke();
+            }
         }
 
         private void CommunityList_SelectionChanged(object sender, SelectionChangedEventArgs e)

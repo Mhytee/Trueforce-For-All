@@ -573,19 +573,12 @@
                                     VerticalAlignment="Center" Visibility="Collapsed"
                                     Click="HeaderCarRename_Click"
                                     ToolTip="Give this car a human-readable name. Always saved locally; also submitted to the community when Community Contributions is on."/>
-                            <!-- Discoverability surface for community tunes.
-                                 Shown only when community is on, a car is
-                                 detected, and the count fetch returned > 0.
-                                 Click opens a popover with the top 3-5 (one-
-                                 click Apply + See all). Updated by
-                                 RefreshCarCommunityCountAsync. -->
-                            <Button x:Name="HeaderCarCommunityCountBtn" Margin="10,0,0,0"
-                                    Padding="6,1,6,1" FontSize="10" Height="18"
-                                    VerticalAlignment="Center" Visibility="Collapsed"
-                                    Foreground="#FFE5C04A" Background="Transparent" BorderBrush="#FFE5C04A"
-                                    Cursor="Hand" Content="★ 0 community"
-                                    Click="HeaderCarCommunityCount_Click"
-                                    ToolTip="See top community presets for this car. Click for the popover; 'See all' inside opens the full Community list."/>
+                            <!-- Old "★ N community" discoverability chip + popover
+                                 removed in favour of the inline "── Top community
+                                 presets ──" section that the car preset dropdown
+                                 surfaces. One path with a preview-first apply
+                                 flow is clearer than two paths with different
+                                 semantics. -->
                         </StackPanel>
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Game preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
