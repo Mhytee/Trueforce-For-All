@@ -4859,9 +4859,9 @@ namespace TrueforceForAll.Plugin
                   + "Submit your value as a correction?"
                 : $"You're claiming the redline of '{carDisplay}' is {impliedRedline} RPM. "
                   + "No one's recorded it yet. Submit yours as the first answer?";
-            var result = MessageBox.Show(Window.GetWindow(this), body,
-                "Help the community", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result != MessageBoxResult.Yes) return;
+            if (TrueforceDialog.Show(Window.GetWindow(this),
+                    "Help the community", body, DialogKind.Confirm) != true)
+                return;
 
             _plugin.SubmitRedlineToCommunity(game, carId, impliedRedline);
 
