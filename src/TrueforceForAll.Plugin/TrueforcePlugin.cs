@@ -7491,6 +7491,78 @@ namespace TrueforceForAll.Plugin
                 ComputeActiveCarVariantSignature(game, carId));
         }
 
+        /// <summary>Summary of one bulk seed pass.</summary>
+        public sealed class SeedFactsSummary
+        {
+            public int ScannedCarPresets    { get; set; }
+            public int SubmittedEngagement  { get; set; }
+            public int SkippedNoOverride    { get; set; }
+            public int SkippedOutOfRange    { get; set; }
+            public int SkippedGameFilter    { get; set; }
+            public List<string> SubmittedRows { get; set; } = new List<string>();
+        }
+
+        /// <summary>DEV-mode bulk seeder. Walks every saved car preset
+        /// looking for a per-car RevLimiter override carrying a non-null
+        /// Threshold in [0.50, 1.00] and fires an engine_engagement_percent
+        /// submission for each (game, carId). Built for the Forza-family
+        /// case where a user has tuned a library of per-car thresholds
+        /// and wants that data backed by community consensus. The local
+        /// CarFacts bundle is left untouched (their existing presets
+        /// already give them the right behaviour locally; the community
+        /// hop helps the next user). Variant signature is left empty
+        /// since we're not in-session for these cars - the consensus
+        /// row for "unknown variant" is the right bucket for stock-
+        /// engine corrections.
+        ///
+        /// gameFilter is a substring match against entry.GameName -
+        /// pass null to scan every game, "Forza" to limit to Forza
+        /// family titles, "Forza Horizon 6" for FH6 only.</summary>
+        public SeedFactsSummary SeedEngagementFactsFromCarPresets(string gameFilter)
+        {
+            var sum = new SeedFactsSummary();
+            if (_carStore == null) return sum;
+            var loaded = _carStore.LoadAll();
+            foreach (var carKv in loaded)
+            {
+                foreach (var pKv in carKv.Value)
+                {
+                    sum.ScannedCarPresets++;
+                    var entry = pKv.Value;
+                    if (entry?.Override?.RevLimiter == null)
+                    {
+                        sum.SkippedNoOverride++;
+                        continue;
+                    }
+                    string game = entry.GameName ?? "";
+                    if (!string.IsNullOrEmpty(gameFilter)
+                        && (game.Length == 0
+                            || game.IndexOf(gameFilter, StringComparison.OrdinalIgnoreCase) < 0))
+                    {
+                        sum.SkippedGameFilter++;
+                        continue;
+                    }
+                    float pct = entry.Override.RevLimiter.Threshold;
+                    if (pct < 0.50f || pct > 1.00f)
+                    {
+                        sum.SkippedOutOfRange++;
+                        continue;
+                    }
+                    if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(entry.CarId)) continue;
+                    // variantSignature empty: seeding has no live
+                    // telemetry to compute a sig with. Pass through to
+                    // the "stock" consensus row. A future user driving
+                    // a swap will land in a different signature row.
+                    _community?.SubmitEngagementPercentAsync(game, entry.CarId, pct, "");
+                    sum.SubmittedEngagement++;
+                    if (sum.SubmittedRows.Count < 50)
+                        sum.SubmittedRows.Add(game + "/" + entry.CarId + " @ "
+                            + pct.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            return sum;
+        }
+
 
         // Rank for variant selection: bigger wins. User (local correction) is
         // top: a user who clicked Correct knows what's actually in this car

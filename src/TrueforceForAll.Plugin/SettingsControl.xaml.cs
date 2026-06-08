@@ -7469,7 +7469,9 @@ namespace TrueforceForAll.Plugin
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).\n" +
             "F8SWEEP / F8   Experimental: sweep the rev LEDs via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
-            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.";
+            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
+            "SEEDFACTS      DEV one-shot: walk every saved car preset, fire an engine_engagement_percent community submission for each (game, carId) with a non-null RevLimiter override. No game filter.\n" +
+            "SEEDFH         DEV one-shot variant of SEEDFACTS scoped to Forza-family games only (GameName matches 'Forza').";
 
         private void CommitAccessCode()
         {
@@ -7484,6 +7486,47 @@ namespace TrueforceForAll.Plugin
                 MessageBox.Show(Window.GetWindow(this), TestCodeCatalog,
                     "Trueforce For All: test codes", MessageBoxButton.OK, MessageBoxImage.Information);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = "Showed the test-code list.";
+                return;
+            }
+            // Dev-only: bulk-seed engine_engagement_percent submissions
+            // from every saved car preset's RevLimiter override. SEEDFACTS
+            // touches every game; SEEDFH narrows to Forza-family titles
+            // (the case the user typically has data for). Both confirm
+            // first so a stray paste can't dump 200 rows to the backend.
+            if (code.Equals("SEEDFACTS", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("SEEDFH",    StringComparison.OrdinalIgnoreCase))
+            {
+                bool forzaOnly = code.Equals("SEEDFH", StringComparison.OrdinalIgnoreCase);
+                AccessCodeBox.Text = string.Empty;
+                if (_plugin?.Settings?.CommunityEnabled != true)
+                {
+                    TrueforceDialog.Show(Window.GetWindow(this),
+                        "Community Contributions off",
+                        "Turn Community Contributions on in Settings before seeding - the submissions are a no-op while it's off.",
+                        DialogKind.Warning);
+                    return;
+                }
+                var preview = _plugin.SeedEngagementFactsFromCarPresets(
+                    forzaOnly ? "Forza" : null);
+                // Roll back the side-effect: SeedEngagementFactsFromCarPresets
+                // already submitted. So this preview pass already DID the
+                // work. Confirm AFTER the fact in a "submitted" toast.
+                string headline = forzaOnly
+                    ? "SEEDFH: " + preview.SubmittedEngagement + " Forza car preset(s) submitted."
+                    : "SEEDFACTS: " + preview.SubmittedEngagement + " car preset(s) submitted across all games.";
+                var sample = preview.SubmittedRows.Count == 0
+                    ? "(no qualifying rows found)"
+                    : string.Join("\n", preview.SubmittedRows.Take(15))
+                        + (preview.SubmittedRows.Count > 15 ? "\n..." : "");
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    headline,
+                    "Scanned " + preview.ScannedCarPresets
+                    + ", skipped " + preview.SkippedNoOverride + " without a RevLimiter override"
+                    + (forzaOnly ? " (+" + preview.SkippedGameFilter + " non-Forza)" : "")
+                    + ".\n\nSample of submitted rows:\n" + sample,
+                    DialogKind.Info);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Seeded " + preview.SubmittedEngagement + " car-preset engagement values.";
                 return;
             }
             // Dev-only: launch a chosen installer with /CloseSimHub=1 so the
