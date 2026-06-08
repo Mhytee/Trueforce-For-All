@@ -909,6 +909,14 @@ namespace TrueforceForAll.Plugin
             float next = cur + delta;
             if (next < MasterGainMin) next = MasterGainMin;
             if (next > MasterGainMax) next = MasterGainMax;
+            // Log even when the value is already at the rail so the
+            // user can confirm the bound action actually fired - the
+            // silent no-op when next==cur was indistinguishable from
+            // "the binding never reached us."
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] NudgeMasterGain delta={delta:+0.00;-0.00;0.00} "
+                + $"cur={cur:F2} -> next={next:F2}"
+                + (Math.Abs(next - cur) < 0.0001f ? " (no-op, already at limit)" : ""));
             if (Math.Abs(next - cur) < 0.0001f) return;
             MasterGain = next;
             PersistSettings();
