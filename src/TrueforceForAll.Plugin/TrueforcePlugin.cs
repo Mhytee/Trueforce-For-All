@@ -4241,18 +4241,23 @@ namespace TrueforceForAll.Plugin
         }
         // Lazy-migration callback: the effect just computed an
         // absolute redline from the legacy Threshold-percent and the
-        // observed MaxRpm. Persist that value onto whichever preset
-        // RevLimiter source is currently live (per-car override beats
-        // the global game preset) and also reset Threshold to default
-        // so the same preset never migrates twice. Submit the implied
-        // redline to the community in the same pass when CommunityEnabled.
+        // observed MaxRpm. Updates the live RevLimiter source (per-car
+        // override beats global), persists the named preset on disk so
+        // the migration survives a re-apply of the same preset name,
+        // and submits the implied redline to the community. Built-in
+        // presets skip the on-disk write (we don't rewrite shipped
+        // factory files outside DevMode); the in-memory live state
+        // still gets the migrated value, so the running session is
+        // correct and a future session re-runs the migration off the
+        // factory Threshold idempotently.
         private void OnRevLimiterLazyMigrated(int migratedRpm)
         {
             if (Settings == null) return;
             // Source-of-truth = whatever ApplyRevLimiterSettings most
             // recently read from. ApplyActiveCarOverride determines
             // that on every car-change.
-            var src = GetActiveCarOverride()?.RevLimiter ?? Settings.RevLimiter;
+            bool fromCar = GetActiveCarOverride()?.RevLimiter != null;
+            var src = fromCar ? GetActiveCarOverride().RevLimiter : Settings.RevLimiter;
             if (src == null) return;
             if (src.RedlineRpm.HasValue) return;  // already migrated; defensive
             src.RedlineRpm = migratedRpm;
@@ -4262,6 +4267,56 @@ namespace TrueforceForAll.Plugin
             // fallback the effect's resolver also assumes.
             src.Threshold = 0.85f;
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+
+            // Surgical on-disk persist so the migration sticks across
+            // sessions without forcing the user to press Save. Only
+            // touches the RevLimiter section of the named preset, so
+            // any unrelated in-flight tuning in the live state stays
+            // unsaved (the user controls when that gets committed).
+            try
+            {
+                if (fromCar && _carStore != null && !string.IsNullOrEmpty(_activeCarId))
+                {
+                    string presetName = GetActiveCarPresetName(_activeCarId);
+                    if (!string.IsNullOrEmpty(presetName)
+                        && !(IsCarPresetBuiltin(_activeCarId, presetName) && !DevMode))
+                    {
+                        var loaded = _carStore.LoadAll();
+                        if (loaded != null
+                            && loaded.TryGetValue(_activeCarId, out var perCar)
+                            && perCar != null
+                            && perCar.TryGetValue(presetName, out var entry)
+                            && entry != null && entry.Override != null
+                            && !entry.IsBuiltin)
+                        {
+                            entry.Override.RevLimiter = Clone(src);
+                            _carStore.Save(_activeCarId, presetName,
+                                entry.GameName ?? _activeGame ?? "",
+                                entry.Override, isBuiltin: false,
+                                packName: entry.PackName, author: entry.Author,
+                                description: entry.Description, authorVersion: entry.AuthorVersion);
+                            _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(entry.Override);
+                        }
+                    }
+                }
+                else if (!string.IsNullOrEmpty(_activePresetName)
+                    && Settings.Presets != null
+                    && !(IsBuiltinPreset(_activePresetName) && !DevMode)
+                    && Settings.Presets.TryGetValue(_activePresetName, out var snap)
+                    && snap != null)
+                {
+                    snap.RevLimiter = Clone(Settings.RevLimiter);
+                    PersistGamePresetToFolder(_activePresetName, snap);
+                }
+                // No active preset / no per-car file bound: live
+                // settings already persisted via SaveCommonSettings
+                // above; nothing more to do.
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[Trueforce] Lazy RevLimiter persist failed: " + ex.Message);
+            }
+
             // Submit to community: a successful migration encoded a
             // real fact about a real car the user has tuned. The
             // submission is variant-aware (uses active sig) and
