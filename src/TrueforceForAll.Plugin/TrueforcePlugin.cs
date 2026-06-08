@@ -7860,6 +7860,25 @@ namespace TrueforceForAll.Plugin
             // already covers the user's current engine. No prompt.
             if (resolvedCyl > 0 && resolvedCyl == telCyl.Value) return;
 
+            // No stored truth + resolver gave no catalog cyl (Forza UDP
+            // games where the bake doesn't cover this car). Telemetry
+            // IS the source of truth on every frame; there's no prior
+            // pick to "mismatch" against, so the prompt would be
+            // misleading - the user has only one variant in play,
+            // which is the one they're currently driving. Skip.
+            // Future swap: once they've REGISTERED a variant for this
+            // car, this branch falls through and the swap-mismatch
+            // branch below fires correctly.
+            if (resolvedCyl <= 0)
+            {
+                string bundleKey = _activeGame + "/" + _activeCarId;
+                bool hasStoredVariants = Settings?.CarFacts != null
+                    && Settings.CarFacts.TryGetValue(bundleKey, out var bundleForGate)
+                    && bundleForGate?.EngineVariants != null
+                    && bundleForGate.EngineVariants.Count > 0;
+                if (!hasStoredVariants) return;
+            }
+
             string sig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
             if (string.IsNullOrEmpty(sig)) return;
 
