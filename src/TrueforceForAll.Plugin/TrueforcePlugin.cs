@@ -1765,21 +1765,31 @@ namespace TrueforceForAll.Plugin
 
             InitPipeline();
 
-            // Bindable actions for SimHub's Controls system. Surfaced in our
-            // Controls tab via embedded ControlsEditor widgets, and also in
-            // SimHub's global Controls & Events list. Each press nudges master
-            // gain by the slider's small-step (0.05), clamped to [0, 2].
-            // Wrapped so a SimHub API hiccup can't abort Init.
+            // Bindable input mappings for SimHub's Controls system.
+            // IMPORTANT: AddInputMapping (NOT AddAction). AddAction
+            // registers a macro/event-callable entry that shows up in
+            // the Actions list but is NOT bindable to a wheel button -
+            // it sets IsInput=false on the GeneratedAction, so the
+            // Controls binder skips it entirely and the user pressing
+            // a bound button produces nothing. AddInputMapping flips
+            // IsInput=true + installs a PressFallback so the same
+            // entry surfaces in the Controls & Events binder + fires
+            // on hardware input. Per SimHub.Plugins IL: AddAction calls
+            // GeneratedAction without set_IsInput, AddInputMapping
+            // explicitly calls set_IsInput(true).
+            // Each press nudges master gain by the slider's small-step
+            // (0.05), clamped to [0, 2]. Wrapped so a SimHub API hiccup
+            // can't abort Init.
             try
             {
-                pluginManager.AddAction("TrueforceForAll.MasterGainUp", GetType(),
+                pluginManager.AddInputMapping("TrueforceForAll.MasterGainUp", GetType(),
                     (pm, a) => NudgeMasterGain(+MasterGainStep), (pm, a) => { });
-                pluginManager.AddAction("TrueforceForAll.MasterGainDown", GetType(),
+                pluginManager.AddInputMapping("TrueforceForAll.MasterGainDown", GetType(),
                     (pm, a) => NudgeMasterGain(-MasterGainStep), (pm, a) => { });
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[Trueforce] AddAction (master gain) failed: {ex.Message}");
+                SimHub.Logging.Current.Info($"[Trueforce] AddInputMapping (master gain) failed: {ex.Message}");
             }
         }
 
