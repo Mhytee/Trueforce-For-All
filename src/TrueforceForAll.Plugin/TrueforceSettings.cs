@@ -832,6 +832,17 @@ namespace TrueforceForAll.Plugin
         /// threshold.</summary>
         public int? RedlineRpm { get; set; }
 
+        /// <summary>Optional rev-limiter engagement percent. The Forza
+        /// substitute for RedlineRpm: telemetry exposes MaxRpm but no
+        /// redline, so the plugin's RevLimiter fires at MaxRpm * percent.
+        /// Storing the percent (not the absolute redline) is what's
+        /// shareable per car because every user with the same Forza
+        /// title sees the same MaxRpm for the same chassis. Range
+        /// 0.50..1.00 matches the slider clamp; null = no CarFact
+        /// engagement value, fall through to the user's preset
+        /// RevLimiter.Threshold.</summary>
+        public float? EngagementPercent { get; set; }
+
         /// <summary>Where this variant came from. Drives the source label
         /// in the picker UI.</summary>
         [JsonConverter(typeof(StringEnumConverter))]

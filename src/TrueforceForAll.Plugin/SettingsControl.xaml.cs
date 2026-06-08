@@ -350,6 +350,12 @@ namespace TrueforceForAll.Plugin
             int? telemetryRedline = observedRedline >= 500
                 ? (int?)((int)System.Math.Round(observedRedline / 500.0) * 500)
                 : null;
+            // Engagement percent pre-fill: read whatever the live RevLimiter
+            // is currently using (preset Threshold OR a CarFacts override
+            // if one was already applied for this car). Captures what the
+            // user has been tuning so one click saves the value they're
+            // already running and ships it to the community.
+            float? activePct = _plugin.RevLimiter?.Threshold;
             string carDisplayName = _plugin.ActiveCarDisplayName;
             _variantPromptModalOpen = true;
             bool? result = null;
@@ -357,7 +363,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 win = new CarFactsNewVariantWindow(carDisplayName, carId, sig,
-                    telemetryCyl, telemetryRedline)
+                    telemetryCyl, telemetryRedline, activePct)
                 {
                     Owner = Window.GetWindow(this),
                 };
@@ -367,7 +373,8 @@ namespace TrueforceForAll.Plugin
             if (result == true)
             {
                 _plugin.RegisterNewEngineVariant(
-                    win.Label, win.Cylinders, win.EngineConfig, win.RedlineRpm);
+                    win.Label, win.Cylinders, win.EngineConfig,
+                    win.RedlineRpm, win.EngagementPercent);
             }
             else if (win != null && win.DontAskAgain)
             {

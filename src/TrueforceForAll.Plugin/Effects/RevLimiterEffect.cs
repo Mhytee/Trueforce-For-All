@@ -88,6 +88,19 @@ namespace TrueforceForAll.Plugin.Effects
         /// saved. Stage 1 wiring of the CarFacts layer.</summary>
         public int? CarFactsRedline { get; set; }
 
+        /// <summary>Per-car engagement percent supplied by the CarFacts
+        /// layer (Forza family: telemetry exposes MaxRpm but not
+        /// RedlineRpm, so the limiter fires at MaxRpm * percent and that
+        /// percent is the community-shareable fact). When set AND the
+        /// percentage path is the one we'd take (no usable telemetry
+        /// redline), this value overrides <see cref="Threshold"/> so a
+        /// downloaded variant lights up for any user driving that car
+        /// without them having to tune the slider themselves. The
+        /// resolver clears it on car-change before reapplying so a
+        /// stale value never leaks into a different car. Per-machine,
+        /// not preset-saved.</summary>
+        public float? CarFactsEngagementPercent { get; set; }
+
         private const double SampleRate = 4000.0;
         private const int HoldMs = 80;   // post-disengage decay window
         private static readonly long HoldStopwatchTicks =
@@ -200,7 +213,17 @@ namespace TrueforceForAll.Plugin.Effects
                 }
                 else if (maxRpm > MinEngineRpm)
                 {
-                    double thr = Math.Min(1.0, Math.Max(0.50, (double)Threshold));
+                    // CarFacts engagement percent (set by the resolver
+                    // for the active car when the variant carries one)
+                    // overrides the preset Threshold on the percentage
+                    // path. The user's own slider still wins if they
+                    // explicitly correct it via the New-variant prompt
+                    // (which writes a UserVariant the resolver picks
+                    // ahead of Community / Baked entries).
+                    float pct = CarFactsEngagementPercent.HasValue
+                        ? CarFactsEngagementPercent.Value
+                        : Threshold;
+                    double thr = Math.Min(1.0, Math.Max(0.50, (double)pct));
                     engaged = rpm >= maxRpm * thr;               // % of the rev limit
                 }
             }

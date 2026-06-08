@@ -7481,6 +7481,16 @@ namespace TrueforceForAll.Plugin
                 ComputeActiveCarVariantSignature(game, carId));
         }
 
+        /// <summary>Fire-and-forget submission of a User-source engine
+        /// engagement-percent correction. Variant-aware like the redline
+        /// submission so Forza swaps don't all collapse into one
+        /// consensus row.</summary>
+        public void SubmitEngagementPercentToCommunity(string game, string carId, float percent)
+        {
+            _community?.SubmitEngagementPercentAsync(game, carId, percent,
+                ComputeActiveCarVariantSignature(game, carId));
+        }
+
 
         // Rank for variant selection: bigger wins. User (local correction) is
         // top: a user who clicked Correct knows what's actually in this car
@@ -7515,7 +7525,11 @@ namespace TrueforceForAll.Plugin
         // passes true to leave a trace of the new resolved state.
         public void ResolveAndApplyCarFactsForActiveCar(string carId, bool logResolution)
         {
-            if (RevLimiter != null) RevLimiter.CarFactsRedline = null;
+            if (RevLimiter != null)
+            {
+                RevLimiter.CarFactsRedline = null;
+                RevLimiter.CarFactsEngagementPercent = null;
+            }
             if (EnginePulse == null) return;
 
             EnginePulse.AutoLayout = null;
@@ -7581,6 +7595,16 @@ namespace TrueforceForAll.Plugin
             if (haveVariant && RevLimiter != null
                 && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
                 RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
+
+            // EngagementPercent rides the same variant resolution. Stamped
+            // onto the live RevLimiter so games without a telemetry
+            // redline (Forza family) pick up the shared per-car fact
+            // without forcing every user to tune the slider.
+            if (haveVariant && RevLimiter != null
+                && v.EngagementPercent.HasValue
+                && v.EngagementPercent.Value >= 0.50f
+                && v.EngagementPercent.Value <= 1.00f)
+                RevLimiter.CarFactsEngagementPercent = v.EngagementPercent.Value;
 
             // Community-only redline path: covers the case where the user
             // (or community) has confirmed a redline but NOT a layout for
@@ -7780,7 +7804,7 @@ namespace TrueforceForAll.Plugin
         /// Save button. Returns false on invalid input or when the
         /// active-car context is gone.</summary>
         public bool RegisterNewEngineVariant(string label, int cylinders,
-            EngineConfig config, int? redlineRpm)
+            EngineConfig config, int? redlineRpm, float? engagementPercent = null)
         {
             if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
             if (cylinders < 1 || cylinders > 16) return false;
@@ -7793,33 +7817,39 @@ namespace TrueforceForAll.Plugin
                 Settings.CarFacts[key] = bundle;
             }
             if (bundle.EngineVariants == null) bundle.EngineVariants = new List<EngineVariant>();
+            float? clampedPct = null;
+            if (engagementPercent.HasValue
+                && engagementPercent.Value >= 0.50f
+                && engagementPercent.Value <= 1.00f)
+                clampedPct = engagementPercent.Value;
             bundle.EngineVariants.Add(new EngineVariant
             {
-                Id            = Guid.NewGuid().ToString(),
-                Label         = string.IsNullOrWhiteSpace(label) ? "User variant" : label.Trim(),
-                Cylinders     = cylinders,
-                EngineConfig  = config,
-                RedlineRpm    = redlineRpm,
-                Source        = CarFactSource.UserVariant,
-                Confirmations = 0,
+                Id                = Guid.NewGuid().ToString(),
+                Label             = string.IsNullOrWhiteSpace(label) ? "User variant" : label.Trim(),
+                Cylinders         = cylinders,
+                EngineConfig      = config,
+                RedlineRpm        = redlineRpm,
+                EngagementPercent = clampedPct,
+                Source            = CarFactSource.UserVariant,
+                Confirmations     = 0,
             });
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
 
             // Fire-and-forget community submission so other drivers
             // who hit the same Forza swap signature pick up the engine
-            // layout (and redline) without having to re-discover it
-            // themselves. Gated by CommunityEnabled inside the
+            // layout, redline, AND engagement percent without having to
+            // re-discover them. Gated by CommunityEnabled inside the
             // SubmitX wrappers; no sign-in required (submit_car_fact
-            // is IP-pseudonymous, not bearer-authenticated). Submitting
-            // both cyl-derived layout AND redline mirrors what the
-            // legacy save-prompt path does for User-source corrections.
+            // is IP-pseudonymous, not bearer-authenticated).
             try
             {
                 var layout = Effects.FiringPatternDb.LayoutFromLegacy(cylinders, config, false);
                 SubmitEngineLayoutToCommunity(_activeGame, _activeCarId, layout);
                 if (redlineRpm.HasValue && redlineRpm.Value >= 500)
                     SubmitRedlineToCommunity(_activeGame, _activeCarId, redlineRpm.Value);
+                if (clampedPct.HasValue)
+                    SubmitEngagementPercentToCommunity(_activeGame, _activeCarId, clampedPct.Value);
             }
             catch (Exception ex)
             {
