@@ -201,6 +201,27 @@ namespace TrueforceForAll.Plugin
         private ITelemetrySource      _telemetrySource;
         public  ITelemetrySource      TelemetrySource => _telemetrySource;
 
+        // The Forza UDP listener stays alive for the whole time a Forza title
+        // is the active game, even while we're temporarily reading from the
+        // SimHub fallback (see _forzaOnSimHubFallback). Keeping it bound lets
+        // us upgrade back to the enhanced source the instant Forza packets
+        // start arriving on our port. Null outside a Forza session. Owned by
+        // SwapTelemetrySource / ApplyForzaSettings; the active source feeding
+        // effects (_telemetrySource) points at this OR _simHubSource.
+        private ForzaUdpTelemetrySource _forzaUdp;
+        public  ForzaUdpTelemetrySource ForzaUdpSource => _forzaUdp;
+
+        // True when a Forza title is active and our Forza UDP listener is bound
+        // but silent (Forza's Data Out is pointed at SimHub, not us), while
+        // SimHub IS receiving the telemetry, so we run on the SimHub fallback.
+        // Everything still works; the effects that lean on Forza's richer feed
+        // (road texture detail, airborne feel, per-tire / cylinder data) are
+        // just less precise than when Forza talks to the plugin directly.
+        // Drives the "config isn't optimal" UI badge. Cleared the moment Forza
+        // packets reach our port (we upgrade back to the enhanced source).
+        private volatile bool _forzaOnSimHubFallback;
+        public  bool ForzaOnSimHubFallback => _forzaOnSimHubFallback;
+
         // ---- Port discovery ----
         // When a UDP source (Forza) has been running without
         // receiving anything, kick off a scan across known alternate
@@ -1114,12 +1135,12 @@ namespace TrueforceForAll.Plugin
             // back-and-forth FFB against the stop. The precise interaction
             // wasn't isolated (direction is correct in normal use, and
             // several narrower gates were tried without reliably catching
-            // the case), so the spring is bypassed at the source-type level
-            // (user's call, 2026-05-28). The source-type check is more
-            // robust than _activeGame string-matching: ForzaUdpTelemetry
-            // Source is what feeds the lambda regardless of which Forza
-            // title resolved the game id. Other sources unchanged.
-            if (_telemetrySource is ForzaUdpTelemetrySource)
+            // the case), so the spring is bypassed for the whole Forza
+            // session (user's call, 2026-05-28). Gate on the SESSION, not the
+            // active source: when a Forza session is running on the SimHub
+            // fallback (Data Out pointed at SimHub, not us) the active source
+            // is SimHub, yet the spring must still stay excluded.
+            if (InForzaSession)
                 return gameTarget;
 
             // Steering source. While the game is reporting steering, use ITS
@@ -2344,6 +2365,14 @@ namespace TrueforceForAll.Plugin
             // Stop the active telemetry source so PushFromGameData becomes a
             // no-op for any late SimHub tick that lands during teardown.
             try { _telemetrySource?.Dispose(); } catch { }
+            // The keep-alive Forza listener may be bound but not the active
+            // source (SimHub fallback), so dispose it explicitly too.
+            if (_forzaUdp != null && _forzaUdp != _telemetrySource)
+            {
+                try { _forzaUdp.Dispose(); } catch { }
+            }
+            _forzaUdp        = null;
+            _forzaOnSimHubFallback = false;
             _telemetrySource = null;
             _simHubSource    = null;
 
@@ -2700,9 +2729,16 @@ namespace TrueforceForAll.Plugin
             // fallback. Covers the AC menu→session window (MMF not yet
             // created), and any other source that needs to wait for the game
             // to be fully loaded before its data surface is available.
+            // Excludes a Forza session whose listener is already bound: there
+            // EvaluateForzaTelemetryFallback owns the enhanced<->SimHub choice,
+            // so re-Swapping here would yank the active source back to the
+            // silent listener for a tick every second (a periodic FFB dropout).
+            // A failed Forza bind leaves _forzaUdp null, so the retry still
+            // re-attempts the bind in that case.
             if (!string.IsNullOrEmpty(_activeGame)
                 && _telemetrySource != null && !_telemetrySource.IsEnhanced
-                && IsEnhancedEligible(_activeGame))
+                && IsEnhancedEligible(_activeGame)
+                && _forzaUdp == null)
             {
                 long now = Stopwatch.GetTimestamp();
                 if (now - _lastEnhancedRetryTicks > Stopwatch.Frequency)
@@ -2733,6 +2769,11 @@ namespace TrueforceForAll.Plugin
             // way so an enhanced source (AC MMF, etc.) drives the same
             // dispatch path at its native rate without forking effect code.
             _simHubSource?.PushFromGameData(data);
+
+            // Now that _simHubSource.MeasuredHz reflects this tick, decide
+            // whether a Forza session should run on the enhanced UDP source or
+            // the SimHub fallback. No-op outside Forza.
+            EvaluateForzaTelemetryFallback();
 
             // Cache the SimHub-computed redline RPM after the push (it's derived
             // there from CarSettings_RedLineRPM). Overlaid onto enhanced-source
@@ -3271,17 +3312,23 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
+        /// <summary>True while a Forza title is the active game, whether we're
+        /// reading the enhanced Forza UDP source or the SimHub fallback. Gates
+        /// Forza-session behavior (the stationary-spring exclusion) on the
+        /// session rather than the live source instance, so it still holds when
+        /// a Forza session has fallen back to SimHub telemetry.</summary>
+        private bool InForzaSession => IsForzaGameName(_activeGame);
+
         /// <summary>True when the stationary spring is supported on the
         /// active source. The spring conflicted with Forza's force feedback
         /// across pause and matchmaking transitions and could pull the wheel
         /// to its rotational stop; the precise mechanism wasn't isolated and
         /// several narrower gates were tried without reliably catching every
-        /// case, so it is bypassed outright for the Forza UDP source. Drives
+        /// case, so it is bypassed outright for the whole Forza session. Drives
         /// a "not used in Forza" badge next to the Stationary spring
         /// checkbox so users don't tune the section expecting a behavior
         /// that won't apply. Other sources unchanged.</summary>
-        public bool ActiveSourceSupportsStationarySpring =>
-            !(_telemetrySource is ForzaUdpTelemetrySource);
+        public bool ActiveSourceSupportsStationarySpring => !InForzaSession;
 
         /// <summary>True if SimHub's GameName looks like any Forza title
         /// (Horizon or Motorsport). Drives Forza UDP section visibility.
@@ -3342,6 +3389,7 @@ namespace TrueforceForAll.Plugin
         /// log a "fell back" message every second while AC is loading.</summary>
         private void SwapTelemetrySource(string game, bool silent = false)
         {
+            bool gameIsForza = IsForzaGameName(game);
             ITelemetrySource newSource = null;
             if (game == "AssettoCorsa")
             {
@@ -3364,12 +3412,17 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
-            else if (IsForzaGameName(game))
+            else if (gameIsForza)
             {
                 // The Forza UDP reader is the only source of Forza's per-tire
                 // surface / kerb / cylinder data, so it is always on for Forza
                 // (no user toggle). It binds only while a Forza title is the
                 // active game; a port conflict falls back to SimHub below.
+                // Created once and kept alive for the whole Forza session (see
+                // _forzaUdp): even if it never receives a packet we hold it so
+                // EvaluateForzaTelemetryFallback can upgrade back to it the
+                // instant Forza's Data Out is pointed at our port.
+                if (_forzaUdp == null)
                 {
                     try
                     {
@@ -3380,7 +3433,7 @@ namespace TrueforceForAll.Plugin
                             Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
                         };
                         fz.Start();
-                        newSource = fz;
+                        _forzaUdp = fz;
                     }
                     catch (Exception ex)
                     {
@@ -3393,35 +3446,105 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+                // Attach the enhanced source optimistically.
+                // EvaluateForzaTelemetryFallback (called each data tick) demotes
+                // to the SimHub fallback within a tick if it stays silent while
+                // SimHub is the one actually receiving Forza's telemetry.
+                if (_forzaUdp != null) newSource = _forzaUdp;
             }
             if (newSource == null) newSource = _simHubSource;
-            if (newSource == _telemetrySource) return;
 
-            // Detach old's dispatch BEFORE attaching new's so DispatchFrame is
-            // never invoked from two threads concurrently. Both fields are
-            // ref-typed; .NET guarantees torn-tear-safe writes.
-            var old = _telemetrySource;
-            if (old != null) old.OnFrame = null;
-            newSource.OnFrame = DispatchFrame;
-            _telemetrySource = newSource;
-
-            // Reset port-discovery state on every source swap so a fresh
-            // start (Forza was idle or just launched, port changed in
-            // settings, etc.) restarts the discovery cycle.
-            _discoverySourceStartedTicks = Stopwatch.GetTimestamp();
-            _discoveryNextAttemptTicks   = 0;
-            _discoverySourceKey = newSource;
-            System.Threading.Volatile.Write(ref _discoveredAlternatePort, 0);
-
-            // Dispose the previous enhanced source. _simHubSource is the
-            // long-lived fallback and stays alive for the plugin's lifetime.
-            if (old != null && old != _simHubSource && old != newSource)
+            if (newSource != _telemetrySource)
             {
-                try { old.Dispose(); } catch { }
+                // Detach old's dispatch BEFORE attaching new's so DispatchFrame is
+                // never invoked from two threads concurrently. Both fields are
+                // ref-typed; .NET guarantees torn-tear-safe writes.
+                var old = _telemetrySource;
+                if (old != null) old.OnFrame = null;
+                newSource.OnFrame = DispatchFrame;
+                _telemetrySource = newSource;
+
+                // Reset port-discovery state on every source swap so a fresh
+                // start (Forza was idle or just launched, port changed in
+                // settings, etc.) restarts the discovery cycle.
+                _discoverySourceStartedTicks = Stopwatch.GetTimestamp();
+                _discoveryNextAttemptTicks   = 0;
+                _discoverySourceKey = newSource;
+                System.Threading.Volatile.Write(ref _discoveredAlternatePort, 0);
+
+                // Dispose the previous enhanced source. _simHubSource is the
+                // long-lived fallback and the Forza listener (_forzaUdp) is torn
+                // down separately below; neither is disposed here.
+                if (old != null && old != _simHubSource && old != _forzaUdp && old != newSource)
+                {
+                    try { old.Dispose(); } catch { }
+                }
+
+                SimHub.Logging.Current.Info(
+                    $"[Trueforce] Telemetry source: {newSource.Name} (enhanced={newSource.IsEnhanced}).");
             }
 
-            SimHub.Logging.Current.Info(
-                $"[Trueforce] Telemetry source: {newSource.Name} (enhanced={newSource.IsEnhanced}).");
+            // Leaving Forza: tear down the keep-alive UDP listener now that the
+            // active source has been swapped off it above.
+            if (!gameIsForza && _forzaUdp != null)
+            {
+                try { _forzaUdp.Dispose(); } catch { }
+                _forzaUdp = null;
+                _forzaOnSimHubFallback = false;
+            }
+        }
+
+        // Choose between the enhanced Forza UDP source and the SimHub fallback
+        // based on which is actually receiving telemetry. Called every data tick
+        // while a Forza title is active (cheap: a couple of field reads). This is
+        // what prevents a dead wheel when a user's Forza "Data Out" is pointed at
+        // SimHub's port instead of ours: the Forza listener binds but never
+        // receives, so without this we'd sit on a silent source that reports
+        // "paused" forever and the pause-release would hold the wheel at zero.
+        private void EvaluateForzaTelemetryFallback()
+        {
+            var fz = _forzaUdp;
+            if (fz == null) { _forzaOnSimHubFallback = false; return; }   // not a Forza session
+
+            if (fz.PacketsReceived > 0)
+            {
+                // Forza UDP is receiving: use (or return to) the enhanced source.
+                if (_telemetrySource != fz)
+                {
+                    var old = _telemetrySource;
+                    if (old != null) old.OnFrame = null;
+                    fz.OnFrame = DispatchFrame;
+                    _telemetrySource = fz;
+                    _discoverySourceStartedTicks = Stopwatch.GetTimestamp();
+                    _discoveryNextAttemptTicks   = 0;
+                    _discoverySourceKey = fz;
+                    SimHub.Logging.Current.Info(
+                        "[Trueforce] Forza telemetry now reaching the plugin; using the enhanced Forza (UDP) source.");
+                }
+                _forzaOnSimHubFallback = false;
+                return;
+            }
+
+            // Forza UDP is bound but silent. If SimHub is receiving Forza's
+            // telemetry instead (Data Out pointed at SimHub, not us), run on the
+            // SimHub fallback so force feedback + core effects keep working.
+            if (_simHubSource != null && _simHubSource.MeasuredHz > 0)
+            {
+                if (_telemetrySource != _simHubSource)
+                {
+                    var old = _telemetrySource;
+                    if (old != null) old.OnFrame = null;
+                    _simHubSource.OnFrame = DispatchFrame;
+                    _telemetrySource = _simHubSource;
+                    SimHub.Logging.Current.Info(
+                        "[Trueforce] Forza telemetry is reaching SimHub but not the plugin; using the SimHub fallback. " +
+                        "Point Forza's Data Out at the plugin (and forward to SimHub) for more detailed road/airborne feel.");
+                }
+                _forzaOnSimHubFallback = true;
+            }
+            // else: neither source has telemetry yet (startup, or Data Out not
+            // set up anywhere). Stay on the optimistic enhanced source and leave
+            // the fallback flag as-is; the no-telemetry setup banner covers it.
         }
 
         // ---------- Port discovery ----------
@@ -3595,22 +3718,29 @@ namespace TrueforceForAll.Plugin
             if (Settings?.Forza == null) return;
             this.SaveCommonSettings("GeneralSettings", Settings);
 
-            bool currentlyForza = _telemetrySource is ForzaUdpTelemetrySource;
+            // Test against the keep-alive listener, not the active source: while
+            // on the SimHub fallback _telemetrySource is SimHub even though a
+            // Forza listener is still bound and needs rebuilding.
+            bool currentlyForza = _forzaUdp != null;
             bool shouldListen   = !string.IsNullOrEmpty(_activeGame) && IsForzaGameName(_activeGame);
             if (!currentlyForza && !shouldListen) return;
 
-            // Route through the SimHub fallback first so the old source's
-            // dispose runs cleanly before SwapTelemetrySource (re)builds.
-            // SwapTelemetrySource decides what to attach next based on the
-            // new settings + active game; if we're disabling, it'll fall
-            // through to a non-Forza source (SimHub).
-            if (currentlyForza)
+            // Tear the Forza listener down so SwapTelemetrySource rebuilds it
+            // with the new port/bind/forward settings. Route the active source
+            // back to the SimHub fallback first (if it was the enhanced one) so
+            // the dispose runs cleanly; SwapTelemetrySource re-attaches and
+            // EvaluateForzaTelemetryFallback re-evaluates from there.
+            if (_forzaUdp != null)
             {
-                var oldFz = _telemetrySource;
-                oldFz.OnFrame = null;
-                _simHubSource.OnFrame = DispatchFrame;
-                _telemetrySource = _simHubSource;
-                try { oldFz.Dispose(); } catch { }
+                if (_telemetrySource == _forzaUdp)
+                {
+                    _forzaUdp.OnFrame = null;
+                    _simHubSource.OnFrame = DispatchFrame;
+                    _telemetrySource = _simHubSource;
+                }
+                try { _forzaUdp.Dispose(); } catch { }
+                _forzaUdp = null;
+                _forzaOnSimHubFallback = false;
             }
             SwapTelemetrySource(_activeGame);
         }

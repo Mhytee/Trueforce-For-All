@@ -1347,7 +1347,11 @@ namespace TrueforceForAll.Plugin
 
                 if (ForzaStatusText != null)
                 {
-                    var fzSrc = _plugin.TelemetrySource as TrueforceForAll.Core.ForzaUdpTelemetrySource;
+                    // Use the keep-alive Forza listener, not the active source:
+                    // while on the SimHub fallback the active source is SimHub
+                    // even though the Forza listener is still bound, and the
+                    // status/forward UI should reflect the listener.
+                    var fzSrc = _plugin.ForzaUdpSource;
 
                     // True once we're confident nothing is arriving and the
                     // user should see the troubleshooter: either the STALL test
@@ -1468,7 +1472,15 @@ namespace TrueforceForAll.Plugin
 
                 // UDP test code override (forces the banner without a session).
                 if (_forceUdpSetupBanner == 1) forzaNeedsSetup = true;
+
+                // The SimHub-fallback notice and the no-telemetry setup banner
+                // are mutually exclusive states: fallback means telemetry IS
+                // reaching SimHub (working but suboptimal), so it takes
+                // precedence over the "nothing is arriving" banner.
+                bool onSimHubFallback = _plugin.ForzaOnSimHubFallback;
+                if (onSimHubFallback) forzaNeedsSetup = false;
                 UpdateUdpSetupBanner(forzaNeedsSetup);
+                UpdateForzaFallbackBanner(onSimHubFallback);
             }
 
             // Telemetry-source line in Diagnostics: source name + live measured Hz,
@@ -5541,6 +5553,28 @@ namespace TrueforceForAll.Plugin
             if (ForzaTroubleshootExpander != null)
                 ForzaTroubleshootExpander.IsExpanded = true;
             // Defer the scroll until the Settings tab has laid out its content.
+            FrameworkElement target = ForzaSection;
+            if (target != null)
+                Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),
+                    DispatcherPriority.Background);
+        }
+
+        // Drives the "running on SimHub fallback" info banner. Distinct from the
+        // no-telemetry setup banner: here telemetry IS reaching SimHub, we just
+        // want the user to re-point Data Out at the plugin for richer detail.
+        private void UpdateForzaFallbackBanner(bool show)
+        {
+            if (ForzaFallbackBanner == null) return;
+            ForzaFallbackBanner.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ForzaFallbackBannerButton_Click(object sender, RoutedEventArgs e)
+        {
+            // The user is already receiving telemetry (via SimHub), so jump
+            // straight to the Forza setup section and the forward fields rather
+            // than the "not receiving packets?" troubleshooter.
+            if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
+            if (UdpTelemetryExpander != null) UdpTelemetryExpander.IsExpanded = true;
             FrameworkElement target = ForzaSection;
             if (target != null)
                 Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),

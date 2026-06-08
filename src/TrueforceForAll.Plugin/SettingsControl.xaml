@@ -554,6 +554,37 @@
                 </Grid>
             </Border>
 
+            <!-- Forza SimHub-fallback notice. Shown when a Forza title is
+                 running and telemetry IS reaching the plugin, but only via
+                 SimHub (Forza's Data Out is pointed at SimHub's port, not the
+                 plugin's). Everything still works; the effects that lean on
+                 Forza's richer telemetry (road texture detail, airborne feel,
+                 per-tire / cylinder data) just aren't as precise as they are
+                 when Forza talks to the plugin directly. Less severe than the
+                 no-telemetry banner above, so it's styled as info, not a
+                 warning. Driven from UpdateForzaFallbackBanner. -->
+            <Border x:Name="ForzaFallbackBanner" Visibility="Collapsed"
+                    Background="#332196F3" BorderBrush="#2196F3" BorderThickness="1"
+                    CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="ⓘ" FontSize="15" Foreground="White"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Grid.Column="1" x:Name="ForzaFallbackBannerText" Foreground="White"
+                               FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="Force feedback is working, but the plugin is reading Forza's telemetry secondhand from SimHub, which carries less detail than Forza's own feed. Point Forza's Data Out at the plugin for more precise road texture and airborne feel."/>
+                    <Button Grid.Column="2" x:Name="ForzaFallbackBannerButton" Content="Set up…"
+                            Width="90" Height="28" Margin="10,0,0,0"
+                            Click="ForzaFallbackBannerButton_Click"
+                            Cursor="Hand"
+                            ToolTip="Jump to the Forza telemetry setup."/>
+                </Grid>
+            </Border>
+
             <!-- Header strip: master toggle + at-a-glance context.
                  Just Game / Car / Preset and a single status pill. Verbose
                  wheel/stream/telemetry strings live in Diagnostics. -->
