@@ -35,18 +35,13 @@ namespace TrueforceForAll.Plugin
         public int Cylinders { get; private set; }
         public EngineConfig EngineConfig { get; private set; }
         public int? RedlineRpm { get; private set; }
-        /// <summary>Rev-limiter engagement percent (0.50..1.00) when the
-        /// user filled it in. Null when blank. Forza-family games
-        /// without a telemetry redline rely on this value to know when
-        /// to fire the limiter haptic.</summary>
-        public float? EngagementPercent { get; private set; }
         /// <summary>True when the user clicked "Don't ask again." Caller
         /// reads this even on a false DialogResult to decide whether to
         /// persist the dismissal.</summary>
         public bool DontAskAgain { get; private set; }
 
         public CarFactsNewVariantWindow(string carDisplayName, string carId, string signature,
-            int telemetryCyl, int? telemetryRedlineRpm, float? activeEngagementPercent)
+            int telemetryCyl, int? telemetryRedlineRpm)
         {
             Title         = "New engine variant detected";
             Width         = 480;
@@ -119,16 +114,6 @@ namespace TrueforceForAll.Plugin
             Grid.SetColumn(rpmColumn, 2);
             compactRow.Children.Add(rpmColumn);
             root.Children.Add(compactRow);
-
-            // Engagement percent: critical for Forza-family games where
-            // telemetry doesn't expose a redline. Defaults to whatever
-            // the user already tuned on their active preset's slider so
-            // a one-click save captures the value they're already using.
-            root.Children.Add(MakeLabel("Rev-limiter engagement % (Forza only, 0.50..1.00)"));
-            var tbPct = MakeTextBox(activeEngagementPercent.HasValue
-                ? activeEngagementPercent.Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
-                : "");
-            root.Children.Add(tbPct);
 
             root.Children.Add(MakeLabel("Engine configuration"));
             var cmbConfig = new ComboBox
@@ -228,31 +213,11 @@ namespace TrueforceForAll.Plugin
                 if (cmbConfig.SelectedItem is ComboBoxItem ci && ci.Tag is EngineConfig ecVal)
                     pickedConfig = ecVal;
 
-                float? pct = null;
-                string pctText = (tbPct.Text ?? "").Trim();
-                if (pctText.Length > 0)
-                {
-                    if (!float.TryParse(pctText,
-                            System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            out float pctVal)
-                        || pctVal < 0.50f || pctVal > 1.00f)
-                    {
-                        TrueforceDialog.Show(this, "Engagement range",
-                            "Engagement percent must be between 0.50 and 1.00, or left blank.",
-                            DialogKind.Warning);
-                        tbPct.Focus();
-                        return;
-                    }
-                    pct = pctVal;
-                }
-
-                Label             = (tbLabel.Text ?? "").Trim();
-                Cylinders         = cyl;
-                EngineConfig      = pickedConfig;
-                RedlineRpm        = rpm;
-                EngagementPercent = pct;
-                DialogResult      = true;
+                Label        = (tbLabel.Text ?? "").Trim();
+                Cylinders    = cyl;
+                EngineConfig = pickedConfig;
+                RedlineRpm   = rpm;
+                DialogResult = true;
                 Close();
             };
             btnRow.Children.Add(btnSave);

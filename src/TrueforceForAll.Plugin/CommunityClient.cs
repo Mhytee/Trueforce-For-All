@@ -301,28 +301,6 @@ namespace TrueforceForAll.Plugin
                 BuildSubmitBody(game, carId, "redline", payload, variantSignature));
         }
 
-        /// <summary>Submit an engine engagement-percent fact. Mirrors the
-        /// redline path but stores percent of MaxRpm instead of an
-        /// absolute RPM - the Forza-friendly shape since those titles
-        /// expose MaxRpm but no RedlineRpm. Server clamps to 0.50..1.00
-        /// and rounds to two decimals so 0.851 + 0.852 land in one
-        /// consensus bin.</summary>
-        public void SubmitEngagementPercentAsync(string game, string carId, float percent,
-            string variantSignature = "")
-        {
-            if (!ShouldSubmit(out var url, out var anonKey)) return;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            if (percent < 0.50f || percent > 1.00f) return;
-
-            // Round to two decimals client-side so the network rep
-            // matches the server's rounded canonical value. Saves a
-            // canonicalization round-trip when the consumer reads
-            // the payload directly.
-            double rounded = Math.Round(percent, 2);
-            var payload = new { percent = rounded };
-            FireAndForgetRpc(url, anonKey, SubmitRpcPath,
-                BuildSubmitBody(game, carId, "engine_engagement_percent", payload, variantSignature));
-        }
 
         /// <summary>Fetch the current engine_layout consensus row for the
         /// given (game, carId) - blocking with a short timeout so the

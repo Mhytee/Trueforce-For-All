@@ -46,7 +46,6 @@ namespace TrueforceForAll.Plugin
             public string SourceLabel  { get; set; }
             public int    Cylinders    { get; set; }
             public string Redline      { get; set; }
-            public string Engagement   { get; set; }
             public bool   CanEdit      { get; set; }  // false on Baked / Scanner authoritative rows
         }
 
@@ -198,11 +197,6 @@ namespace TrueforceForAll.Plugin
                 Header = "Redline", Width = 80, IsReadOnly = true,
                 Binding = new Binding("Redline"),
             });
-            g.Columns.Add(new DataGridTextColumn
-            {
-                Header = "Engage %", Width = 80, IsReadOnly = true,
-                Binding = new Binding("Engagement"),
-            });
 
             // Delete button column. Disabled for non-editable rows.
             var deleteTemplate = new DataTemplate();
@@ -240,10 +234,6 @@ namespace TrueforceForAll.Plugin
                         SourceLabel = v.Source.ToString(),
                         Cylinders   = v.Cylinders,
                         Redline     = v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-",
-                        Engagement  = v.EngagementPercent.HasValue
-                                       ? v.EngagementPercent.Value.ToString("0.00",
-                                             System.Globalization.CultureInfo.InvariantCulture)
-                                       : "-",
                         // Built-in / scanner sources are authoritative
                         // baselines synthesized at lookup time, not
                         // user state. Disallow rename / delete on them

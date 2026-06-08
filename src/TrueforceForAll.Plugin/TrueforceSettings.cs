@@ -832,17 +832,6 @@ namespace TrueforceForAll.Plugin
         /// threshold.</summary>
         public int? RedlineRpm { get; set; }
 
-        /// <summary>Optional rev-limiter engagement percent. The Forza
-        /// substitute for RedlineRpm: telemetry exposes MaxRpm but no
-        /// redline, so the plugin's RevLimiter fires at MaxRpm * percent.
-        /// Storing the percent (not the absolute redline) is what's
-        /// shareable per car because every user with the same Forza
-        /// title sees the same MaxRpm for the same chassis. Range
-        /// 0.50..1.00 matches the slider clamp; null = no CarFact
-        /// engagement value, fall through to the user's preset
-        /// RevLimiter.Threshold.</summary>
-        public float? EngagementPercent { get; set; }
-
         /// <summary>Where this variant came from. Drives the source label
         /// in the picker UI.</summary>
         [JsonConverter(typeof(StringEnumConverter))]
@@ -1354,12 +1343,23 @@ namespace TrueforceForAll.Plugin
         public float PulseFreq  { get; set; } = 20.0f;
         public float DutyCycle  { get; set; } = 0.5f;
         public float ActiveAmp  { get; set; } = 0.35f;
-        // Fraction of MaxRpm on the percentage path (Forza and other no-redline
-        // sources). MaxRpm there is the absolute limiter, which sits above where
-        // you actually upshift, so 0.97 only fired when bouncing off the limiter
-        // and most drivers never felt it (issue #8). 0.85 lands it as a usable
-        // shift cue. Owner's call, 2026-06-01.
-        public float Threshold  { get; set; } = 0.85f;   // fraction of MaxRpm
+        // Fraction of MaxRpm on the percentage path. DEPRECATED:
+        // kept for legacy preset deserialization + a one-shot lazy
+        // migration to RedlineRpm below. New presets should leave
+        // this at default (0.85) and tune RedlineRpm instead. The
+        // effect's lazy migration converts Threshold-only presets to
+        // RedlineRpm the first time MaxRpm telemetry is observed.
+        public float Threshold  { get; set; } = 0.85f;
+
+        // Absolute redline RPM. The unified rev-limiter knob: when set,
+        // the buzz fires at this RPM (plus RedlineOffsetRpm) regardless
+        // of whether the game telemetry exposes its own redline. Null =
+        // fall through to telemetry redline (when sane) or to
+        // MaxRpm * 0.85 as the runtime default. Replaces the old
+        // Threshold-percent + Redline-mode bifurcation so Forza-family
+        // and AC-family titles share one control. Migrated lazily from
+        // legacy Threshold values when the user drives the car.
+        public int?  RedlineRpm { get; set; } = null;
 
         // RPM offset applied on the real-redline path only (ignored on the
         // percentage path). Negative = fire before the redline, positive =

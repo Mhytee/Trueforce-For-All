@@ -350,12 +350,6 @@ namespace TrueforceForAll.Plugin
             int? telemetryRedline = observedRedline >= 500
                 ? (int?)((int)System.Math.Round(observedRedline / 500.0) * 500)
                 : null;
-            // Engagement percent pre-fill: read whatever the live RevLimiter
-            // is currently using (preset Threshold OR a CarFacts override
-            // if one was already applied for this car). Captures what the
-            // user has been tuning so one click saves the value they're
-            // already running and ships it to the community.
-            float? activePct = _plugin.RevLimiter?.Threshold;
             string carDisplayName = _plugin.ActiveCarDisplayName;
             _variantPromptModalOpen = true;
             bool? result = null;
@@ -363,7 +357,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 win = new CarFactsNewVariantWindow(carDisplayName, carId, sig,
-                    telemetryCyl, telemetryRedline, activePct)
+                    telemetryCyl, telemetryRedline)
                 {
                     Owner = Window.GetWindow(this),
                 };
@@ -373,8 +367,7 @@ namespace TrueforceForAll.Plugin
             if (result == true)
             {
                 _plugin.RegisterNewEngineVariant(
-                    win.Label, win.Cylinders, win.EngineConfig,
-                    win.RedlineRpm, win.EngagementPercent);
+                    win.Label, win.Cylinders, win.EngineConfig, win.RedlineRpm);
             }
             else if (win != null && win.DontAskAgain)
             {
@@ -761,8 +754,6 @@ namespace TrueforceForAll.Plugin
                     RevLimiterEnabledCheck.IsChecked    = rl.Enabled;
                     RevLimiterGainSlider.Value          = rl.Gain;
                     RevLimiterGainText.Text             = rl.Gain.ToString("F2");
-                    RevLimiterThresholdSlider.Value     = rl.Threshold;
-                    RevLimiterThresholdText.Text        = ((int)Math.Round(rl.Threshold * 100)).ToString() + "%";
                     SelectWaveform(RevLimiterWaveformCombo, rl.Waveform);
                     RevLimiterFreqSlider.Value          = rl.Freq;
                     RevLimiterFreqText.Text             = ((int)rl.Freq).ToString();
@@ -773,16 +764,28 @@ namespace TrueforceForAll.Plugin
                     RevLimiterActiveAmpSlider.Value     = rl.ActiveAmp;
                     RevLimiterActiveAmpText.Text        = rl.ActiveAmp.ToString("F2");
 
-                    // Engage mode dropdown (Auto / Percentage / Redline). The
-                    // engage-% row and redline note visibility follow the
-                    // effective mode, see UpdateRevLimiterEngageVisibility.
+                    // Engage mode collapsed to Auto/Manual. Legacy
+                    // Percentage maps to Auto (its old behaviour
+                    // becomes the auto-cascade fallback); legacy
+                    // Redline maps to Manual.
                     RevLimiterEngageModeCombo.SelectedIndex =
-                        rl.EngageMode == RevLimiterEngageMode.Percentage ? 1
-                      : rl.EngageMode == RevLimiterEngageMode.Redline    ? 2
-                      : 0;
+                        rl.EngageMode == RevLimiterEngageMode.Redline ? 1 : 0;
+                    // Slider max snaps to the observed MaxRpm when
+                    // we have it (caps the slider at the car's hard
+                    // rev limit so the user can't accidentally set a
+                    // redline above the limiter); falls back to
+                    // 15000 RPM when no MaxRpm is observed yet.
+                    double observedMax = _plugin?.EnginePulse?.ObservedMaxRpm ?? 0;
+                    double sliderMax = observedMax >= 1000 ? observedMax : 15000;
+                    if (sliderMax < 1000) sliderMax = 15000;
+                    RevLimiterRedlineSlider.Maximum = sliderMax;
+                    int rpmValue = rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500
+                        ? rl.RedlineRpm.Value
+                        : (int)Math.Round(sliderMax * 0.85);
+                    RevLimiterRedlineSlider.Value = rpmValue;
+                    RevLimiterRedlineText.Text    = rpmValue.ToString();
                     RevLimiterOffsetSlider.Value = rl.RedlineOffsetRpm;
                     RevLimiterOffsetText.Text    = FormatRedlineOffset(rl.RedlineOffsetRpm);
-                    UpdateRevLimiterEngageVisibility();
                 }
 
                 // Airborne ducking (per-car capable). Reads the effective values
@@ -3681,7 +3684,6 @@ namespace TrueforceForAll.Plugin
         private static readonly Dictionary<string, double> _readoutScale =
             new Dictionary<string, double>
             {
-                ["RevLimiterThresholdText"] = 100.0,
                 ["AirborneReductionText"]   = 100.0,
             };
 
@@ -4817,22 +4819,20 @@ namespace TrueforceForAll.Plugin
             var ep = _plugin.EnginePulse;
             if (rl == null || ep == null) return;
 
-            // Only the percentage path carries a redline claim. When the
-            // game ships a sane redline the game itself is the source of
-            // truth - no community correction needed.
-            if (rl.EngageMode != Effects.RevLimiterEngageMode.Auto
-                && rl.EngageMode != Effects.RevLimiterEngageMode.Percentage)
-                return;
-            if (ep.ObservedRedlineRpm >= 500) return;  // game has a real redline
-            if (ep.ObservedMaxRpm < 500)      return;  // no MaxRpm to derive from
-            if (rl.Threshold < 0.5f || rl.Threshold > 1.0f) return;
-
-            // Implied redline = where the engagement actually fires on the
-            // percentage path. Banded to nearest 100 RPM so users with
-            // very-close thresholds don't fragment the consensus.
-            int impliedRedline = (int)Math.Round(
-                (ep.ObservedMaxRpm * rl.Threshold) / 100.0) * 100;
+            // Only relevant when the game doesn't expose its own redline
+            // (Forza family). With a telemetry redline the game itself
+            // is the source of truth - no community correction needed.
+            if (ep.ObservedRedlineRpm >= 500) return;
+            // The user has to actually have tuned a RedlineRpm. Auto
+            // mode without a saved value falls back to 0.85 * MaxRpm
+            // (the documented default), and there's nothing to claim
+            // about that.
+            if (!rl.RedlineRpm.HasValue) return;
+            int impliedRedline = rl.RedlineRpm.Value;
             if (impliedRedline < 500 || impliedRedline > 25000) return;
+            // Snap to 100 RPM bands so near-identical user values
+            // don't fragment consensus.
+            impliedRedline = (int)Math.Round(impliedRedline / 100.0) * 100;
 
             // Dedupe per (carId, value) so we don't badger on repeat saves
             // of the same threshold; a different threshold re-engages the
@@ -7028,13 +7028,17 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveRevLimiter.Gain = v;
             Apply(EffectKind.RevLimiter);
         }
-        private void RevLimiterThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private void RevLimiterRedlineSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
-            float v = (float)e.NewValue;
-            RevLimiterThresholdText.Text = ((int)Math.Round(v * 100)).ToString() + "%";
+            int rpm = (int)Math.Round(e.NewValue);
+            RevLimiterRedlineText.Text = rpm.ToString();
             _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
-            _plugin.ActiveRevLimiter.Threshold = v;
+            _plugin.ActiveRevLimiter.RedlineRpm = rpm >= 500 ? (int?)rpm : null;
+            // Clear legacy Threshold to default so the migrated preset
+            // never re-runs the lazy migration; the slider now expresses
+            // the truth directly.
+            _plugin.ActiveRevLimiter.Threshold = 0.85f;
             Apply(EffectKind.RevLimiter);
         }
         private void RevLimiterWaveform_Changed(object sender, SelectionChangedEventArgs e)
@@ -7057,31 +7061,14 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
+            // Manual = 1 -> legacy "Redline" enum value (kept for
+            // backwards-compatible serialization; the effect handles
+            // it as Manual). Auto = 0 (default).
             _plugin.ActiveRevLimiter.EngageMode =
-                RevLimiterEngageModeCombo.SelectedIndex == 1 ? RevLimiterEngageMode.Percentage
-              : RevLimiterEngageModeCombo.SelectedIndex == 2 ? RevLimiterEngageMode.Redline
-              : RevLimiterEngageMode.Auto;
+                RevLimiterEngageModeCombo.SelectedIndex == 1
+                    ? RevLimiterEngageMode.Redline
+                    : RevLimiterEngageMode.Auto;
             Apply(EffectKind.RevLimiter);
-            UpdateRevLimiterEngageVisibility();
-        }
-
-        // Show the engage-% row vs the "fires at redline" note based on the
-        // EFFECTIVE engage behaviour: forced Percentage always shows the %;
-        // forced Redline always shows the note; Auto defers to whether the
-        // active game reports a usable redline (ActiveSourceUsesRedline).
-        private void UpdateRevLimiterEngageVisibility()
-        {
-            if (_plugin == null || RevLimiterThresholdRow == null) return;
-            var mode = _plugin.ActiveRevLimiter?.EngageMode ?? RevLimiterEngageMode.Auto;
-            bool firesAtRedline =
-                mode == RevLimiterEngageMode.Redline ||
-                (mode == RevLimiterEngageMode.Auto && _plugin.ActiveSourceUsesRedline);
-            RevLimiterThresholdRow.Visibility = firesAtRedline ? Visibility.Collapsed : Visibility.Visible;
-            if (RevLimiterRedlineNote != null)
-                RevLimiterRedlineNote.Visibility = firesAtRedline ? Visibility.Visible : Visibility.Collapsed;
-            // Redline offset only applies on the real-redline path.
-            if (RevLimiterOffsetRow != null)
-                RevLimiterOffsetRow.Visibility = firesAtRedline ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // "0", "-500", "+250" — signed RPM, no decimals.
@@ -7469,9 +7456,7 @@ namespace TrueforceForAll.Plugin
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).\n" +
             "F8SWEEP / F8   Experimental: sweep the rev LEDs via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
-            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
-            "SEEDFACTS      DEV one-shot: walk every saved car preset, fire an engine_engagement_percent community submission for each (game, carId) with a non-null RevLimiter override. No game filter.\n" +
-            "SEEDFH         DEV one-shot variant of SEEDFACTS scoped to Forza-family games only (GameName matches 'Forza').";
+            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.";
 
         private void CommitAccessCode()
         {
@@ -7486,47 +7471,6 @@ namespace TrueforceForAll.Plugin
                 MessageBox.Show(Window.GetWindow(this), TestCodeCatalog,
                     "Trueforce For All: test codes", MessageBoxButton.OK, MessageBoxImage.Information);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = "Showed the test-code list.";
-                return;
-            }
-            // Dev-only: bulk-seed engine_engagement_percent submissions
-            // from every saved car preset's RevLimiter override. SEEDFACTS
-            // touches every game; SEEDFH narrows to Forza-family titles
-            // (the case the user typically has data for). Both confirm
-            // first so a stray paste can't dump 200 rows to the backend.
-            if (code.Equals("SEEDFACTS", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("SEEDFH",    StringComparison.OrdinalIgnoreCase))
-            {
-                bool forzaOnly = code.Equals("SEEDFH", StringComparison.OrdinalIgnoreCase);
-                AccessCodeBox.Text = string.Empty;
-                if (_plugin?.Settings?.CommunityEnabled != true)
-                {
-                    TrueforceDialog.Show(Window.GetWindow(this),
-                        "Community Contributions off",
-                        "Turn Community Contributions on in Settings before seeding - the submissions are a no-op while it's off.",
-                        DialogKind.Warning);
-                    return;
-                }
-                var preview = _plugin.SeedEngagementFactsFromCarPresets(
-                    forzaOnly ? "Forza" : null);
-                // Roll back the side-effect: SeedEngagementFactsFromCarPresets
-                // already submitted. So this preview pass already DID the
-                // work. Confirm AFTER the fact in a "submitted" toast.
-                string headline = forzaOnly
-                    ? "SEEDFH: " + preview.SubmittedEngagement + " Forza car preset(s) submitted."
-                    : "SEEDFACTS: " + preview.SubmittedEngagement + " car preset(s) submitted across all games.";
-                var sample = preview.SubmittedRows.Count == 0
-                    ? "(no qualifying rows found)"
-                    : string.Join("\n", preview.SubmittedRows.Take(15))
-                        + (preview.SubmittedRows.Count > 15 ? "\n..." : "");
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    headline,
-                    "Scanned " + preview.ScannedCarPresets
-                    + ", skipped " + preview.SkippedNoOverride + " without a RevLimiter override"
-                    + (forzaOnly ? " (+" + preview.SkippedGameFilter + " non-Forza)" : "")
-                    + ".\n\nSample of submitted rows:\n" + sample,
-                    DialogKind.Info);
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Seeded " + preview.SubmittedEngagement + " car-preset engagement values.";
                 return;
             }
             // Dev-only: launch a chosen installer with /CloseSimHub=1 so the

@@ -88,18 +88,20 @@ namespace TrueforceForAll.Plugin.Effects
         /// saved. Stage 1 wiring of the CarFacts layer.</summary>
         public int? CarFactsRedline { get; set; }
 
-        /// <summary>Per-car engagement percent supplied by the CarFacts
-        /// layer (Forza family: telemetry exposes MaxRpm but not
-        /// RedlineRpm, so the limiter fires at MaxRpm * percent and that
-        /// percent is the community-shareable fact). When set AND the
-        /// percentage path is the one we'd take (no usable telemetry
-        /// redline), this value overrides <see cref="Threshold"/> so a
-        /// downloaded variant lights up for any user driving that car
-        /// without them having to tune the slider themselves. The
-        /// resolver clears it on car-change before reapplying so a
-        /// stale value never leaks into a different car. Per-machine,
-        /// not preset-saved.</summary>
-        public float? CarFactsEngagementPercent { get; set; }
+        /// <summary>Preset-supplied unified redline value. Mirrors
+        /// <see cref="TrueforceForAll.Plugin.RevLimiterSettings.RedlineRpm"/>;
+        /// the apply path copies the preset's value into the effect on
+        /// each ApplyEngineSettings call. When set, the buzz fires at
+        /// this RPM (plus <see cref="RedlineOffsetRpm"/>) regardless of
+        /// the game's telemetry redline. Null = fall through to
+        /// telemetry / CarFactsRedline / Threshold-percent fallback.</summary>
+        public int? RedlineRpm { get; set; }
+
+        /// <summary>Callback fired the first time legacy Threshold gets
+        /// lazy-migrated to RedlineRpm. Plugin subscribes so it can
+        /// persist the rewritten preset to disk + ship the implied
+        /// RedlineRpm to the community DB. Empty by default.</summary>
+        public event System.Action<int> ThresholdMigratedToRedline;
 
         private const double SampleRate = 4000.0;
         private const int HoldMs = 80;   // post-disengage decay window
@@ -162,69 +164,111 @@ namespace TrueforceForAll.Plugin.Effects
         // RPM-threshold + hold logic, shared by live telemetry and the REV
         // self-test. Thresholds against the redline when the source provides it,
         // else the hard rev limit. Sets _amp; RenderAdd plays it.
+        // Returns the absolute RPM the limiter should fire at, or null
+        // when no value can be resolved (engine not running, no preset
+        // value, no telemetry). The lazy-migration branch ALSO writes
+        // RedlineRpm back to the effect + fires the
+        // ThresholdMigratedToRedline event so the plugin can persist
+        // and submit-to-community.
+        //
+        // RedlineRpm semantics across the modes:
+        //   * Manual (or legacy "Redline" enum value): always use
+        //     Settings.RedlineRpm if set; null = engine off.
+        //   * Auto: prefer telemetry sanity-gated, then CarFactsRedline,
+        //     then preset RedlineRpm, then lazy-migrated Threshold,
+        //     then default 0.85 * MaxRpm.
+        private int? ResolveEffectiveRedline(double redlineRpm, double maxRpm)
+        {
+            bool manualMode =
+                EngageMode == RevLimiterEngageMode.Redline;   // legacy "Redline" -> Manual
+
+            if (manualMode)
+            {
+                if (RedlineRpm.HasValue && RedlineRpm.Value > MinEngineRpm)
+                    return RedlineRpm.Value;
+                // Manual without a saved value: fall through to the
+                // Auto cascade rather than failing closed. Matches
+                // legacy behaviour where Redline mode with no telemetry
+                // would still attempt the sanity-gated read.
+            }
+
+            // Auto cascade: telemetry redline (sanity-gated) first.
+            if (redlineRpm > MinEngineRpm
+                && (maxRpm <= MinEngineRpm
+                    || (redlineRpm <= maxRpm * 1.02 && redlineRpm >= maxRpm * 0.5)))
+                return (int)Math.Round(redlineRpm);
+
+            // CarFacts redline (community / resolver-picked variant).
+            if (CarFactsRedline.HasValue && CarFactsRedline.Value > MinEngineRpm)
+                return CarFactsRedline.Value;
+
+            // Preset's saved RedlineRpm (when the user has tuned it
+            // for this preset).
+            if (RedlineRpm.HasValue && RedlineRpm.Value > MinEngineRpm)
+                return RedlineRpm.Value;
+
+            // Lazy migration: legacy preset with a tuned Threshold
+            // (anything other than the 0.85 default) + observable
+            // MaxRpm. Compute the implied absolute redline once,
+            // promote it onto the effect, and let the plugin persist
+            // it via the migration event.
+            if (maxRpm > MinEngineRpm
+                && Math.Abs(Threshold - 0.85f) > 0.0001f
+                && Threshold >= 0.50f && Threshold <= 1.00f)
+            {
+                double thr = Threshold;
+                int migrated = (int)Math.Round(maxRpm * thr / 500.0) * 500;
+                if (migrated > MinEngineRpm)
+                {
+                    RedlineRpm = migrated;
+                    try { ThresholdMigratedToRedline?.Invoke(migrated); }
+                    catch { /* event handler is plugin-side persistence; effect renders regardless */ }
+                    return migrated;
+                }
+            }
+
+            // Default fallback: 0.85 of MaxRpm so games without any
+            // tuning still fire a sensible shift cue.
+            if (maxRpm > MinEngineRpm)
+                return (int)Math.Round(maxRpm * 0.85);
+
+            return null;
+        }
+
         private void UpdateEngagement(double rpm, double redlineRpm, double maxRpm)
         {
-            // CarFacts redline (when populated by the plugin for this car)
-            // substitutes for a missing telemetry redline. Doesn't override
-            // a sane game-reported value: if the game gives a redline that
-            // passes the sanity gate below, we trust it over CarFacts.
-            if ((redlineRpm <= MinEngineRpm) && CarFactsRedline.HasValue
-                && CarFactsRedline.Value > MinEngineRpm)
-                redlineRpm = CarFactsRedline.Value;
-            // Two engagement modes:
-            //   * Game reports a real redline (AC, iRacing, most SimHub-fallback
-            //     titles): the redline IS the exact shift point, so engage AT it
-            //     (the engage-% does not apply). A redline is only trusted when
-            //     it's a sane shift point at/below the limiter (0.5..1.02 x
-            //     MaxRpm), so a bogus value (e.g. SimHub's Forza redline, which
-            //     reads out of range) is rejected and we fall through to:
-            //   * No real redline (Forza): engage at Threshold (engage %) of the
-            //     hard rev limit (MaxRpm), since there's no precise shift point.
-            // Auto applies the sanity-gated detection; the explicit modes are
-            // the user's manual override for when that detection misreads.
-            bool haveRedline;
-            switch (EngageMode)
-            {
-                case RevLimiterEngageMode.Percentage:
-                    haveRedline = false;                          // always % of MaxRpm
-                    break;
-                case RevLimiterEngageMode.Redline:
-                    haveRedline = redlineRpm > MinEngineRpm;       // trust the reported redline, skip the gate
-                    break;
-                default: // Auto
-                    haveRedline = redlineRpm > MinEngineRpm
-                        && (maxRpm <= MinEngineRpm
-                            || (redlineRpm <= maxRpm * 1.02 && redlineRpm >= maxRpm * 0.5));
-                    break;
-            }
+            // Unified engage-point resolution (in priority order):
+            //   1. EngageMode = Manual + Settings.RedlineRpm set
+            //      (legacy "Redline" enum value collapses here for
+            //      backward compat).
+            //   2. EngageMode = Auto:
+            //      a. Game-reported redline (sanity-gated 0.5..1.02 x
+            //         MaxRpm) - trust it.
+            //      b. CarFacts-supplied redline for the active car
+            //         (community / variant pick).
+            //      c. Preset Settings.RedlineRpm if the user set one.
+            //      d. Lazy-migrate: legacy Threshold-tuned presets get
+            //         their Threshold * MaxRpm converted to RedlineRpm
+            //         once MaxRpm is observed (fires the migration event
+            //         so the plugin can persist + submit). The first
+            //         frame of this branch ALSO uses the computed value
+            //         so there's no stutter while migration is in
+            //         flight.
+            //      e. Default fallback: 0.85 x MaxRpm (the historical
+            //         pre-tune behaviour).
+            int? effectiveRedline = ResolveEffectiveRedline(redlineRpm, maxRpm);
 
             bool engaged = false;
             if (rpm >= MinEngineRpm)
             {
-                if (haveRedline)
+                if (effectiveRedline.HasValue && effectiveRedline.Value > MinEngineRpm)
                 {
-                    // Fire at the redline, plus the user's optional RPM offset
-                    // (before/after). Floored so a big negative offset can't
-                    // drop the engage point to idle. The engage-% is ignored
-                    // on this path.
-                    double target = redlineRpm + RedlineOffsetRpm;
+                    // Offset applies in every path now (the old code
+                    // ignored it on the percentage path; under the
+                    // unified model that's no longer a distinction).
+                    double target = effectiveRedline.Value + RedlineOffsetRpm;
                     if (target < MinEngineRpm) target = MinEngineRpm;
                     engaged = rpm >= target;
-                }
-                else if (maxRpm > MinEngineRpm)
-                {
-                    // CarFacts engagement percent (set by the resolver
-                    // for the active car when the variant carries one)
-                    // overrides the preset Threshold on the percentage
-                    // path. The user's own slider still wins if they
-                    // explicitly correct it via the New-variant prompt
-                    // (which writes a UserVariant the resolver picks
-                    // ahead of Community / Baked entries).
-                    float pct = CarFactsEngagementPercent.HasValue
-                        ? CarFactsEngagementPercent.Value
-                        : Threshold;
-                    double thr = Math.Min(1.0, Math.Max(0.50, (double)pct));
-                    engaged = rpm >= maxRpm * thr;               // % of the rev limit
                 }
             }
 

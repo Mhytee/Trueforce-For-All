@@ -1891,22 +1891,20 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Engage mode:" Style="{StaticResource LabelText}"
-                                       ToolTip="Auto trusts the game: it fires at the redline when the game reports a real one, otherwise at a percentage of the rev limit. If you get no rev-limiter buzz (some games report a wrong redline), switch to 'Percentage of rev limit' and set the engage % below."/>
+                                       ToolTip="Auto: prefer the game's reported redline, fall back to community / saved value / 85% of the rev limit. Manual: always use the redline RPM you set below (good for cars where the game reports the wrong redline)."/>
                             <ComboBox  Grid.Column="1" x:Name="RevLimiterEngageModeCombo" SelectionChanged="RevLimiterEngageMode_Changed">
-                                <ComboBoxItem Content="Auto (trust the game)"/><ComboBoxItem Content="Percentage of rev limit"/><ComboBoxItem Content="At reported redline"/>
+                                <ComboBoxItem Content="Auto (trust the game)"/><ComboBoxItem Content="Manual (use my redline)"/>
                             </ComboBox>
                         </Grid>
-                        <Grid x:Name="RevLimiterThresholdRow" Margin="0,0,0,8">
+                        <Grid x:Name="RevLimiterRedlineRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Engage at (% rev limit):" Style="{StaticResource LabelText}"
-                                       ToolTip="Fraction of the car's hard rev limit at which the buzz starts. Used for games without a separate redline (e.g. Forza). Games that report a real redline (Assetto Corsa, iRacing) fire right at the redline instead, so this is hidden for them."/>
-                            <Slider     Grid.Column="1" x:Name="RevLimiterThresholdSlider" Minimum="0.50" Maximum="1.00" SmallChange="0.01" LargeChange="0.05"
-                                        TickFrequency="0.05" ValueChanged="RevLimiterThresholdSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="RevLimiterThresholdText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="85%"/>
+                            <TextBlock Grid.Column="0" Text="Redline RPM:" Style="{StaticResource LabelText}"
+                                       ToolTip="Absolute RPM at which the limiter buzz fires. In Auto mode this is the fallback when the game doesn't report a redline; in Manual mode it's always used. Range defaults to 500-15000 until telemetry observes a MaxRpm, then it caps at the car's hard rev limit."/>
+                            <Slider     Grid.Column="1" x:Name="RevLimiterRedlineSlider" Minimum="500" Maximum="15000" SmallChange="100" LargeChange="500"
+                                        TickFrequency="1000" ValueChanged="RevLimiterRedlineSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="RevLimiterRedlineText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6800"/>
                         </Grid>
-                        <TextBlock x:Name="RevLimiterRedlineNote" Style="{StaticResource HelpText}" Visibility="Collapsed" Margin="0,0,0,8"
-                                   Text="This game reports the car's redline, so the buzz fires at the redline. Use the offset below to fire a little before it (early shift cue) or after. (The engage % only applies to games without a redline, like Forza.)"/>
-                        <Grid x:Name="RevLimiterOffsetRow" Margin="0,0,0,8" Visibility="Collapsed">
+                        <Grid x:Name="RevLimiterOffsetRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Redline offset:" Style="{StaticResource LabelText}"
                                        ToolTip="Shift the engage point relative to the car's redline. Negative fires the buzz before the redline (an early shift cue); positive fires it after. 0 = right at the redline. Only used when firing at a real redline; the percentage path ignores it."/>

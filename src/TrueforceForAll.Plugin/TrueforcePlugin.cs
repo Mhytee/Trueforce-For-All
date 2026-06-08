@@ -2114,6 +2114,13 @@ namespace TrueforceForAll.Plugin
             Drs          = new DrsEffect();
             Collision    = new CollisionEffect();
             RevLimiter   = new RevLimiterEffect();
+            // Lazy migration: when the effect fires the
+            // ThresholdMigratedToRedline event (legacy preset's
+            // Threshold * observed MaxRpm got converted to an
+            // absolute RedlineRpm at runtime), promote the value
+            // onto the live source preset on disk + submit to the
+            // community DB so the migrated truth seeds consensus.
+            RevLimiter.ThresholdMigratedToRedline += OnRevLimiterLazyMigrated;
             Airborne     = new AirborneEffect();
             // Airborne is last: it's a coordinator, not a voice, but it still
             // needs OnTelemetry (to read frame.Airborne) and Reset, both of
@@ -4232,6 +4239,41 @@ namespace TrueforceForAll.Plugin
             Collision.RefractoryMs       = SafeMath.SafeInt(s.RefractoryMs, 0, 5000, 100);
             Collision.Waveform           = s.Waveform;
         }
+        // Lazy-migration callback: the effect just computed an
+        // absolute redline from the legacy Threshold-percent and the
+        // observed MaxRpm. Persist that value onto whichever preset
+        // RevLimiter source is currently live (per-car override beats
+        // the global game preset) and also reset Threshold to default
+        // so the same preset never migrates twice. Submit the implied
+        // redline to the community in the same pass when CommunityEnabled.
+        private void OnRevLimiterLazyMigrated(int migratedRpm)
+        {
+            if (Settings == null) return;
+            // Source-of-truth = whatever ApplyRevLimiterSettings most
+            // recently read from. ApplyActiveCarOverride determines
+            // that on every car-change.
+            var src = GetActiveCarOverride()?.RevLimiter ?? Settings.RevLimiter;
+            if (src == null) return;
+            if (src.RedlineRpm.HasValue) return;  // already migrated; defensive
+            src.RedlineRpm = migratedRpm;
+            // Reset Threshold to default so a second pass doesn't
+            // re-migrate using stale percent + (possibly) different
+            // MaxRpm. The slider's default 0.85 is the documented
+            // fallback the effect's resolver also assumes.
+            src.Threshold = 0.85f;
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            // Submit to community: a successful migration encoded a
+            // real fact about a real car the user has tuned. The
+            // submission is variant-aware (uses active sig) and
+            // gated by CommunityEnabled in the SubmitX wrappers.
+            if (!string.IsNullOrEmpty(_activeGame) && !string.IsNullOrEmpty(_activeCarId)
+                && migratedRpm >= 500 && migratedRpm <= 25000)
+                SubmitRedlineToCommunity(_activeGame, _activeCarId, migratedRpm);
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] Migrated legacy RevLimiter Threshold -> RedlineRpm={migratedRpm} for "
+                + (_activeCarId ?? "(no car)") + " in " + (_activeGame ?? "(no game)") + ".");
+        }
+
         private void ApplyRevLimiterSettings(RevLimiterSettings s)
         {
             if (RevLimiter == null || s == null) return;
@@ -4242,7 +4284,10 @@ namespace TrueforceForAll.Plugin
             RevLimiter.DutyCycle = SafeMath.SafeFloat(s.DutyCycle, 0.0f, 1.0f, 0.5f);
             RevLimiter.ActiveAmp = SafeMath.SafeFloat(s.ActiveAmp, 0.0f, 10.0f, 1.0f);
             // Threshold is a fraction of MaxRpm (0..1), not absolute RPM.
+            // Kept on the effect as a legacy fallback the unified
+            // resolver can lazy-migrate to RedlineRpm.
             RevLimiter.Threshold = SafeMath.SafeFloat(s.Threshold, 0.0f, 1.0f, 0.85f);
+            RevLimiter.RedlineRpm = s.RedlineRpm;
             RevLimiter.RedlineOffsetRpm = s.RedlineOffsetRpm;
             RevLimiter.EngageMode = s.EngageMode;
             RevLimiter.Waveform  = s.Waveform;
@@ -7481,88 +7526,6 @@ namespace TrueforceForAll.Plugin
                 ComputeActiveCarVariantSignature(game, carId));
         }
 
-        /// <summary>Fire-and-forget submission of a User-source engine
-        /// engagement-percent correction. Variant-aware like the redline
-        /// submission so Forza swaps don't all collapse into one
-        /// consensus row.</summary>
-        public void SubmitEngagementPercentToCommunity(string game, string carId, float percent)
-        {
-            _community?.SubmitEngagementPercentAsync(game, carId, percent,
-                ComputeActiveCarVariantSignature(game, carId));
-        }
-
-        /// <summary>Summary of one bulk seed pass.</summary>
-        public sealed class SeedFactsSummary
-        {
-            public int ScannedCarPresets    { get; set; }
-            public int SubmittedEngagement  { get; set; }
-            public int SkippedNoOverride    { get; set; }
-            public int SkippedOutOfRange    { get; set; }
-            public int SkippedGameFilter    { get; set; }
-            public List<string> SubmittedRows { get; set; } = new List<string>();
-        }
-
-        /// <summary>DEV-mode bulk seeder. Walks every saved car preset
-        /// looking for a per-car RevLimiter override carrying a non-null
-        /// Threshold in [0.50, 1.00] and fires an engine_engagement_percent
-        /// submission for each (game, carId). Built for the Forza-family
-        /// case where a user has tuned a library of per-car thresholds
-        /// and wants that data backed by community consensus. The local
-        /// CarFacts bundle is left untouched (their existing presets
-        /// already give them the right behaviour locally; the community
-        /// hop helps the next user). Variant signature is left empty
-        /// since we're not in-session for these cars - the consensus
-        /// row for "unknown variant" is the right bucket for stock-
-        /// engine corrections.
-        ///
-        /// gameFilter is a substring match against entry.GameName -
-        /// pass null to scan every game, "Forza" to limit to Forza
-        /// family titles, "Forza Horizon 6" for FH6 only.</summary>
-        public SeedFactsSummary SeedEngagementFactsFromCarPresets(string gameFilter)
-        {
-            var sum = new SeedFactsSummary();
-            if (_carStore == null) return sum;
-            var loaded = _carStore.LoadAll();
-            foreach (var carKv in loaded)
-            {
-                foreach (var pKv in carKv.Value)
-                {
-                    sum.ScannedCarPresets++;
-                    var entry = pKv.Value;
-                    if (entry?.Override?.RevLimiter == null)
-                    {
-                        sum.SkippedNoOverride++;
-                        continue;
-                    }
-                    string game = entry.GameName ?? "";
-                    if (!string.IsNullOrEmpty(gameFilter)
-                        && (game.Length == 0
-                            || game.IndexOf(gameFilter, StringComparison.OrdinalIgnoreCase) < 0))
-                    {
-                        sum.SkippedGameFilter++;
-                        continue;
-                    }
-                    float pct = entry.Override.RevLimiter.Threshold;
-                    if (pct < 0.50f || pct > 1.00f)
-                    {
-                        sum.SkippedOutOfRange++;
-                        continue;
-                    }
-                    if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(entry.CarId)) continue;
-                    // variantSignature empty: seeding has no live
-                    // telemetry to compute a sig with. Pass through to
-                    // the "stock" consensus row. A future user driving
-                    // a swap will land in a different signature row.
-                    _community?.SubmitEngagementPercentAsync(game, entry.CarId, pct, "");
-                    sum.SubmittedEngagement++;
-                    if (sum.SubmittedRows.Count < 50)
-                        sum.SubmittedRows.Add(game + "/" + entry.CarId + " @ "
-                            + pct.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
-                }
-            }
-            return sum;
-        }
-
 
         // Rank for variant selection: bigger wins. User (local correction) is
         // top: a user who clicked Correct knows what's actually in this car
@@ -7597,11 +7560,7 @@ namespace TrueforceForAll.Plugin
         // passes true to leave a trace of the new resolved state.
         public void ResolveAndApplyCarFactsForActiveCar(string carId, bool logResolution)
         {
-            if (RevLimiter != null)
-            {
-                RevLimiter.CarFactsRedline = null;
-                RevLimiter.CarFactsEngagementPercent = null;
-            }
+            if (RevLimiter != null) RevLimiter.CarFactsRedline = null;
             if (EnginePulse == null) return;
 
             EnginePulse.AutoLayout = null;
@@ -7668,15 +7627,6 @@ namespace TrueforceForAll.Plugin
                 && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
                 RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
 
-            // EngagementPercent rides the same variant resolution. Stamped
-            // onto the live RevLimiter so games without a telemetry
-            // redline (Forza family) pick up the shared per-car fact
-            // without forcing every user to tune the slider.
-            if (haveVariant && RevLimiter != null
-                && v.EngagementPercent.HasValue
-                && v.EngagementPercent.Value >= 0.50f
-                && v.EngagementPercent.Value <= 1.00f)
-                RevLimiter.CarFactsEngagementPercent = v.EngagementPercent.Value;
 
             // Community-only redline path: covers the case where the user
             // (or community) has confirmed a redline but NOT a layout for
@@ -7876,7 +7826,7 @@ namespace TrueforceForAll.Plugin
         /// Save button. Returns false on invalid input or when the
         /// active-car context is gone.</summary>
         public bool RegisterNewEngineVariant(string label, int cylinders,
-            EngineConfig config, int? redlineRpm, float? engagementPercent = null)
+            EngineConfig config, int? redlineRpm)
         {
             if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
             if (cylinders < 1 || cylinders > 16) return false;
@@ -7889,39 +7839,31 @@ namespace TrueforceForAll.Plugin
                 Settings.CarFacts[key] = bundle;
             }
             if (bundle.EngineVariants == null) bundle.EngineVariants = new List<EngineVariant>();
-            float? clampedPct = null;
-            if (engagementPercent.HasValue
-                && engagementPercent.Value >= 0.50f
-                && engagementPercent.Value <= 1.00f)
-                clampedPct = engagementPercent.Value;
             bundle.EngineVariants.Add(new EngineVariant
             {
-                Id                = Guid.NewGuid().ToString(),
-                Label             = string.IsNullOrWhiteSpace(label) ? "User variant" : label.Trim(),
-                Cylinders         = cylinders,
-                EngineConfig      = config,
-                RedlineRpm        = redlineRpm,
-                EngagementPercent = clampedPct,
-                Source            = CarFactSource.UserVariant,
-                Confirmations     = 0,
+                Id            = Guid.NewGuid().ToString(),
+                Label         = string.IsNullOrWhiteSpace(label) ? "User variant" : label.Trim(),
+                Cylinders     = cylinders,
+                EngineConfig  = config,
+                RedlineRpm    = redlineRpm,
+                Source        = CarFactSource.UserVariant,
+                Confirmations = 0,
             });
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
 
             // Fire-and-forget community submission so other drivers
             // who hit the same Forza swap signature pick up the engine
-            // layout, redline, AND engagement percent without having to
-            // re-discover them. Gated by CommunityEnabled inside the
-            // SubmitX wrappers; no sign-in required (submit_car_fact
-            // is IP-pseudonymous, not bearer-authenticated).
+            // layout + redline without having to re-discover them.
+            // Gated by CommunityEnabled inside the SubmitX wrappers;
+            // no sign-in required (submit_car_fact is IP-pseudonymous,
+            // not bearer-authenticated).
             try
             {
                 var layout = Effects.FiringPatternDb.LayoutFromLegacy(cylinders, config, false);
                 SubmitEngineLayoutToCommunity(_activeGame, _activeCarId, layout);
                 if (redlineRpm.HasValue && redlineRpm.Value >= 500)
                     SubmitRedlineToCommunity(_activeGame, _activeCarId, redlineRpm.Value);
-                if (clampedPct.HasValue)
-                    SubmitEngagementPercentToCommunity(_activeGame, _activeCarId, clampedPct.Value);
             }
             catch (Exception ex)
             {
