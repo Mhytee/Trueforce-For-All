@@ -7864,51 +7864,81 @@ namespace TrueforceForAll.Plugin
         ///   3. The user hasn't already dismissed this signature for
         ///      this (game, car_id) via "Don't ask again."
         /// </summary>
+        // Tracks the FIRST telemetry signature observed per (game,
+        // carId) within the current plugin session. Lets the empty-
+        // bundle branch detect an in-session engine swap on a car
+        // that has no stored variants yet: load car -> sig X cached,
+        // swap -> sig Y observed, X != Y -> prompt. Per-session only;
+        // resets when the plugin restarts (acceptable: the user can
+        // register variants explicitly via the prompt or the
+        // Correct... affordance, and the bundle's stored data takes
+        // over from there).
+        private readonly Dictionary<string, string> _firstSigPerCarSession
+            = new Dictionary<string, string>(StringComparer.Ordinal);
+
         public void RecomputeUnknownVariantSignature()
         {
             ActiveCarUnknownVariantSignature = null;
             if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return;
             // Reliable telemetry: need a cylinder count from the live
-            // source before we can compare to the resolver's choice.
+            // source before any signature comparison can be meaningful.
             int? telCyl = EnginePulse?.ObservedCyl;
             if (!telCyl.HasValue || telCyl.Value < 1 || telCyl.Value > 16) return;
-
-            int resolvedCyl = EnginePulse?.CatalogCyl ?? 0;
-            // Resolver's pick matches telemetry: the active variant
-            // already covers the user's current engine. No prompt.
-            if (resolvedCyl > 0 && resolvedCyl == telCyl.Value) return;
-
-            // No stored truth + resolver gave no catalog cyl (Forza UDP
-            // games where the bake doesn't cover this car). Telemetry
-            // IS the source of truth on every frame; there's no prior
-            // pick to "mismatch" against, so the prompt would be
-            // misleading - the user has only one variant in play,
-            // which is the one they're currently driving. Skip.
-            // Future swap: once they've REGISTERED a variant for this
-            // car, this branch falls through and the swap-mismatch
-            // branch below fires correctly.
-            if (resolvedCyl <= 0)
-            {
-                string bundleKey = _activeGame + "/" + _activeCarId;
-                bool hasStoredVariants = Settings?.CarFacts != null
-                    && Settings.CarFacts.TryGetValue(bundleKey, out var bundleForGate)
-                    && bundleForGate?.EngineVariants != null
-                    && bundleForGate.EngineVariants.Count > 0;
-                if (!hasStoredVariants) return;
-            }
 
             string sig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
             if (string.IsNullOrEmpty(sig)) return;
 
-            // Persistent dismissal: user said "don't ask again" for
-            // this exact signature in a prior session.
+            string key = _activeGame + "/" + _activeCarId;
+
+            // Persistent dismissal check first: user said "don't ask
+            // again" for this exact signature in a prior session.
             if (Settings?.CarFactsDismissedSignatures != null
-                && Settings.CarFactsDismissedSignatures.TryGetValue(
-                       _activeGame + "/" + _activeCarId, out var dismissed)
+                && Settings.CarFactsDismissedSignatures.TryGetValue(key, out var dismissed)
                 && dismissed != null
                 && dismissed.Contains(sig))
                 return;
 
+            // Branch A: bundle has stored variants. Match the live
+            // signature against each variant's (Cylinders,
+            // RedlineRpm-band). A match means the resolver's cascade
+            // already covers the current engine; no prompt. No match
+            // means the telemetry is on a new engine that isn't in
+            // the bundle yet -> prompt to register.
+            int telRedlineBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
+            if (Settings?.CarFacts != null
+                && Settings.CarFacts.TryGetValue(key, out var bundle)
+                && bundle?.EngineVariants != null
+                && bundle.EngineVariants.Count > 0)
+            {
+                foreach (var v in bundle.EngineVariants)
+                {
+                    if (v == null) continue;
+                    if (v.Cylinders != telCyl.Value) continue;
+                    // RedlineRpm null on the variant = "no redline
+                    // claim" - matches any telemetry redline. With a
+                    // value, require the banded redline to match so
+                    // an AE86 stock (~7400) and an AE86 swap (~9000)
+                    // are recognised as distinct variants.
+                    if (v.RedlineRpm.HasValue && telRedlineBand > 0
+                        && BandRpm(v.RedlineRpm.Value) != telRedlineBand)
+                        continue;
+                    return; // covered
+                }
+                ActiveCarUnknownVariantSignature = sig;
+                return;
+            }
+
+            // Branch B: empty bundle. Use per-session signature
+            // tracking to detect in-session swaps. The first
+            // observation for a car is the baseline; later swap-
+            // induced signature changes (different MaxRpm band,
+            // different cylinder count) trigger the prompt.
+            if (!_firstSigPerCarSession.TryGetValue(key, out var firstSig))
+            {
+                _firstSigPerCarSession[key] = sig;
+                return;
+            }
+            if (string.Equals(firstSig, sig, StringComparison.Ordinal)) return;
             ActiveCarUnknownVariantSignature = sig;
         }
 
