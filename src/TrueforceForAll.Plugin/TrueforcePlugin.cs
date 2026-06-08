@@ -7864,17 +7864,6 @@ namespace TrueforceForAll.Plugin
         ///   3. The user hasn't already dismissed this signature for
         ///      this (game, car_id) via "Don't ask again."
         /// </summary>
-        // Tracks the FIRST telemetry signature observed per (game,
-        // carId) within the current plugin session. Lets the empty-
-        // bundle branch detect an in-session engine swap on a car
-        // that has no stored variants yet: load car -> sig X cached,
-        // swap -> sig Y observed, X != Y -> prompt. Per-session only;
-        // resets when the plugin restarts (acceptable: the user can
-        // register variants explicitly via the prompt or the
-        // Correct... affordance, and the bundle's stored data takes
-        // over from there).
-        private readonly Dictionary<string, string> _firstSigPerCarSession
-            = new Dictionary<string, string>(StringComparer.Ordinal);
 
         public void RecomputeUnknownVariantSignature()
         {
@@ -7928,14 +7917,20 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Branch B: empty bundle. Use per-session signature
-            // tracking to detect in-session swaps. The first
-            // observation for a car is the baseline; later swap-
-            // induced signature changes (different MaxRpm band,
-            // different cylinder count) trigger the prompt.
-            if (!_firstSigPerCarSession.TryGetValue(key, out var firstSig))
+            // Branch B: empty bundle. Use persisted first-sig tracking
+            // (Settings.CarFactsFirstObservedSignature) to detect swaps.
+            // The first observation for a car is the baseline; later
+            // swap-induced signature changes (different MaxRpm band,
+            // different cylinder count) trigger the prompt. Persisted
+            // so a Skip-for-now followed by a SimHub restart still
+            // produces a prompt the next time the engine differs from
+            // baseline - "Don't ask again" remains the explicit opt-out.
+            if (Settings.CarFactsFirstObservedSignature == null)
+                Settings.CarFactsFirstObservedSignature = new Dictionary<string, string>();
+            if (!Settings.CarFactsFirstObservedSignature.TryGetValue(key, out var firstSig))
             {
-                _firstSigPerCarSession[key] = sig;
+                Settings.CarFactsFirstObservedSignature[key] = sig;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
                 return;
             }
             if (string.Equals(firstSig, sig, StringComparison.Ordinal)) return;

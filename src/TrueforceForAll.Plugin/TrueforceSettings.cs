@@ -119,6 +119,18 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, List<string>> CarFactsDismissedSignatures { get; set; }
             = new Dictionary<string, List<string>>();
 
+        // First telemetry signature observed per (game, carId). Used by
+        // the unknown-variant detector's empty-bundle branch to detect
+        // in-session AND cross-session swaps without polluting the
+        // bundle with auto-registered placeholders. Persisted so a user
+        // who clicks Skip-for-now and restarts SimHub still gets the
+        // prompt the next time they swap engines. Local-only; not
+        // submitted to community (the signature ITSELF reaches community
+        // through engine_layout / redline submissions, which are
+        // variant-signature-keyed by design).
+        public Dictionary<string, string> CarFactsFirstObservedSignature { get; set; }
+            = new Dictionary<string, string>();
+
         // Community backend settings. Defaults are inert: CommunityEnabled
         // is off, no HTTP calls are made. Enabling it activates fire-and-
         // forget submission of User-source CarFacts corrections + (later)
