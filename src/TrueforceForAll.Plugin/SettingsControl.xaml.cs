@@ -8927,22 +8927,34 @@ namespace TrueforceForAll.Plugin
             // tick. Community submission is fire-and-forget; failures
             // don't roll back the local change.
             _plugin.WriteCarNameFact(game, carId, newName);
-            _plugin.SubmitCarNameToCommunity(game, carId, newName);
 
-            // Optimistic community-name injection. Without this, a prior
-            // community consensus for THIS car ("1997 Mazda RX-7") would
-            // keep winning the display-name cascade over our just-written
-            // local CarFacts entry, and the rename would visually no-op
-            // until the next refetch. Pretend the community now reflects
-            // the submission; the next car-change refetch reconciles
-            // server-side stickiness.
-            _plugin.NotifyCarNameConsensus(game, carId, new CarNameConsensus
+            // Ask before submitting to community. Only when the toggle
+            // is on - if off, no point prompting (submit would no-op).
+            bool submitToCommunity = false;
+            if (_plugin.Settings?.CommunityEnabled == true)
             {
-                Name                  = newName,
-                SupportingSubmissions = 1,
-                Confirmations         = 0,
-                PayloadHash           = null,
-            });
+                submitToCommunity = TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share this car name?",
+                    $"Submit '{newName}' as the community name for this car? "
+                    + "Other drivers who load the same car will see your name in their plugin.",
+                    DialogKind.Confirm) == true;
+            }
+
+            if (submitToCommunity)
+            {
+                _plugin.SubmitCarNameToCommunity(game, carId, newName);
+                // Optimistic community-name injection so the "community
+                // says: X" diagnostic doesn't briefly show a stale prior
+                // consensus while the server reconciles. Only fires
+                // when the user actually opted in to share.
+                _plugin.NotifyCarNameConsensus(game, carId, new CarNameConsensus
+                {
+                    Name                  = newName,
+                    SupportingSubmissions = 1,
+                    Confirmations         = 0,
+                    PayloadHash           = null,
+                });
+            }
             RefreshFromPlugin();
         }
 

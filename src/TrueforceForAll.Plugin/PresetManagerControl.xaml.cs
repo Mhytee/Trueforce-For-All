@@ -2907,6 +2907,25 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (string.IsNullOrEmpty(newName)) return;
 
             _plugin.WriteCarNameFact(game, carId, newName);
+
+            // Only ask about community sharing when the toggle is on -
+            // there's nothing to submit when it's off. Yes -> submit +
+            // optimistic local consensus injection so the "community
+            // says: X" diagnostic doesn't briefly show a stale value.
+            // No -> local rename only; consensus stays whatever it
+            // already was (the diagnostic may show a conflict, which
+            // is the honest state).
+            bool submitToCommunity = false;
+            if (_plugin.Settings?.CommunityEnabled == true)
+            {
+                submitToCommunity = TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share this car name?",
+                    $"Submit '{newName}' as the community name for this car? "
+                    + "Other drivers who load the same car will see your name in their plugin.",
+                    DialogKind.Confirm) == true;
+            }
+            if (!submitToCommunity) return;
+
             _plugin.SubmitCarNameToCommunity(game, carId, newName);
             // Optimistically inject the new community name when the
             // edited car IS the active one - otherwise the resolver
