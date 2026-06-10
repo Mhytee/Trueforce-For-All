@@ -2553,13 +2553,19 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // grid renders a blank cell instead of inventing a value.
         private string ResolveCarNameForRow(string game, string carId)
         {
-            if (_plugin?.Settings?.CarFacts == null) return "";
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return "";
+            // 1. User-renamed CarFacts name wins (explicit override).
             string key = game + "/" + carId;
-            return (_plugin.Settings.CarFacts.TryGetValue(key, out var bundle)
-                    && bundle != null && !string.IsNullOrEmpty(bundle.CarName))
-                ? bundle.CarName
-                : "";
+            if (_plugin?.Settings?.CarFacts != null
+                && _plugin.Settings.CarFacts.TryGetValue(key, out var bundle)
+                && bundle != null && !string.IsNullOrEmpty(bundle.CarName))
+                return bundle.CarName;
+            // 2. Catalog fallback (FH5 cylinder-table names / FH6 name-only
+            //    table) so rows show a real name even before any rename. Not
+            //    persisted; the user can still Rename to override.
+            if (BuiltinCarCylinders.TryGetDisplayName(game, carId, out var catalogName))
+                return catalogName;
+            return "";
         }
 
         // Open the upload modal for the selected car preset. Reads the

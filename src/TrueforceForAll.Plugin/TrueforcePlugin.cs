@@ -7694,6 +7694,17 @@ namespace TrueforceForAll.Plugin
             else if (!string.IsNullOrEmpty(communityName))
                 _activeCarDisplayName = communityName;
 
+            // 3. Catalog display name (FH5 cylinder-table names / FH6 name-only
+            //    table). Lowest priority: only when the user hasn't renamed and
+            //    the community has no consensus. The per-branch resolver lookups
+            //    below already cover FH5 via the cylinder bake, but FH6 has no
+            //    cylinder entry, so seed the name here from the catalog so both
+            //    games light up the header, Rename prefill, and preset auto-name
+            //    uniformly. Cheap in-memory lookup; nothing is persisted.
+            if (string.IsNullOrEmpty(_activeCarDisplayName)
+                && BuiltinCarCylinders.TryGetDisplayName(_activeGame, carId, out var catalogName))
+                _activeCarDisplayName = catalogName;
+
             // RedlineRpm rides any usable variant, even one with Cylinders=0
             // (the "unknown / use heuristic" sentinel).
             if (haveVariant && RevLimiter != null
