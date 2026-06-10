@@ -88,9 +88,10 @@ namespace TrueforceForAll.Plugin
             });
             header.Children.Add(new TextBlock
             {
-                Text = "Rename a variant by clicking its label. Delete is permanent for that variant; "
-                     + "the resolver falls back to the next-best source on the next car-change. "
-                     + "Built-in and auto-scanned rows can't be edited - delete the row to ignore them locally.",
+                Text = "Variants are auto-created from telemetry on each new engine signature for this car. "
+                     + "Rename a row by clicking its label (cosmetic, stays local). Delete drops the row; "
+                     + "if telemetry observes that same engine again, a fresh row gets created. "
+                     + "Built-in (Baked) rows come from the car list and can't be edited.",
                 Foreground = MutedFg, FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
@@ -234,13 +235,14 @@ namespace TrueforceForAll.Plugin
                         SourceLabel = v.Source.ToString(),
                         Cylinders   = v.Cylinders,
                         Redline     = v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-",
-                        // Built-in / scanner sources are authoritative
-                        // baselines synthesized at lookup time, not
-                        // user state. Disallow rename / delete on them
-                        // so a click on "Delete" can't pretend to remove
-                        // a row the resolver would just re-synthesize.
-                        CanEdit     = v.Source != CarFactSource.Baked
-                                   && v.Source != CarFactSource.Scanner,
+                        // Built-in (Baked) baselines are synthesized at
+                        // lookup time from the cylinder bake, not stored
+                        // in the user's bundle, so rename / delete on them
+                        // would no-op (the resolver would just re-synthesize
+                        // the same row). Every other source IS persistent
+                        // bundle state - rename to add a friendly label,
+                        // delete to drop a misidentified row.
+                        CanEdit     = v.Source != CarFactSource.Baked,
                     });
                 }
             }

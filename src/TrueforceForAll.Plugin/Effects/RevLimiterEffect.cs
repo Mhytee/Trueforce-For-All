@@ -174,9 +174,26 @@ namespace TrueforceForAll.Plugin.Effects
         // RedlineRpm semantics across the modes:
         //   * Manual (or legacy "Redline" enum value): always use
         //     Settings.RedlineRpm if set; null = engine off.
-        //   * Auto: prefer telemetry sanity-gated, then CarFactsRedline,
-        //     then preset RedlineRpm, then lazy-migrated Threshold,
-        //     then default 0.85 * MaxRpm.
+        //   * Auto: prefer CarFactsRedline (User/Community/Baked - the
+        //     resolver's chosen source for this car/variant), then
+        //     telemetry sanity-gated, then preset RedlineRpm, then
+        //     lazy-migrated Threshold, then default 0.85 * MaxRpm.
+        //
+        // Order matters: User/Community CarFacts are corrections people
+        // made BECAUSE telemetry was wrong (iRacing reports redline
+        // higher than the actual buzz point, AC titles vary, etc). If
+        // telemetry won that fight, the correction would silently no-op.
+        /// <summary>True when the rev-limiter buzz is firing on the default
+        /// 0.85 × MaxRpm estimate because no authoritative redline was
+        /// available (no telemetry redline, no CarFacts, no preset value,
+        /// no legacy Threshold to lazy-migrate). The Engine Pulse panel
+        /// surfaces this as a badge so the user knows why the shift cue
+        /// might feel off and gets a nudge to either set a value or
+        /// share telemetry. False in Manual mode (the user explicitly
+        /// chose their value), or whenever any other source contributed.
+        /// </summary>
+        public bool IsRedlineGuessed { get; private set; }
+
         private int? ResolveEffectiveRedline(double redlineRpm, double maxRpm)
         {
             bool manualMode =
@@ -185,27 +202,43 @@ namespace TrueforceForAll.Plugin.Effects
             if (manualMode)
             {
                 if (RedlineRpm.HasValue && RedlineRpm.Value > MinEngineRpm)
+                {
+                    IsRedlineGuessed = false;
                     return RedlineRpm.Value;
+                }
                 // Manual without a saved value: fall through to the
                 // Auto cascade rather than failing closed. Matches
                 // legacy behaviour where Redline mode with no telemetry
                 // would still attempt the sanity-gated read.
             }
 
-            // Auto cascade: telemetry redline (sanity-gated) first.
+            // Auto cascade: CarFacts redline first (User/Community/
+            // resolver-picked variant). Set by ResolveAndApplyCarFacts
+            // only when a real RedlineRpm exists on the chosen variant,
+            // so HasValue here means "the cascade picked something."
+            if (CarFactsRedline.HasValue && CarFactsRedline.Value > MinEngineRpm)
+            {
+                IsRedlineGuessed = false;
+                return CarFactsRedline.Value;
+            }
+
+            // Telemetry redline next (sanity-gated). Trusted as the
+            // default for games we haven't gathered CarFacts for yet.
             if (redlineRpm > MinEngineRpm
                 && (maxRpm <= MinEngineRpm
                     || (redlineRpm <= maxRpm * 1.02 && redlineRpm >= maxRpm * 0.5)))
+            {
+                IsRedlineGuessed = false;
                 return (int)Math.Round(redlineRpm);
-
-            // CarFacts redline (community / resolver-picked variant).
-            if (CarFactsRedline.HasValue && CarFactsRedline.Value > MinEngineRpm)
-                return CarFactsRedline.Value;
+            }
 
             // Preset's saved RedlineRpm (when the user has tuned it
             // for this preset).
             if (RedlineRpm.HasValue && RedlineRpm.Value > MinEngineRpm)
+            {
+                IsRedlineGuessed = false;
                 return RedlineRpm.Value;
+            }
 
             // Lazy migration: legacy preset with a tuned Threshold
             // (anything other than the 0.85 default) + observable
@@ -223,15 +256,22 @@ namespace TrueforceForAll.Plugin.Effects
                     RedlineRpm = migrated;
                     try { ThresholdMigratedToRedline?.Invoke(migrated); }
                     catch { /* event handler is plugin-side persistence; effect renders regardless */ }
+                    IsRedlineGuessed = false;
                     return migrated;
                 }
             }
 
             // Default fallback: 0.85 of MaxRpm so games without any
-            // tuning still fire a sensible shift cue.
+            // tuning still fire a sensible shift cue. This IS the guess
+            // case - no one has measured / corrected / submitted, so the
+            // UI surfaces a badge nudging the user to fix it.
             if (maxRpm > MinEngineRpm)
+            {
+                IsRedlineGuessed = true;
                 return (int)Math.Round(maxRpm * 0.85);
+            }
 
+            IsRedlineGuessed = false;
             return null;
         }
 
@@ -242,10 +282,13 @@ namespace TrueforceForAll.Plugin.Effects
             //      (legacy "Redline" enum value collapses here for
             //      backward compat).
             //   2. EngageMode = Auto:
-            //      a. Game-reported redline (sanity-gated 0.5..1.02 x
-            //         MaxRpm) - trust it.
-            //      b. CarFacts-supplied redline for the active car
-            //         (community / variant pick).
+            //      a. CarFacts-supplied redline for the active car
+            //         (User / Community / resolver-picked variant).
+            //         People correct CarFacts BECAUSE telemetry was
+            //         wrong, so this outranks telemetry.
+            //      b. Game-reported redline (sanity-gated 0.5..1.02 x
+            //         MaxRpm) - trusted default when nobody's corrected
+            //         this car yet.
             //      c. Preset Settings.RedlineRpm if the user set one.
             //      d. Lazy-migrate: legacy Threshold-tuned presets get
             //         their Threshold * MaxRpm converted to RedlineRpm

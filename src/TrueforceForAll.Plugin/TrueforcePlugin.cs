@@ -64,9 +64,9 @@ namespace TrueforceForAll.Plugin
 
         // Community backend HTTP client (see CommunityClient.cs +
         // supabase/README.md). Inert until Settings.CommunityEnabled is true
-        // and the URL + anon key are configured. Used by
-        // WriteUserCarFactsCorrection (and Stage 2.1/2.2 helpers when they
-        // land) to fire-and-forget submit User-source corrections.
+        // and the URL + anon key are configured. Used by the redline /
+        // engine-layout / car-name share prompts to fire-and-forget submit
+        // per-car facts to the community DB.
         private CommunityClient _community;
 
         // Preset-sharing HTTP client (companion to _community). Distinct
@@ -133,6 +133,12 @@ namespace TrueforceForAll.Plugin
         // of opaque ordinals. Only rewrites presets where the user clearly never
         // customized the name; user-renamed presets are left alone.
         private readonly HashSet<string> _displayNameBackfillDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // (Removed _carFactsLock: existed to serialize first-sig writes
+        // against the prompt path. With the prompt path gone and silent
+        // auto-create running only on the SimHub data thread inside
+        // ResolveAndApplyCarFactsForActiveCar, the UI thread no longer
+        // mutates Settings.CarFacts*; the lock became dead weight.)
 
         private TrueforceDevice _device;
         private AudioCaptureSource _audio;
@@ -513,6 +519,15 @@ namespace TrueforceForAll.Plugin
         public string ActiveGame        => _activeGame;
         public string ActivePresetName  => _activePresetName;
         public bool   ActiveGameIsNativeTrueforce => IsNativeTrueforceGame(_activeGame);
+
+        // Cached variant signature from the last CarFacts apply. Compared
+        // against the live signature inside DispatchFrame so a mid-session
+        // change (Forza in-game engine swap; telemetry warming up enough
+        // to add the maxrpm component) triggers a re-resolve + silent
+        // auto-create on the very next telemetry frame, not just on
+        // car-change. Null = no apply has happened yet for the active car;
+        // reset to null in the car-change handler.
+        private string _lastAppliedVariantSignature;
 
         public IEnumerable<string> PresetNames =>
             Settings?.Presets != null ? (IEnumerable<string>)Settings.Presets.Keys : Array.Empty<string>();
@@ -1767,24 +1782,27 @@ namespace TrueforceForAll.Plugin
 
             // Bindable input mappings for SimHub's Controls system.
             // IMPORTANT: AddInputMapping (NOT AddAction). AddAction
-            // registers a macro/event-callable entry that shows up in
-            // the Actions list but is NOT bindable to a wheel button -
-            // it sets IsInput=false on the GeneratedAction, so the
-            // Controls binder skips it entirely and the user pressing
+            // AddAction registers a macro/event-callable entry that shows
+            // up in the Actions list but is NOT bindable - it sets
+            // IsInput=false, so the Controls binder skips it and pressing
             // a bound button produces nothing. AddInputMapping flips
-            // IsInput=true + installs a PressFallback so the same
-            // entry surfaces in the Controls & Events binder + fires
-            // on hardware input. Per SimHub.Plugins IL: AddAction calls
-            // GeneratedAction without set_IsInput, AddInputMapping
-            // explicitly calls set_IsInput(true).
+            // IsInput=true so the entry surfaces in the Controls binder
+            // and fires on hardware input.
+            //
+            // Name MUST be just the bare action name (no plugin prefix):
+            // PluginManager.GetName prepends "TrueforcePlugin." itself,
+            // so the dictionary key becomes "TrueforcePlugin.MasterGainUp".
+            // The ControlsEditor in XAML must bind to that exact string
+            // or the dispatch lookup misses and the action never fires.
+            //
             // Each press nudges master gain by the slider's small-step
             // (0.05), clamped to [0, 2]. Wrapped so a SimHub API hiccup
             // can't abort Init.
             try
             {
-                pluginManager.AddInputMapping("TrueforceForAll.MasterGainUp", GetType(),
+                pluginManager.AddInputMapping("MasterGainUp", GetType(),
                     (pm, a) => NudgeMasterGain(+MasterGainStep), (pm, a) => { });
-                pluginManager.AddInputMapping("TrueforceForAll.MasterGainDown", GetType(),
+                pluginManager.AddInputMapping("MasterGainDown", GetType(),
                     (pm, a) => NudgeMasterGain(-MasterGainStep), (pm, a) => { });
             }
             catch (Exception ex)
@@ -2644,6 +2662,12 @@ namespace TrueforceForAll.Plugin
                     EnginePulse.ObservedMaxRpm = 0.0;
                     EnginePulse.ObservedRedlineRpm = 0.0;
                 }
+                // Variant-signature cache pinned to the OLD car gets cleared
+                // here so the first telemetry frame for the new car (which
+                // arrives after the ResolveAndApply below has stamped the
+                // cache for "empty sig at car-change") triggers a fresh
+                // mid-session re-resolve when discriminators appear.
+                _lastAppliedVariantSignature = null;
                 // Clear any per-car edge-detected / IIR state on the effects and
                 // the device's FFB filter chain so the new car's first frames
                 // don't get blended with the previous car's last sample (e.g. a
@@ -2937,6 +2961,24 @@ namespace TrueforceForAll.Plugin
                     EnginePulse.ObservedCyl = liveCyl;
                 if (frame.MaxRpm > 100)     EnginePulse.ObservedMaxRpm     = frame.MaxRpm;
                 if (frame.RedlineRpm > 100) EnginePulse.ObservedRedlineRpm = frame.RedlineRpm;
+
+                // Mid-session variant-change detection: when the live
+                // signature differs from what we last applied for this
+                // car, re-run the resolver. This is what makes Forza
+                // in-game engine swaps (different MaxRpm at same cyl)
+                // auto-pick a different stored variant and what makes
+                // first-telemetry-frame fully populate a Scanner row
+                // on SimHub-fallback games. Cheap: one string compose
+                // + compare per frame; the expensive path (resolver +
+                // EnsureVariantForLiveSignature) only fires on change.
+                if (!string.IsNullOrEmpty(_activeCarId))
+                {
+                    string liveSig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
+                    if (!string.Equals(liveSig, _lastAppliedVariantSignature, StringComparison.Ordinal))
+                    {
+                        ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+                    }
+                }
             }
 
             // Rim rev/shift LEDs. Gated to iRacing (where MAIRA users lose
@@ -4317,18 +4359,19 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
-                else if (!string.IsNullOrEmpty(_activePresetName)
-                    && Settings.Presets != null
-                    && !(IsBuiltinPreset(_activePresetName) && !DevMode)
-                    && Settings.Presets.TryGetValue(_activePresetName, out var snap)
-                    && snap != null)
-                {
-                    snap.RevLimiter = Clone(Settings.RevLimiter);
-                    PersistGamePresetToFolder(_activePresetName, snap);
-                }
-                // No active preset / no per-car file bound: live
-                // settings already persisted via SaveCommonSettings
-                // above; nothing more to do.
+                // !fromCar = the migration ran off the GAME preset's
+                // shared RevLimiter, not a per-car override. We must
+                // NOT bake this car's migrated RedlineRpm into the
+                // preset file: any other car sharing the same preset
+                // would inherit Car A's redline (a 7500-RPM 4-cyl
+                // value applied to a 12000-RPM V12). The live in-memory
+                // value is correct for this session via SaveCommonSettings
+                // above; each car-change rebuilds Settings.RevLimiter
+                // from the preset on the next ApplyActiveCarOverride
+                // pass, so the legacy Threshold re-migrates per-car
+                // each session. To stop the re-migration permanently,
+                // the user can save a per-car override on the Effects
+                // tab once telemetry has fed CarFactsRedline through.
             }
             catch (Exception ex)
             {
@@ -7394,27 +7437,37 @@ namespace TrueforceForAll.Plugin
                         return pool[i];
             }
 
-            // Signature match: when telemetry has reported a cylinder
-            // count, prefer the variant whose (Cylinders, RedlineRpm)
-            // matches it before falling through to raw priority. This
-            // is what lets a Forza in-game swap automatically apply the
-            // V12 variant when the user is actually driving the V12, vs
-            // always picking the highest-priority entry. A variant with
-            // no RedlineRpm matches any telemetry redline (community
-            // entries often don't carry redline, and we don't want them
-            // disqualified by that). Priority + Confirmations rank
-            // within the matching subset.
-            int? telCyl = EnginePulse?.ObservedCyl;
-            if (telCyl.HasValue && telCyl.Value >= 1 && telCyl.Value <= 16)
+            // Signature match: prefer the variant whose (Cylinders,
+            // MaxRpm, RedlineRpm) matches live telemetry before falling
+            // through to raw priority. This is what lets a Forza in-game
+            // swap from stock to a higher-rev engine automatically apply
+            // the right variant. MaxRpm is the universally-available
+            // discriminator (Forza UDP and SimHub fallback both carry
+            // it); RedlineRpm adds finer discrimination on games that
+            // expose it (AC, Codies titles). A field missing on the
+            // variant matches anything (under-specified row from legacy
+            // data); a field missing on telemetry can't discriminate so
+            // it's a free pass. Cyl falls back to CatalogCyl for games
+            // that don't carry NumCylinders in telemetry (SimHub
+            // fallback). Priority + Confirmations rank within the
+            // matching subset.
+            int? telCyl = ActiveCarEffectiveCyl();
+            int telMaxBand = BandRpm(EnginePulse?.ObservedMaxRpm ?? 0);
+            int telRedBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
+            if (telCyl.HasValue || telMaxBand > 0 || telRedBand > 0)
             {
-                int telRedBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
                 EngineVariant sigMatch = null;
                 int sigPriority = int.MinValue;
                 int sigConf = int.MinValue;
                 for (int i = 0; i < pool.Count; i++)
                 {
                     var cand = pool[i];
-                    if (cand.Cylinders != telCyl.Value) continue;
+                    if (cand.Cylinders >= 1 && telCyl.HasValue
+                        && cand.Cylinders != telCyl.Value) continue;
+                    if (cand.MaxRpm.HasValue
+                        && telMaxBand > 0
+                        && BandRpm(cand.MaxRpm.Value) != telMaxBand)
+                        continue;
                     if (cand.RedlineRpm.HasValue
                         && telRedBand > 0
                         && BandRpm(cand.RedlineRpm.Value) != telRedBand)
@@ -7496,9 +7549,13 @@ namespace TrueforceForAll.Plugin
             // would still let a stale local CarFacts redline win or fall
             // through to the heuristic - and a redline correction
             // submission wouldn't actually drive the rev-limiter buzz.
+            // Key format must match NotifyCommunityRedlineConsensus's
+            // writer: "game/carId/<sig>". Earlier versions read this
+            // without the sig suffix, which never matched, so the
+            // synthesized variant's RedlineRpm was always null.
             int? communityRedline = null;
             if (_activeCarCommunityRedlineConsensus != null
-                && _activeCarCommunityRedlineKey == game + "/" + carId
+                && _activeCarCommunityRedlineKey == game + "/" + carId + "/" + (currentSig ?? "")
                 && _activeCarCommunityRedlineConsensus.Rpm >= 500
                 && _activeCarCommunityRedlineConsensus.Rpm <= 25000)
                 communityRedline = _activeCarCommunityRedlineConsensus.Rpm;
@@ -7606,11 +7663,16 @@ namespace TrueforceForAll.Plugin
         // mid: it's vetted but generic, the user can still override. Scanner
         // (heuristic) is the lowest stored tier; below it the caller's
         // Baked / resolver fallback takes over.
+        // Cascade priority used by PickStoredVariant. CarFactSource.User
+        // is intentionally absent: User-tagged rows are legacy data from
+        // an earlier correction API that was superseded by the inline
+        // "Correct..." engine-layout affordance and silent telemetry-driven
+        // variant auto-create. PickStoredVariant filters User-source out
+        // of the pool entirely so it never reaches this switch.
         private static int SourcePriority(CarFactSource s)
         {
             switch (s)
             {
-                case CarFactSource.User:         return 50;
                 case CarFactSource.UserVariant:  return 45;
                 case CarFactSource.Community:    return 40;
                 case CarFactSource.SwapOverride: return 30;
@@ -7846,182 +7908,197 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // After the cascade applied a variant, check whether the
-            // live telemetry signature actually matches what we chose.
-            // If telemetry says V12 but the resolver picked the Baked
-            // V8 (user did a Forza engine swap), surface it for the
-            // SettingsControl prompt. See RecomputeUnknownVariantSignature.
-            RecomputeUnknownVariantSignature();
+            // Silent auto-create/upgrade: keep the stored variant for
+            // the live telemetry signature in sync. Creates a Scanner
+            // row when none matches, fills MaxRpm/RedlineRpm on a
+            // legacy under-specified row. No user-facing prompt; the
+            // variant signature IS the identity.
+            EnsureVariantForLiveSignature();
+            // Stamp the cache so DispatchFrame's per-frame signature
+            // compare knows what we just applied. Anything that changes
+            // the live signature after this (Forza mid-session engine
+            // swap; telemetry warming up enough to add a new component)
+            // re-enters this method on the next frame.
+            _lastAppliedVariantSignature =
+                ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
         }
 
-        /// <summary>Last-observed signature ("cyl=N;maxrpm=M;redline=R")
-        /// for the active car when it doesn't match any stored variant +
-        /// the user hasn't already dismissed it. Null at all other times.
-        /// Drives the SettingsControl "register this engine?" prompt that
-        /// pops the next time the user is engaging with the plugin
-        /// (Window.Activated). Read-only from outside; recomputed by
-        /// <see cref="RecomputeUnknownVariantSignature"/> at the end of
-        /// every car-facts resolve and after each telemetry observe
-        /// stabilizes.</summary>
-        public string ActiveCarUnknownVariantSignature { get; private set; }
-
-        /// <summary>Refresh <see cref="ActiveCarUnknownVariantSignature"/>
-        /// from the current observed telemetry vs the resolver's chosen
-        /// variant. The signature stays null until ALL of these hold:
-        ///   1. Telemetry has reported a cylinder count.
-        ///   2. The resolver's CatalogCyl differs from telemetry cyl
-        ///      (so the variant we applied doesn't fit what the engine
-        ///      actually is - typical of a Forza in-game swap).
-        ///   3. The user hasn't already dismissed this signature for
-        ///      this (game, car_id) via "Don't ask again."
-        /// </summary>
-
-        public void RecomputeUnknownVariantSignature()
+        /// <summary>Auto-create or upgrade the stored EngineVariant for the
+        /// active car so its (Cylinders, MaxRpm, RedlineRpm) matches what
+        /// telemetry is currently reporting. Runs silently at the tail of
+        /// every CarFacts resolve and after each car change. Three cases:
+        ///   1. No stored variant matches the live cyl + maxRpm + redline
+        ///      bands → create a new Scanner-source variant with an
+        ///      auto-generated label ("4 cyl, 7400 RPM").
+        ///   2. A stored variant matches on the components both sides have
+        ///      AND telemetry has fields the variant doesn't → upgrade the
+        ///      stored row in place (fill in MaxRpm and/or RedlineRpm).
+        ///   3. A stored variant fully covers telemetry → no-op.
+        /// Replaces the older "ActiveCarUnknownVariantSignature → modal
+        /// prompt" flow. The variant signature is the identity; the
+        /// "register" step is implicit, so no user-facing prompt fires.
+        /// User can still rename / delete variants in the Manage UI.</summary>
+        public void EnsureVariantForLiveSignature()
         {
-            ActiveCarUnknownVariantSignature = null;
             if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return;
-            // Reliable telemetry: need a cylinder count from the live
-            // source before any signature comparison can be meaningful.
-            int? telCyl = EnginePulse?.ObservedCyl;
-            if (!telCyl.HasValue || telCyl.Value < 1 || telCyl.Value > 16) return;
 
-            string sig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
-            if (string.IsNullOrEmpty(sig)) return;
+            int telMaxBand = BandRpm(EnginePulse?.ObservedMaxRpm ?? 0);
+            int telRedBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
+            // Need at least MaxRpm OR RedlineRpm before persisting; without
+            // either we have no discriminator and the row would be useless.
+            // (SimHub-fallback games almost always provide MaxRpm.)
+            if (telMaxBand <= 0 && telRedBand <= 0) return;
 
+            // Cyl: telemetry-direct first, then resolver/bake fallback.
+            // Forza UDP populates ObservedCyl; SimHub-fallback games leave
+            // it null but the resolver fills CatalogCyl from the bake.
+            // When neither is available (no bake, no telemetry) we proceed
+            // with cyl=null and the row stores a maxrpm-only signature.
+            int? telCyl = ActiveCarEffectiveCyl();
+
+            if (Settings == null) return;
             string key = _activeGame + "/" + _activeCarId;
 
-            // Persistent dismissal check first: user said "don't ask
-            // again" for this exact signature in a prior session.
-            if (Settings?.CarFactsDismissedSignatures != null
-                && Settings.CarFactsDismissedSignatures.TryGetValue(key, out var dismissed)
-                && dismissed != null
-                && dismissed.Contains(sig))
-                return;
+            // Telemetry source-of-truth at observation time. These are
+            // what go into the row when we create or upgrade.
+            int telMaxRpm = telMaxBand > 0 ? (int)Math.Round(EnginePulse.ObservedMaxRpm) : 0;
+            int telRedRpm = telRedBand > 0 ? (int)Math.Round(EnginePulse.ObservedRedlineRpm) : 0;
 
-            // Branch A: bundle has stored variants. Match the live
-            // signature against each variant's (Cylinders,
-            // RedlineRpm-band). A match means the resolver's cascade
-            // already covers the current engine; no prompt. No match
-            // means the telemetry is on a new engine that isn't in
-            // the bundle yet -> prompt to register.
-            int telRedlineBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
-            if (Settings?.CarFacts != null
-                && Settings.CarFacts.TryGetValue(key, out var bundle)
-                && bundle?.EngineVariants != null
-                && bundle.EngineVariants.Count > 0)
-            {
-                foreach (var v in bundle.EngineVariants)
-                {
-                    if (v == null) continue;
-                    if (v.Cylinders != telCyl.Value) continue;
-                    // RedlineRpm null on the variant = "no redline
-                    // claim" - matches any telemetry redline. With a
-                    // value, require the banded redline to match so
-                    // an AE86 stock (~7400) and an AE86 swap (~9000)
-                    // are recognised as distinct variants.
-                    if (v.RedlineRpm.HasValue && telRedlineBand > 0
-                        && BandRpm(v.RedlineRpm.Value) != telRedlineBand)
-                        continue;
-                    return; // covered
-                }
-                ActiveCarUnknownVariantSignature = sig;
-                return;
-            }
-
-            // Branch B: empty bundle. Use persisted first-sig tracking
-            // (Settings.CarFactsFirstObservedSignature) to detect swaps.
-            // The first observation for a car is the baseline; later
-            // swap-induced signature changes (different MaxRpm band,
-            // different cylinder count) trigger the prompt. Persisted
-            // so a Skip-for-now followed by a SimHub restart still
-            // produces a prompt the next time the engine differs from
-            // baseline - "Don't ask again" remains the explicit opt-out.
-            if (Settings.CarFactsFirstObservedSignature == null)
-                Settings.CarFactsFirstObservedSignature = new Dictionary<string, string>();
-            if (!Settings.CarFactsFirstObservedSignature.TryGetValue(key, out var firstSig))
-            {
-                Settings.CarFactsFirstObservedSignature[key] = sig;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
-                return;
-            }
-            if (string.Equals(firstSig, sig, StringComparison.Ordinal)) return;
-            ActiveCarUnknownVariantSignature = sig;
-        }
-
-        /// <summary>Persist a freshly-named engine variant for the active
-        /// car and re-resolve the cascade so the new variant takes
-        /// effect immediately. Called by the SettingsControl prompt's
-        /// Save button. Returns false on invalid input or when the
-        /// active-car context is gone.</summary>
-        public bool RegisterNewEngineVariant(string label, int cylinders,
-            EngineConfig config, int? redlineRpm)
-        {
-            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
-            if (cylinders < 1 || cylinders > 16) return false;
-            if (Settings == null) return false;
-            if (Settings.CarFacts == null) Settings.CarFacts = new Dictionary<string, CarFactsBundle>();
-            string key = _activeGame + "/" + _activeCarId;
+            if (Settings.CarFacts == null)
+                Settings.CarFacts = new Dictionary<string, CarFactsBundle>();
             if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null)
             {
                 bundle = new CarFactsBundle();
                 Settings.CarFacts[key] = bundle;
             }
-            if (bundle.EngineVariants == null) bundle.EngineVariants = new List<EngineVariant>();
-            bundle.EngineVariants.Add(new EngineVariant
-            {
-                Id            = Guid.NewGuid().ToString(),
-                Label         = string.IsNullOrWhiteSpace(label) ? "User variant" : label.Trim(),
-                Cylinders     = cylinders,
-                EngineConfig  = config,
-                RedlineRpm    = redlineRpm,
-                Source        = CarFactSource.UserVariant,
-                Confirmations = 0,
-            });
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
-            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
+            if (bundle.EngineVariants == null)
+                bundle.EngineVariants = new List<EngineVariant>();
 
-            // Fire-and-forget community submission so other drivers
-            // who hit the same Forza swap signature pick up the engine
-            // layout + redline without having to re-discover them.
-            // Gated by CommunityEnabled inside the SubmitX wrappers;
-            // no sign-in required (submit_car_fact is IP-pseudonymous,
-            // not bearer-authenticated).
-            try
+            // Look for a stored variant compatible with live telemetry.
+            // Compatible = cyl agrees (or either side has 0/unknown) +
+            // any field present on both sides shares the same band. A
+            // variant with no MaxRpm/RedlineRpm is "under-specified" and
+            // matches any telemetry — we'll upgrade it below by filling
+            // in the missing components. 0 / null cyl acts as a wildcard
+            // so SimHub-fallback games (where bake + telemetry might
+            // not have agreed at one point) still match cleanly.
+            EngineVariant match = null;
+            for (int i = 0; i < bundle.EngineVariants.Count; i++)
             {
-                var layout = Effects.FiringPatternDb.LayoutFromLegacy(cylinders, config, false);
-                SubmitEngineLayoutToCommunity(_activeGame, _activeCarId, layout);
-                if (redlineRpm.HasValue && redlineRpm.Value >= 500)
-                    SubmitRedlineToCommunity(_activeGame, _activeCarId, redlineRpm.Value);
+                var v = bundle.EngineVariants[i];
+                if (v == null) continue;
+                if (v.Cylinders >= 1 && telCyl.HasValue
+                    && v.Cylinders != telCyl.Value) continue;
+                if (v.MaxRpm.HasValue && telMaxBand > 0
+                    && BandRpm(v.MaxRpm.Value) != telMaxBand) continue;
+                if (v.RedlineRpm.HasValue && telRedBand > 0
+                    && BandRpm(v.RedlineRpm.Value) != telRedBand) continue;
+                match = v;
+                break;
             }
-            catch (Exception ex)
+
+            bool changed = false;
+            if (match != null)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Submit new variant to community failed: " + ex.Message);
+                // Upgrade in place when telemetry brings new info that
+                // the stored row doesn't have. Once filled, this row
+                // will discriminate against future engine swaps that
+                // change the now-known field.
+                if (match.Cylinders < 1 && telCyl.HasValue)
+                {
+                    match.Cylinders = telCyl.Value;
+                    changed = true;
+                }
+                if (!match.MaxRpm.HasValue && telMaxBand > 0)
+                {
+                    match.MaxRpm = telMaxRpm;
+                    changed = true;
+                }
+                if (!match.RedlineRpm.HasValue && telRedBand > 0)
+                {
+                    match.RedlineRpm = telRedRpm;
+                    changed = true;
+                }
+                if (changed)
+                {
+                    // Refresh auto-label only when the existing label
+                    // looks auto-generated (matches the AutoLabel
+                    // pattern). User-renamed labels are preserved.
+                    if (IsAutoVariantLabel(match.Label))
+                        match.Label = BuildAutoVariantLabel(match.Cylinders,
+                                                            match.MaxRpm,
+                                                            match.RedlineRpm);
+                }
             }
-            return true;
+            else
+            {
+                // No compatible variant: create one. Source = Scanner
+                // (auto-observed, not user-confirmed). EngineConfig
+                // stays Auto: the EnginePulse "Layout" picker is the
+                // user-facing surface for layout overrides, separate
+                // from variant identity. Cylinders = 0 (unknown) when
+                // neither telemetry nor bake gave us a count - the
+                // signature still discriminates via MaxRpm/RedlineRpm.
+                var fresh = new EngineVariant
+                {
+                    Id            = Guid.NewGuid().ToString("N"),
+                    Cylinders     = telCyl ?? 0,
+                    MaxRpm        = telMaxBand > 0 ? (int?)telMaxRpm : null,
+                    RedlineRpm    = telRedBand > 0 ? (int?)telRedRpm : null,
+                    EngineConfig  = EngineConfig.Auto,
+                    Source        = CarFactSource.Scanner,
+                    Confirmations = 0,
+                };
+                fresh.Label = BuildAutoVariantLabel(fresh.Cylinders,
+                                                   fresh.MaxRpm,
+                                                   fresh.RedlineRpm);
+                bundle.EngineVariants.Add(fresh);
+                changed = true;
+            }
+
+            if (!changed) return;
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            // Re-resolve so the just-created / upgraded variant flows
+            // through PickStoredVariant and RevLimiter.CarFactsRedline.
+            // Logging stays off here - it's automatic plumbing, not a
+            // user action worth a line in the log.
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
         }
 
-        /// <summary>Persist a "don't ask again" decision for the given
-        /// telemetry signature on the active car so future sessions
-        /// suppress the unknown-variant prompt for THIS specific
-        /// configuration only (a future swap producing a different
-        /// signature still prompts).</summary>
-        public void DismissUnknownVariantSignature(string sig)
+        // Auto-generated variant labels follow "N cyl, M RPM" with an
+        // optional ", R redline" suffix when redline is known. The
+        // pattern lets EnsureVariantForLiveSignature refresh the label
+        // on upgrade without clobbering a label the user typed themselves.
+        private static readonly System.Text.RegularExpressions.Regex AutoLabelPattern =
+            new System.Text.RegularExpressions.Regex(
+                @"^(\d+ cyl|engine)(, \d+ RPM)?(, \d+ redline)?$",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        internal static bool IsAutoVariantLabel(string label)
         {
-            if (string.IsNullOrEmpty(sig)) return;
-            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return;
-            if (Settings == null) return;
-            if (Settings.CarFactsDismissedSignatures == null)
-                Settings.CarFactsDismissedSignatures = new Dictionary<string, List<string>>();
-            string key = _activeGame + "/" + _activeCarId;
-            if (!Settings.CarFactsDismissedSignatures.TryGetValue(key, out var list) || list == null)
-            {
-                list = new List<string>();
-                Settings.CarFactsDismissedSignatures[key] = list;
-            }
-            if (!list.Contains(sig)) list.Add(sig);
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
-            ActiveCarUnknownVariantSignature = null;
+            if (string.IsNullOrWhiteSpace(label)) return true;
+            return AutoLabelPattern.IsMatch(label);
         }
+
+        internal static string BuildAutoVariantLabel(int cyl, int? maxRpm, int? redlineRpm)
+        {
+            var sb = new System.Text.StringBuilder();
+            // Cyl=0 sentinel = "unknown cyl count" (SimHub-fallback game
+            // with no bake entry). Lead with "engine" instead of "0 cyl"
+            // so the label reads cleanly.
+            sb.Append(cyl >= 1 ? (cyl + " cyl") : "engine");
+            if (maxRpm.HasValue && maxRpm.Value > 0)
+                sb.Append(", ").Append(maxRpm.Value).Append(" RPM");
+            if (redlineRpm.HasValue && redlineRpm.Value > 0)
+                sb.Append(", ").Append(redlineRpm.Value).Append(" redline");
+            return sb.ToString();
+        }
+
+        // (Removed: RegisterNewEngineVariant + DismissUnknownVariantSignature.
+        // Both fed the "register new variant?" modal, which is gone now that
+        // EnsureVariantForLiveSignature auto-creates variants from telemetry.
+        // Community submissions still happen explicitly through the engine-
+        // layout / redline / car-name share dialogs, not at variant creation.)
 
         /// <summary>Return the stored engine variants for the active car
         /// in display order. Legacy User-source variants are filtered out
@@ -8170,126 +8247,7 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
-        /// <summary>Write or update a User-source CarFacts correction for the
-        /// given (game, carId). Replaces any prior User-source variant in the
-        /// bundle (one user-correction per car keeps the picker simple).
-        /// Authoritative stored variants from User wins over Baked/Scanner in
-        /// TryResolveActiveVariant's ordering, so the correction applies on
-        /// the next resolution pass. Saves Settings to disk and re-runs the
-        /// resolution for the active car if it matches. Returns true on success.</summary>
-        public bool WriteUserCarFactsCorrection(string game, string carId,
-            int cylinders, EngineConfig config)
-        {
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
-            if (cylinders < 1 || cylinders > 16) return false;
-            if (Settings == null) return false;
-            if (Settings.CarFacts == null)
-                Settings.CarFacts = new Dictionary<string, CarFactsBundle>();
-
-            string key = game + "/" + carId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null)
-            {
-                bundle = new CarFactsBundle();
-                Settings.CarFacts[key] = bundle;
-            }
-            if (bundle.EngineVariants == null)
-                bundle.EngineVariants = new List<EngineVariant>();
-
-            // Replace any existing User-source variant for this car. Multiple
-            // User-source entries would be ambiguous: the user only ever sees
-            // one Correct dialog at a time.
-            bundle.EngineVariants.RemoveAll(v =>
-                v != null && v.Source == CarFactSource.User);
-
-            bundle.EngineVariants.Add(new EngineVariant
-            {
-                Id            = Guid.NewGuid().ToString("N"),
-                Label         = "Correction",
-                Cylinders     = cylinders,
-                EngineConfig  = config,
-                RedlineRpm    = null,
-                Source        = CarFactSource.User,
-                Confirmations = 0,
-            });
-
-            this.SaveCommonSettings("GeneralSettings", Settings);
-
-            if (game == _activeGame && carId == _activeCarId)
-            {
-                ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
-                ApplyActiveCarOverride();
-            }
-
-            // Community submission is the SettingsControl save-prompt
-            // handler's responsibility now (it knows which fields the user
-            // ticked vs un-ticked). This method writes the local variant
-            // only; the prompt fires SubmitEngineCylindersToCommunity /
-            // SubmitEngineConfigToCommunity separately as needed.
-            return true;
-        }
-
-        /// <summary>Remove the User-source CarFacts correction for (game,
-        /// carId). No-op if no correction exists. Saves Settings to disk and
-        /// re-runs resolution for the active car if it matches. Returns true
-        /// when a correction was actually removed.</summary>
-        public bool RemoveUserCarFactsCorrection(string game, string carId)
-        {
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
-            if (Settings?.CarFacts == null) return false;
-            string key = game + "/" + carId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return false;
-            if (bundle.EngineVariants == null) return false;
-            int removed = bundle.EngineVariants.RemoveAll(v =>
-                v != null && v.Source == CarFactSource.User);
-            if (removed == 0) return false;
-
-            // Drop the bundle entirely if nothing meaningful remains, so the
-            // settings file stays clean.
-            if (bundle.EngineVariants.Count == 0 && string.IsNullOrEmpty(bundle.CarName))
-                Settings.CarFacts.Remove(key);
-
-            this.SaveCommonSettings("GeneralSettings", Settings);
-
-            if (game == _activeGame && carId == _activeCarId)
-            {
-                ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
-                ApplyActiveCarOverride();
-            }
-            return true;
-        }
-
-        /// <summary>Reads the current User-source CarFacts correction for
-        /// (game, carId), or null if none. Used by the Correct dialog to
-        /// pre-fill its fields and surface a Remove affordance when an
-        /// existing correction is being edited.</summary>
-        public EngineVariant GetUserCarFactsCorrection(string game, string carId)
-        {
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
-            if (Settings?.CarFacts == null) return null;
-            string key = game + "/" + carId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return null;
-            if (bundle.EngineVariants == null) return null;
-            for (int i = 0; i < bundle.EngineVariants.Count; i++)
-            {
-                var v = bundle.EngineVariants[i];
-                if (v != null && v.Source == CarFactSource.User) return v;
-            }
-            return null;
-        }
-
-        /// <summary>The variant the resolution cascade picked for this car at
-        /// apply time, regardless of source (User correction / Community /
-        /// Scanner / Baked virtual). Null when no variant resolves and we'd
-        /// be in the telemetry / heuristic fallback path. Public so future
-        /// UI surfaces can read what the plugin currently thinks the car
-        /// is; today's seamless save-prompt flow uses ActiveEngine.Layout
-        /// + TryLayoutToCylAndConfig instead.</summary>
-        public EngineVariant GetActiveResolvedVariant(string game, string carId)
-        {
-            return TryResolveActiveVariant(game, carId, out var v) ? v : null;
-        }
-
-        /// <summary>Persist the community-data toggle. Off = submissions are
+/// <summary>Persist the community-data toggle. Off = submissions are
         /// suppressed inside CommunityClient + (post Backend Phase 2) the
         /// consensus pull is skipped. SimHub's autosave catches this on
         /// plugin teardown, but writing through here makes the change
@@ -9651,7 +9609,11 @@ namespace TrueforceForAll.Plugin
             if (EnginePulse == null) return string.Empty;
             if (game != _activeGame || carId != _activeCarId) return string.Empty;
             var parts = new List<string>(3);
-            int? cyl = EnginePulse.ObservedCyl;
+            // Cyl source: telemetry-direct (Forza UDP NumCylinders) first,
+            // then resolver/bake-derived CatalogCyl as a fallback so
+            // SimHub-fallback games (which don't expose NumCylinders in
+            // their telemetry frame) still contribute cyl to the signature.
+            int? cyl = ActiveCarEffectiveCyl();
             if (cyl.HasValue && cyl.Value >= 1 && cyl.Value <= 16)
                 parts.Add("cyl=" + cyl.Value);
             int maxBand = BandRpm(EnginePulse.ObservedMaxRpm);
@@ -9659,6 +9621,23 @@ namespace TrueforceForAll.Plugin
             int redBand = BandRpm(EnginePulse.ObservedRedlineRpm);
             if (redBand > 0) parts.Add("redline=" + redBand);
             return parts.Count == 0 ? string.Empty : string.Join(";", parts);
+        }
+
+        // Cyl source order: telemetry-direct (Forza UDP NumCylinders) →
+        // resolver/bake-derived (CatalogCyl, populated by ResolveAndApplyCarFacts
+        // for SimHub-fallback games via CarCylinderResolver) → null. Returns
+        // null when neither is available (cars with no bake entry on a
+        // SimHub-fallback game; the auto-create then skips cyl).
+        private int? ActiveCarEffectiveCyl()
+        {
+            if (EnginePulse == null) return null;
+            int? observed = EnginePulse.ObservedCyl;
+            if (observed.HasValue && observed.Value >= 1 && observed.Value <= 16)
+                return observed;
+            int? catalog = EnginePulse.CatalogCyl;
+            if (catalog.HasValue && catalog.Value >= 1 && catalog.Value <= 16)
+                return catalog;
+            return null;
         }
 
         // 500-RPM banding: same engine across users lands in the same band
@@ -9691,8 +9670,6 @@ namespace TrueforceForAll.Plugin
                 Settings.CarFacts[key] = bundle;
             }
             bundle.CarName = name;
-            bundle.CarNameSource = CarFactSource.User;
-            bundle.CarNameConfirmations = 0;
 
             this.SaveCommonSettings("GeneralSettings", Settings);
 

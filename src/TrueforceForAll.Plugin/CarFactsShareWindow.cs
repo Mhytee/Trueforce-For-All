@@ -139,9 +139,10 @@ namespace TrueforceForAll.Plugin
             });
 
             root.Children.Add(new TextBlock {
-                Text = "Anonymous. No account needed.",
+                Text = "Submitted as your signed-in account. Your username isn't shown on submissions.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
+                TextWrapping = TextWrapping.Wrap,
             });
 
             var btnRow = new StackPanel {

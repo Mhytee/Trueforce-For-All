@@ -248,30 +248,6 @@ namespace TrueforceForAll.Plugin
                     // silently suppressed by the prior user's gate.
                     _plugin.AuthIdentityChanged += OnAuthIdentityChanged;
                 }
-                // Unknown-variant prompt: subscribe to the parent
-                // Window.Activated so a fresh alt-tab back to SimHub is
-                // the natural trigger to surface "register this engine?"
-                // for any unrecognized telemetry signature on the
-                // active car. The Loaded -> deferred BeginInvoke chain
-                // below handles the "SimHub was already foreground at
-                // session start" case where Activated never fires.
-                HookParentWindowActivatedForVariantPrompt();
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    // Run once five seconds after the panel loads to
-                    // cover the "already in SimHub" case; the prompt's
-                    // own guards no-op when there's nothing to prompt.
-                    var delay = new System.Windows.Threading.DispatcherTimer
-                    {
-                        Interval = TimeSpan.FromSeconds(5),
-                    };
-                    delay.Tick += (s, a) =>
-                    {
-                        delay.Stop();
-                        MaybeShowUnknownVariantPrompt();
-                    };
-                    delay.Start();
-                }), System.Windows.Threading.DispatcherPriority.Background);
                 // SimHub caches this control, so navigating away and back does NOT
                 // rebuild it. Re-pull values on every (re)load so edits made
                 // elsewhere while we were hidden (e.g. the home-screen Feedback
@@ -281,7 +257,6 @@ namespace TrueforceForAll.Plugin
             Unloaded += (_, __) =>
             {
                 _meterTimer.Stop();
-                UnhookParentWindowActivatedForVariantPrompt();
                 if (_plugin != null)
                 {
                     _plugin.AuthIdentityChanged -= OnAuthIdentityChanged;
@@ -291,91 +266,12 @@ namespace TrueforceForAll.Plugin
             };
         }
 
-        // Unknown-variant prompt plumbing -----------------------------
-
-        // Per-session: keys "{game}/{carId}|{signature}" the user
-        // already saw the prompt for OR clicked Skip on this session.
-        // Persistent dismissals live in Settings.CarFactsDismissedSignatures.
-        private readonly System.Collections.Generic.HashSet<string> _unknownVariantPromptedThisSession
-            = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-
-        // Cached parent Window reference for hook/unhook symmetry. The
-        // visual tree only attaches a parent Window after Loaded fires,
-        // so resolve it on the way in.
-        private Window _hostWindowForVariantPrompt;
-        private EventHandler _variantPromptActivatedHandler;
-        private bool _variantPromptModalOpen;
-
-        private void HookParentWindowActivatedForVariantPrompt()
-        {
-            if (_variantPromptActivatedHandler != null) return;
-            _hostWindowForVariantPrompt = Window.GetWindow(this);
-            if (_hostWindowForVariantPrompt == null) return;
-            _variantPromptActivatedHandler = (s, e) =>
-            {
-                // Defer so the activation transition completes before
-                // we pop a modal that would steal focus right back.
-                Dispatcher.BeginInvoke(new Action(MaybeShowUnknownVariantPrompt),
-                    System.Windows.Threading.DispatcherPriority.Background);
-            };
-            _hostWindowForVariantPrompt.Activated += _variantPromptActivatedHandler;
-        }
-
-        private void UnhookParentWindowActivatedForVariantPrompt()
-        {
-            if (_hostWindowForVariantPrompt != null && _variantPromptActivatedHandler != null)
-                _hostWindowForVariantPrompt.Activated -= _variantPromptActivatedHandler;
-            _hostWindowForVariantPrompt = null;
-            _variantPromptActivatedHandler = null;
-        }
-
-        private void MaybeShowUnknownVariantPrompt()
-        {
-            if (_plugin == null) return;
-            if (_variantPromptModalOpen) return;   // re-entrancy guard
-            string sig = _plugin.ActiveCarUnknownVariantSignature;
-            if (string.IsNullOrEmpty(sig)) return;
-            string carId = _plugin.ActiveCarId;
-            string game  = _plugin.ActiveGame;
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
-            string sessionKey = game + "/" + carId + "|" + sig;
-            if (!_unknownVariantPromptedThisSession.Add(sessionKey)) return;
-
-            // Snapshot telemetry hints for the modal pre-fill. ObservedCyl
-            // is the trigger - the resolver already flagged that the
-            // applied variant doesn't match it. EnginePulse lives on the
-            // plugin directly, not on Settings.
-            int telemetryCyl = _plugin.EnginePulse?.ObservedCyl ?? 0;
-            double observedRedline = _plugin.EnginePulse?.ObservedRedlineRpm ?? 0;
-            int? telemetryRedline = observedRedline >= 500
-                ? (int?)((int)System.Math.Round(observedRedline / 500.0) * 500)
-                : null;
-            string carDisplayName = _plugin.ActiveCarDisplayName;
-            _variantPromptModalOpen = true;
-            bool? result = null;
-            CarFactsNewVariantWindow win = null;
-            try
-            {
-                win = new CarFactsNewVariantWindow(carDisplayName, carId, sig,
-                    telemetryCyl, telemetryRedline)
-                {
-                    Owner = Window.GetWindow(this),
-                };
-                result = win.ShowDialog();
-            }
-            finally { _variantPromptModalOpen = false; }
-            if (result == true)
-            {
-                _plugin.RegisterNewEngineVariant(
-                    win.Label, win.Cylinders, win.EngineConfig, win.RedlineRpm);
-            }
-            else if (win != null && win.DontAskAgain)
-            {
-                _plugin.DismissUnknownVariantSignature(sig);
-            }
-            // Skip-for-now: do nothing. The per-session HashSet keeps
-            // this (car, sig) from re-prompting; next session re-asks.
-        }
+        // (Removed unknown-variant prompt plumbing. The "register new
+        // variant?" modal was replaced by silent auto-create in
+        // TrueforcePlugin.EnsureVariantForLiveSignature: variant identity
+        // IS the live telemetry signature, so there's nothing to ask the
+        // user about. The Manage Variants UI still lets the user rename
+        // or delete rows after the fact.)
 
         // The active local user changed (sign-in, sign-out, refresh
         // that flipped to a different email). Reset every per-session
@@ -394,10 +290,6 @@ namespace TrueforceForAll.Plugin
             // again for the new user instead of being suppressed.
             _lastShownCarId = null;
             _lastShownGame  = null;
-            // The new user's CarFacts dismissal list lives in their
-            // slot, so per-session HashSet (which only mattered to
-            // suppress re-prompts inside ONE session) should reset too.
-            _unknownVariantPromptedThisSession.Clear();
             // Invalidate any in-flight account stats fetch from the prior user.
             unchecked { ++_accountStatsGen; }
             // Refresh visible UI state immediately - the new user's
@@ -1080,24 +972,15 @@ namespace TrueforceForAll.Plugin
 
         private void MeterTimer_Tick(object sender, EventArgs e)
         {
-            // Cheap per-tick recompute so an in-session change to
-            // ObservedCyl / signature is picked up without waiting for
-            // the next car-facts resolve. The helper is itself cheap
-            // (a few field reads + one dict lookup) and short-circuits
-            // when telemetry isn't ready.
-            if (_plugin != null && _hostWindowForVariantPrompt != null
-                && _hostWindowForVariantPrompt.IsActive)
-            {
-                _plugin.RecomputeUnknownVariantSignature();
-                if (!string.IsNullOrEmpty(_plugin.ActiveCarUnknownVariantSignature)
-                    && !_variantPromptModalOpen)
-                {
-                    // Background-deferred so we don't pop while the
-                    // tick handler is mid-frame.
-                    Dispatcher.BeginInvoke(new Action(MaybeShowUnknownVariantPrompt),
-                        System.Windows.Threading.DispatcherPriority.Background);
-                }
-            }
+            // (Was: per-tick variant-prompt recompute. Now silent
+            // auto-create happens at the end of every CarFacts resolve
+            // pass inside the plugin, so the UI tick has nothing to do
+            // here for variants.)
+
+            // Redline-coverage badge: track whether the cascade is in
+            // the "guess" branch. Tick-driven because the underlying
+            // flag flips with each ResolveEffectiveRedline call.
+            RefreshRedlineGuessBadge();
 
             var src = _plugin?.AudioCapture;
             if (src != null)
@@ -4813,6 +4696,17 @@ namespace TrueforceForAll.Plugin
         private void MaybePromptToSubmitRedlineData(string carId)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
+            // Community sharing disabled = the underlying submit call
+            // will no-op anyway. Bail before opening the share dialog
+            // so the user isn't asked to share into a network call that
+            // silently drops, AND so the per-car dedupe slot stays free
+            // for the next session after they re-enable Community.
+            if (_plugin.Settings?.CommunityEnabled != true) return;
+            // Signed-out users get the same treatment - the submit RPC
+            // requires auth.uid() and silently drops without it.
+            // Skip the modal entirely; the dedupe slot stays free so
+            // a future signed-in session will surface the prompt.
+            if (!_plugin.AuthIsSignedIn) return;
             string game = _plugin.ActiveGame;
             if (string.IsNullOrEmpty(game)) return;
             var rl = _plugin.ActiveRevLimiter;
@@ -4887,6 +4781,13 @@ namespace TrueforceForAll.Plugin
         private void MaybePromptToSubmitEngineData(string carId)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
+            // Community sharing off: skip the share dialog entirely so
+            // we don't hand the user a modal that submits into a no-op
+            // and burns the dedupe slot. Mirrors the redline path.
+            if (_plugin.Settings?.CommunityEnabled != true) return;
+            // Signed-out users: same skip. submit_car_fact requires
+            // auth.uid() so the share would silently drop.
+            if (!_plugin.AuthIsSignedIn) return;
             var state = GetEngineSubmitState();
             if (state == EngineSubmitState.None) return;
 
@@ -5209,10 +5110,6 @@ namespace TrueforceForAll.Plugin
         /// <summary>(Re)populate the engine-layout dropdown from the built-in
         /// EngineLayout enum + the user's saved customs in
         /// TrueforceSettings.CustomEngines, plus the "Custom..." and
-        // Suppress EngineVariant_Changed reentry while we're loading the
-        // combo programmatically (Items.Add fires SelectionChanged).
-        private bool _suppressVariantPickerChange;
-
         /// <summary>Refresh the inline variant picker for the active car.
         /// Hidden when the bundle has fewer than 2 stored variants -
         /// the single-variant fast-path in PickStoredVariant means there's
@@ -5221,15 +5118,17 @@ namespace TrueforceForAll.Plugin
         /// "Manage variants..." link is collapsed in lockstep.</summary>
         private void RebuildEngineVariantPicker()
         {
-            if (EngineVariantRow == null || EngineVariantCombo == null) return;
+            if (EngineVariantRow == null || EngineVariantActiveText == null) return;
             if (_plugin == null) { EngineVariantRow.Visibility = Visibility.Collapsed; return; }
 
             var variants = _plugin.GetActiveCarVariants();
-            // Pre-condition for the picker being useful at all: the
-            // user has registered (or downloaded) at least two variants
-            // for the active car. Anything less and the resolver's
-            // single-variant fast-path covers it without UI.
-            if (variants == null || variants.Count < 2)
+            // Show the row + manage link as soon as there's at least one
+            // stored variant for this car. With silent auto-create on the
+            // first telemetry-with-discriminator observation, every car
+            // ends up with a row here once telemetry has been seen.
+            // Hide it only when the bundle is empty (game / car not loaded,
+            // telemetry hasn't observed cyl yet).
+            if (variants == null || variants.Count == 0)
             {
                 EngineVariantRow.Visibility       = Visibility.Collapsed;
                 if (EngineVariantManageLink != null)
@@ -5237,41 +5136,50 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Selection lookup: explicit pin via CarFactsSelection wins,
-            // otherwise mirror what the resolver picked so the combo
-            // shows the actually-applied variant on first render.
-            string activeId = null;
-            if (_plugin.Settings?.CarFactsSelection != null
-                && !string.IsNullOrEmpty(_plugin.ActiveGame)
-                && !string.IsNullOrEmpty(_plugin.ActiveCarId)
-                && _plugin.Settings.CarFactsSelection.TryGetValue(
-                       _plugin.ActiveGame + "/" + _plugin.ActiveCarId, out var pinned))
-                activeId = pinned;
-
-            _suppressVariantPickerChange = true;
-            try
+            // Identify the variant the resolver picked for live telemetry.
+            // For a single-variant car, that's the only row. For multiple,
+            // PickStoredVariant's signature match wins; mirror that pick
+            // by hand here (cyl + maxRpm band + redline band).
+            EngineVariant active = null;
+            if (variants.Count == 1)
             {
-                EngineVariantCombo.Items.Clear();
-                int selectedIndex = -1;
+                active = variants[0];
+            }
+            else
+            {
+                // Mirror PickStoredVariant's signature match: cyl falls back
+                // to CatalogCyl (resolver/bake) for SimHub-fallback games
+                // whose telemetry doesn't carry NumCylinders.
+                int? telCyl = _plugin.EnginePulse?.ObservedCyl;
+                if (!telCyl.HasValue || telCyl.Value < 1)
+                {
+                    int? cat = _plugin.EnginePulse?.CatalogCyl;
+                    if (cat.HasValue && cat.Value >= 1 && cat.Value <= 16)
+                        telCyl = cat;
+                }
+                double telMax = _plugin.EnginePulse?.ObservedMaxRpm ?? 0;
+                double telRed = _plugin.EnginePulse?.ObservedRedlineRpm ?? 0;
+                int telMaxBand = telMax >= 500 ? (int)Math.Round(telMax / 500.0) * 500 : 0;
+                int telRedBand = telRed >= 500 ? (int)Math.Round(telRed / 500.0) * 500 : 0;
                 for (int i = 0; i < variants.Count; i++)
                 {
                     var v = variants[i];
                     if (v == null) continue;
-                    string sourceLabel = MapCarFactSourceForCombo(v.Source);
-                    string label = string.IsNullOrEmpty(v.Label) ? "(unnamed)" : v.Label;
-                    var item = new System.Windows.Controls.ComboBoxItem
-                    {
-                        Content = label + "  (" + sourceLabel + ", " + v.Cylinders + "-cyl)",
-                        Tag     = v.Id,
-                    };
-                    EngineVariantCombo.Items.Add(item);
-                    if (!string.IsNullOrEmpty(activeId)
-                        && string.Equals(v.Id, activeId, StringComparison.Ordinal))
-                        selectedIndex = i;
+                    if (v.Cylinders >= 1 && telCyl.HasValue
+                        && v.Cylinders != telCyl.Value) continue;
+                    if (v.MaxRpm.HasValue && telMaxBand > 0
+                        && ((int)Math.Round(v.MaxRpm.Value / 500.0) * 500) != telMaxBand) continue;
+                    if (v.RedlineRpm.HasValue && telRedBand > 0
+                        && ((int)Math.Round(v.RedlineRpm.Value / 500.0) * 500) != telRedBand) continue;
+                    active = v;
+                    break;
                 }
-                EngineVariantCombo.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+                if (active == null) active = variants[0];
             }
-            finally { _suppressVariantPickerChange = false; }
+
+            string sourceLabel = MapCarFactSourceForCombo(active.Source);
+            string label = string.IsNullOrEmpty(active.Label) ? "(unnamed)" : active.Label;
+            EngineVariantActiveText.Text = label + "  (" + sourceLabel + ")";
 
             EngineVariantRow.Visibility = Visibility.Visible;
             if (EngineVariantManageLink != null)
@@ -5295,20 +5203,9 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private void EngineVariant_Changed(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressVariantPickerChange) return;
-            if (_plugin == null || EngineVariantCombo == null) return;
-            if (!(EngineVariantCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item)) return;
-            string id = item.Tag as string;
-            if (string.IsNullOrEmpty(id)) return;
-            _plugin.SetActiveCarVariantSelection(id);
-            // The plugin re-resolves on SetActiveCarVariantSelection -
-            // mirror its output back into the layout combo + readout so
-            // the user sees the new variant's layout immediately.
-            RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout(_plugin.ActiveEngine);
-        }
+        // (Removed: EngineVariant_Changed. The dropdown picker is gone;
+        // signature-based auto-detect always drives the pick. Users
+        // rename / delete via the Manage variants window instead.)
 
         private void EngineVariantManage_Click(object sender, RoutedEventArgs e)
         {
@@ -7040,6 +6937,49 @@ namespace TrueforceForAll.Plugin
             // the truth directly.
             _plugin.ActiveRevLimiter.Threshold = 0.85f;
             Apply(EffectKind.RevLimiter);
+        }
+
+        // Refresh the "redline is a guess" badge from RevLimiter.IsRedlineGuessed.
+        // Called from MeterTimer_Tick so the badge appears/disappears as
+        // the cascade re-resolves each frame. Visible only when the effect
+        // is enabled, in Auto mode, and the cascade fell to the default
+        // 0.85 × MaxRpm branch.
+        private void RefreshRedlineGuessBadge()
+        {
+            if (RedlineGuessBadge == null) return;
+            var settings = _plugin?.ActiveRevLimiter;
+            var effect   = _plugin?.RevLimiter;
+            bool show = settings != null && effect != null
+                && settings.Enabled
+                && settings.EngageMode != RevLimiterEngageMode.Redline
+                && effect.IsRedlineGuessed;
+            var want = show ? Visibility.Visible : Visibility.Collapsed;
+            if (RedlineGuessBadge.Visibility != want)
+                RedlineGuessBadge.Visibility = want;
+        }
+
+        private void RedlineGuessSetValue_Click(object sender, RoutedEventArgs e)
+        {
+            // Just put focus on the slider so the user can type / drag.
+            // Acts as a "scroll-to-here + give me the cursor" affordance
+            // for users who weren't sure where to find it.
+            try
+            {
+                RevLimiterRedlineSlider?.Focus();
+                RevLimiterRedlineSlider?.BringIntoView();
+            }
+            catch { }
+        }
+
+        private void RedlineGuessShare_Click(object sender, RoutedEventArgs e)
+        {
+            // Same share path the per-car save uses. Gated on
+            // CommunityEnabled + AuthIsSignedIn inside MaybePromptToSubmitRedlineData,
+            // which also handles the "no live carId" case.
+            if (_plugin == null) return;
+            string carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(carId)) return;
+            MaybePromptToSubmitRedlineData(carId);
         }
         private void RevLimiterWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
@@ -8929,9 +8869,10 @@ namespace TrueforceForAll.Plugin
             _plugin.WriteCarNameFact(game, carId, newName);
 
             // Ask before submitting to community. Only when the toggle
-            // is on - if off, no point prompting (submit would no-op).
+            // is on AND the user is signed in - submit_car_fact requires
+            // auth.uid() so a signed-out share silently drops at the server.
             bool submitToCommunity = false;
-            if (_plugin.Settings?.CommunityEnabled == true)
+            if (_plugin.Settings?.CommunityEnabled == true && _plugin.AuthIsSignedIn)
             {
                 submitToCommunity = TrueforceDialog.Show(Window.GetWindow(this),
                     "Share this car name?",

@@ -844,8 +844,18 @@ namespace TrueforceForAll.Plugin
         /// threshold.</summary>
         public int? RedlineRpm { get; set; }
 
+        /// <summary>Optional engine rev ceiling (MaxRpm). Captured at the
+        /// moment the variant was auto-created from telemetry. Discriminates
+        /// engine swaps in games that report MaxRpm but not RedlineRpm
+        /// (Forza family): an AE86 stock 7400-RPM and a 4AGE swap 9000-RPM
+        /// have the same cylinder count but different MaxRpm bands, so
+        /// signature comparison via MaxRpm catches the swap. null on
+        /// legacy rows from before this field existed; auto-fills on next
+        /// telemetry observation via the silent variant upgrade path.</summary>
+        public int? MaxRpm { get; set; }
+
         /// <summary>Where this variant came from. Drives the source label
-        /// in the picker UI.</summary>
+        /// in the manage-variants UI.</summary>
         [JsonConverter(typeof(StringEnumConverter))]
         public CarFactSource Source { get; set; } = CarFactSource.Scanner;
 
@@ -909,14 +919,6 @@ namespace TrueforceForAll.Plugin
         /// that don't expose human names. Null = unknown; UI shows the raw
         /// carId with a "submit a name" affordance.</summary>
         public string CarName { get; set; }
-
-        /// <summary>Where CarName came from. Used the same way as
-        /// EngineVariant.Source for the source-line UI.</summary>
-        [JsonConverter(typeof(StringEnumConverter))]
-        public CarFactSource CarNameSource { get; set; } = CarFactSource.Scanner;
-
-        /// <summary>Community confidence on the CarName.</summary>
-        public int CarNameConfirmations { get; set; }
 
         /// <summary>Engine variants known for this carId. Most cars have
         /// exactly one (Stock). Forza in-game swaps create additional
