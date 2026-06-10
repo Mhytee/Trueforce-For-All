@@ -37,5 +37,20 @@ __*
 /docs/preset-sharing-design.md
 /docs/troubleshooting-ffb.md
 
-# Claude Code personal settings (do not commit)
-.claude/settings.local.json
+# Claude Code working state (per-machine: scheduled tasks, settings,
+# MCP config). MCP URL is public but the file is per-developer.
+.claude/
+.mcp.json
+
+# Stray dumps that occasionally spill into the repo root when SimHub's
+# build tooling runs outside its expected output dir, or when Windows
+# ildasm mangles a %TEMP% path into the output filename. All rooted so
+# we don't accidentally ignore files with similar names elsewhere.
+/SimHub.Plugins.*.resources
+/*.leonardo.hex
+/UsersmhyteAppDataLocalTemp*
+
+# Driver spike handoff package. The driver work lives on
+# driver-spike-2026-05-31; this zip/folder stays on disk for local
+# reference but is out of scope for plugin releases.
+/tffa-driver-handoff*
