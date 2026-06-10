@@ -74,7 +74,7 @@ namespace TrueforceForAll.Plugin
             },
             new ChangelogVersion {
                 Version = new Version(0, 1, 24),
-                Title = "Share your tuning with the community",
+                Title = "UI overhaul and community sharing",
                 Entries = new List<ChangelogEntry>
                 {
                     new ChangelogEntry {
