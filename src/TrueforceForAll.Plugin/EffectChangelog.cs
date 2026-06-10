@@ -73,6 +73,68 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
+                Version = new Version(0, 1, 24),
+                Title = "Share your tuning with the community",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Community sharing for presets, car tunings, and packs",
+                        Description = "Upload your game and car presets so other drivers can find them. Browse, vote, and download what the community has shared. Sign in with a one-time code sent to your email; no password to manage. Your username is not shown on submitted data.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Car facts: shared truth about each car",
+                        Description = "When you correct a redline, name a car, or pick its engine layout, those facts are auto-submitted so other drivers loading the same car get them too. Community consensus rises with votes; a single bad submission cannot overwrite the rest. All sharing requires the Community toggle on AND being signed in.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Variant detection happens silently",
+                        Description = "On Forza in-game engine swaps and on any car whose engine differs from what was previously seen, the plugin now recognises the new engine from telemetry and applies the matching tuning without a prompt. Rename or remove auto-created variants in the Manage variants window.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Rev-limiter shows when it is guessing",
+                        Description = "On games or cars where no redline is known, the rev-limiter falls back to 85% of max RPM and the Engine pulse panel now shows a gold badge saying so, with one-click affordances to set a value or share what your wheel is feeling so the next driver does not have to guess.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Preset Manager rework",
+                        Description = "The Presets tab now has a proper sortable, searchable, filterable view of every game preset, car preset, custom engine, and installed pack. Multi-select to share a pack, set defaults in bulk, or delete in batch. Game chips filter the car list. A refresh-library button pulls the latest community updates on demand.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Rev-limiter unified on absolute redline RPM",
+                        Description = "The Threshold percentage slider is gone in favour of a direct redline RPM slider. Existing presets that used a custom threshold are migrated to the equivalent absolute value on first use, on a per-car basis, so a 92% threshold on Car A no longer leaks into Car B.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Native Trueforce games auto-disable cleanly",
+                        Description = "When you launch a title with built-in Logitech Trueforce support (the new Codemasters F1 titles, etc.), the plugin steps aside so the game's native effects are not doubled up. A per-game override is available if you want to layer anyway.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Trueforce master gain bindings now actually fire",
+                        Description = "The Master gain up / down actions in SimHub's Controls and events list could be bound to a button but the press never reached the plugin, because of a name-prefix mismatch between registration and the binding widget. Fixed. You will need to re-bind once after upgrading; the old binding string no longer matches.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Forza Horizon 6 wheel lock on data-out port mismatch",
+                        Description = "If Forza was sending UDP telemetry to a port the plugin was not listening on (issue #21), the plugin would take over the wheel anyway with no input, locking the wheel and suppressing native FFB. Now it falls back to SimHub telemetry when no Forza packets arrive, so the wheel stays responsive while you fix the port.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Forza engine swaps were silently absorbed",
+                        Description = "Swapping engines mid-session on Forza (AE86 stock to 4AGE, etc.) used to leave the stock car's tuning applied to the new engine. Each engine is now detected from telemetry within a frame and the matching tuning applies on its own.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Thanks",
+                        Headline = "Thank you",
+                        Description = "This release would not exist without the people who reported issues, shared captures, and pushed back on bad ideas. The community half of the plugin is for you specifically. I read every report and every message. Thank you for being part of this.",
+                    },
+                },
+            },
+            new ChangelogVersion {
                 Version = new Version(0, 1, 20),
                 Title = "Redesigned interface, control bindings, and a home-screen gain tile",
                 Entries = new List<ChangelogEntry>
