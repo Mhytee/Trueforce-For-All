@@ -1,4 +1,10 @@
--- 0005 carfacts: accept engine_engagement_percent as a fact_type.
+-- 0031 carfacts: accept engine_engagement_percent as a fact_type.
+--
+-- Renumbered from 0005_ on 2026-06-08: prefix collided with
+-- 0005_presets_phase1_init.sql, which the Supabase CLI orders by
+-- filename and uses as the schema_migrations version key. Body is
+-- CREATE OR REPLACE so re-applying under the new number is a no-op
+-- on databases where the 0005-named copy already ran.
 --
 -- Motivation: Forza-family titles report MaxRpm but not RedlineRpm. The
 -- plugin's rev limiter falls back to MaxRpm * EngagementPercent on those
