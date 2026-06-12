@@ -2,8 +2,8 @@
   "Type": "trueforce-car-preset",
   "Version": 2,
   "GameName": "FH6",
-  "CarId": "Forza_513",
-  "PresetName": "Forza_513 (default)",
+  "CarId": "Car_513",
+  "PresetName": "Car_513 (default)",
   "IsBuiltin": true,
   "Override": {
     "RevLimiter": {
