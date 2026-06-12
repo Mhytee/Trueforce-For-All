@@ -499,6 +499,18 @@ namespace TrueforceForAll.Core
         {
             // Bump the system timer to 1 ms granularity for the duration of the loop.
             TimeBeginPeriod(1);
+            // Register the pump thread with MMCSS "Pro Audio". This lifts it into
+            // the multimedia real-time scheduling band (above what
+            // ThreadPriority.Highest reaches in a normal-class process), the same
+            // mechanism the Windows audio engine uses to keep its own callbacks on
+            // time. It protects the 1 kHz packet cadence from game spikes, GC
+            // pauses, and background apps, which is what otherwise shows up as
+            // audible clicks and pushes the auto-ratchet (and thus latency) up.
+            // Best-effort: if the task profile is missing the call returns null and
+            // we simply run at the priority we set on the thread.
+            uint mmcssTaskIndex = 0;
+            IntPtr mmcss = AvSetMmThreadCharacteristics("Pro Audio", ref mmcssTaskIndex);
+            if (mmcss != IntPtr.Zero) AvSetMmThreadPriority(mmcss, AVRT_PRIORITY_HIGH);
             try
             {
                 var sw = Stopwatch.StartNew();
@@ -530,6 +542,7 @@ namespace TrueforceForAll.Core
             }
             finally
             {
+                if (mmcss != IntPtr.Zero) AvRevertMmThreadCharacteristics(mmcss);
                 TimeEndPeriod(1);
             }
         }
@@ -856,5 +869,20 @@ namespace TrueforceForAll.Core
 
         [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
         private static extern uint TimeEndPeriod(uint uPeriod);
+
+        // MMCSS (avrt.dll): raise the pump thread into the multimedia real-time
+        // scheduling band for the life of the stream loop. AVRT_PRIORITY_HIGH = 1.
+        private const int AVRT_PRIORITY_HIGH = 1;
+
+        [DllImport("avrt.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr AvSetMmThreadCharacteristics(string taskName, ref uint taskIndex);
+
+        [DllImport("avrt.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AvSetMmThreadPriority(IntPtr avrtHandle, int priority);
+
+        [DllImport("avrt.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AvRevertMmThreadCharacteristics(IntPtr avrtHandle);
     }
 }
