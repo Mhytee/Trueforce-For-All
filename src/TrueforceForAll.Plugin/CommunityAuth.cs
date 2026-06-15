@@ -243,6 +243,20 @@ namespace TrueforceForAll.Plugin
                 {
                     req.Headers.Add("apikey", anonKey);
                     req.Headers.Add("Authorization", "Bearer " + anonKey);
+                    // Stamp a descriptive User-Agent so GoTrue records something identifiable
+                    // in auth.sessions.user_agent for THIS session (it captures the UA only at
+                    // session creation, so it must go on the verify-otp request). This is the
+                    // fallback label in the Account session list before/without the metadata
+                    // heartbeat, and for old clients that never heartbeat. Static facts only
+                    // (version + machine name); the wheel changes and can't live in an
+                    // immutable UA. A malformed UA must never block sign-in, so it's guarded.
+                    try
+                    {
+                        string ver = TrueforcePlugin.CurrentVersionString();
+                        string machine = SanitizeUaToken(Environment.MachineName);
+                        req.Headers.UserAgent.ParseAdd($"TrueforceForAll/{ver} ({machine}; Windows)");
+                    }
+                    catch (Exception uaEx) { _log?.Invoke($"[Trueforce] Auth verify-otp UA skipped: {uaEx.Message}"); }
                     req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                     using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
                     {
@@ -261,15 +275,28 @@ namespace TrueforceForAll.Plugin
                         // not at the first token refresh.
                         session.DeviceFingerprint = DeviceFingerprint.Compute();
                         session.LastUsedAt = DateTime.UtcNow;
+                        // If a DIFFERENT account is currently signed in, hand off through the
+                        // anonymous slot FIRST so the incoming account seeds from the shared baseline,
+                        // never the prior account's private library/feel. The shipped UI already forces
+                        // a manual sign-out, but guarding here makes any future inline-reauth path safe
+                        // too. Not a full SignOut() (no server logout): we're switching accounts on
+                        // this device, not revoking the prior session.
+                        var priorSession = _settingsProvider()?.AuthSession;
+                        if (priorSession != null && !string.IsNullOrEmpty(priorSession.AccessToken)
+                            && !string.Equals(priorSession.UserId ?? "", session.UserId ?? "", StringComparison.Ordinal))
+                            FireIdentityChanged("");   // stashes the prior account into its slot + mounts anonymous (re-points the library to the baseline)
                         SaveSession(session);
                         // Successful fresh sign-in: clear any stale
                         // refresh-failure backoff so the next RPC can
                         // use the new token immediately (rather than
                         // waiting for the prior cooldown to elapse).
                         _lastRefreshFailureAt = null;
-                        // Notify subscribers (slot manager + UI panels)
-                        // that the active identity is now this email.
-                        FireIdentityChanged(SlotKeyFromEmail(session.Email));
+                        // Notify subscribers (slot manager + UI panels) that the active identity
+                        // is now this account. Key by the immutable user-id (fall back to the email
+                        // key only if the session somehow lacks one) so an email change can't orphan
+                        // the slot.
+                        FireIdentityChanged(
+                            !string.IsNullOrEmpty(session.UserId) ? session.UserId : SlotKeyFromEmail(session.Email));
                         return AuthCallResult.Ok;
                     }
                 }
@@ -732,6 +759,37 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>User-initiated "sign out everywhere else". Revokes every OTHER
+        /// active session's refresh token for this user, leaving the current device
+        /// signed in. Returns true on a successful server logout. The other devices
+        /// keep their current access token until it expires (&lt;= 1h), then can no
+        /// longer refresh - same semantics as the per-session revoke RPC.</summary>
+        public async Task<bool> SignOutOtherSessionsAsync()
+        {
+            if (!ShouldRun(out var url, out var anonKey)) return false;
+            string bearer = await GetAccessTokenAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(bearer)) return false;
+            try
+            {
+                using (var req = new HttpRequestMessage(HttpMethod.Post, url.TrimEnd('/') + LogoutPath + "?scope=others"))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + bearer);
+                    using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode)
+                            _log?.Invoke($"[Trueforce] Sign-out-others failed: {(int)resp.StatusCode}");
+                        return resp.IsSuccessStatusCode;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Trueforce] Sign-out-others exception: {ex.Message}");
+                return false;
+            }
+        }
+
         // ---- Session info from JWT ----------------------------------------
 
         /// <summary>Decode the session JWT's claims for display in the
@@ -919,6 +977,20 @@ namespace TrueforceForAll.Plugin
             s.AuthSession = session;
             try { _persistSettings?.Invoke(); }
             catch (Exception ex) { _log?.Invoke($"[Trueforce] Auth session persist failed: {ex.Message}"); }
+        }
+
+        // User-Agent comment tokens are strict about characters (no spaces/parens/etc.);
+        // keep [A-Za-z0-9._-] so Headers.UserAgent.ParseAdd accepts the machine name, and
+        // fall back to "PC" if it sanitizes to empty.
+        private static string SanitizeUaToken(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "PC";
+            var sb = new StringBuilder(s.Length);
+            foreach (char c in s)
+                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-')
+                    sb.Append(c);
+            return sb.Length == 0 ? "PC" : sb.ToString();
         }
 
         private bool ShouldRun(out string url, out string anonKey)

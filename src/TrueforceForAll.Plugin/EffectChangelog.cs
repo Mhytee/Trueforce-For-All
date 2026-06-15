@@ -114,7 +114,7 @@ namespace TrueforceForAll.Plugin
                     },
                     new ChangelogEntry {
                         Group = "Bug fixes",
-                        Headline = "Trueforce master gain bindings now actually fire",
+                        Headline = "Master gain bindings now actually fire",
                         Description = "The Master gain up / down actions in SimHub's Controls and events list could be bound to a button but the press never reached the plugin, because of a name-prefix mismatch between registration and the binding widget. Fixed. You will need to re-bind once after upgrading; the old binding string no longer matches.",
                     },
                     new ChangelogEntry {
@@ -147,7 +147,7 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         Group = "New features",
                         Headline = "Home-screen gain tile",
-                        Description = "A Trueforce master and audio gain box right in SimHub's home Feedback section, next to Motors and Wind, for quick adjustments without opening the plugin. Can be turned off in Settings.",
+                        Description = "A master and audio gain box right in SimHub's home Feedback section, next to Motors and Wind, for quick adjustments without opening the plugin. Can be turned off in Settings.",
                     },
                     new ChangelogEntry {
                         Group = "Improvements",
@@ -277,7 +277,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 (PlayStation and Xbox) fully supported",
-                        Description = "Both G923 variants are now confirmed working by owners: the plugin's effects and in-game force feedback together. The Xbox/PC G923's force-feedback fix from 0.1.17 (it delivers FFB as the same Logitech HID++ message the G PRO uses, but over a different USB transport and feature index) is now verified on Xbox G923 hardware. If the G923 feels light, raise master or Trueforce gain: it is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it. Other wheels are unaffected.",
+                        Description = "Both G923 variants are now confirmed working by owners: the plugin's effects and in-game force feedback together. The Xbox/PC G923's force-feedback fix from 0.1.17 (it delivers FFB as the same Logitech HID++ message the G PRO uses, but over a different USB transport and feature index) is now verified on Xbox G923 hardware. If the G923 feels light, raise master or audio gain: it is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it. Other wheels are unaffected.",
                     },
                 },
             },
@@ -288,7 +288,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 (PS/PC) confirmed working by an owner",
-                        Description = "A PlayStation/PC G923 owner has confirmed the wheel working end to end: the plugin's effects and in-game force feedback together. If it feels light, raise master or Trueforce gain. The G923 is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it.",
+                        Description = "A PlayStation/PC G923 owner has confirmed the wheel working end to end: the plugin's effects and in-game force feedback together. If it feels light, raise master or audio gain. The G923 is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it.",
                     },
                     new ChangelogEntry {
                         Headline = "Xbox G923: force-feedback fix included, not yet confirmed",
@@ -336,7 +336,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "Logitech RS50: game force feedback alongside Trueforce",
-                        Description = "The FFB tap now resolves the HID++ force-feedback feature index per wheel instead of assuming the G PRO's. On the RS50 the game's native constant force is mirrored into the Trueforce stream, so you feel the game's normal force feedback and Trueforce haptics at the same time. G PRO is unchanged.",
+                        Description = "The FFB tap now resolves the HID++ force-feedback feature index per wheel instead of assuming the G PRO's. On the RS50 the game's native constant force is mirrored into the Trueforce stream, so you feel the game's normal force feedback and the plugin's haptics at the same time. G PRO is unchanged.",
                     },
                     new ChangelogEntry {
                         Headline = "Engine pulse auto-detects your car's engine in Forza Horizon 5",
@@ -370,7 +370,7 @@ namespace TrueforceForAll.Plugin
                     },
                     new ChangelogEntry {
                         Headline = "Export logs button next to Report Issue",
-                        Description = "Zips your SimHub logs and Trueforce settings to your Desktop and opens Explorer to the zip. Attach the zip to bug reports so I can debug what's actually happening on your machine. Report Issue also asks first whether you want to bundle logs.",
+                        Description = "Zips your SimHub logs and TF4ALL settings to your Desktop and opens Explorer to the zip. Attach the zip to bug reports so I can debug what's actually happening on your machine. Report Issue also asks first whether you want to bundle logs.",
                     },
                     new ChangelogEntry {
                         Headline = "Periodic FFB-tap rediscovery",

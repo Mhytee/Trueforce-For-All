@@ -303,7 +303,7 @@
                             <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
                             <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
                             <Button x:Name="GameShareBtn"      Content="★ Share"        Style="{StaticResource SharePrimaryButton}" Click="GameShare_Click"      IsEnabled="False"
-                                    ToolTip="Upload this game preset to the community so other drivers can find it. Needs Community Contributions on in Settings."/>
+                                    ToolTip="Upload this game preset to the community so other drivers can find it. Needs 'Use community car data' on (Account tab)."/>
                             <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource RowButton}" Click="GameDelete_Click"     IsEnabled="False"/>
                             <Button x:Name="GamePromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
@@ -394,9 +394,9 @@
                             <Button x:Name="CarRenameBtn"    Content="Rename…"      Style="{StaticResource RowButton}" Click="CarRename_Click"    IsEnabled="False"
                                     ToolTip="Rename this PRESET (e.g. 'Wet setup' to 'Endurance'). Doesn't change the car's name."/>
                             <Button x:Name="CarRenameCarBtn" Content="Rename car…"  Style="{StaticResource RowButton}" Click="CarRenameCar_Click" IsEnabled="False"
-                                    ToolTip="Give this car a human-readable name (e.g. carId 'Car_242' becomes '1997 Mazda RX-7'). Saved locally and submitted to the community if community contributions are on."/>
+                                    ToolTip="Give this car a human-readable name (e.g. carId 'Car_242' becomes '1997 Mazda RX-7'). Saved locally and submitted to the community if 'Use community car data' is on."/>
                             <Button x:Name="CarShareBtn"     Content="★ Share"      Style="{StaticResource SharePrimaryButton}" Click="CarShare_Click"     IsEnabled="False"
-                                    ToolTip="Upload this car preset to the community so other drivers can find it. Needs Community Contributions on in Settings."/>
+                                    ToolTip="Upload this car preset to the community so other drivers can find it. Needs 'Use community car data' on (Account tab)."/>
                             <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource RowButton}" Click="CarDelete_Click"    IsEnabled="False"/>
                             <Button x:Name="CarPromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this car preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
@@ -434,9 +434,9 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Default"     Width="70"  MinWidth="95"  Binding="{Binding ActiveLabel}"/>
                             <DataGridTextColumn Header="Game"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
-                            <DataGridTextColumn Header="Car ID"      Width="*"   MinWidth="120" Binding="{Binding CarId}"/>
-                            <DataGridTextColumn Header="Car name"    Width="170" MinWidth="120" Binding="{Binding CarName}"/>
+                            <DataGridTextColumn Header="Car name"    Width="*"   MinWidth="160" Binding="{Binding CarName}"/>
                             <DataGridTextColumn Header="Preset name" Width="190" MinWidth="130" Binding="{Binding DisplayName}"/>
+                            <DataGridTextColumn Header="Car ID"      Width="170" MinWidth="120" Binding="{Binding CarId}"/>
                             <DataGridTextColumn Header="Source"      Width="120" MinWidth="100" Binding="{Binding Source}"/>
                         </DataGrid.Columns>
                     </DataGrid>
@@ -540,7 +540,7 @@
                           MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Pack name" Width="*"   MinWidth="160" Binding="{Binding Name}"/>
-                        <DataGridTextColumn Header="Author"    Width="140" MinWidth="80"  Binding="{Binding Author}"/>
+                        <DataGridTextColumn Header="Shared by"    Width="140" MinWidth="80"  Binding="{Binding Author}"/>
                         <DataGridTextColumn Header="Version"   Width="80"  MinWidth="60"  Binding="{Binding Version}"/>
                         <DataGridTextColumn Header="Entries"   Width="70"  MinWidth="60"  Binding="{Binding EntryCount}"/>
                         <DataGridTextColumn Header="Imported"  Width="120" MinWidth="100" Binding="{Binding ImportedLabel}"/>
@@ -602,7 +602,7 @@
                     <Button x:Name="EmptyShareCtaBtn"
                             Visibility="Collapsed"
                             Style="{StaticResource SharePrimaryButton}"
-                            Width="220" Height="28"
+                            Height="28"
                             FontSize="12"
                             Click="EmptyShareCta_Click"
                             VerticalAlignment="Center"
@@ -648,11 +648,11 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="Name"      Width="*"   MinWidth="160" Binding="{Binding Name}"/>
-                        <DataGridTextColumn Header="Author"    Width="120" MinWidth="80"  Binding="{Binding Author}"/>
+                        <DataGridTextColumn Header="Shared by"    Width="120" MinWidth="80"  Binding="{Binding Author}"/>
                         <DataGridTextColumn Header="Game"      Width="100" MinWidth="70"  Binding="{Binding Game}"/>
                         <!-- Game-preset only: per-row tier badge from target_games. Blank for car-preset rows. -->
                         <DataGridTextColumn Header="Scope"     Width="120" MinWidth="80"  Binding="{Binding TierBadge}"/>
-                        <DataGridTextColumn Header="Car ID"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
+                        <DataGridTextColumn x:Name="CommunityCarIdCol" Header="Car ID"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
                         <DataGridTextColumn Header="Downloads" Width="80"  MinWidth="60"  Binding="{Binding Downloads}"/>
                         <DataGridTextColumn Header="Sections"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
                     </DataGrid.Columns>

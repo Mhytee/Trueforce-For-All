@@ -160,6 +160,8 @@ namespace TrueforceForAll.Plugin
             // so neither Game nor Car nor Sections apply. Game presets
             // skip the Car row.
             root.Children.Add(MakeFactLine(isEngine ? "Engine" : "Preset", _presetName));
+            TextBox carNameInput = null;
+            string carNameInitial = null;
             if (!isEngine)
             {
                 // Game presets aren't game-specific (per the data model -
@@ -170,7 +172,41 @@ namespace TrueforceForAll.Plugin
                 if (!isGame)
                     root.Children.Add(MakeFactLine("Game", _game));
                 if (!isGame)
-                    root.Children.Add(MakeFactLine("Car", _carDisplay));
+                {
+                    // Car identification: show the game-side ID read-only
+                    // (Forza ordinals like "Car_2267" are meaningless to
+                    // other drivers, but the system needs the ID to key
+                    // facts and lookups) plus a labelled, editable car
+                    // name. Pre-fill with the resolver's best guess
+                    // (CarFacts user override -> baked tables ->
+                    // auto-derive -> raw carId). On submit, if the user
+                    // edited the name AND community sharing is on, this
+                    // gets written into local CarFacts and submitted so
+                    // the community gets the better name alongside the
+                    // preset.
+                    root.Children.Add(MakeFactLine("Car ID", _carId));
+                    root.Children.Add(new TextBlock {
+                        Text = "Car name (helps other drivers find the right car):",
+                        Foreground = MutedFg, FontSize = 11,
+                        Margin = new Thickness(0, 0, 0, 2),
+                    });
+                    // Treat the carId itself as "no name resolved" so the
+                    // user can type one. ResolveCarNameForRow's auto-
+                    // derive runs at row build time, not here, so we
+                    // intentionally don't synthesize a fallback - leaving
+                    // it blank prompts the user to think about it.
+                    carNameInitial = string.Equals(_carDisplay, _carId, StringComparison.Ordinal)
+                        ? ""
+                        : (_carDisplay ?? "");
+                    carNameInput = new TextBox {
+                        Text = carNameInitial,
+                        Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                        Padding = new Thickness(6, 4, 6, 4),
+                        FontSize = 12, MaxLength = 96,
+                        Margin = new Thickness(0, 0, 0, 12),
+                    };
+                    root.Children.Add(carNameInput);
+                }
                 root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0
                     ? "(none)" : string.Join(", ", _effectTags)));
             }
@@ -443,7 +479,7 @@ namespace TrueforceForAll.Plugin
             if (!signedIn)
             {
                 signInBtn = new Button {
-                    Content = "Sign in...", Padding = new Thickness(12, 5, 12, 5),
+                    Content = "Sign in…", Padding = new Thickness(12, 5, 12, 5),
                     Margin = new Thickness(0, 0, 8, 0),
                     Foreground = TextFg, Background = PanelBg,
                 };
@@ -511,7 +547,7 @@ namespace TrueforceForAll.Plugin
                         {
                             statusText.Foreground = ErrFg;
                             statusText.Text =
-                                "Signed in, but no username yet. Pick one in Settings > Account & community, then re-open this dialog.";
+                                "Signed in, but no username yet. Pick one on the Account tab, then re-open this dialog.";
                             return;
                         }
                         // Flip into signed-in state without re-opening
@@ -642,6 +678,27 @@ namespace TrueforceForAll.Plugin
                     // stamp the default explicitly instead of leaving the
                     // caller with 0 and a "v0" tooltip.
                     UploadedContentVersion = 1;
+                // Car-name correction: when the user edited the car-name
+                // input (car preset uploads only), persist it locally as a
+                // CarFacts CarName and submit to the community so the next
+                // driver loading the same car gets the better name. Both
+                // calls are conservative: WriteCarNameFact is local-only
+                // and idempotent; SubmitCarNameToCommunity is a no-op if
+                // CommunityEnabled is off or sign-in is gone.
+                if (carNameInput != null && !string.IsNullOrEmpty(_carId))
+                {
+                    string newCarName = (carNameInput.Text ?? "").Trim();
+                    if (newCarName.Length >= 2
+                        && newCarName.Length <= 96
+                        && !string.Equals(newCarName, carNameInitial ?? "", StringComparison.Ordinal))
+                    {
+                        try { _plugin.WriteCarNameFact(_game, _carId, newCarName); } catch { }
+                        if (_plugin.Settings?.CommunityEnabled == true && _plugin.AuthIsSignedIn)
+                        {
+                            try { _plugin.SubmitCarNameToCommunity(_game, _carId, newCarName); } catch { }
+                        }
+                    }
+                }
                 statusText.Foreground = OkFg;
                 statusText.Text = isUpdatePath
                     ? "Updated. Thanks for contributing."

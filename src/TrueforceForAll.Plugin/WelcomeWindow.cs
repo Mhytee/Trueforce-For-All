@@ -25,9 +25,24 @@ namespace TrueforceForAll.Plugin
 
         public bool SignInRequested { get; private set; }
 
+        // Process-wide "shown this session" guard. Two independent paths can
+        // trigger this modal (the Settings panel's MaybeShowNetworkedWelcome
+        // and the plugin's init/telemetry MaybeShowNetworkedWelcomeFromInit),
+        // and the Settings path itself dispatches from both Loaded and the
+        // car-change tick. Their latches are separate and all gate only on
+        // HasSeenNetworkedWelcome, which isn't committed until the flow
+        // completes - so while one modal blocks, a queued dispatch would open
+        // a second on top of it. "Sign in now" closes the top one, leaving the
+        // other behind for the user to dismiss by hand. Each path sets this at
+        // its commit point (after every show-gate passes) and returns early if
+        // it's already set, so only one welcome modal exists per session.
+        // Cross-session re-show stays governed by WelcomeNextShowAt; reset this
+        // on identity change and on the dev WELCOME reset.
+        internal static bool ShownThisSession;
+
         public WelcomeWindow()
         {
-            Title         = "Welcome to networked Trueforce";
+            Title         = "Welcome to networked Trueforce For All";
             Width         = 500;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -40,12 +55,12 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Trueforce now talks to the community",
+                Text = "Trueforce For All now talks to the community",
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 17,
                 Margin = new Thickness(0, 0, 0, 6),
             });
             root.Children.Add(new TextBlock {
-                Text = "This update adds shared presets, crowd-sourced car data, and per-car corrections. Sign in to get the most from it - or stay anonymous and use it for free.",
+                Text = "This update adds shared presets, crowd-sourced car data, and per-car corrections. Sign in to get the most from it, or stay anonymous and use it for free.",
                 Foreground = MutedFg, FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 18),
                 TextWrapping = TextWrapping.Wrap,
@@ -61,8 +76,11 @@ namespace TrueforceForAll.Plugin
                 "Your contributions count",
                 "When you correct a redline or share a preset, your contribution flows to everyone else loading that car. Sign in to put your username on what you share and keep your uploads yours."));
             root.Children.Add(MakeBullet(
+                "Earn achievements",
+                "Sharing presets and confirming car data unlocks achievements as you go. Link Discord to claim a matching role for what you've contributed."));
+            root.Children.Add(MakeBullet(
                 "Privacy by default",
-                "Anonymous if you stay signed out. Sign in with email - no password to remember, no signup form, just a one-time code."));
+                "Anonymous if you stay signed out. Sign in with email. No password to remember, no signup form, just a one-time code."));
 
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,

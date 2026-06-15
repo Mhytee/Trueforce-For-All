@@ -212,10 +212,22 @@ namespace TrueforceForAll.Plugin.Effects
                 // would still attempt the sanity-gated read.
             }
 
-            // Auto cascade: CarFacts redline first (User/Community/
-            // resolver-picked variant). Set by ResolveAndApplyCarFacts
-            // only when a real RedlineRpm exists on the chosen variant,
-            // so HasValue here means "the cascade picked something."
+            // Auto cascade: preset RedlineRpm wins first when the user has
+            // explicitly set it. The slider is a user override regardless of
+            // mode; without this check, the CarFacts overlay below silently
+            // outranks the slider on any car the community has confirmed,
+            // and the user's tuning has no effect on the buzz.
+            if (RedlineRpm.HasValue && RedlineRpm.Value > MinEngineRpm)
+            {
+                IsRedlineGuessed = false;
+                return RedlineRpm.Value;
+            }
+
+            // CarFacts redline (community/variant-confirmed) is the fallback
+            // for cars the user has not tuned themselves. Set by
+            // ResolveAndApplyCarFacts only when a real RedlineRpm exists on
+            // the chosen variant, so HasValue here means "the cascade picked
+            // something."
             if (CarFactsRedline.HasValue && CarFactsRedline.Value > MinEngineRpm)
             {
                 IsRedlineGuessed = false;
@@ -232,13 +244,8 @@ namespace TrueforceForAll.Plugin.Effects
                 return (int)Math.Round(redlineRpm);
             }
 
-            // Preset's saved RedlineRpm (when the user has tuned it
-            // for this preset).
-            if (RedlineRpm.HasValue && RedlineRpm.Value > MinEngineRpm)
-            {
-                IsRedlineGuessed = false;
-                return RedlineRpm.Value;
-            }
+            // (Preset RedlineRpm is checked above CarFacts now; the
+            // duplicate check that used to live here has moved up.)
 
             // Lazy migration: legacy preset with a tuned Threshold
             // (anything other than the 0.85 default) + observable

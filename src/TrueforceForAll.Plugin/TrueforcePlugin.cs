@@ -428,17 +428,24 @@ namespace TrueforceForAll.Plugin
         // Settings so reinstalls don't re-glitch sessions; manual reset is
         // available from the Performance tab.
         //
-        // Ratchet-DOWN is asymmetric, slow + hysteresis-protected, so a
-        // brief noisy moment (Chrome update kicking in, antivirus scan)
-        // doesn't leave the ring permanently inflated. After UP fires, a
-        // 5-minute cooldown blocks any DOWN; after the cooldown, sustained
-        // 60+ seconds of zero underruns triggers the FIRST one-notch DOWN
-        // step. Subsequent DOWN steps use a much shorter 30s cooldown so a
-        // transient load spike (track loading, replay scrub, alt-tab shock)
-        // doesn't lock the ring inflated for 20+ minutes; once it's been
-        // quiet for the full 5min and we've started descending, we trust the
-        // descent and accelerate. UP fires fast (1s window); if noise
-        // returns mid-descent it re-arms the long 5min cooldown.
+        // Ratchet-DOWN is asymmetric (UP fast, DOWN gated) but tuned for FAST,
+        // self-healing recovery rather than the old multi-minute caution. The
+        // big oscillation worry that justified the old 5-minute cooldown was
+        // the audio ring swinging 8<->16: 8 is below the WASAPI engine-period
+        // burst floor, so descending to it re-glitched and bounced straight
+        // back. That is now removed structurally (AudioCaptureSource floors at
+        // 16), so the remaining DOWN risk is small and we can recover quickly.
+        // Sim users pause / alt-tab constantly (Forza especially), and each of
+        // those can bump a ring; locking them at elevated latency for minutes
+        // afterward is the failure we care about most. So: after an UP, a short
+        // ~20s cooldown, then ~12s of quiet steps one notch DOWN; subsequent
+        // steps every ~10s. A transient bump fully drains in ~20-35s instead of
+        // 5+ minutes. UP still requires 2 consecutive noisy windows (filters
+        // one-off blips), and Forza ratchet-UP is suppressed while !IsRaceOn
+        // (paused / menu / loading), so most pause/alt-tab spikes never bump at
+        // all. If noise returns mid-descent, UP re-arms the post-UP cooldown.
+        // We deliberately do NOT latch a high floor for the session: a wrong
+        // guess must always self-heal.
         private const int  RatchetWindowMs           = 1000;
         // UP trigger: a single noisy window isn't enough. One-off CPU
         // stalls, USB hiccups, and brief game stutters don't reflect
@@ -455,9 +462,9 @@ namespace TrueforceForAll.Plugin
         // dropout sustained across 2 consecutive seconds, which is a
         // genuine "ring is undersized" signal rather than tick noise.
         private const long RatchetThreshold          = 5;     // quantized events/s, REQUIRED IN 2 CONSECUTIVE WINDOWS
-        private const int  RatchetDownQuietMs        = 60_000;   // 60 s of zero deltas → eligible for any DOWN step
-        private const int  RatchetDownCooldownMs     = 300_000;  // 5 min after an UP before the FIRST DOWN allowed
-        private const int  RatchetDownFastCooldownMs = 30_000;   // 30 s between subsequent DOWN steps once descent has started
+        private const int  RatchetDownQuietMs        = 12_000;   // 12 s of zero deltas → eligible for a DOWN step
+        private const int  RatchetDownCooldownMs     = 20_000;   // 20 s after an UP before the FIRST DOWN allowed
+        private const int  RatchetDownFastCooldownMs = 10_000;   // 10 s between subsequent DOWN steps once descent has started
         private long _autoRatchetLastCheckTicks;
         private long _autoRatchetLastTfCount;
         private long _autoRatchetLastAudioCount;
@@ -472,12 +479,13 @@ namespace TrueforceForAll.Plugin
         private long _tfLastUnderrunSeenTicks;
         private long _audioLastUnderrunSeenTicks;
         // Stopwatch ticks of the most recent ratchet action (up OR down).
-        // 5-minute cooldown gates any DOWN step against this.
+        // The post-UP DOWN cooldown (RatchetDownCooldownMs) gates against this.
         private long _tfLastRatchetActionTicks;
         private long _audioLastRatchetActionTicks;
         // True iff the last action on this ring was a DOWN step. Lets the
-        // DOWN cooldown switch to the fast 30s value once descent has begun
-        //, UP re-arms the long 5min cooldown by clearing this.
+        // DOWN cooldown switch to the faster RatchetDownFastCooldownMs value
+        // once descent has begun; UP re-arms the post-UP cooldown by clearing
+        // this.
         private bool _tfLastActionWasDown;
         private bool _audioLastActionWasDown;
 
@@ -593,6 +601,13 @@ namespace TrueforceForAll.Plugin
         // Capture-targeting state. The poll thread (1 Hz) walks the process
         // table, decides which sim to capture, and tells HelperHost to retarget.
         private volatile string _currentGameName;
+
+        // Last non-empty GameName SimHub reported this session. Latched across
+        // the telemetry-quiet gaps (pause / menu) that null out _activeGame and
+        // _currentGameName, so the process-table rescue still knows which game
+        // to look for. Never cleared: once a game has been seen it's the anchor
+        // for "is that title still up while SimHub thinks it quit?".
+        private volatile string _lastNamedGame;
         private Thread _capturePollThread;
         private string _captureStatus = "Idle (no game running)";
 
@@ -611,7 +626,7 @@ namespace TrueforceForAll.Plugin
                 if (_recoveryInProgress) return "Reconnecting to wheel...";
                 var d = _device;
                 if (d != null && d.StreamFaulted)
-                    return "Stream lost - auto-reconnecting (replug the wheel, or close G HUB, if this persists)";
+                    return "Stream lost, auto-reconnecting (replug the wheel, or close G HUB, if this persists)";
                 return _streamStatus;
             }
         }
@@ -794,7 +809,7 @@ namespace TrueforceForAll.Plugin
                 //    detected" because G HUB is the actual cause; surfacing the
                 //    real fix saves the user a debugging detour.
                 if (_isGHubRunning)
-                    return "Logitech G HUB is running. It claims the wheel and blocks Trueforce. Close G HUB, then restart SimHub.";
+                    return "Logitech G HUB is running. It claims the wheel and blocks force feedback. Close G HUB, then restart SimHub.";
 
                 // 4. Wheel device state. WheelStatus is set by the discovery
                 //    + open path; "Not detected" is the default.
@@ -815,7 +830,19 @@ namespace TrueforceForAll.Plugin
                 //    only set while the process is up (data.GameRunning). Avoids
                 //    falsely reporting a closed game as "detected but no telemetry".
                 if (string.IsNullOrEmpty(_currentGameName))
+                {
+                    // SimHub follows the telemetry stream, and Forza Horizon
+                    // cuts its Data Out the instant the pause menu opens, so a
+                    // live pause is indistinguishable from a quit here. Check
+                    // the real process table before claiming the game is gone:
+                    // if a known racing game is still up, the user is just
+                    // paused / in a menu, the quiet wheel is expected, and
+                    // there's nothing to warn about (the status pill shows
+                    // "In menu / paused" for this state).
+                    if (IsKnownGameProcessRunning(out _))
+                        return null;
                     return "No game running. Start a supported game and load into a session.";
+                }
 
                 var src = _telemetrySource;
                 double hz = src?.MeasuredHz ?? 0;
@@ -1441,9 +1468,19 @@ namespace TrueforceForAll.Plugin
 
         public void Init(PluginManager pluginManager)
         {
+            // SimHub injects this property too, but assign it explicitly so it's
+            // guaranteed set for code that reads it (e.g. SettingsControl's
+            // licence check for the nag-strip clearance).
+            PluginManager = pluginManager;
             SimHub.Logging.Current.Info("[Trueforce] Init: loading settings...");
             SimHub.Logging.Current.Info(
                 "[Trueforce] Logitech processes at startup: " + SnapshotLogitechProcesses());
+            // If the installer just opened SimHub visibly after an install/update,
+            // it flipped SimHub's "Start minimized" off for that one launch. Put
+            // the user's real preference back in SimHub's in-memory model so it
+            // isn't silently persisted off on exit. One-shot, gated by a marker
+            // file; a no-op on every normal launch. See StartMinimizedRestore.
+            StartMinimizedRestore.ConsumeMarkerAndRestore();
             // wasFreshInstall flips iff the factory ran, which only happens
             // when SimHub had no prior settings file for us, the cleanest
             // signal for "this is a first-run install" that the SimHub
@@ -1455,6 +1492,43 @@ namespace TrueforceForAll.Plugin
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
+            // Provision the official community backend. The plugin ships no backend baked into its
+            // code, so without this a fresh install has empty settings and can't reach sign-in /
+            // community / backup ("could not reach the sign-in server"). Seed the public URL +
+            // publishable key every launch (authoritative, so a key rotation propagates on the next
+            // release). Safe to ship: the publishable key only grants what RLS allows the
+            // anon/authenticated roles; data is protected by row-level security, never by hiding
+            // this key. See CommunityBackend (NOT the service_role key / any Edge Function secret).
+            Settings.CommunityBackendUrl     = CommunityBackend.Url;
+            Settings.CommunityBackendAnonKey = CommunityBackend.AnonKey;
+            // Dev-only backup-classification safety net. A new TOP-LEVEL TrueforceSettings
+            // property that nobody classified in BackupProjection would silently miss cloud
+            // backups. Warn loudly (dev mode only, so normal users never see it) so it gets
+            // its one-line classification. New fields INSIDE an existing effect object are
+            // auto-covered and never trip this. See the "classify new settings for backup"
+            // process note + BackupProjection.cs.
+            if (Settings.DevModeUnlocked)
+            {
+                try
+                {
+                    var backupUnclassified = BackupProjection.FindUnclassifiedFields();
+                    var backupDoubled      = BackupProjection.FindDoubleClassifiedFields();
+                    if (backupUnclassified.Count > 0)
+                        SimHub.Logging.Current.Warn("[Trueforce][DEV] Backup: " + backupUnclassified.Count
+                            + " unclassified TrueforceSettings field(s); add each to a BackupProjection bucket "
+                            + "(Portable / MachineLocal / Excluded): " + string.Join(", ", backupUnclassified));
+                    if (backupDoubled.Count > 0)
+                        SimHub.Logging.Current.Warn("[Trueforce][DEV] Backup: field(s) classified in more than "
+                            + "one BackupProjection bucket: " + string.Join(", ", backupDoubled));
+                    if (backupUnclassified.Count == 0 && backupDoubled.Count == 0)
+                        SimHub.Logging.Current.Info("[Trueforce][DEV] Backup classification OK: all "
+                            + "TrueforceSettings fields are classified for backup/sync.");
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn("[Trueforce][DEV] Backup classification audit failed: " + ex.Message);
+                }
+            }
             // One-time folder restructure: move the three legacy sibling
             // folders (TrueforceForAll-Presets / -Library / -Imports) into the
             // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\import}
@@ -1477,6 +1551,17 @@ namespace TrueforceForAll.Plugin
             // files; mirrors the built-in folder layout). Defaults under
             // PluginsData/Common, user-writable.
             UserPresets.Initialize(Settings.UserLibraryFolder);
+            // Fold the OLDEST-format Settings.GamePresets dict into
+            // Settings.Presets/GameDefaults BEFORE the file migration below.
+            // Ordering matters: MigrateLegacyUserPresetsToFolder reads only
+            // Settings.Presets and early-returns (no backup, no files) when it
+            // is empty, then latches PresetsMigratedV2. If GamePresets were
+            // folded in afterwards (as it historically was), those presets
+            // would land only in the in-memory cache and be wiped by the
+            // folder rebuild, with no backup. Running it first means real
+            // GamePresets content is migrated to files and backed up. No-op on
+            // every v0.1.0+ install (GamePresets is already empty there).
+            MigrateLegacyGamePresets();
             // One-time migration: legacy in-dict user presets -> user-library
             // files. Backs the settings file up first. The migration's
             // skip-factory-name rule (IsFactoryBuiltinName, currently-shipped
@@ -1605,7 +1690,13 @@ namespace TrueforceForAll.Plugin
                 Settings.CarFactsMigratedV1 = true;
                 try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
             }
-            MigrateLegacyGamePresets();
+            // Note: the ordinal-name rename migration used to run here but
+            // tripped its `_carStore == null` guard because _carStore is
+            // only constructed below. Moved to after LoadAndMigrateCarPresets
+            // (V2 flag re-runs it for users whose V1 latch flipped on the
+            // no-op pass). MigrateLegacyGamePresets also used to run here; it
+            // now runs before the PresetsMigratedV2 file migration above so
+            // its content is written to files and backed up, not wiped.
             MigrateSpikeTamingFlag();
             InstallBuiltinPresetsIfMissing();
 
@@ -1624,6 +1715,40 @@ namespace TrueforceForAll.Plugin
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
             LoadAndMigrateCarPresets();
+
+            // Normalize legacy "Forza_<n>" car ids to "Car_<n>" exactly once.
+            // Released builds stored Forza car tunings under "Forza_<ordinal>";
+            // this branch looks them up as "Car_<ordinal>" (see the runtime
+            // alias in CurrentCarId), so without this an upgrading user's
+            // per-car Forza Horizon tuning silently stops applying. Runs after
+            // the car files are in the new layout and BEFORE the ordinal-name
+            // pass below, so a normalized "Car_<n>" still gets its human name.
+            // Content-preserving: a Forza_<n> that collides with an existing
+            // Car_<n> is merged (distinct tunings kept), never dropped.
+            if (!Settings.ForzaCarIdsNormalizedV1)
+            {
+                try { DevNormalizeForzaCarIds(out _); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] Forza car-id normalization failed: {ex.Message}");
+                }
+                Settings.ForzaCarIdsNormalizedV1 = true;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+
+            // Rename Car_NNN-style car-preset names to their human-readable
+            // car names (per game). Runs here, not earlier, because _carStore
+            // must be initialised + LoadAndMigrateCarPresets must have moved
+            // the files into the new folder layout first. V2 flag re-runs
+            // the pass for users whose V1 ran in the wrong order and was a
+            // silent no-op.
+            if (!Settings.CarPresetOrdinalNamesMigratedV2)
+            {
+                MigrateCarPresetOrdinalNames();
+                Settings.CarPresetOrdinalNamesMigratedV1 = true;   // keep V1 set too
+                Settings.CarPresetOrdinalNamesMigratedV2 = true;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
 
             // Community backend HTTP client. Inert until
             // Settings.CommunityEnabled is true and a URL + anon key are
@@ -1658,6 +1783,52 @@ namespace TrueforceForAll.Plugin
                 () => Settings,
                 msg => SimHub.Logging.Current.Info(msg),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Cloud backup/sync transport (Phase 2). Same auth wiring as the other
+            // clients; gated by a signed-in session (and later supporter status).
+            _backupClient = new BackupClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Standalone Discord link transport (Phase 2, M5). Same auth wiring; the
+            // browser/loopback OAuth dance lives in DiscordOAuthFlow.
+            _discordLinkClient = new DiscordLinkClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Patreon link transport (Phase 2). Proves supporter status in-plugin (badge + cloud
+            // backup without Discord); the browser/loopback OAuth dance lives in PatreonOAuthFlow.
+            _patreonLinkClient = new PatreonLinkClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Read-only supporter entitlement (for the in-plugin supporter badge).
+            _entitlementClient = new EntitlementClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Read-only Patreon supporters roster (for the Account tab's Supporters wall).
+            // Public read; uses the signed-in token when present, else the anon key.
+            _supportersClient = new SupportersClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Achievement tracker (progress) + immediate self-scoped role sync.
+            _achievementClient = new AchievementClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Account session list + per-session revoke (Account tab "Active sessions").
+            _sessionClient = new SessionClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
                 async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
 
             // Fire-and-forget plugin-load account sync. If a session was
@@ -1780,6 +1951,12 @@ namespace TrueforceForAll.Plugin
 
             InitPipeline();
 
+            // Start the cloud auto-pull poll if we're already signed in with auto-sync on at
+            // startup (sign-in/out transitions and the auto-sync toggle also call this).
+            UpdateAutoPullTimer();
+            // Start the session-revoke heartbeat if already signed in (runs for any signed-in user).
+            UpdateSessionHeartbeatTimer();
+
             // Bindable input mappings for SimHub's Controls system.
             // IMPORTANT: AddInputMapping (NOT AddAction). AddAction
             // AddAction registers a macro/event-callable entry that shows
@@ -1841,6 +2018,22 @@ namespace TrueforceForAll.Plugin
             WheelStatus = $"{match.Model}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
                         + (match.Unverified ? "  [unconfirmed model]" : "");
             SimHub.Logging.Current.Info($"[Trueforce] Found {WheelStatus}.");
+
+            // Remember the last wheel used on this PC for the Account "Active sessions"
+            // list. Machine-local + persisted so it survives unplugs and restarts; only
+            // written on a real detection (never cleared on a discovery miss), and only
+            // persisted when it actually changes so we don't churn settings on reconnect.
+            try
+            {
+                string shortModel = WheelDiscovery.ShortModel(match.Model);
+                if (!string.IsNullOrEmpty(shortModel) && Settings != null
+                    && !string.Equals(Settings.LastUsedWheel, shortModel, StringComparison.Ordinal))
+                {
+                    Settings.LastUsedWheel = shortModel;
+                    try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                }
+            }
+            catch { /* wheel-label persistence is best-effort, never block bring-up */ }
 
             // Unverified PIDs: resolve + stream by inference from the shared
             // HID++ family, but not hardware-tested. None today (every supported
@@ -2371,12 +2564,78 @@ namespace TrueforceForAll.Plugin
             if (_streamSecondsSinceFlush < StreamFlushIntervalSeconds) return;
             Settings.ActiveStreamingSeconds += _streamSecondsSinceFlush;
             _streamSecondsSinceFlush = 0.0;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            // Persist OFF the producer/audio thread. SaveCommonSettings does a
+            // full settings serialize + backup-file rotation + synchronous disk
+            // write; on a slow/contended disk that can stall the producer long
+            // enough to underrun the device ring (audible glitch + ratchet UP).
+            // The odometer is already updated in memory above, so the disk flush
+            // is not time-sensitive and can run on the thread pool.
+            ScheduleStreamingTimeFlush();
+        }
+
+        // Single-flight background flush of Settings for the streaming odometer.
+        // Skips if a flush is already queued/running (the in-memory
+        // ActiveStreamingSeconds is authoritative; the next interval persists it).
+        private int _streamingFlushInFlight;
+        private void ScheduleStreamingTimeFlush()
+        {
+            if (System.Threading.Interlocked.Exchange(ref _streamingFlushInFlight, 1) == 1)
+                return;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try { this.SaveCommonSettings("GeneralSettings", Settings); }
+                catch { }
+                finally { System.Threading.Interlocked.Exchange(ref _streamingFlushInFlight, 0); }
+            });
+        }
+
+        // ---- GC latency mode (scoped to active gameplay) ----
+        // GCSettings.LatencyMode is process-global, so we capture the previous
+        // mode when a capture session starts and restore it when it stops, and
+        // only hold SustainedLowLatency while a game is actually streaming (idle
+        // SimHub keeps its normal GC). SustainedLowLatency avoids blocking gen2
+        // collections, trimming the GC-suspend spikes that can underrun the 1 kHz
+        // threads and trip the ring ratchet. Best-effort: restricted hosts throw.
+        private int _gcLowLatencyActive;
+        private System.Runtime.GCLatencyMode _gcPrevLatencyMode;
+
+        private void EnterStreamingGcMode()
+        {
+            if (System.Threading.Interlocked.Exchange(ref _gcLowLatencyActive, 1) == 1) return;
+            try
+            {
+                _gcPrevLatencyMode = System.Runtime.GCSettings.LatencyMode;
+                System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+                SimHub.Logging.Current.Info("[Trueforce] GC latency mode -> SustainedLowLatency (streaming).");
+            }
+            catch { System.Threading.Interlocked.Exchange(ref _gcLowLatencyActive, 0); }
+        }
+
+        private void ExitStreamingGcMode()
+        {
+            if (System.Threading.Interlocked.Exchange(ref _gcLowLatencyActive, 0) == 0) return;
+            try
+            {
+                System.Runtime.GCSettings.LatencyMode = _gcPrevLatencyMode;
+                SimHub.Logging.Current.Info("[Trueforce] GC latency mode restored.");
+            }
+            catch { }
         }
 
         public void End(PluginManager pluginManager)
         {
             _shuttingDown = true;
+
+            // Restore the process GC latency mode if a game was still streaming.
+            ExitStreamingGcMode();
+
+            // Stop the auto-sync timers so they can't fire into a dead instance.
+            try { _autoSyncTimer?.Dispose(); } catch { }
+            _autoSyncTimer = null;
+            try { _autoPullTimer?.Dispose(); } catch { }
+            _autoPullTimer = null;
+            try { _sessionHeartbeatTimer?.Dispose(); } catch { }
+            _sessionHeartbeatTimer = null;
 
             // Tear down the home Feedback tile (best-effort; dispatches to the UI
             // thread, which may already be shutting down).
@@ -2515,6 +2774,10 @@ namespace TrueforceForAll.Plugin
             // so the loaded preset's CarOverrides dict is in place by the
             // time ApplyActiveCarOverride runs below.
             string gameName = data?.GameName;
+            // Remember the last game SimHub named so the process-table rescue
+            // (IsKnownGameProcessRunning) has a target to fuzzy-match against
+            // after a pause nulls _activeGame.
+            if (!string.IsNullOrEmpty(gameName)) _lastNamedGame = gameName;
             if (gameName != _activeGame)
             {
                 _activeGame = gameName;
@@ -3307,6 +3570,16 @@ namespace TrueforceForAll.Plugin
         /// UI code calls this after touching settings outside the on-the-fly
         /// path (e.g., persisting SharingAuthor from the export-info dialog).</summary>
         public void PersistSettings()
+        {
+            PersistSettingsCore();
+            // Arm a debounced auto-backup when the user enabled auto-sync. Cheap and
+            // guarded (no-op unless AutoSyncBackupEnabled + signed in); see RequestAutoBackup.
+            RequestAutoBackup();
+        }
+
+        // Save without arming auto-sync. Used by the post-upload revision stamp so the
+        // stamp's persist doesn't re-trigger another auto-backup cycle.
+        private void PersistSettingsCore()
         {
             if (Settings == null) return;
             this.SaveCommonSettings("GeneralSettings", Settings);
@@ -4471,7 +4744,7 @@ namespace TrueforceForAll.Plugin
         private static CollisionSettings    Clone(CollisionSettings s)
             => new CollisionSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, EnvelopeMs = s.EnvelopeMs, MinThreshold = s.MinThreshold, MinAmp = s.MinAmp, MaxAmp = s.MaxAmp, NormalizationScale = s.NormalizationScale, RefractoryMs = s.RefractoryMs, Waveform = s.Waveform };
         private static RevLimiterSettings   Clone(RevLimiterSettings s)
-            => new RevLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, Threshold = s.Threshold, RedlineOffsetRpm = s.RedlineOffsetRpm, EngageMode = s.EngageMode, Waveform = s.Waveform };
+            => new RevLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, Threshold = s.Threshold, RedlineRpm = s.RedlineRpm, RedlineOffsetRpm = s.RedlineOffsetRpm, EngageMode = s.EngageMode, Waveform = s.Waveform };
         private static AirborneSettings     Clone(AirborneSettings s)
             => new AirborneSettings     { Enabled = s.Enabled, Reduction = s.Reduction, DuckEngine = s.DuckEngine, DuckAudio = s.DuckAudio, DuckRoadBumps = s.DuckRoadBumps, DuckTractionLoss = s.DuckTractionLoss, DuckRevLimiter = s.DuckRevLimiter, DuckGearShift = s.DuckGearShift, DuckAbs = s.DuckAbs, DuckPitLimiter = s.DuckPitLimiter, DuckDrs = s.DuckDrs, DuckCollision = s.DuckCollision };
 
@@ -4576,7 +4849,7 @@ namespace TrueforceForAll.Plugin
                 }
                 foreach (var k in stale)
                 {
-                    SimHub.Logging.Current.Info($"[Trueforce] Game default for '{k}' dropped: target '{Settings.GameDefaults[k]}' no longer exists.");
+                    SimHub.Logging.Current.Warn($"[Trueforce] Game default for '{k}' dropped: target '{Settings.GameDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.GameDefaults.Remove(k);
                 }
             }
@@ -4804,8 +5077,8 @@ namespace TrueforceForAll.Plugin
                     string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                     string parked = from + $".legacy-{ts}";
                     Directory.Move(from, parked);
-                    SimHub.Logging.Current.Info(
-                        $"[Trueforce] Folder restructure ({role}): destination already present at '{to}', parked the legacy source as '{Path.GetFileName(parked)}'.");
+                    SimHub.Logging.Current.Warn(
+                        $"[Trueforce] Folder restructure ({role}): destination already present at '{to}', parked the legacy source as '{Path.GetFileName(parked)}'. Its presets are preserved on disk but not loaded; merge them manually if needed.");
                     return;
                 }
                 string parent = Path.GetDirectoryName(to);
@@ -5784,15 +6057,14 @@ namespace TrueforceForAll.Plugin
                     if (!oldCarId.StartsWith("Forza_", StringComparison.Ordinal)) continue;
                     string newCarId = "Car_" + oldCarId.Substring("Forza_".Length);
                     string newCarDir = Path.Combine(gameDir, newCarId);
-                    if (Directory.Exists(newCarDir))
-                    {
-                        // Collision: Car_<n> wins; drop the Forza_<n> tree.
-                        try { Directory.Delete(carDir, recursive: true); } catch { }
-                        deduped++;
-                        lines.Add($"{label}/{gameName}/{oldCarId}: deleted (Car_<n> equivalent exists)");
-                        continue;
-                    }
-                    int fileCount = 0;
+                    // A Car_<n> tree may already exist (e.g. a tuning made on
+                    // this branch plus a legacy Forza_<n> one for the same
+                    // car). Never drop the Forza_<n> tunings wholesale: an
+                    // identical Override is a true duplicate (skip it), a
+                    // distinct one is recovered under a unique name so no user
+                    // data is lost.
+                    bool collision = Directory.Exists(newCarDir);
+                    int written = 0, skipped = 0;
                     foreach (var path in Directory.GetFiles(carDir, "*.json"))
                     {
                         try
@@ -5808,24 +6080,90 @@ namespace TrueforceForAll.Plugin
                                 else if (newPresetName.StartsWith(oldCarId + " ", StringComparison.Ordinal)
                                       || newPresetName.StartsWith(oldCarId + "(", StringComparison.Ordinal))
                                     newPresetName = newCarId + newPresetName.Substring(oldCarId.Length);
-                                f.PresetName = newPresetName;
                             }
+                            if (string.IsNullOrEmpty(newPresetName)) newPresetName = newCarId;
+                            if (collision)
+                            {
+                                if (ForzaDirHasMatchingOverride(newCarDir, f)) { skipped++; continue; }
+                                newPresetName = ForzaUniquePresetName(newCarDir, newPresetName);
+                            }
+                            f.PresetName = newPresetName;
                             string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                                 f, Newtonsoft.Json.Formatting.Indented);
-                            BuiltinPresetWriter.WriteCar(root, gameName, newCarId, newPresetName ?? newCarId, json);
-                            fileCount++;
+                            BuiltinPresetWriter.WriteCar(root, gameName, newCarId, newPresetName, json);
+                            written++;
                         }
                         catch (Exception ex)
                         {
                             SimHub.Logging.Current.Warn($"[Trueforce] NormalizeForza: failed to rewrite '{path}': {ex.Message}");
                         }
                     }
-                    // Drop the now-stale Forza_<n> directory.
+                    // Drop the now-stale Forza_<n> directory (its presets are
+                    // now under Car_<n>, or were exact duplicates).
                     try { Directory.Delete(carDir, recursive: true); } catch { }
-                    renamed++;
-                    lines.Add($"{label}/{gameName}/{oldCarId} -> {newCarId} ({fileCount} file(s))");
+                    if (collision)
+                    {
+                        deduped++;
+                        lines.Add(written > 0
+                            ? $"{label}/{gameName}/{oldCarId}: merged into {newCarId} ({written} recovered, {skipped} duplicate(s) dropped)"
+                            : $"{label}/{gameName}/{oldCarId}: {skipped} duplicate(s) dropped (Car_<n> equivalent exists)");
+                    }
+                    else
+                    {
+                        renamed++;
+                        lines.Add($"{label}/{gameName}/{oldCarId} -> {newCarId} ({written} file(s))");
+                    }
                 }
             }
+        }
+
+        // True if a car preset already in newCarDir carries the same Override
+        // as f (a genuine duplicate that needs no recovery copy).
+        private static bool ForzaDirHasMatchingOverride(string newCarDir, CarPresetFile f)
+        {
+            try
+            {
+                if (!Directory.Exists(newCarDir)) return false;
+                string mine = Newtonsoft.Json.JsonConvert.SerializeObject(f.Override);
+                foreach (var p in Directory.GetFiles(newCarDir, "*.json"))
+                {
+                    try
+                    {
+                        var e = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(p));
+                        if (e?.Override == null) continue;
+                        if (Newtonsoft.Json.JsonConvert.SerializeObject(e.Override) == mine) return true;
+                    }
+                    catch { /* unreadable sibling: ignore */ }
+                }
+            }
+            catch { /* best effort */ }
+            return false;
+        }
+
+        // A preset name not already used by a car preset in newCarDir, so a
+        // recovered Forza_<n> tuning never overwrites an existing Car_<n> one.
+        private static string ForzaUniquePresetName(string newCarDir, string baseName)
+        {
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (Directory.Exists(newCarDir))
+                    foreach (var p in Directory.GetFiles(newCarDir, "*.json"))
+                    {
+                        try
+                        {
+                            var e = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(p));
+                            if (!string.IsNullOrEmpty(e?.PresetName)) existing.Add(e.PresetName);
+                        }
+                        catch { /* ignore */ }
+                    }
+            }
+            catch { /* best effort */ }
+            if (!existing.Contains(baseName)) return baseName;
+            int n = 2;
+            string cand;
+            do { cand = baseName + " (recovered " + n++ + ")"; } while (existing.Contains(cand));
+            return cand;
         }
 
         private static int NormalizeForzaInStringDict(Dictionary<string, string> d)
@@ -6126,10 +6464,18 @@ namespace TrueforceForAll.Plugin
                 // old path created when the .tfcar.json migration was skipped.
                 if (IsFactoryCarDuplicate(kv.Key, kv.Value)) continue;
                 string g1 = factoryCarGames.TryGetValue(NormalizeForzaPrefix(kv.Key), out var fg1) ? fg1 : (_activeGame ?? "");
-                _carStore.Save(kv.Key, kv.Key, g1, kv.Value, isBuiltin: false);
+                // Preset name = human-readable car name when one is known
+                // (CarFacts user-rename -> baked tables), else the carId
+                // itself. Without this Forza ordinals migrated as "Car_2267"
+                // instead of "2016 Mazda MX-5". The post-migration
+                // ordinal-rename pass also catches this, but doing it at
+                // creation time avoids a transient ordinal-named file +
+                // a CarDefaults entry that has to be updated again later.
+                string migratedPresetName = ResolveCarHumanName(g1, kv.Key) ?? kv.Key;
+                _carStore.Save(kv.Key, migratedPresetName, g1, kv.Value, isBuiltin: false);
                 carIdsWithUserFiles.Add(kv.Key);
                 if (!Settings.CarDefaults.ContainsKey(kv.Key))
-                    Settings.CarDefaults[kv.Key] = kv.Key;
+                    Settings.CarDefaults[kv.Key] = migratedPresetName;
                 migrated++;
             }
             // 2) Migrate each preset's CarOverrides → files (file-wins).
@@ -6230,7 +6576,7 @@ namespace TrueforceForAll.Plugin
                 }
                 foreach (var k in stale)
                 {
-                    SimHub.Logging.Current.Info($"[Trueforce] Car default for '{k}' dropped: target '{Settings.CarDefaults[k]}' no longer exists.");
+                    SimHub.Logging.Current.Warn($"[Trueforce] Car default for '{k}' dropped: target '{Settings.CarDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.CarDefaults.Remove(k);
                 }
             }
@@ -6538,6 +6884,8 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV delete car folder file failed: {ex.Message}"); }
             }
+            this.SaveCommonSettings("GeneralSettings", Settings);
+            RequestAutoBackup();   // car preset file deleted: persist the default change + arm auto-sync
             return true;
         }
 
@@ -6612,6 +6960,7 @@ namespace TrueforceForAll.Plugin
                 this.SaveCommonSettings("GeneralSettings", Settings);
             }
             if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
+            RequestAutoBackup();   // car preset file renamed: arm auto-sync
             SimHub.Logging.Current.Info($"[Trueforce] Renamed car preset '{carId}/{oldName}' to '{newName}'.");
             return true;
         }
@@ -6649,6 +6998,7 @@ namespace TrueforceForAll.Plugin
                 description:   entry.Description,
                 authorVersion: entry.AuthorVersion,
                 defaultAuthor: CurrentAuthorForStamp());
+            RequestAutoBackup();   // new car preset file: arm auto-sync so the duplicate propagates
             SimHub.Logging.Current.Info($"[Trueforce] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
             return true;
         }
@@ -7230,6 +7580,147 @@ namespace TrueforceForAll.Plugin
         // Cache shape: Dictionary<gameName, Dictionary<carId, encodedInt>>.
         // Encoding (mirrors CarCylinderResolver): EvSentinel (-1) = electric,
         // otherwise bits 0-4 = cylinder count (1-16), bits 8-11 = EngineConfig.
+        // One-time migration: walks every car preset on disk and renames
+        // any whose name matches the ordinal "Car_NNN" pattern to the
+        // baked human-readable name from BuiltinCarCylinders.TryGetDisplayName
+        // (game-aware, so FH5 + FH6 ordinals get their own per-game name
+        // tables, no cross-game aliasing). Result: "Car_2267" -> "1997
+        // Mazda RX-7" for FH6, "Car_242" -> the matching FH5 entry, etc.
+        // Idempotent; gated by Settings.CarPresetOrdinalNamesMigratedV1.
+        // Game-aware resolved car name. Mirrors the cascade used for the
+        // active car (CarFacts user-set CarName -> baked tables) but works
+        // for ANY (game, carId) — no _activeCarId / community-consensus
+        // dependency. Used at preset-creation sites so freshly-saved
+        // presets pick up a human name from the start instead of relying
+        // on the ordinal-rename catch-up. Returns null when no name is
+        // known; callers fall back to the carId.
+        internal string ResolveCarHumanName(string game, string carId)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
+            string key = game + "/" + carId;
+            if (Settings?.CarFacts != null
+                && Settings.CarFacts.TryGetValue(key, out var bundle)
+                && bundle != null
+                && !string.IsNullOrWhiteSpace(bundle.CarName))
+                return bundle.CarName.Trim();
+            if (BuiltinCarCylinders.TryGetDisplayName(game, carId, out var catalogName)
+                && !string.IsNullOrWhiteSpace(catalogName))
+                return catalogName.Trim();
+            return null;
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex OrdinalCarPresetNameRegex =
+            new System.Text.RegularExpressions.Regex(
+                @"^Car_\d+$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private void MigrateCarPresetOrdinalNames()
+        {
+            if (_carStore == null) return;
+            Dictionary<string, Dictionary<string, CarPresetEntry>> loaded;
+            try { loaded = _carStore.LoadAll(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn(
+                    $"[Trueforce] Ordinal-name migration: LoadAll failed: {ex.Message}");
+                return;
+            }
+            if (loaded == null || loaded.Count == 0) return;
+
+            int renamed = 0, collisions = 0, lookupMisses = 0, builtinsIncluded = 0;
+            // Snapshot keys upfront because RenameCarPreset mutates the
+            // underlying store and re-enumerating mid-loop is unsafe.
+            var pairs = new List<(string carId, string presetName, string game)>();
+            foreach (var carKv in loaded)
+            {
+                if (string.IsNullOrEmpty(carKv.Key) || carKv.Value == null) continue;
+                foreach (var presetKv in carKv.Value)
+                {
+                    if (presetKv.Value == null) continue;
+                    pairs.Add((carKv.Key, presetKv.Key, presetKv.Value.GameName));
+                }
+            }
+            // DEV-mode-only: also walk built-in car presets. RenameCarPreset
+            // refuses to touch built-ins unless DevMode is on, so this just
+            // adds them to the pool of candidates; the per-row gate decides
+            // whether the rename actually goes through. Builtin entries
+            // are keyed as "carId/presetName" with the JSON body as value;
+            // GameName is parsed from the JSON for the lookup.
+            if (DevMode && BuiltinPresets.CarPresetJsons != null)
+            {
+                foreach (var biKv in BuiltinPresets.CarPresetJsons)
+                {
+                    if (string.IsNullOrEmpty(biKv.Key)) continue;
+                    int slash = biKv.Key.IndexOf('/');
+                    if (slash <= 0 || slash >= biKv.Key.Length - 1) continue;
+                    string biCar    = biKv.Key.Substring(0, slash);
+                    string biPreset = biKv.Key.Substring(slash + 1);
+                    if (!OrdinalCarPresetNameRegex.IsMatch(biPreset)) continue;
+                    string biGame = null;
+                    try
+                    {
+                        var parsed = Newtonsoft.Json.Linq.JObject.Parse(biKv.Value);
+                        biGame = (string)parsed["GameName"];
+                    }
+                    catch { /* skip malformed built-in */ continue; }
+                    if (string.IsNullOrEmpty(biGame)) continue;
+                    pairs.Add((biCar, biPreset, biGame));
+                    builtinsIncluded++;
+                }
+            }
+
+            foreach (var (carId, oldName, game) in pairs)
+            {
+                if (!OrdinalCarPresetNameRegex.IsMatch(oldName)) continue;
+                if (string.IsNullOrEmpty(game)) continue;
+                // Name lookup: CarFacts user-set name first, then baked
+                // per-game tables. Shared with the at-creation pre-fill
+                // sites so an ordinal Car_NNN that's auto-named at save
+                // time gets the same answer as the rename pass.
+                string humanName = ResolveCarHumanName(game, carId);
+                if (string.IsNullOrWhiteSpace(humanName))
+                {
+                    lookupMisses++;
+                    continue;
+                }
+                // Don't pretend to rename to the same name.
+                if (string.Equals(oldName, humanName, StringComparison.Ordinal)) continue;
+                // Skip on name collision: another preset already owns the
+                // target name for this car (could be a built-in or a user
+                // preset the migration already renamed). RenameCarPreset
+                // would also refuse but the explicit log is more useful.
+                if (_carStore.Exists(carId, ToDiskName(humanName))
+                    || BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + ToDiskName(humanName)))
+                {
+                    collisions++;
+                    continue;
+                }
+                try
+                {
+                    if (RenameCarPreset(carId, oldName, humanName))
+                    {
+                        renamed++;
+                        // Mirror the rename into CarDefaults so a default that
+                        // pointed at the old name follows it (RenameCarPreset
+                        // already does this internally but we're defensive).
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn(
+                        $"[Trueforce] Ordinal-name migration: rename '{carId}/{oldName}' -> "
+                        + $"'{humanName}' failed: {ex.Message}");
+                }
+            }
+
+            if (renamed > 0 || collisions > 0 || lookupMisses > 0 || builtinsIncluded > 0)
+                SimHub.Logging.Current.Info(
+                    $"[Trueforce] Ordinal car-preset name migration: renamed={renamed}, "
+                    + $"collisions={collisions}, lookup_misses={lookupMisses}"
+                    + (DevMode ? $", builtins_walked={builtinsIncluded}" : ""));
+        }
+
         private void MigrateCarCylinderCacheToCarFacts()
         {
             const int EvSentinel  = -1;
@@ -8165,6 +8656,7 @@ namespace TrueforceForAll.Plugin
                 if (string.Equals(v.Label, label, StringComparison.Ordinal)) return false;
                 v.Label = label;
                 try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                RequestAutoBackup();   // engine-variant rename is settings-only (not a library file): the drift backstop won't catch it
                 return true;
             }
             return false;
@@ -8189,6 +8681,7 @@ namespace TrueforceForAll.Plugin
                 && string.Equals(sel, variantId, StringComparison.Ordinal))
                 Settings.CarFactsSelection.Remove(key);
             try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            RequestAutoBackup();   // car-facts variant deleted: arm auto-sync (CarFacts is portable)
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
             ApplyActiveCarOverride();
             return true;
@@ -9162,7 +9655,7 @@ namespace TrueforceForAll.Plugin
         // When the same install is used by more than one Supabase
         // account (a shared family PC, etc.), each account gets its
         // own DownloadedCommunityPresets + SharingAuthor under
-        // Settings.UserSlots[<email>]. Settings.ActiveSlotKey names
+        // Settings.UserSlots[<user-id>]. Settings.ActiveSlotKey names
         // the currently-mounted slot; legacy fields Settings.Downloaded
         // CommunityPresets and Settings.SharingAuthor are reset to
         // reference that slot's data, so existing call sites work
@@ -9220,6 +9713,10 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     "[Trueforce] AuthIdentityChanged subscriber threw: " + ex.Message);
             }
+            // Start/stop the cloud auto-pull poll for the new identity (no-op when signed out).
+            UpdateAutoPullTimer();
+            // Start/stop the session-revoke heartbeat for the new identity (stops once signed out).
+            UpdateSessionHeartbeatTimer();
         }
 
         // Ensures Settings.UserSlots exists, runs the one-time legacy
@@ -9232,23 +9729,39 @@ namespace TrueforceForAll.Plugin
             if (Settings.UserSlots == null)
                 Settings.UserSlots = new Dictionary<string, UserDataSlot>();
 
-            // F04: Snapshot the legacy-data owner email on first sign-in so migration anchors to the right user even if auth flips before EnsureUserSlotsMounted runs.
+            // Stable key for the signed-in account = the immutable Supabase user-id (falls back to
+            // the email key only if a session somehow lacks one). "" = anonymous / signed-out.
+            var sess = Settings.AuthSession;
+            string signedInUserId = (sess != null && !string.IsNullOrEmpty(sess.UserId)) ? sess.UserId : null;
+
+            // One-time: re-key this user's email-keyed slot (from the never-shipped email scheme /
+            // pre-user-id test builds) to the user-id, so an email change can't orphan it. Other
+            // accounts' email-keyed slots reconcile on their next sign-in (see MountUserSlot).
+            if (!Settings.SlotsKeyedByUserIdV1)
+            {
+                if (signedInUserId != null)
+                    RekeySlot(CommunityAuth.SlotKeyFromEmail(sess.Email), signedInUserId);
+                Settings.SlotsKeyedByUserIdV1 = true;
+                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            }
+
+            // F04: Snapshot the legacy-data owner email on first sign-in so the pre-slot migration anchors to the right user even if auth flips before EnsureUserSlotsMounted runs.
             bool hasLegacyData = (Settings.DownloadedCommunityPresets?.Count ?? 0) > 0
                               || !string.IsNullOrEmpty(Settings.SharingAuthor);
             if (!Settings.UserSlotsMigratedV1
                 && hasLegacyData
                 && string.IsNullOrEmpty(Settings.LegacyDataOwnerEmail)
-                && Settings.AuthSession != null)
+                && sess != null)
             {
-                Settings.LegacyDataOwnerEmail = Settings.AuthSession.Email ?? "";
+                Settings.LegacyDataOwnerEmail = sess.Email ?? "";
             }
 
-            // Migrate to the snapshot email when set; otherwise fall back to current AuthSession.
-            string legacyOwnerKey = CommunityAuth.SlotKeyFromEmail(
-                Settings.LegacyDataOwnerEmail);
-            string desiredKey = string.IsNullOrEmpty(legacyOwnerKey)
-                ? CommunityAuth.SlotKeyFromEmail(Settings.AuthSession?.Email)
-                : legacyOwnerKey;
+            // Pre-slot legacy data targets the signed-in user-id; only when no user-id is available
+            // does it fall back to an email-derived key (legacy-owner snapshot or current email).
+            string emailFallbackKey = CommunityAuth.SlotKeyFromEmail(Settings.LegacyDataOwnerEmail);
+            if (string.IsNullOrEmpty(emailFallbackKey))
+                emailFallbackKey = CommunityAuth.SlotKeyFromEmail(sess?.Email);
+            string desiredKey = signedInUserId ?? emailFallbackKey ?? "";
 
             if (!Settings.UserSlotsMigratedV1)
             {
@@ -9283,8 +9796,7 @@ namespace TrueforceForAll.Plugin
                     else
                     {
                         SimHub.Logging.Current.Info(
-                            "[Trueforce] Migration: slot " + desiredKey +
-                            " already has data; skipping legacy migration to avoid clobber.");
+                            "[Trueforce] Migration: target slot already has data; skipping legacy migration to avoid clobber.");
                     }
                     Settings.ActiveSlotKey = desiredKey;
                     try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
@@ -9293,10 +9805,31 @@ namespace TrueforceForAll.Plugin
             MountUserSlot(desiredKey);
         }
 
-        // Swap which slot's data the legacy fields reference. Stash
-        // the current view INTO the prior slot first so any in-flight
-        // changes aren't lost. Then mount the new slot (creating it
-        // empty if needed) and persist.
+        // Move a slot's contents from oldKey to newKey (used to re-key email-keyed slots to the
+        // immutable user-id). Clobber-safe: only moves when newKey is absent, so it never overwrites
+        // an existing user-id slot or deletes data it didn't merge. Fixes ActiveSlotKey if it pointed
+        // at oldKey. No-op for empty/equal keys or a missing source.
+        private void RekeySlot(string oldKey, string newKey)
+        {
+            if (Settings?.UserSlots == null) return;
+            if (string.IsNullOrEmpty(oldKey) || string.IsNullOrEmpty(newKey)
+                || string.Equals(oldKey, newKey, StringComparison.Ordinal)) return;
+            if (!Settings.UserSlots.TryGetValue(oldKey, out var slot)) return;
+            if (Settings.UserSlots.ContainsKey(newKey)) return;   // target exists: leave the stale key (no clobber)
+            Settings.UserSlots[newKey] = slot;
+            Settings.UserSlots.Remove(oldKey);
+            if (string.Equals(Settings.ActiveSlotKey ?? "", oldKey, StringComparison.Ordinal))
+                Settings.ActiveSlotKey = newKey;
+            SimHub.Logging.Current.Info("[Trueforce] Re-keyed a user slot to the stable account id.");
+        }
+
+        // Swap which account is live: its community history, its preset LIBRARY (a private folder
+        // per account), its portable settings PROFILE, and its per-PC sync state. Stash the current
+        // view INTO the prior slot FIRST (so nothing in-flight is lost, and so the slot is seeded
+        // from the authoritative live state) before mounting the new one. A same-key mount (startup
+        // / post-restore re-link) therefore only refreshes the slot from live and never applies a
+        // stale profile back; a real account CHANGE applies the new account's saved profile + sync
+        // state and re-applies them to the live pipeline + UI.
         private void MountUserSlot(string newKey)
         {
             if (Settings == null) return;
@@ -9305,8 +9838,11 @@ namespace TrueforceForAll.Plugin
             newKey = newKey ?? "";
 
             string priorKey = Settings.ActiveSlotKey ?? "";
-            // Stash the current visible state into the prior slot so
-            // anything the user added since last mount is preserved.
+            bool accountChanged = !string.Equals(priorKey, newKey, StringComparison.Ordinal);
+
+            // Stash the current visible state into the prior slot so anything the user added since
+            // the last mount is preserved. StashLiveProfileInto also SEEDS the slot's profile from
+            // live, which is why a same-key startup mount can never overwrite live with a stale copy.
             if (!Settings.UserSlots.TryGetValue(priorKey, out var priorSlot))
             {
                 priorSlot = new UserDataSlot();
@@ -9316,14 +9852,63 @@ namespace TrueforceForAll.Plugin
                 Settings.DownloadedCommunityPresets
                 ?? new Dictionary<string, DownloadedPresetRecord>();
             priorSlot.SharingAuthor = Settings.SharingAuthor ?? "";
+            StashLiveProfileInto(priorSlot);
+
+            // Reconcile a pre-user-id email-keyed slot for the account being mounted (a returning
+            // account from an old test build), so its history/profile carries to the user-id key.
+            if (Settings.AuthSession != null && !string.IsNullOrEmpty(Settings.AuthSession.UserId)
+                && string.Equals(newKey, Settings.AuthSession.UserId, StringComparison.Ordinal))
+                RekeySlot(CommunityAuth.SlotKeyFromEmail(Settings.AuthSession.Email), newKey);
 
             // Mount the new slot. Creating it empty if the user has
-            // never signed in with this email before.
+            // never signed in with this account before.
             if (!Settings.UserSlots.TryGetValue(newKey, out var newSlot))
             {
                 newSlot = new UserDataSlot();
                 Settings.UserSlots[newKey] = newSlot;
             }
+
+            // Per-account preset library: re-point UserPresets at this account's OWN folder, seeding
+            // it (copy from the current library) the first time so signing in brings the user's
+            // presets with them. The car-preset + installed-pack stores follow automatically (they
+            // read UserPresets.CurrentFolder via a lambda).
+            string token = ResolveLibraryToken(newKey, newSlot);
+            SeedAccountLibraryIfFirstMount(token, newSlot, UserPresets.CurrentFolder);
+            try { UserPresets.Initialize(AccountLibraryFolder(token)); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn(
+                    "[Trueforce] Account library re-point failed: " + ex.GetType().Name);
+            }
+            _lastLibFingerprint = null;   // folder changed: force the auto-sync drift backstop to recompute
+
+            // Per-account settings profile + sync state (only on a real account switch; a same-key
+            // mount leaves the authoritative live state in place).
+            if (accountChanged)
+            {
+                if (newSlot.ProfileSeededV1 && !string.IsNullOrEmpty(newSlot.ProfileSettingsJson))
+                {
+                    // Existing account: apply its saved feel/effects profile + its own sync state.
+                    ApplyProfileToLive(newSlot);
+                }
+                else
+                {
+                    // Brand-new account: inherit the current live profile (a copy) so signing in
+                    // doesn't reset the dialed-in feel. Auto-sync starts OFF and the synced baseline
+                    // empty so a fresh account never auto-pushes to its empty cloud unprompted.
+                    newSlot.ProfileSettingsJson = priorSlot.ProfileSettingsJson;
+                    newSlot.ProfileForzaJson    = priorSlot.ProfileForzaJson;
+                    newSlot.ProfileSeededV1     = true;
+                    newSlot.AutoSyncBackupEnabled        = false;
+                    newSlot.BackupLastSyncedRevision     = "";
+                    newSlot.BackupLastSyncedEnvelopeJson = "";
+                    Settings.AutoSyncBackupEnabled        = false;
+                    Settings.BackupLastSyncedRevision     = "";
+                    Settings.BackupLastSyncedEnvelopeJson = "";
+                    // live profile fields already hold this account's seed (unchanged): no apply.
+                }
+            }
+
             Settings.DownloadedCommunityPresets = newSlot.DownloadedCommunityPresets
                 ?? new Dictionary<string, DownloadedPresetRecord>();
             Settings.SharingAuthor = newSlot.SharingAuthor ?? "";
@@ -9334,12 +9919,10 @@ namespace TrueforceForAll.Plugin
             // a different DownloadedCommunityPresets map).
             _useCountedThisSession.Clear();
 
-            // Re-derive Settings.GameDefaults + CarDefaults so the
-            // active user's per-user overrides (if any) overlay the
-            // device-wide file-based view. Skipped during Init when
-            // the cache hasn't been built yet - the regular Init
-            // sequence will run RebuildPresetCacheFromFolders +
-            // LoadAndMigrateCarPresets in order anyway.
+            // Re-derive Settings.GameDefaults + CarDefaults from the (now re-pointed) account folder
+            // so the active user's per-user overrides overlay the device-wide file-based view.
+            // Skipped during Init when the cache hasn't been built yet - the regular Init sequence
+            // runs RebuildPresetCacheFromFolders + LoadAndMigrateCarPresets in order anyway.
             if (Settings.Presets != null)
             {
                 try { RebuildPresetCacheFromFolders(); }
@@ -9348,6 +9931,17 @@ namespace TrueforceForAll.Plugin
                     // F24: log exception type only; ex.Message can include file paths.
                     SimHub.Logging.Current.Info(
                         "[Trueforce] Game-default re-derive on slot mount failed: " + ex.GetType().Name);
+                }
+                // On a REAL account switch, discard the prior account's in-memory per-car overrides
+                // (and the persisted-baseline cache) BEFORE loading this account's car presets: so
+                // A's entries for cars B never loads don't linger in memory (and bias dirty/save
+                // detection), and A's unsaved active-car draft isn't migrated onto disk into B's
+                // library by LoadAndMigrateCarPresets's in-memory->file migration step. B's saved
+                // cars still load from B's folder; only the prior account's transient state is dropped.
+                if (accountChanged)
+                {
+                    try { Settings.CarOverrides?.Clear(); } catch { }
+                    try { _lastPersistedCarOverrides?.Clear(); } catch { }
                 }
                 try { LoadAndMigrateCarPresets(); }
                 catch (Exception ex)
@@ -9368,12 +9962,184 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            // On a real account switch, re-apply the new profile to the live pipeline + UI and
+            // re-evaluate the (now per-account) auto-sync opt-in. Same paths the cloud restore uses.
+            if (accountChanged)
+            {
+                ApplyGlobalFfbToLive();   // master gain + FFB scalars aren't covered by ApplyActiveCarOverride
+                try { ApplyActiveCarOverride(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Effect re-apply on slot mount failed: " + ex.GetType().Name); }
+                try { ApplyForzaSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Telemetry re-apply on slot mount failed: " + ex.GetType().Name); }
+                try { LibraryReloaded?.Invoke(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
+                try { UpdateAutoPullTimer(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Auto-pull timer refresh on slot mount failed: " + ex.GetType().Name); }
+            }
+
             try { this.SaveCommonSettings("GeneralSettings", Settings); }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
                     "[Trueforce] Persist after slot mount failed: " + ex.GetType().Name);
             }
+        }
+
+        // ---- Per-account profile + library helpers (see UserDataSlot) ----
+
+        // The TrueforceForAll root folder (parent of the shared "user" library). Per-account
+        // libraries live under <root>\accounts\<token>.
+        private static string TrueforceRootFolder()
+        {
+            try { return System.IO.Path.GetDirectoryName(UserPresets.DefaultFolder); }
+            catch { return null; }
+        }
+
+        // Filesystem-safe per-account library token. Prefers the immutable Supabase user_id (UUID)
+        // when this slot is the signed-in account; falls back to a sanitized email. "" => anonymous
+        // (the shared DefaultFolder). Cached on the slot so it survives sign-out (when the live
+        // AuthSession.UserId is no longer available).
+        private string ResolveLibraryToken(string slotKey, UserDataSlot slot)
+        {
+            if (string.IsNullOrEmpty(slotKey)) return "";   // anonymous slot uses the shared folder
+            if (slot != null && !string.IsNullOrEmpty(slot.LibraryToken)) return slot.LibraryToken;
+            // The slot key IS the immutable account id now (a UUID, already filesystem-safe);
+            // sanitize defensively in case of the rare email-key fallback path.
+            string token = SanitizeFolderToken(slotKey);
+            if (slot != null) slot.LibraryToken = token;
+            return token;
+        }
+
+        private static string SanitizeFolderToken(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "anon";
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var sb = new System.Text.StringBuilder(raw.Length);
+            foreach (char c in raw)
+                sb.Append(System.Array.IndexOf(invalid, c) >= 0 ? '_' : c);
+            string s = sb.ToString();
+            return string.IsNullOrEmpty(s) ? "anon" : s;
+        }
+
+        // Resolve an account token to its on-disk library folder. "" (anonymous) => the shared
+        // DefaultFolder; otherwise <root>\accounts\<token>.
+        private static string AccountLibraryFolder(string token)
+        {
+            if (string.IsNullOrEmpty(token)) return UserPresets.DefaultFolder;
+            string root = TrueforceRootFolder();
+            return string.IsNullOrEmpty(root)
+                ? UserPresets.DefaultFolder
+                : System.IO.Path.Combine(root, "accounts", token);
+        }
+
+        // First time an account's library folder is used, seed it by COPYING the current library
+        // (so signing in brings the user's presets with them). Latched per-slot; only ever READS the
+        // source and WRITES the target, so the shared/anonymous folder is never moved or modified.
+        // Anonymous ("" token) uses the shared folder and is never seeded.
+        private void SeedAccountLibraryIfFirstMount(string token, UserDataSlot slot, string sourceFolder)
+        {
+            if (string.IsNullOrEmpty(token) || slot == null) return;   // anonymous: nothing to seed
+            if (slot.LibrarySeededV1) return;
+            try
+            {
+                string target = AccountLibraryFolder(token);
+                bool sameFolder = !string.IsNullOrEmpty(sourceFolder)
+                    && string.Equals(System.IO.Path.GetFullPath(sourceFolder),
+                                     System.IO.Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase);
+                bool targetHasFiles = System.IO.Directory.Exists(target) && BackupLibrary.Bundle(target).Count > 0;
+                if (!sameFolder && !targetHasFiles && !string.IsNullOrEmpty(sourceFolder))
+                {
+                    var src = BackupLibrary.Bundle(sourceFolder);
+                    if (src.Count > 0)
+                    {
+                        int skipped = BackupLibrary.Restore(target, src);
+                        SimHub.Logging.Current.Info(
+                            "[Trueforce] Seeded a private library for this account (" + (src.Count - skipped) + " files) from the existing library.");
+                    }
+                    else { try { System.IO.Directory.CreateDirectory(target); } catch { } }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[Trueforce] Account library seed failed: " + ex.GetType().Name);
+            }
+            slot.LibrarySeededV1 = true;
+        }
+
+        // Serialize the live PORTABLE settings profile (the same subset that travels to the cloud,
+        // minus the community-history fields the slot mounts separately) + this account's per-PC
+        // sync state INTO the slot. This is also the SEED on first mount (live is the source of
+        // truth), which is why a same-key startup mount can never overwrite live with a stale copy.
+        private void StashLiveProfileInto(UserDataSlot slot)
+        {
+            if (slot == null || Settings == null) return;
+            try
+            {
+                var env = BackupProjection.Build(Settings, "", DateTime.UtcNow);
+                var s = env.Settings ?? new Newtonsoft.Json.Linq.JObject();
+                s.Remove("DownloadedCommunityPresets");   // slot-mounted separately
+                s.Remove("SharingAuthor");                // slot-mounted separately
+                slot.ProfileSettingsJson = s.ToString(Newtonsoft.Json.Formatting.None);
+                slot.ProfileForzaJson    = env.Forza?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
+                slot.ProfileSeededV1     = true;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Profile stash failed: " + ex.GetType().Name);
+            }
+            slot.AutoSyncBackupEnabled        = Settings.AutoSyncBackupEnabled;
+            slot.BackupLastSyncedRevision     = Settings.BackupLastSyncedRevision ?? "";
+            slot.BackupLastSyncedEnvelopeJson = Settings.BackupLastSyncedEnvelopeJson ?? "";
+        }
+
+        // Apply a slot's saved portable profile + per-PC sync state onto the live settings
+        // (machine/hardware fields untouched). Caller re-applies to the live pipeline + UI after.
+        private void ApplyProfileToLive(UserDataSlot slot)
+        {
+            if (slot == null || Settings == null) return;
+            try
+            {
+                if (!string.IsNullOrEmpty(slot.ProfileSettingsJson))
+                {
+                    var env = new BackupEnvelope
+                    {
+                        Settings = Newtonsoft.Json.Linq.JObject.Parse(slot.ProfileSettingsJson),
+                        Forza = string.IsNullOrEmpty(slot.ProfileForzaJson)
+                            ? null : Newtonsoft.Json.Linq.JObject.Parse(slot.ProfileForzaJson),
+                    };
+                    BackupProjection.ApplySettings(env, Settings);
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Profile apply failed: " + ex.GetType().Name);
+            }
+            Settings.AutoSyncBackupEnabled        = slot.AutoSyncBackupEnabled;
+            Settings.BackupLastSyncedRevision     = slot.BackupLastSyncedRevision ?? "";
+            Settings.BackupLastSyncedEnvelopeJson = slot.BackupLastSyncedEnvelopeJson ?? "";
+        }
+
+        // Push the global (non-per-car) FFB scalars from Settings to the live mixer + device. The
+        // per-car/per-effect values re-apply via ApplyActiveCarOverride; these globals otherwise only
+        // re-apply on a car LOAD, so an account switch must push them explicitly or the wheel keeps
+        // the previous account's master gain / scale until the next car change.
+        private void ApplyGlobalFfbToLive()
+        {
+            try
+            {
+                if (_mixer != null) _mixer.MasterGain = Settings.MasterGain;
+                if (_device != null)
+                {
+                    _device.FfbScale                = Settings.FfbScale;
+                    _device.FfbInvertSign           = Settings.FfbInvertSign;
+                    _device.FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs;
+                    _device.FfbSpikeTamingEnabled   = Settings.FfbSpikeTamingEnabled;
+                    _device.FfbSpikeUseSlewLimiter  = Settings.FfbSpikeUseSlewLimiter;
+                    _device.FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs;
+                    _device.FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb;
+                }
+            }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Global FFB re-apply on slot mount failed: " + ex.GetType().Name); }
         }
 
         // Init-side welcome path: same modal SettingsControl pops, but
@@ -9391,6 +10157,14 @@ namespace TrueforceForAll.Plugin
                 return;
             var nextAt = Settings.WelcomeNextShowAt;
             if (nextAt.HasValue && nextAt.Value > DateTime.UtcNow) return;
+
+            // Process-wide guard: only one welcome modal per session. The
+            // Settings-panel path shares this flag, so an open panel that's
+            // already showing (or has shown) the welcome stops this init path
+            // from stacking a duplicate behind it. Set at the commit point so
+            // the early-return gates above don't consume it.
+            if (WelcomeWindow.ShownThisSession) return;
+            WelcomeWindow.ShownThisSession = true;
 
             var owner = System.Windows.Application.Current?.MainWindow;
 
@@ -9458,7 +10232,7 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     System.Windows.MessageBox.Show(owner,
-                        "We'll remind you about community features later. Sign in anytime from Account & community in Settings.",
+                        "We'll remind you about community features later. Sign in anytime from the Account tab.",
                         "Community features",
                         System.Windows.MessageBoxButton.OK,
                         System.Windows.MessageBoxImage.Information);
@@ -10337,6 +11111,11 @@ namespace TrueforceForAll.Plugin
         private static bool Eq(RevLimiterSettings a, RevLimiterSettings b)
         {
             if (a == null || b == null) return a == b;
+            // RedlineRpm is the user's explicit engagement value since the
+            // unification migration. Without it in this comparator, slider
+            // edits to the redline read clean (Save button never appears).
+            bool redlineRpmEq = (a.RedlineRpm.HasValue == b.RedlineRpm.HasValue)
+                && (!a.RedlineRpm.HasValue || a.RedlineRpm.Value == b.RedlineRpm.Value);
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain,      b.Gain)
                 && EqI (a.Freq,      b.Freq)
@@ -10344,6 +11123,7 @@ namespace TrueforceForAll.Plugin
                 && EqF2(a.DutyCycle, b.DutyCycle)
                 && EqF2(a.ActiveAmp, b.ActiveAmp)
                 && EqF2(a.Threshold, b.Threshold)
+                && redlineRpmEq
                 && EqI (a.RedlineOffsetRpm, b.RedlineOffsetRpm)
                 && a.EngageMode == b.EngageMode
                 && a.Waveform == b.Waveform;
@@ -10672,6 +11452,7 @@ namespace TrueforceForAll.Plugin
             if (!PersistGamePresetToFolder(presetName, fresh)) return;
             _activePresetName = presetName;
             this.SaveCommonSettings("GeneralSettings", Settings);
+            RequestAutoBackup();   // preset file changed: arm auto-sync (no-op unless enabled)
             SimHub.Logging.Current.Info($"[Trueforce] Saved preset '{presetName}'.");
         }
 
@@ -10746,6 +11527,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             }
             this.SaveCommonSettings("GeneralSettings", Settings);
+            RequestAutoBackup();   // preset file changed: arm auto-sync (no-op unless enabled)
             SimHub.Logging.Current.Info($"[Trueforce] Saved {kind} into preset '{_activePresetName}' (scoped).");
             return true;
         }
@@ -10856,6 +11638,7 @@ namespace TrueforceForAll.Plugin
 
             if (_activePresetName == presetName) _activePresetName = null;
             this.SaveCommonSettings("GeneralSettings", Settings);
+            RequestAutoBackup();   // preset file deleted: arm auto-sync so the deletion propagates
             SimHub.Logging.Current.Info($"[Trueforce] Deleted preset '{presetName}'.");
             return true;
         }
@@ -10913,6 +11696,7 @@ namespace TrueforceForAll.Plugin
 
             if (_activePresetName == oldName) _activePresetName = newName;
             this.SaveCommonSettings("GeneralSettings", Settings);
+            RequestAutoBackup();   // preset renamed (file path changed): arm auto-sync
             SimHub.Logging.Current.Info($"[Trueforce] Renamed preset '{oldName}' to '{newName}'.");
             return true;
         }
@@ -10952,6 +11736,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             }
             this.SaveCommonSettings("GeneralSettings", Settings);
+            RequestAutoBackup();   // new preset file: arm auto-sync so the duplicate propagates
             SimHub.Logging.Current.Info($"[Trueforce] Duplicated preset '{sourceName}' as '{newName}'.");
             return true;
         }
@@ -11024,6 +11809,7 @@ namespace TrueforceForAll.Plugin
                 RebuildPresetCacheFromFolders();
             }
             this.SaveCommonSettings("GeneralSettings", Settings);
+            RequestAutoBackup();   // default binding changed: arm auto-sync
             SimHub.Logging.Current.Info($"[Trueforce] '{presetName}' set as default for '{gameName}'.");
             return true;
         }
@@ -13219,14 +14005,42 @@ namespace TrueforceForAll.Plugin
             return restored;
         }
 
+        // Copy the BackupProjection.MachineLocal-classified properties from one settings object onto
+        // another. Used by the local settings/zip restore so a backup file (possibly from another PC
+        // or account) can't overwrite THIS install's identity + machine-bound config: the auth
+        // session, the per-account slots, machine paths, FFB-tap pins, the per-PC sync bookkeeping,
+        // and the baked backend config. Same boundary the cloud restore respects.
+        private static void PreserveMachineLocalSettings(TrueforceSettings from, TrueforceSettings to)
+        {
+            if (from == null || to == null) return;
+            var t = typeof(TrueforceSettings);
+            foreach (var name in BackupProjection.MachineLocal)
+            {
+                var p = t.GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (p == null || !p.CanRead || !p.CanWrite) continue;
+                try { p.SetValue(to, p.GetValue(from)); } catch { /* best-effort per field */ }
+            }
+        }
+
         /// <summary>Replace settings from a JSON file; live effects are re-derived from the new settings.</summary>
         public void ImportSettings(string path)
         {
             string json = System.IO.File.ReadAllText(path);
             var imported = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(json);
             if (imported == null) throw new System.IO.InvalidDataException("File did not contain valid TrueforceSettings JSON.");
+            // Preserve install identity + machine-bound fields (signed-in account, per-account slots,
+            // machine paths, FFB-tap pins, per-PC sync bookkeeping, baked backend config) so a backup
+            // file can't change who's signed in, import a foreign slots dict, or desync the active-
+            // account library folder. Mirrors the cloud restore, which keeps machine-local fields.
+            var preservedMachineLocal = Settings;
             Settings = imported;
+            PreserveMachineLocalSettings(preservedMachineLocal, Settings);
+            // Re-establish active-account slot consistency (re-point its library folder + stash the
+            // restored profile into the slot), exactly as the cloud restore remounts the slot.
+            try { MountUserSlot(Settings.ActiveSlotKey ?? ""); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Settings import: slot remount failed: " + ex.GetType().Name); }
             _mixer.MasterGain = Settings.MasterGain;
+            ApplyGlobalFfbToLive();   // push restored FFB scalars (scale/invert/spike) to the live device, not just master gain
             if (_audio != null)
             {
                 _audio.Enabled          = Settings.AudioCapture.Enabled;
@@ -13246,6 +14060,867 @@ namespace TrueforceForAll.Plugin
             RebuildPresetCacheFromFolders();
             ApplyActiveCarOverride();
             SimHub.Logging.Current.Info($"[Trueforce] Settings imported from {path}.");
+        }
+
+        // ===================== Phase 2 Discord link (M5) =====================
+        // Standalone Discord OAuth link so contribution achievements grant community-server
+        // roles. One-shot: capture the Discord user id and record it server-side; no Discord
+        // tokens are kept. Transport = DiscordLinkClient; the browser/loopback = DiscordOAuthFlow.
+        private DiscordLinkClient _discordLinkClient;
+        // Single-flight: the loopback OAuth dance binds a fixed local port, so two concurrent
+        // link attempts would collide on the bind. Mirrors the backup _backupOp guard.
+        private readonly System.Threading.SemaphoreSlim _discordLinkOp = new System.Threading.SemaphoreSlim(1, 1);
+        // Patreon OAuth link (proves supporter status in-plugin; unlocks badge + cloud backup
+        // without Discord). Transport = PatreonLinkClient; browser/loopback = PatreonOAuthFlow.
+        private PatreonLinkClient _patreonLinkClient;
+        private readonly System.Threading.SemaphoreSlim _patreonLinkOp = new System.Threading.SemaphoreSlim(1, 1);
+        // Read-only supporter entitlement (for the in-plugin supporter badge).
+        private EntitlementClient _entitlementClient;
+        // Read-only Patreon supporters roster (for the Account tab's Supporters wall).
+        private SupportersClient _supportersClient;
+        // Achievement tracker (progress) + immediate self-scoped role sync.
+        private AchievementClient _achievementClient;
+        // Account session list + per-session revoke (Account tab "Active sessions").
+        private SessionClient _sessionClient;
+
+        internal struct DiscordLinkResult
+        {
+            public bool   Ok;
+            public string Message;
+            public string Username;
+        }
+
+        /// <summary>Run the full link flow: fetch OAuth config, do the browser consent +
+        /// loopback capture, then exchange the code server-side for this signed-in user.</summary>
+        internal async Task<DiscordLinkResult> LinkDiscordAsync(System.Threading.CancellationToken ct)
+        {
+            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = "Discord linking isn't available." };
+            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = "Sign in to TF4ALL first." };
+            if (!await _discordLinkOp.WaitAsync(0).ConfigureAwait(false))
+                return new DiscordLinkResult { Ok = false, Message = "A Discord link is already in progress." };
+            try
+            {
+                var (cfg, cfgErr) = await _discordLinkClient.GetConfigAsync(ct).ConfigureAwait(false);
+                if (cfg == null || string.IsNullOrEmpty(cfg.ClientId))
+                    return new DiscordLinkResult { Ok = false, Message = cfgErr ?? "Discord linking isn't set up yet." };
+
+                DiscordOAuthFlow.Result auth;
+                try
+                {
+                    auth = await DiscordOAuthFlow.AuthorizeAsync(cfg.ClientId, cfg.RedirectUris, cfg.Scope,
+                        msg => SimHub.Logging.Current.Info(msg), ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { return new DiscordLinkResult { Ok = false, Message = "Linking cancelled." }; }
+                catch (DiscordOAuthException ex)   { return new DiscordLinkResult { Ok = false, Message = ex.Message }; }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[Trueforce] Discord authorize error: " + ex.Message);
+                    return new DiscordLinkResult { Ok = false, Message = "Couldn't start Discord linking." };
+                }
+
+                var (ok, message, username) = await _discordLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
+                return new DiscordLinkResult { Ok = ok, Message = message, Username = username };
+            }
+            finally { _discordLinkOp.Release(); }
+        }
+
+        /// <summary>Remove this user's Discord link.</summary>
+        internal async Task<DiscordLinkResult> UnlinkDiscordAsync(System.Threading.CancellationToken ct)
+        {
+            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = "Discord linking isn't available." };
+            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = "Sign in first." };
+            bool ok = await _discordLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
+            return new DiscordLinkResult { Ok = ok, Message = ok ? "Discord unlinked." : "Couldn't unlink. Try again." };
+        }
+
+        /// <summary>Current link state for the settings UI (linked + display name).</summary>
+        internal async Task<(bool linked, string username)> GetDiscordStatusAsync(System.Threading.CancellationToken ct)
+        {
+            if (_discordLinkClient == null || _auth == null || !_auth.IsSignedIn) return (false, null);
+            return await _discordLinkClient.GetMyDiscordAsync(ct).ConfigureAwait(false);
+        }
+
+        // ===================== Phase 2 Patreon link =====================
+        // Direct Patreon OAuth link: proves an active pledge in-plugin so the supporter badge +
+        // cloud backup unlock WITHOUT Discord, and opportunistically fills the Discord link from
+        // Patreon. Transport = PatreonLinkClient; the browser/loopback = PatreonOAuthFlow.
+        internal struct PatreonLinkResult
+        {
+            public bool   Ok;
+            public string Message;
+            public string Name;
+        }
+
+        /// <summary>Run the full Patreon link flow: fetch OAuth config, browser consent + loopback
+        /// capture, then exchange the code server-side for this signed-in user.</summary>
+        internal async Task<PatreonLinkResult> LinkPatreonAsync(System.Threading.CancellationToken ct)
+        {
+            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = "Patreon linking isn't available." };
+            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = "Sign in to TF4ALL first." };
+            if (!await _patreonLinkOp.WaitAsync(0).ConfigureAwait(false))
+                return new PatreonLinkResult { Ok = false, Message = "A Patreon link is already in progress." };
+            try
+            {
+                var (cfg, cfgErr) = await _patreonLinkClient.GetConfigAsync(ct).ConfigureAwait(false);
+                if (cfg == null || string.IsNullOrEmpty(cfg.ClientId))
+                    return new PatreonLinkResult { Ok = false, Message = cfgErr ?? "Patreon linking isn't set up yet." };
+
+                PatreonOAuthFlow.Result auth;
+                try
+                {
+                    auth = await PatreonOAuthFlow.AuthorizeAsync(cfg.ClientId, cfg.RedirectUris, cfg.Scope,
+                        msg => SimHub.Logging.Current.Info(msg), ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { return new PatreonLinkResult { Ok = false, Message = "Linking cancelled." }; }
+                catch (PatreonOAuthException ex)   { return new PatreonLinkResult { Ok = false, Message = ex.Message }; }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[Trueforce] Patreon authorize error: " + ex.Message);
+                    return new PatreonLinkResult { Ok = false, Message = "Couldn't start Patreon linking." };
+                }
+
+                var (ok, message, name) = await _patreonLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
+                return new PatreonLinkResult { Ok = ok, Message = message, Name = name };
+            }
+            finally { _patreonLinkOp.Release(); }
+        }
+
+        /// <summary>Remove this user's Patreon link.</summary>
+        internal async Task<PatreonLinkResult> UnlinkPatreonAsync(System.Threading.CancellationToken ct)
+        {
+            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = "Patreon linking isn't available." };
+            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = "Sign in first." };
+            bool ok = await _patreonLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
+            return new PatreonLinkResult { Ok = ok, Message = ok ? "Patreon unlinked." : "Couldn't unlink. Try again." };
+        }
+
+        /// <summary>Current Patreon link state for the settings UI (linked + display name).</summary>
+        internal async Task<(bool linked, string name)> GetPatreonStatusAsync(System.Threading.CancellationToken ct)
+        {
+            if (_patreonLinkClient == null || _auth == null || !_auth.IsSignedIn) return (false, null);
+            return await _patreonLinkClient.GetMyPatreonAsync(ct).ConfigureAwait(false);
+        }
+
+        /// <summary>Read the signed-in user's supporter entitlement for the in-plugin badge.
+        /// Advisory/display only; the real backup gate is enforced server-side.</summary>
+        internal async Task<(bool isSupporter, string tier, DateTime? retainUntil)> GetSupporterTierAsync(System.Threading.CancellationToken ct)
+        {
+            if (_entitlementClient == null || _auth == null || !_auth.IsSignedIn) return (false, null, null);
+            return await _entitlementClient.GetMyEntitlementAsync(ct).ConfigureAwait(false);
+        }
+
+        /// <summary>Read the public supporters roster for the Account tab's wall. Sourced from
+        /// Patreon server-side; no sign-in required (the read RPC is public recognition).</summary>
+        internal async Task<System.Collections.Generic.List<SupportersClient.SupporterRow>> GetSupportersAsync(System.Threading.CancellationToken ct)
+        {
+            if (_supportersClient == null) return new System.Collections.Generic.List<SupportersClient.SupporterRow>();
+            return await _supportersClient.GetSupportersAsync(ct).ConfigureAwait(false);
+        }
+
+        /// <summary>The signed-in user's achievement progress (earned + unearned), account-
+        /// based and independent of Discord linking.</summary>
+        internal async Task<System.Collections.Generic.List<AchievementClient.AchievementRow>> GetAchievementsAsync(System.Threading.CancellationToken ct)
+        {
+            if (_achievementClient == null || _auth == null || !_auth.IsSignedIn) return null;
+            bool showAll = Settings?.DevShowAllAchievements == true;   // SHOWALL access code
+            return await _achievementClient.GetMyAchievementsAsync(ct, showAll).ConfigureAwait(false);
+        }
+
+        /// <summary>Immediately reconcile the signed-in user's Discord roles (claim what they
+        /// earned). No-op without a Discord link; the Edge Function scopes to this user.</summary>
+        internal async Task<(bool ok, int applied)> SyncMyRolesAsync(System.Threading.CancellationToken ct)
+        {
+            if (_achievementClient == null || _auth == null || !_auth.IsSignedIn) return (false, 0);
+            return await _achievementClient.SyncMyRolesAsync(ct).ConfigureAwait(false);
+        }
+
+        /// <summary>Dev preview: email a backup-deletion warning stage to the signed-in user.</summary>
+        internal async Task<(bool ok, string message)> SendWarnEmailPreviewAsync(int stage, System.Threading.CancellationToken ct)
+        {
+            if (_achievementClient == null || _auth == null || !_auth.IsSignedIn) return (false, "Sign in first.");
+            return await _achievementClient.SendWarnPreviewAsync(stage, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>The signed-in user's active auth sessions across devices (this
+        /// device flagged IsCurrent). Null when not signed in / unreachable.</summary>
+        internal async Task<System.Collections.Generic.List<SessionClient.SessionRow>> AuthGetSessionsAsync(System.Threading.CancellationToken ct)
+        {
+            if (_sessionClient == null || _auth == null || !_auth.IsSignedIn) return null;
+            return await _sessionClient.GetMySessionsAsync(ct).ConfigureAwait(false);
+        }
+
+        /// <summary>Revoke one of the signed-in user's other sessions by id. The RPC
+        /// refuses to revoke the current device's own session. True when removed.</summary>
+        internal async Task<bool> AuthRevokeSessionAsync(string sessionId, System.Threading.CancellationToken ct)
+        {
+            if (_sessionClient == null || _auth == null || !_auth.IsSignedIn) return false;
+            return await _sessionClient.RevokeSessionAsync(sessionId, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>Sign out every OTHER device (scope=others), leaving this one signed in.</summary>
+        internal async Task<bool> AuthSignOutOtherSessionsAsync()
+        {
+            if (_auth == null || !_auth.IsSignedIn) return false;
+            return await _auth.SignOutOtherSessionsAsync().ConfigureAwait(false);
+        }
+
+        // ===================== Phase 2 cloud backup / sync =====================
+        // Manual "Back up now" / "Restore from cloud" + debounced auto-sync. Transport
+        // is BackupClient; envelope build/merge is BackupService; the apply path mirrors
+        // the ImportSettings remount+rebuild plumbing but MERGES settings (preserving
+        // this PC's machine-local fields) rather than wholesale-replacing.
+
+        private BackupClient _backupClient;
+        // Stashed at divergence time for the conflict DIALOG's display (device/time).
+        // The resolve step re-downloads the CURRENT cloud before applying.
+        private BackupEnvelope _pendingCloudEnvelope;
+        private string _pendingCloudRevision;
+        private readonly object _backupGate = new object();
+        // Single-flight: serializes every backup network op (manual + auto) so two
+        // upload/apply/stamp cycles never overlap (no concurrent Settings mutation, no
+        // stale-revision stamping).
+        private readonly System.Threading.SemaphoreSlim _backupOp = new System.Threading.SemaphoreSlim(1, 1);
+        // Debounced auto-sync.
+        private System.Threading.Timer _autoSyncTimer;
+        // Auto-pull poll: applies changes made on another device. _autoPullGen no-ops a tick
+        // scheduled under stale state (after sign-out / disable).
+        private System.Threading.Timer _autoPullTimer;
+        private volatile int _autoPullGen;
+        // Revoke heartbeat: polls is_my_session_active so a device whose session was revoked
+        // from elsewhere signs ITSELF out within minutes (not after the ~1h JWT exp). Separate
+        // from _autoPullTimer because that one is supporter/AutoSync-gated; this runs for ANY
+        // signed-in user. _sessionHeartbeatGen no-ops a tick scheduled under stale state;
+        // _sessionHeartbeatBusy single-flights overlapping ticks on a slow network.
+        private System.Threading.Timer _sessionHeartbeatTimer;
+        private volatile int _sessionHeartbeatGen;
+        private int _sessionHeartbeatBusy;
+        // Bumped on every local change (RequestAutoBackup). A push/merge captures it before its
+        // build+upload and clears _backupDirty only if it hasn't moved, so an edit made during the
+        // upload window stays pending instead of being silently dropped.
+        private volatile int _backupChangeGen;
+        // Cheap library-metadata fingerprint from the last backstop check; lets the poll skip the
+        // full content re-hash when nothing changed (keeps the check O(metadata), not O(content)).
+        private string _lastLibFingerprint;
+        private volatile bool _backupDirty;
+
+        /// <summary>Fired after a cloud restore/merge re-applies the library to live state, so an
+        /// open preset browser redraws without the user hitting Refresh library. Fires on the UI
+        /// thread (ApplyRestoredEnvelopeCore is dispatched there).</summary>
+        public event Action LibraryReloaded;
+
+        private string UserLibraryFolderForBackup()
+            => UserPresets.CurrentFolder ?? UserPresets.DefaultFolder;
+
+        private bool BackupReady => _backupClient != null && _auth != null && _auth.IsSignedIn;
+
+        /// <summary>Manual "Back up now". Fast-forwards (uploads) when the cloud hasn't
+        /// changed since this PC last synced; otherwise returns Diverged so the caller
+        /// shows the conflict dialog and then calls ResolveBackupConflictAsync.</summary>
+        internal async Task<BackupOutcome> BackupNowAsync()
+        {
+            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, "Backup is not available.");
+            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign in to back up.");
+            if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
+                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+            try
+            {
+                var (revResult, cloudRev) = await _backupClient.GetRevisionAsync().ConfigureAwait(false);
+                if (revResult == BackupTransfer.NotSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign-in expired; sign in again.");
+                if (revResult == BackupTransfer.NotConfigured) return Fail(BackupStatus.NotConfigured, "Backup is not configured.");
+                if (revResult != BackupTransfer.Success && revResult != BackupTransfer.NotFound)
+                    return FromTransfer(revResult, "Couldn't reach the backup server");
+
+                if (IsDiverged(revResult, cloudRev))
+                {
+                    // Pull the cloud envelope so the dialog can name its source + time.
+                    var (dlResult, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
+                    BackupEnvelope cloudEnv = dlResult == BackupTransfer.Success ? SafeParse(json) : null;
+                    lock (_backupGate) { _pendingCloudEnvelope = cloudEnv; _pendingCloudRevision = cloudRev; }
+                    return new BackupOutcome
+                    {
+                        Status = BackupStatus.Diverged,
+                        Message = "The cloud backup changed since this PC last synced.",
+                        CloudDeviceLabel = cloudEnv?.DeviceLabel,
+                        CloudWhenUtc = cloudEnv?.CreatedUtc,
+                    };
+                }
+                return await UploadCurrentAsync().ConfigureAwait(false);
+            }
+            finally { _backupOp.Release(); }
+        }
+
+        // True when the cloud changed since this PC last synced (incl. a never-synced
+        // PC that finds an existing cloud backup). NotFound / transient => not diverged.
+        private bool IsDiverged(BackupTransfer revResult, string cloudRev)
+        {
+            if (revResult != BackupTransfer.Success) return false;
+            string last = Settings?.BackupLastSyncedRevision ?? "";
+            if (string.IsNullOrEmpty(last)) return true;
+            return !string.Equals(cloudRev ?? "", last, StringComparison.Ordinal);
+        }
+
+        // Build + upload the current setup, then stamp the new revision.
+        private async Task<BackupOutcome> UploadCurrentAsync()
+        {
+            string json;
+            try
+            {
+                json = await Task.Run(() => BackupService.Serialize(
+                    BackupService.BuildEnvelope(Settings, UserLibraryFolderForBackup(),
+                        Environment.MachineName, DateTime.UtcNow))).ConfigureAwait(false);
+            }
+            catch (BackupTooLargeException ex) { return Fail(BackupStatus.TooLarge, ex.Message); }   // permanent: caller won't retry-spin
+            catch (Exception ex) { return Fail(BackupStatus.Failed, "Couldn't build the backup: " + ex.Message); }
+
+            var up = await _backupClient.UploadAsync(json).ConfigureAwait(false);
+            if (up != BackupTransfer.Success) return FromTransfer(up, "Backup upload failed");
+            await StampSyncedRevisionAsync().ConfigureAwait(false);
+            return new BackupOutcome { Status = BackupStatus.Success, Message = "Backed up to the cloud." };
+        }
+
+        // After a successful upload, read back the new object revision + persist it as
+        // this PC's last-synced point so the next backup fast-forwards.
+        private async Task StampSyncedRevisionAsync()
+        {
+            try
+            {
+                var (res, rev) = await _backupClient.GetRevisionAsync().ConfigureAwait(false);
+                if (res == BackupTransfer.Success && !string.IsNullOrEmpty(rev) && Settings != null)
+                {
+                    Settings.BackupLastSyncedRevision = rev;
+                    // Capture the now-synced portable settings as the field-merge baseline (local
+                    // state == cloud at this point) for the next 3-way auto-pull merge.
+                    try
+                    {
+                        var baseEnv = BackupProjection.Build(Settings, "", DateTime.UtcNow);
+                        var libObj = new Newtonsoft.Json.Linq.JObject();
+                        foreach (var kv in BackupLibrary.Manifest(UserLibraryFolderForBackup()))
+                            libObj[kv.Key] = kv.Value;
+                        Settings.BackupLastSyncedEnvelopeJson = new Newtonsoft.Json.Linq.JObject
+                        {
+                            ["Settings"] = baseEnv.Settings,
+                            ["Forza"]    = baseEnv.Forza,
+                            ["Lib"]      = libObj,   // path -> content hash, for the 3-way merge + delete-propagation
+                        }.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+                    catch { Settings.BackupLastSyncedEnvelopeJson = ""; }
+                    PersistSettingsCore();   // not PersistSettings: must not re-arm auto-sync
+                }
+                else
+                {
+                    SimHub.Logging.Current.Info("[Trueforce] Backup: revision stamp skipped (status=" + res
+                        + "); a false 'cloud changed' prompt may appear next time.");
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Backup: revision stamp failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>Resolve a detected divergence per the user's choice from the dialog.</summary>
+        internal async Task<BackupOutcome> ResolveBackupConflictAsync(BackupConflictChoice choice, bool keepCloudSettings)
+        {
+            if (choice == BackupConflictChoice.Cancel) { ClearPendingConflict(); return Fail(BackupStatus.Failed, "Cancelled."); }
+            if (!BackupReady) return Fail(BackupStatus.NotSignedIn, "Sign in to back up.");
+            if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
+                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+            try
+            {
+                if (choice == BackupConflictChoice.UseThisPc)
+                    return await UploadCurrentAsync().ConfigureAwait(false);   // overwrite cloud with local
+
+                // UseCloud / SmartMerge: re-download the CURRENT cloud before applying, so
+                // we never apply a stale envelope (the cloud may have changed again while
+                // the dialog was open) and the revision we stamp matches what we applied.
+                var (dl, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
+                if (dl == BackupTransfer.NotFound) return await UploadCurrentAsync().ConfigureAwait(false);
+                if (dl != BackupTransfer.Success) return FromTransfer(dl, "Couldn't fetch the cloud backup");
+                var cloudEnv = SafeParse(json);
+                if (cloudEnv == null) return Fail(BackupStatus.Failed, "The cloud backup was unreadable.");
+
+                if (choice == BackupConflictChoice.UseCloud)
+                {
+                    ApplyRestoredEnvelope(cloudEnv);
+                    await StampSyncedRevisionAsync().ConfigureAwait(false);
+                    return new BackupOutcome { Status = BackupStatus.Success, Message = "Restored from the cloud and applied." };
+                }
+
+                // SmartMerge: union libraries (newest-wins), pick a settings side, then
+                // UPLOAD FIRST (the cloud is the shared source of truth) and only mutate
+                // this PC once the upload is confirmed (atomic: a failed upload leaves
+                // local state untouched and ready to retry).
+                var localEnv = await Task.Run(() => BackupService.BuildEnvelope(
+                    Settings, UserLibraryFolderForBackup(), Environment.MachineName, DateTime.UtcNow)).ConfigureAwait(false);
+                var merged = BackupService.Merge(localEnv, cloudEnv, keepCloudSettings, Environment.MachineName, DateTime.UtcNow);
+                var up = await _backupClient.UploadAsync(BackupService.Serialize(merged)).ConfigureAwait(false);
+                if (up != BackupTransfer.Success) return FromTransfer(up, "Merged backup upload failed");
+                ApplyRestoredEnvelope(merged);
+                await StampSyncedRevisionAsync().ConfigureAwait(false);
+                return new BackupOutcome { Status = BackupStatus.Success, Message = "Merged and backed up." };
+            }
+            catch (Exception ex) { return Fail(BackupStatus.Failed, "Conflict resolution failed: " + ex.Message); }
+            finally { ClearPendingConflict(); _backupOp.Release(); }
+        }
+
+        private void ClearPendingConflict()
+        {
+            lock (_backupGate) { _pendingCloudEnvelope = null; _pendingCloudRevision = null; }
+        }
+
+        /// <summary>Explicit "Restore from cloud" (e.g. a freshly set-up second PC).
+        /// Additive: local-only presets survive. Recommends a restart.</summary>
+        internal async Task<BackupOutcome> RestoreFromCloudAsync()
+        {
+            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, "Backup is not available.");
+            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign in to restore.");
+            if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
+                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+            try
+            {
+                var (dl, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
+                if (dl == BackupTransfer.NotFound) return new BackupOutcome { Status = BackupStatus.NothingToRestore, Message = "No cloud backup found for this account yet." };
+                if (dl != BackupTransfer.Success) return FromTransfer(dl, "Couldn't fetch the cloud backup");
+                var env = SafeParse(json);
+                if (env == null) return Fail(BackupStatus.Failed, "The cloud backup was unreadable.");
+                ApplyRestoredEnvelope(env);
+                await StampSyncedRevisionAsync().ConfigureAwait(false);
+                return new BackupOutcome { Status = BackupStatus.Success, Message = "Restored from the cloud and applied." };
+            }
+            catch (Exception ex) { return Fail(BackupStatus.Failed, "Restore failed: " + ex.Message); }
+            finally { _backupOp.Release(); }
+        }
+
+        // Apply a restored / merged envelope to live state. Marshalled to the UI thread
+        // (matching the existing ImportSettings execution model) so the preset-cache
+        // rebuild does not run on a threadpool continuation.
+        private void ApplyRestoredEnvelope(BackupEnvelope env, bool propagateDeletes = false)
+        {
+            if (env == null || Settings == null) return;
+            var disp = System.Windows.Application.Current?.Dispatcher;
+            if (disp != null && !disp.CheckAccess())
+                disp.Invoke(() => ApplyRestoredEnvelopeCore(env, propagateDeletes));
+            else
+                ApplyRestoredEnvelopeCore(env, propagateDeletes);
+        }
+
+        // MERGE portable settings (machine-local fields preserved), re-mount the active
+        // user slot, write the preset files, rebuild the runtime library cache, persist,
+        // and apply-live what we can. Global FFB/IO + Forza/perf fully take on the
+        // recommended restart.
+        private void ApplyRestoredEnvelopeCore(BackupEnvelope env, bool propagateDeletes)
+        {
+            BackupProjection.ApplySettings(env, Settings);
+
+            // The bundled preset files are always in current (post-migration) format, so
+            // flag the one-time migrations done. Mirrors RestoreAllFromZip and prevents a
+            // re-run migration from archiving the restored presets.
+            Settings.PresetsMigratedV2       = true;
+            Settings.CarsMigratedV2          = true;
+            Settings.LegacyBuiltinsCleanedV1 = true;
+            Settings.FoldersRestructuredV3   = true;
+
+            // ApplySettings replaced the DownloadedCommunityPresets reference; re-link the
+            // active slot so the per-user slot system stays consistent.
+            try { MountUserSlot(Settings.ActiveSlotKey); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: slot remount failed: " + ex.Message); }
+
+            // Auto-sync deletes: remove files that were in the LAST-SYNCED baseline but are absent
+            // from this authoritative bundle (deleted on the other PC). Read the OLD baseline now,
+            // before StampSyncedRevisionAsync advances it. Manual restore passes propagateDeletes=
+            // false (stays additive) so it never wipes a synced file the user might want back.
+            System.Collections.Generic.List<string> deleteIfAbsent = null;
+            if (propagateDeletes)
+            {
+                try
+                {
+                    string bj = Settings?.BackupLastSyncedEnvelopeJson;
+                    if (!string.IsNullOrEmpty(bj)
+                        && Newtonsoft.Json.Linq.JObject.Parse(bj)["Lib"] is Newtonsoft.Json.Linq.JObject lib)
+                        deleteIfAbsent = lib.Properties().Select(p => p.Name).ToList();
+                }
+                catch { deleteIfAbsent = null; }
+            }
+            int skipped = BackupLibrary.Restore(UserLibraryFolderForBackup(), env.Library, deleteIfAbsent);
+            if (skipped > 0)
+                SimHub.Logging.Current.Warn("[Trueforce] Backup restore: " + skipped + " preset file(s) could not be written.");
+            UserPresets.Reload();
+            RebuildPresetCacheFromFolders();
+            LoadAndMigrateCarPresets();
+
+            PersistSettingsCore();   // restore is a sync point, not a user change: don't re-arm auto-sync
+            // Soft "reload": re-apply everything live via the same paths the settings UI uses, so a
+            // restore takes full effect without a SimHub restart. ApplyActiveCarOverride covers all
+            // effects; ApplyForzaSettings rebuilds the telemetry source in place (port/bind). A full
+            // pipeline re-init isn't safe (InitPipeline is once-only: helper process + threads + mixer).
+            try { ApplyActiveCarOverride(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: effect re-apply failed: " + ex.Message); }
+            try { ApplyForzaSettings(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: telemetry re-apply failed: " + ex.Message); }
+            // Tell any open preset browser to redraw from the rebuilt caches (no manual Refresh).
+            try { LibraryReloaded?.Invoke(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: library-reloaded notify failed: " + ex.Message); }
+        }
+
+        // ---- Auto-sync (debounced, fast-forward only) ----
+
+        /// <summary>Arm a debounced auto-backup. Called from PersistSettings. No-op
+        /// unless the user enabled auto-sync and is signed in. Marks state dirty so a
+        /// no-op timer fire (e.g. from the post-upload revision stamp) doesn't upload.</summary>
+        public void RequestAutoBackup()
+        {
+            if (_shuttingDown) return;
+            if (Settings == null || !Settings.AutoSyncBackupEnabled) return;
+            if (_backupClient == null || _auth == null || !_auth.IsSignedIn) return;
+            _backupDirty = true;
+            _autoSyncFails = 0;   // a fresh user edit: reset the backoff ladder so it pushes promptly
+            unchecked { _backupChangeGen++; }   // marks "a local edit happened" for the in-flight upload guard
+            try
+            {
+                if (_autoSyncTimer == null)
+                    _autoSyncTimer = new System.Threading.Timer(_ => RunAutoBackup(), null,
+                        System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                _autoSyncTimer.Change(2000, System.Threading.Timeout.Infinite);   // 2s debounce: still coalesces a slider drag (edits reset the window faster than it expires) but pushes promptly
+            }
+            catch { /* timer disposed during shutdown */ }
+        }
+
+        private void RunAutoBackup()
+        {
+            Task.Run(async () =>
+            {
+                if (_shuttingDown || !_backupDirty || Settings == null || !Settings.AutoSyncBackupEnabled) return;
+                if (_backupClient == null || _auth == null || !_auth.IsSignedIn) return;
+                // Capture the account we started under; bail if the user switches/sign-out across an
+                // await so we never upload one account's data to another's cloud.
+                string idAtStart = _auth.SignedInUserId ?? "";
+                bool StillValid() => !_shuttingDown && _auth != null && _auth.IsSignedIn
+                    && Settings != null && Settings.AutoSyncBackupEnabled
+                    && string.Equals(_auth.SignedInUserId ?? "", idAtStart, StringComparison.Ordinal);
+                if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
+                {
+                    // Another backup op (usually an auto-pull poll, now every 2s) holds the slot.
+                    // Re-arm a short retry instead of waiting for the next user edit: a settings-only
+                    // change isn't covered by the library drift backstop, so without this it could
+                    // sit dirty indefinitely. (This was the "occasionally doesn't sync" race.)
+                    ArmAutoSyncRetry(750);
+                    return;
+                }
+                try
+                {
+                    int changeGen = _backupChangeGen;   // detect a local edit during the build+upload window
+                    var (rev, cloudRev) = await _backupClient.GetRevisionAsync().ConfigureAwait(false);
+                    if (rev != BackupTransfer.Success && rev != BackupTransfer.NotFound)
+                    {
+                        ArmAutoSyncBackoff();   // transient revision-read failure: capped exponential backoff
+                        return;
+                    }
+                    if (IsDiverged(rev, cloudRev))
+                    {
+                        // The OTHER PC moved the cloud. Leave dirty so the next auto-pull tick
+                        // reconciles via the merge branch (not a clobbering fast-forward). Re-arm a
+                        // backstop retry slightly longer than the pull period so the merge lands
+                        // first; if it already cleared dirty, the retry tick is a no-op.
+                        SimHub.Logging.Current.Info("[Trueforce] Auto-sync: cloud changed on another device; the next pull will reconcile.");
+                        ArmAutoSyncRetry(2500);
+                        return;
+                    }
+                    if (!StillValid()) return;
+                    var outcome = await UploadCurrentAsync().ConfigureAwait(false);
+                    // Clear dirty only on success, only if the account is unchanged, and only if no
+                    // local edit landed during the upload (else that edit would be silently dropped).
+                    if (outcome.Status == BackupStatus.Success && StillValid() && changeGen == _backupChangeGen)
+                    {
+                        _backupDirty = false;
+                        _autoSyncFails = 0;   // clean push: reset the backoff ladder
+                    }
+                    else if (outcome.Status == BackupStatus.Failed && StillValid())
+                        ArmAutoSyncBackoff();   // transient upload failure: capped exponential backoff
+                    else if (outcome.Status == BackupStatus.TooLarge)
+                        SimHub.Logging.Current.Warn("[Trueforce] Auto-sync paused: the backup is too large to upload. " + outcome.Message);
+                    // Forbidden / NotSignedIn / TooLarge are PERMANENT: leave dirty set but do NOT
+                    // re-arm (no spin). The next user edit re-primes a fresh prompt attempt.
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[Trueforce] Auto-sync error: " + ex.Message);
+                    ArmAutoSyncBackoff();   // unexpected error mid-push: capped exponential backoff, don't wait for the next edit
+                }
+                finally { _backupOp.Release(); }
+            });
+        }
+
+        /// <summary>Re-arm the debounced auto-backup to retry after a bail (slot contention, a
+        /// transient network error, an unexpected exception, or a divergence the pull reconciles
+        /// first). Without this, a push that can't complete sits dirty until the next user edit;
+        /// a settings-only change (no library file touched) isn't covered by the drift backstop, so
+        /// it would never sync on its own. No-op once clean or shutting down.</summary>
+        private void ArmAutoSyncRetry(int dueMs)
+        {
+            if (_shuttingDown || !_backupDirty) return;
+            try { _autoSyncTimer?.Change(dueMs, System.Threading.Timeout.Infinite); }
+            catch { /* timer disposed during shutdown */ }
+        }
+
+        // Consecutive transient push failures, for capped exponential backoff so a sustained
+        // outage doesn't re-arm at a flat interval forever. Reset on a clean push and on a new user
+        // edit (RequestAutoBackup), so a real edit always gets a prompt 2s attempt.
+        private int _autoSyncFails;
+
+        /// <summary>Re-arm a TRANSIENT-failure retry with capped exponential backoff
+        /// (4s, 8s, 16s, 32s, 64s, then 120s). Permanent outcomes (Forbidden / NotSignedIn /
+        /// TooLarge) must NOT call this. No-op once clean or shutting down.</summary>
+        private void ArmAutoSyncBackoff()
+        {
+            int delay = Math.Min(4000 << Math.Min(_autoSyncFails, 5), 120000);
+            _autoSyncFails++;
+            ArmAutoSyncRetry(delay);
+        }
+
+        // ---- Auto-pull (poll the cloud; fast-forward when local is clean, else silent smart-merge) ----
+
+        /// <summary>Ensure the cloud poll is running. Idempotent; call on startup, sign-in/out,
+        /// and the auto-sync toggle. The poll runs unconditionally once started. RunAutoPull
+        /// self-gates on signed-in + auto-sync + idle, so a tick is a cheap no-op otherwise.</summary>
+        public void UpdateAutoPullTimer()
+        {
+            if (_shuttingDown) return;
+            unchecked { _autoPullGen++; }   // invalidate any tick scheduled under the old state
+            try
+            {
+                if (_autoPullTimer == null)
+                    _autoPullTimer = new System.Threading.Timer(_ => RunAutoPull(), null,
+                        System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                // Poll unconditionally (first ~1.5s, then every 2s). Starting it regardless of
+                // current sign-in state avoids a STARTUP RACE: if the saved session restores AFTER
+                // Init (so IsSignedIn was false when Init called this) and no identity-change event
+                // re-fires, a state-gated timer would never start and the PC would never auto-pull
+                // until a manual toggle. RunAutoPull's own guards make an unwanted tick a no-op.
+                // Each idle tick is a metadata-only revision check (tiny GET /object/info, no
+                // supporter RLS, no app rate limit); the full envelope downloads only when the
+                // cloud revision actually moved, so a 2s poll stays cheap. Ticks never stack: the
+                // single-flight _backupOp.WaitAsync(0) no-ops a tick if one is already running.
+                _autoPullTimer.Change(1500, 2000);
+            }
+            catch { /* timer disposed during shutdown */ }
+        }
+
+        // ---- Revoke heartbeat (sign this device out promptly if its session was revoked elsewhere) ----
+
+        /// <summary>Start/stop the session-revoke heartbeat based on signed-in state. Idempotent;
+        /// call on startup and on every identity flip. Runs for ANY signed-in user (unlike the
+        /// auto-pull poll, which is auto-sync/supporter gated).</summary>
+        public void UpdateSessionHeartbeatTimer()
+        {
+            bool want = !_shuttingDown && _sessionClient != null && _auth != null && _auth.IsSignedIn;
+            unchecked { _sessionHeartbeatGen++; }   // invalidate any tick scheduled under stale state
+            try
+            {
+                if (want)
+                {
+                    if (_sessionHeartbeatTimer == null)
+                        _sessionHeartbeatTimer = new System.Threading.Timer(_ => RunSessionHeartbeat(), null,
+                            System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                    _sessionHeartbeatTimer.Change(60000, 180000);   // first check ~60s after sign-in, then every 3 min
+                }
+                else
+                {
+                    _sessionHeartbeatTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                }
+            }
+            catch { /* timer disposed during shutdown */ }
+        }
+
+        /// <summary>Fire one heartbeat check right now (e.g. when the Account tab opens) so a
+        /// revoke that just happened is noticed without waiting for the next timer tick.</summary>
+        internal void PokeSessionHeartbeat() => RunSessionHeartbeat();
+
+        // One heartbeat tick. Asks the server whether THIS device's session still exists; on a
+        // DEFINITIVE revoked answer (HTTP 200 + boolean false) it signs the device out locally.
+        // Active, and every Unknown (network/unreachable/4xx/5xx/timeout/parse), are ignored, so
+        // an outage never signs a healthy device out - mirrors GetAccessTokenAsync's "clear only
+        // on a definitive refresh rejection" discipline.
+        private void RunSessionHeartbeat()
+        {
+            int gen = _sessionHeartbeatGen;
+            // Single-flight: skip if a previous tick is still in flight (slow network).
+            if (System.Threading.Interlocked.CompareExchange(ref _sessionHeartbeatBusy, 1, 0) != 0) return;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    if (_shuttingDown || _sessionClient == null || _auth == null || !_auth.IsSignedIn) return;
+                    // The heartbeat doubles as a device-metadata upsert: it records this
+                    // device's name, last-used wheel, and plugin version (so the Account
+                    // session list can identify it) while returning the same liveness
+                    // tri-state. Identity (session_id/user_id) is server-derived from the
+                    // JWT; these args only DESCRIBE this device.
+                    string deviceName = Environment.MachineName;
+                    string wheel      = Settings?.LastUsedWheel;
+                    string version    = CurrentVersionString();
+                    SessionStatus status = await _sessionClient
+                        .SessionHeartbeatAsync(deviceName, wheel, version, System.Threading.CancellationToken.None)
+                        .ConfigureAwait(false);
+                    // Re-assert state after the await: a sign-out / account switch / shutdown during
+                    // the call makes this result stale, so it must not act.
+                    if (gen != _sessionHeartbeatGen || _shuttingDown || _auth == null || !_auth.IsSignedIn) return;
+                    if (status != SessionStatus.Revoked) return;   // Active or Unknown: leave the session alone
+
+                    SimHub.Logging.Current.Info("[Trueforce] Session was revoked from another device; signing this device out.");
+                    var disp = System.Windows.Application.Current?.Dispatcher;
+                    if (disp != null && !disp.CheckAccess())
+                        disp.Invoke(() => { try { _auth.SignOut(); } catch { } });
+                    else
+                        _auth.SignOut();
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Session heartbeat error: " + ex.Message); }
+                finally { System.Threading.Interlocked.Exchange(ref _sessionHeartbeatBusy, 0); }
+            });
+        }
+
+        // One poll tick. Cheap revision check first; only downloads + applies when the cloud
+        // actually moved. Defers while a session is live (re-applying effects / rebinding the
+        // telemetry source would blip FFB). Single-flights with manual/auto ops via _backupOp.
+        private void RunAutoPull()
+        {
+            int gen = _autoPullGen;
+            Task.Run(async () =>
+            {
+                if (_shuttingDown || Settings == null || !Settings.AutoSyncBackupEnabled) return;
+                if (_backupClient == null || _auth == null || !_auth.IsSignedIn) return;
+                if (IsGameRunning) return;                                        // don't apply mid-drive; a later idle tick will
+                // Capture the account we started under. Re-assert after EVERY await before applying,
+                // uploading, or stamping, so a sign-out / account switch during the (up to 90s)
+                // download can't apply or upload one account's data under another's identity.
+                string idAtStart = _auth.SignedInUserId ?? "";
+                bool StillValid() => gen == _autoPullGen && !_shuttingDown
+                    && _auth != null && _auth.IsSignedIn && Settings != null && Settings.AutoSyncBackupEnabled
+                    && string.Equals(_auth.SignedInUserId ?? "", idAtStart, StringComparison.Ordinal);
+                if (!await _backupOp.WaitAsync(0).ConfigureAwait(false)) return;  // an op is running; try next tick
+                try
+                {
+                    var (rev, cloudRev) = await _backupClient.GetRevisionAsync().ConfigureAwait(false);
+                    if (rev != BackupTransfer.Success) return;                    // NotFound (no cloud yet) / transient: nothing to pull
+                    string last = Settings?.BackupLastSyncedRevision ?? "";
+                    if (string.Equals(cloudRev ?? "", last, StringComparison.Ordinal))
+                    {
+                        // Cloud is current. Backstop for un-armed local library mutations (delete/
+                        // rename/duplicate/default change): a CHEAP metadata fingerprint (paths +
+                        // mtimes + sizes, no content reads) gates the authoritative content-vs-
+                        // baseline compare, so this periodic check stays fast as the library grows.
+                        // we only re-hash content when the fingerprint actually moved. Library-only,
+                        // so settings counters that auto-increment can't false-trigger it.
+                        if (!_backupDirty && StillValid())
+                        {
+                            string fp = BackupLibrary.Fingerprint(UserLibraryFolderForBackup());
+                            if (!string.Equals(fp, _lastLibFingerprint, StringComparison.Ordinal))
+                            {
+                                if (LocalLibraryDiffersFromBaseline()) RequestAutoBackup();
+                                _lastLibFingerprint = fp;
+                            }
+                        }
+                        return;
+                    }
+                    if (!StillValid()) return;
+
+                    var (dl, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
+                    if (dl != BackupTransfer.Success || !StillValid()) return;    // account/state may have changed during the download
+                    var cloudEnv = SafeParse(json);
+                    if (cloudEnv == null) return;
+
+                    if (!_backupDirty)
+                    {
+                        // Local clean: fast-forward to the cloud (no merge, nothing to lose).
+                        // If a local edit landed during the download, bail so the next tick merges
+                        // instead of this fast-forward clobbering it.
+                        if (!StillValid() || _backupDirty) return;
+                        ApplyRestoredEnvelope(cloudEnv, propagateDeletes: true);
+                        if (StillValid()) await StampSyncedRevisionAsync().ConfigureAwait(false);
+                        SimHub.Logging.Current.Info("[Trueforce] Auto-sync: pulled a newer backup from your other device.");
+                    }
+                    else
+                    {
+                        // Both sides changed: silent field-level 3-way merge. Preset libraries union
+                        // newest-wins; the portable settings merge per field against the last-synced
+                        // baseline, so each PC's edits to DIFFERENT fields both survive. Upload the
+                        // merge first (cloud is the shared truth), then apply locally.
+                        int changeGen = _backupChangeGen;   // detect a local edit during build+upload
+                        var localEnv = await Task.Run(() => BackupService.BuildEnvelope(
+                            Settings, UserLibraryFolderForBackup(), Environment.MachineName, DateTime.UtcNow)).ConfigureAwait(false);
+                        Newtonsoft.Json.Linq.JObject baseSettings = null, baseForza = null;
+                        System.Collections.Generic.Dictionary<string, string> baseLib = null;
+                        try
+                        {
+                            string bj = Settings?.BackupLastSyncedEnvelopeJson;
+                            if (!string.IsNullOrEmpty(bj))
+                            {
+                                var bo = Newtonsoft.Json.Linq.JObject.Parse(bj);
+                                baseSettings = bo["Settings"] as Newtonsoft.Json.Linq.JObject;
+                                baseForza    = bo["Forza"]    as Newtonsoft.Json.Linq.JObject;
+                                if (bo["Lib"] is Newtonsoft.Json.Linq.JObject libBase)
+                                {
+                                    baseLib = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                                    foreach (var p in libBase.Properties()) baseLib[p.Name] = (string)p.Value;
+                                }
+                            }
+                        }
+                        catch { /* missing/bad baseline: the 3-way merge degrades gracefully */ }
+                        var merged = BackupService.Merge(localEnv, cloudEnv, baseSettings, baseForza, baseLib, Environment.MachineName, DateTime.UtcNow);
+                        var up = await _backupClient.UploadAsync(BackupService.Serialize(merged)).ConfigureAwait(false);
+                        if (up != BackupTransfer.Success || !StillValid()) return;   // not a supporter / account changed: leave dirty
+                        if (changeGen == _backupChangeGen) _backupDirty = false;     // an edit during build+upload stays pending
+                        ApplyRestoredEnvelope(merged, propagateDeletes: true);
+                        if (StillValid()) await StampSyncedRevisionAsync().ConfigureAwait(false);
+                        SimHub.Logging.Current.Info("[Trueforce] Auto-sync: merged your changes with your other device.");
+                    }
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Auto-pull error: " + ex.Message); }
+                finally { _backupOp.Release(); }
+            });
+        }
+
+        // Backstop for the auto-push: true if the on-disk preset library differs from the
+        // last-synced baseline. catches a local mutation (delete/rename/duplicate/default change)
+        // that didn't arm the push directly, so it still syncs within a poll cycle. Library-only
+        // (file content hashes) so settings counters that auto-increment can't false-trigger it.
+        private bool LocalLibraryDiffersFromBaseline()
+        {
+            try
+            {
+                string bj = Settings?.BackupLastSyncedEnvelopeJson;
+                if (string.IsNullOrEmpty(bj)) return false;   // never synced yet: a real change arms normally
+                var baseLib = Newtonsoft.Json.Linq.JObject.Parse(bj)["Lib"] as Newtonsoft.Json.Linq.JObject;
+                var cur = BackupLibrary.Manifest(UserLibraryFolderForBackup());
+                if (cur.Count != (baseLib?.Count ?? 0)) return true;
+                if (baseLib != null)
+                    foreach (var kv in cur)
+                    {
+                        var bv = baseLib[kv.Key];
+                        if (bv == null || (string)bv != kv.Value) return true;
+                    }
+                return false;
+            }
+            catch { return false; }
+        }
+
+        // ---- small result helpers ----
+        private static BackupOutcome Fail(BackupStatus s, string msg) => new BackupOutcome { Status = s, Message = msg };
+        private BackupEnvelope SafeParse(string json)
+        {
+            try { return BackupService.Parse(json); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Backup envelope parse failed: " + ex.Message); return null; }
+        }
+        private static BackupOutcome FromTransfer(BackupTransfer t, string ctx)
+        {
+            switch (t)
+            {
+                case BackupTransfer.NotSignedIn:   return Fail(BackupStatus.NotSignedIn, "Sign-in expired; sign in again.");
+                case BackupTransfer.Forbidden:     return Fail(BackupStatus.Forbidden, "Backup is for supporters (coming soon).");
+                case BackupTransfer.NotConfigured: return Fail(BackupStatus.NotConfigured, "Backup is not configured.");
+                case BackupTransfer.TooLarge:      return Fail(BackupStatus.TooLarge, ctx + ": the backup is too large.");
+                case BackupTransfer.NotFound:      return Fail(BackupStatus.NothingToRestore, "No cloud backup found.");
+                default:                           return Fail(BackupStatus.Failed, ctx + ".");
+            }
         }
 
         // ---------- capture targeting ----------
@@ -13391,6 +15066,82 @@ namespace TrueforceForAll.Plugin
             return sb.ToString();
         }
 
+        // ---- pause-vs-quit disambiguation via the real process table ----
+        // SimHub detects games from their telemetry stream, so the instant a
+        // title goes quiet SimHub reports it as "not running". Forza Horizon
+        // stops its Data Out the moment you open the pause menu, which made the
+        // plugin announce "no game running" while the user was simply paused.
+        // To tell a genuine quit from a pause we look for the actual game
+        // process. The scan walks the whole process table, far too heavy for
+        // the ~60 Hz settings tick that reads this, so the result is cached for
+        // a couple of seconds. Only ever read from the UI thread (status pill +
+        // wheel-quiet diagnostic), so no lock is needed.
+        private string _gameProcCachedLabel;
+        private long   _gameProcCachedAtTicks;
+        private static readonly long GameProcRescanTicks = Stopwatch.Frequency * 2;  // 2 s
+
+        /// <summary>True when a known racing-game process is alive right now,
+        /// whether or not it's currently emitting telemetry. Lets callers tell
+        /// "paused / in a menu" (process up, telemetry quiet) apart from "game
+        /// closed" (process gone), instead of trusting SimHub's telemetry-based
+        /// detection, which drops out the instant a Forza pause stops the Data
+        /// Out feed. <paramref name="label"/> is the matched game's friendly
+        /// name, or null when nothing matched. Only ever returns true for a game
+        /// SimHub named earlier this session (the only thing a pause can be
+        /// "paused from"), which also keeps an idle SimHub from walking the
+        /// process table forever. Result cached ~2 s.</summary>
+        public bool IsKnownGameProcessRunning(out string label)
+        {
+            label = null;
+            // Nothing was ever detected this session: there's no paused game to
+            // rescue, so skip the process walk entirely.
+            if (string.IsNullOrEmpty(_lastNamedGame)) return false;
+
+            long now = Stopwatch.GetTimestamp();
+            if (_gameProcCachedAtTicks != 0 && now - _gameProcCachedAtTicks < GameProcRescanTicks)
+            {
+                label = _gameProcCachedLabel;
+                return label != null;
+            }
+            _gameProcCachedLabel   = ScanForGameProcess();
+            _gameProcCachedAtTicks = now;
+            label = _gameProcCachedLabel;
+            return label != null;
+        }
+
+        // Walk the process table once for a known game exe. Match priority
+        // mirrors the audio-capture scan: the curated exe map first, then a
+        // fuzzy match against the last game SimHub named (so an unmapped title
+        // whose exe resembles its name still rescues across a pause). Every
+        // Process handle is disposed; only the friendly label is returned.
+        private string ScanForGameProcess()
+        {
+            string fuzzyTarget = _lastNamedGame;
+            Process[] all;
+            try { all = Process.GetProcesses(); }
+            catch { return null; }
+
+            string found = null;
+            foreach (var p in all)
+            {
+                if (found == null)
+                {
+                    string pn = null;
+                    try { pn = p.ProcessName; } catch { /* exited mid-walk */ }
+                    if (!string.IsNullOrEmpty(pn))
+                    {
+                        if (ExeLabels.TryGetValue(pn, out string lbl))
+                            found = lbl;
+                        else if (!string.IsNullOrEmpty(fuzzyTarget)
+                                 && ProcessMatchesGameName(pn, fuzzyTarget))
+                            found = fuzzyTarget;
+                    }
+                }
+                try { p.Dispose(); } catch { }
+            }
+            return found;
+        }
+
         // The Process handle for the game we're currently capturing (or null).
         // We hold this so per-tick alive-checks use HasExited (cheap, uses the
         // existing handle) instead of re-walking the process table.
@@ -13430,6 +15181,7 @@ namespace TrueforceForAll.Plugin
                     _capturedProcess = null;
                     _audio.Stop();
                     _helperHost?.SetTargetPid(0);
+                    ExitStreamingGcMode();
                 }
 
                 // Scan path: walk the process table once. Match priority:
@@ -13504,6 +15256,7 @@ namespace TrueforceForAll.Plugin
                 _capturedProcess = keep;
                 _audio.Start(keep.Id);
                 _helperHost?.SetTargetPid(keep.Id);
+                EnterStreamingGcMode();
                 _captureStatus = $"Capturing {label} (PID {keep.Id})";
                 SimHub.Logging.Current.Info($"[Trueforce] {_captureStatus}.");
             }
@@ -13628,6 +15381,20 @@ namespace TrueforceForAll.Plugin
         }
 
         private void ProducerLoop()
+        {
+            // Put the synthesis thread in the MMCSS "Pro Audio" band at NORMAL
+            // priority (just below the 1 kHz pump's HIGH), so it is no longer
+            // the one render-stage thread left outside real-time scheduling.
+            // It feeds the device ring, so when it gets preempted the ring
+            // underruns and the auto-ratchet inflates latency; this keeps it
+            // scheduled promptly under game/GC load. Reverted when the thread
+            // exits (and best-effort: a no-op if MMCSS is unavailable).
+            using (TrueforceForAll.Core.MmcssScope.Enter(
+                       "Pro Audio", TrueforceForAll.Core.MmcssScope.PriorityNormal))
+                ProducerLoopCore();
+        }
+
+        private void ProducerLoopCore()
         {
             float[] buf = new float[BatchSamples];
 

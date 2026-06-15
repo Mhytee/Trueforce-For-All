@@ -129,6 +129,17 @@ namespace TrueforceForAll.Plugin
 
         private void StdoutPumpLoop()
         {
+            // Run the pipe-drain + DSP fan-out in the MMCSS "Pro Audio" band so
+            // this thread (which feeds the audio capture ring) matches the
+            // capture thread and the 1 kHz pump that already use it, instead of
+            // being the weakest scheduling link. NORMAL priority; best-effort.
+            using (TrueforceForAll.Core.MmcssScope.Enter(
+                       "Pro Audio", TrueforceForAll.Core.MmcssScope.PriorityNormal))
+                StdoutPumpLoopCore();
+        }
+
+        private void StdoutPumpLoopCore()
+        {
             try
             {
                 var stream = _helper.StandardOutput.BaseStream;

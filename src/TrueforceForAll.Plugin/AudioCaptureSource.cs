@@ -29,21 +29,24 @@ namespace TrueforceForAll.Plugin
         // Backing array sized to the maximum so SetRingCapacity can resize
         // live without reallocating; only `_ringCapacity` slots are in use.
         // Capacity must be a power of two (the head/tail wrap with `& (cap-1)`).
-        // At 4 kHz each sample is 0.25 ms, so 8=2ms, 16=4ms, 32=8ms,
-        // 64=16ms, 128=32ms.
+        // At 4 kHz each sample is 0.25 ms, so 16=4ms, 32=8ms, 64=16ms, 128=32ms.
         //
-        // Default starts at the minimum (8 = 2 ms) so users on low-latency
-        // audio drivers get the lowest possible round-trip out of the box,
-        // and users on slower hardware get auto-tuned up by the ratchet.
-        // WASAPI loopback (via IAudioClient3) typically fires at ~3 ms with
-        // ~12 decimated samples per burst, so on most systems the very
-        // first noisy moment will trigger a ratchet UP to 16 (4 ms, the
-        // safe default for typical hardware). Subsequent quiet sessions
-        // ratchet back DOWN, so the system self-tunes to whatever the
-        // user's hardware actually needs.
+        // Floor is 16, not 8, and this is structural rather than a tuning
+        // choice. The helper hands us one WASAPI engine period per stdout read
+        // (>= 128 frames == 2.67 ms even at the OS minimum shared-mode period),
+        // which decimates to ~10.7 samples, and OnDataAvailable pushes that
+        // whole burst into the ring under ONE _ringLock acquisition (the
+        // consumer cannot interleave). A ring of usable depth cap-1 = 7 (at
+        // cap 8) therefore laps on every single burst, ratcheting straight to
+        // 16 within ~2 s of audible clicks. 16 (usable 15) holds one engine
+        // period with headroom. Mean dwell is burst-bounded (~1.3-1.5 ms), NOT
+        // the 4 ms capacity, so flooring at 16 costs ~0 ms of real latency and
+        // removes the start-of-session glitch storm. Heavier WASAPI delivery
+        // (10 ms default period in menus, ~40 samples) still ratchets up to
+        // 32/64 as needed and shrinks back down once it settles.
         public const int MaxRingSamples     = 128;     // power of two
-        public const int MinRingSamples     = 8;       // power of two
-        public const int DefaultRingSamples = 8;       // 2 ms, start low, ratchet auto-tunes up if needed
+        public const int MinRingSamples     = 16;      // power of two; 8 is unreachable (one WASAPI burst > 7 usable slots)
+        public const int DefaultRingSamples = 16;      // 4 ms; the real in-game engine-period floor
 
         private int _ringCapacity = DefaultRingSamples;
         public int RingCapacity => System.Threading.Volatile.Read(ref _ringCapacity);

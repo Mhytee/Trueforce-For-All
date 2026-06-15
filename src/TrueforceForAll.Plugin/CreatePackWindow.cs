@@ -197,7 +197,7 @@ namespace TrueforceForAll.Plugin
                 if (_plugin?.Settings?.CommunityEnabled != true)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Enable Community Contributions in Settings first.";
+                    statusText.Text = "Turn on 'Use community car data' on the Account tab first.";
                     return;
                 }
                 if (!_plugin.AuthIsSignedIn)

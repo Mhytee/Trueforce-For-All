@@ -54,6 +54,24 @@ namespace TrueforceForAll.Core
 
         public static bool IsUnverified(ushort pid) => UnverifiedPids.Contains(pid);
 
+        /// <summary>Bare chassis label for the Account session list / "last used wheel":
+        /// strips the "Logitech " prefix and the " Racing Wheel"/console-transport suffix,
+        /// e.g. "Logitech G PRO Racing Wheel (Xbox/PC)" -> "G PRO", "Logitech RS50" -> "RS50",
+        /// "Logitech G923 (PS/PC)" -> "G923". Keeps VID/PID out of the human-facing label.</summary>
+        public static string ShortModel(string fullModel)
+        {
+            if (string.IsNullOrEmpty(fullModel)) return null;
+            string s = fullModel.Trim();
+            const string prefix = "Logitech ";
+            if (s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(prefix.Length);
+            int cut = s.IndexOf(" Racing Wheel", StringComparison.OrdinalIgnoreCase);
+            if (cut < 0) cut = s.IndexOf(" (", StringComparison.Ordinal);
+            if (cut > 0) s = s.Substring(0, cut);
+            s = s.Trim();
+            return s.Length == 0 ? null : s;
+        }
+
         // True when (vid,pid) is one of our supported Trueforce wheels. Used to
         // tell a "USBPcap can't see the FFB" problem apart from "the user pinned
         // a device that isn't even a wheel" so we give the right guidance.

@@ -1,0 +1,275 @@
+// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
+//
+// A backup must reproduce a user's setup on a SECOND PC. The live settings blob
+// mixes three kinds of field:
+//   1. Portable  - the user's actual choices (effects, feel, presets, car facts).
+//                  These travel.
+//   2. Machine   - things physically tied to THIS PC (USB bus pins, absolute
+//                  paths, ring sizes, the bind address). Restoring these onto PC2
+//                  breaks its FFB capture, so they NEVER travel.
+//   3. Excluded  - portable in principle but unsafe to re-apply (one-time
+//                  migration latches would skip migrations PC2 still needs) or
+//                  valueless to carry (nag/learned/UI state, runtime caches
+//                  rebuilt from the on-disk preset library).
+//
+// Design rule (see docs/preset-sharing-design.md, Phase 2): the projection is an
+// explicit ALLOWLIST, not "serialize everything minus a blocklist." A newly added
+// field is therefore NOT backed up until someone classifies it, so a new machine
+// field can never silently travel and brick PC2. FindUnclassifiedFields() is the
+// guard that fails loudly the moment a field is added without a classification.
+//
+// Restore MERGES the portable subset onto PC2's live settings (Populate only
+// writes the keys present in the projection), so PC2 keeps its own machine fields.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
+namespace TrueforceForAll.Plugin
+{
+    /// <summary>Builds and restores the portable subset of <see cref="TrueforceSettings"/>
+    /// for cloud backup/sync. Pure data + JSON; no network, no file I/O (the preset
+    /// library files are bundled by a separate step that owns the folder API).</summary>
+    public static class BackupProjection
+    {
+        public const int SchemaVersion = 1;
+
+        // ---- Classification of every top-level TrueforceSettings property ----
+        // Keep these in sync with the field list; FindUnclassifiedFields() enforces
+        // that every property lands in exactly one bucket (Forza is the lone Partial).
+
+        /// <summary>Travels to PC2. The default for a setting that is a genuine user choice.</summary>
+        public static readonly HashSet<string> Portable = new HashSet<string>(StringComparer.Ordinal)
+        {
+            // Feature toggles the user opted into.
+            "PluginEnabled", "MairaFfbPassthrough", "RpmLedsEnabled", "ShowFeedbackBox",
+            "ShowAchievementCelebrations",
+            "CommunityEnabled", "AutoUpdateDownloadedPresets",
+            // Earned access-code unlocks (not machine-bound; the user unlocked them).
+            "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
+            "DevModeUnlocked", "ImportPreviewBypass",
+            // Global feel / FFB shaping.
+            "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
+            "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
+            "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "SkipFfbPassthrough",
+            "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
+            "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
+            // Per-effect settings blocks (all taste).
+            "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
+            "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
+            // Per-game/car data + the custom-engine library (lives in settings, not files).
+            "GameEnabled", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
+            "CustomEngines", "SharingAuthor",
+            // Active-slot download tracking. Travels with the preset files it tracks.
+            // POST-RESTORE the caller must re-mount slots so this re-references the
+            // active slot (see ApplySettings remarks).
+            "DownloadedCommunityPresets",
+        };
+
+        /// <summary>Physically tied to this PC. Never travels (would break PC2).</summary>
+        public static readonly HashSet<string> MachineLocal = new HashSet<string>(StringComparer.Ordinal)
+        {
+            // USB bus topology / pinned device identity (per machine + per port).
+            "UsbPcapCmdPathOverride", "ManualUsbPcapInterface", "ManualUsbPcapDeviceAddress",
+            "ManualUsbPcapVid", "ManualUsbPcapPid",
+            // Absolute filesystem paths (SimHub may be installed elsewhere on PC2).
+            "BuiltinPresetsFolder", "UserImportsFolder", "UserLibraryFolder",
+            // Ring sizes are a property of this machine's CPU/scheduler.
+            "Performance",
+            // Identity / security: the auth session and the install-local slot keying.
+            "AuthSession", "UserSlots", "ActiveSlotKey", "LegacyDataOwnerEmail",
+            // Last wheel detected on this PC (Account session list display); per-PC hardware.
+            "LastUsedWheel",
+            // Rebuildable local cache.
+            "CarCylinderCache", "CarCylinderCacheVersion",
+            // Cloud-backup sync bookkeeping (per-PC sync point; never itself backed up).
+            "BackupLastSyncedRevision", "BackupLastSyncedEnvelopeJson",
+            // Auto-sync opt-in is per-PC (a restored second PC must not auto-push unprompted).
+            "AutoSyncBackupEnabled",
+            // DEV-only supporter-badge display override (never backed up; display-only).
+            "DevSupporterBadgeOverride",
+            // DEV-only "show secret achievements" toggle (display-only; per-PC).
+            "DevShowAllAchievements",
+        };
+
+        /// <summary>Excluded for SAFETY (re-applying breaks PC2) or no value, NOT because
+        /// machine-bound. Migration latches, nag/learned/UI state, and the runtime caches
+        /// that are rebuilt from the on-disk preset library on the next Init.</summary>
+        public static readonly HashSet<string> Excluded = new HashSet<string>(StringComparer.Ordinal)
+        {
+            // One-time migration latches: carrying "already migrated = true" onto an
+            // older plugin on PC2 would skip migrations it still needs.
+            "CarFactsMigratedV1", "FeedbackBoxDefaultedOn", "ManualOverrideClearedV0_1_22",
+            "PresetsMigratedV2", "CarsMigratedV2", "LegacyBuiltinsCleanedV1",
+            "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
+            "RevLimiterThresholdDefaultMigrated",
+            // Backend config (release bakes constants; a dev override must not travel).
+            "CommunityBackendUrl", "CommunityBackendAnonKey",
+            // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
+            "CarFactsDismissedSignatures", "CarFactsFirstObservedSignature",
+            "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
+            "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
+            "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed",
+            "ExperimentalSuccessReportDismissed", "LogUsbBytesEnabled",
+            // Per-account achievement-celebration baseline + notify-dot (re-seed on PC2).
+            "AchievementBaseline", "AchievementUnseen",
+            // Preset-manager UI layout.
+            "ManagerCommunityForCars", "ManagerCommunityForGames", "ManagerCommunityForCustoms",
+            "ManagerCommunityForPacks", "ManageGamesSort", "ManageCarsSort", "ManageCustomsSort",
+            "ManageGamesColumns", "ManageCarsColumns", "ManageCustomsColumns",
+            // Runtime caches of the on-disk library: back up the FILES, not these dicts.
+            // They are rebuilt from user/games + user/cars on the next Init.
+            "Presets", "GameDefaults", "CarDefaults", "CarOverrides", "GamePresets",
+            // Learned-per-machine redline set (re-learns from telemetry on PC2).
+            "GamesWithRedline",
+        };
+
+        // Forza is the one PARTIAL field: the listener preference (Enabled + Port)
+        // travels, but its network addresses (BindAddress/Forward*) are machine-local.
+        // A PC1 BindAddress that does not exist on PC2 would fail the UDP bind and
+        // silently kill Forza telemetry, so Forza is split at field level.
+        public const string PartialForza = "Forza";
+        public static readonly string[] ForzaPortableFields = { "Enabled", "Port" };
+
+        private static JsonSerializer CreateSerializer()
+        {
+            // Replace (not the default Auto/merge) so that on restore each portable
+            // collection/object property is rebuilt wholesale from the backup rather
+            // than merged into PC2's existing value. Without this, List<T> properties
+            // (CustomEngines, ...) would APPEND on Populate and duplicate every entry.
+            return new JsonSerializer { ObjectCreationHandling = ObjectCreationHandling.Replace };
+        }
+
+        /// <summary>Project the portable subset of <paramref name="settings"/> into a
+        /// backup envelope. Caller fills <see cref="BackupEnvelope.Library"/> with the
+        /// on-disk preset files in a later step.</summary>
+        public static BackupEnvelope Build(TrueforceSettings settings, string deviceLabel, DateTime createdUtc)
+        {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+            var full = JObject.FromObject(settings, CreateSerializer());
+
+            var portable = new JObject();
+            foreach (var key in Portable)
+            {
+                var tok = full[key];
+                if (tok != null) portable[key] = tok;
+            }
+
+            JObject forza = null;
+            if (full["Forza"] is JObject f)
+            {
+                forza = new JObject();
+                foreach (var sub in ForzaPortableFields)
+                    if (f[sub] != null) forza[sub] = f[sub];
+            }
+
+            return new BackupEnvelope
+            {
+                SchemaVersion = SchemaVersion,
+                CreatedUtc = createdUtc.ToString("o"),
+                DeviceLabel = deviceLabel ?? string.Empty,
+                Settings = portable,
+                Forza = forza,
+                Library = new Dictionary<string, BackupFile>(StringComparer.OrdinalIgnoreCase),
+            };
+        }
+
+        /// <summary>Merge the envelope's portable settings onto a live settings object.
+        /// Only the keys present in the projection are written; every machine-local and
+        /// excluded field on <paramref name="live"/> is left untouched.</summary>
+        /// <remarks>POST-CONDITION: the caller must re-mount user slots after this so
+        /// <c>DownloadedCommunityPresets</c> re-references the active slot (this method
+        /// replaces the dictionary reference). The on-disk preset library is restored by
+        /// the separate library step, not here.</remarks>
+        public static void ApplySettings(BackupEnvelope env, TrueforceSettings live)
+        {
+            if (env == null || live == null) return;
+
+            if (env.Settings != null)
+            {
+                // Defensive: only apply keys STILL classified Portable. Guards against an
+                // older backup carrying a field that has since been reclassified
+                // machine-local/excluded (it must not be written onto this PC).
+                var filtered = new JObject();
+                foreach (var prop in env.Settings.Properties())
+                    if (Portable.Contains(prop.Name)) filtered[prop.Name] = prop.Value;
+                using (var reader = filtered.CreateReader())
+                    CreateSerializer().Populate(reader, live);
+            }
+
+            // Forza: merge only the two portable fields onto the existing instance so
+            // PC2's bind/forward addresses survive.
+            if (env.Forza != null && live.Forza != null)
+            {
+                if (env.Forza["Enabled"] != null) live.Forza.Enabled = env.Forza["Enabled"].Value<bool>();
+                if (env.Forza["Port"] != null) live.Forza.Port = env.Forza["Port"].Value<int>();
+            }
+        }
+
+        /// <summary>Guard: every public read/write property of TrueforceSettings must be
+        /// classified into exactly one bucket. Returns the unclassified property names
+        /// (empty = healthy). Surfaced as a DEV-panel self-test so adding a settings field
+        /// without classifying it fails loudly instead of silently dropping from backups.</summary>
+        public static IReadOnlyList<string> FindUnclassifiedFields()
+        {
+            var classified = new HashSet<string>(StringComparer.Ordinal);
+            classified.UnionWith(Portable);
+            classified.UnionWith(MachineLocal);
+            classified.UnionWith(Excluded);
+            classified.Add(PartialForza);
+
+            var missing = new List<string>();
+            foreach (var p in typeof(TrueforceSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!p.CanRead || !p.CanWrite) continue;
+                if (!classified.Contains(p.Name)) missing.Add(p.Name);
+            }
+            return missing;
+        }
+
+        /// <summary>Guard: a property classified into more than one bucket (drift after a
+        /// copy/paste edit). Returns the offending names (empty = healthy).</summary>
+        public static IReadOnlyList<string> FindDoubleClassifiedFields()
+        {
+            return Portable.Concat(MachineLocal).Concat(Excluded).Concat(new[] { PartialForza })
+                .GroupBy(x => x, StringComparer.Ordinal)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+        }
+    }
+
+    /// <summary>Serializable backup payload. Tiny enough (presets are 0.3-2.5 KB JSON,
+    /// the whole envelope ~1-3 MB) to store as one JSON object, no zip needed.</summary>
+    public sealed class BackupEnvelope
+    {
+        public int SchemaVersion { get; set; }
+        public string CreatedUtc { get; set; }
+        public string DeviceLabel { get; set; }
+
+        /// <summary>Portable top-level settings keys (NO Forza, NO machine/excluded fields).</summary>
+        public JObject Settings { get; set; }
+
+        /// <summary>Forza's portable fields only ({Enabled, Port}), or null.</summary>
+        public JObject Forza { get; set; }
+
+        /// <summary>Preset-library files: relative path under the user library root ->
+        /// file text + last-modified time. Filled by the library-bundling step;
+        /// ModifiedUtc powers the newest-wins merge.</summary>
+        public Dictionary<string, BackupFile> Library { get; set; }
+    }
+
+    /// <summary>One backed-up preset-library file: verbatim text plus the last-write
+    /// time captured at bundle. ModifiedUtc is preserved across restore (the file's
+    /// last-write-time is re-stamped) so newest-wins comparisons stay meaningful after
+    /// a sync, instead of a restored-but-unedited file looking newer than its origin.</summary>
+    public sealed class BackupFile
+    {
+        public string   Text        { get; set; }
+        public DateTime ModifiedUtc { get; set; }
+    }
+}

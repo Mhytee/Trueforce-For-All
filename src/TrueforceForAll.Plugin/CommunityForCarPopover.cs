@@ -104,7 +104,7 @@ namespace TrueforceForAll.Plugin
             var footer = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
             var seeAllBtn = new Button
             {
-                Content = "See all in Preset Manager...",
+                Content = "See all in Preset Manager…",
                 Padding = new Thickness(0), Margin = new Thickness(0),
                 Background = Brushes.Transparent, BorderBrush = Brushes.Transparent,
                 Foreground = LinkFg, FontSize = 11,

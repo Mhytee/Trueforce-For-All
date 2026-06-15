@@ -840,6 +840,16 @@ namespace TrueforceForAll.Core
 
         private void ReaderLoop()
         {
+            // Register the pcap reader in the MMCSS "Pro Audio" band (NORMAL) so
+            // a freshly captured FFB force is latched promptly even under game
+            // CPU load; the 1 kHz pump that consumes it is already in this band.
+            // Best-effort, reverted when the thread exits.
+            using (MmcssScope.Enter("Pro Audio", MmcssScope.PriorityNormal))
+                ReaderLoopCore();
+        }
+
+        private void ReaderLoopCore()
+        {
             // Outer loop owns BOTH discovery (when there's no manual override)
             // and capture. Splitting them here means a stale-cache failure on
             // first try can be recovered by replugging the wheel mid-session
@@ -1025,6 +1035,13 @@ namespace TrueforceForAll.Core
             }) { IsBackground = true, Name = "UsbPcapFfbTap-stderr" }.Start();
         }
 
+        // Reusable 16-byte pcap record-header buffer. Reused across the parse
+        // loop so the wheel's ~250-1000+ Hz OUT-report stream doesn't allocate a
+        // fresh array per packet (steady Gen0 fuel that contributes to the
+        // GC-pause-driven ring underruns). Safe to reuse: the header is only read
+        // for caplen and handed to MaybeLogPcap, whose first param is discarded.
+        private readonly byte[] _recHdr = new byte[16];
+
         private void ParseStream()
         {
             var s = _proc.StandardOutput.BaseStream;
@@ -1040,8 +1057,8 @@ namespace TrueforceForAll.Core
 
             while (!_stopping)
             {
-                byte[] rh = ReadExact(s, 16);
-                int caplen = BitConverter.ToInt32(rh, 8);
+                ReadExactInto(s, _recHdr, 0, 16);
+                int caplen = BitConverter.ToInt32(_recHdr, 8);
                 if (caplen <= 0 || caplen > 65535)
                     throw new InvalidDataException($"caplen={caplen}");
                 if (payload.Length < caplen) payload = new byte[caplen];
@@ -1068,7 +1085,7 @@ namespace TrueforceForAll.Core
                 // running the call early is a no-op there. MaybeLogPcap is
                 // itself a cheap null-check when the toggle is off.
                 bool isOut = (ep & 0x80) == 0;
-                if (isOut) MaybeLogPcap(rh, payload, caplen);
+                if (isOut) MaybeLogPcap(_recHdr, payload, caplen);
 
                 if (dev != _deviceAddress) continue;
                 PacketsForOurDevice++;

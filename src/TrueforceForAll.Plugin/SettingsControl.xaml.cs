@@ -64,6 +64,11 @@ namespace TrueforceForAll.Plugin
         // Lets us exercise the setup-banner -> "Set up..." -> jump flow without a
         // live (broken) Forza session.
         private int _forceUdpSetupBanner;
+        // FZBANNERS test code: 0 = off, 1 = force the two info-tier Forza banners
+        // (SimHub-fallback notice + discovered-port banner) visible so their
+        // InfoBannerButton styling can be eyeballed without a live Forza session
+        // in the relevant telemetry state.
+        private int _forceForzaInfoBanners;
         // CarIds we've already prompted to submit engine data for in this
         // SimHub session. The save-time prompt only fires for cars with no
         // Keyed on "{carId}|{layoutEnum}" so each distinct layout pick gets
@@ -247,21 +252,29 @@ namespace TrueforceForAll.Plugin
                     // welcome modal / community-update check don't get
                     // silently suppressed by the prior user's gate.
                     _plugin.AuthIdentityChanged += OnAuthIdentityChanged;
+                    // A cloud sync (pull/merge/restore) applies new values into Settings; refresh
+                    // the visible sliders so a change synced from another PC shows live, not only
+                    // after navigating away and back.
+                    _plugin.LibraryReloaded += OnLibraryReloadedRefreshUi;
                 }
                 // SimHub caches this control, so navigating away and back does NOT
                 // rebuild it. Re-pull values on every (re)load so edits made
                 // elsewhere while we were hidden (e.g. the home-screen Feedback
                 // gain tile) are reflected instead of showing stale slider values.
                 RefreshFromPlugin();
+                _ = RefreshAchievementsAndNotifyAsync();
             };
             Unloaded += (_, __) =>
             {
                 _meterTimer.Stop();
+                try { DismissToast(); } catch { }
+                try { _discordLinkCts?.Cancel(); } catch { }
                 if (_plugin != null)
                 {
                     _plugin.AuthIdentityChanged -= OnAuthIdentityChanged;
                     _plugin.AutoRatchetBumped -= OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally -= OnMasterGainChangedExternally;
+                    _plugin.LibraryReloaded -= OnLibraryReloadedRefreshUi;
                 }
             };
         }
@@ -284,25 +297,45 @@ namespace TrueforceForAll.Plugin
         private void OnAuthIdentityChanged(string newSlotKey)
         {
             _welcomeTriggeredThisSession        = false;
+            WelcomeWindow.ShownThisSession      = false;
             _communityUpdatesCheckedThisSession = false;
             // Forget the last-shown car/game so RefreshFromPlugin's
             // per-change-driven nudges (welcome trigger, refresh) run
             // again for the new user instead of being suppressed.
             _lastShownCarId = null;
             _lastShownGame  = null;
-            // Invalidate any in-flight account stats fetch from the prior user.
-            unchecked { ++_accountStatsGen; }
-            // Refresh visible UI state immediately - the new user's
-            // sharing author + community count + account expander
-            // should reflect the new identity.
-            try { RefreshAccountRow(); } catch { }
-            try { RefreshFromPlugin(); } catch { }
+            // Invalidate any in-flight account stats / Discord-row fetch from the prior user,
+            // and cancel any in-flight Discord link so it can't strand the new user's panel.
+            unchecked { ++_accountStatsGen; ++_discordRowGen; }
+            try { _discordLinkCts?.Cancel(); } catch { }
+            // Refresh visible UI state for the new identity. This event can arrive on a
+            // thread-pool thread (the auth client awaits with ConfigureAwait(false)), so marshal
+            // all UI work to the dispatcher. The achievement baseline is account-keyed, so no
+            // destructive reset is needed here.
+            Action ui = () =>
+            {
+                try { RefreshAccountRow(); } catch { }
+                try { RefreshFromPlugin(); } catch { }
+                _ = RefreshAchievementsAndNotifyAsync();
+            };
+            if (Dispatcher.CheckAccess()) ui();
+            else Dispatcher.BeginInvoke(ui);
         }
 
         // A bound controller button (Controls tab) nudged master gain while the
         // panel is open. Mirror the new value into the slider without re-firing
         // its ValueChanged (the plugin already applied + persisted it), then
         // surface the unsaved-preset state the way a manual drag would.
+        // A cloud restore/sync reloaded settings into the plugin; re-pull every visible control so
+        // a change synced from another device reflects on screen immediately (not just after
+        // navigating away and back). Marshalled to the UI thread; RefreshFromPlugin suppresses
+        // change events so this can't fire a spurious edit / re-sync.
+        private void OnLibraryReloadedRefreshUi()
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnLibraryReloadedRefreshUi)); return; }
+            try { RefreshFromPlugin(); } catch { }
+        }
+
         private void OnMasterGainChangedExternally()
         {
             Dispatcher.BeginInvoke(new Action(() =>
@@ -347,6 +380,8 @@ namespace TrueforceForAll.Plugin
                     CommunityEnabledCheck.IsChecked = _plugin.Settings?.CommunityEnabled == true;
                 if (AutoUpdateDownloadedPresetsCheck != null)
                     AutoUpdateDownloadedPresetsCheck.IsChecked = _plugin.Settings?.AutoUpdateDownloadedPresets == true;
+                if (AutoSyncBackupCheck != null)
+                    AutoSyncBackupCheck.IsChecked = _plugin.Settings?.AutoSyncBackupEnabled == true;
                 RefreshCommunityAuthRow();
 
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
@@ -668,12 +703,26 @@ namespace TrueforceForAll.Plugin
                     // redline above the limiter); falls back to
                     // 15000 RPM when no MaxRpm is observed yet.
                     double observedMax = _plugin?.EnginePulse?.ObservedMaxRpm ?? 0;
-                    double sliderMax = observedMax >= 1000 ? observedMax : 15000;
-                    if (sliderMax < 1000) sliderMax = 15000;
+                    bool haveRealMax = observedMax >= 1000;
+                    double sliderMax = haveRealMax ? observedMax : 15000;
                     RevLimiterRedlineSlider.Maximum = sliderMax;
-                    int rpmValue = rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500
-                        ? rl.RedlineRpm.Value
-                        : (int)Math.Round(sliderMax * 0.85);
+                    // Pre-fill rules:
+                    //   1. Saved RedlineRpm wins.
+                    //   2. Else 0.85 * observed MaxRpm, but only when
+                    //      MaxRpm has actually been observed. Without
+                    //      this guard the slider falls back to
+                    //      0.85 * 15000 ≈ 12750, which displays as a
+                    //      misleading "estimated 12000" before
+                    //      telemetry arrives. Show the slider at its
+                    //      minimum instead and let the badge text
+                    //      tell the story until telemetry settles.
+                    int rpmValue;
+                    if (rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
+                        rpmValue = rl.RedlineRpm.Value;
+                    else if (haveRealMax)
+                        rpmValue = (int)Math.Round(observedMax * 0.85);
+                    else
+                        rpmValue = (int)RevLimiterRedlineSlider.Minimum;
                     RevLimiterRedlineSlider.Value = rpmValue;
                     RevLimiterRedlineText.Text    = rpmValue.ToString();
                     RevLimiterOffsetSlider.Value = rl.RedlineOffsetRpm;
@@ -1082,33 +1131,8 @@ namespace TrueforceForAll.Plugin
                     CheckForUpdatesStatus.Visibility = System.Windows.Visibility.Visible;
                 }
 
-                // Community-update "Check now" link. Visible only when
-                // community is enabled AND the user has at least one
-                // downloaded community preset (otherwise nothing to check).
-                bool wantCommunityCheck =
-                    _plugin?.Settings?.CommunityEnabled == true
-                    && _plugin.Settings.DownloadedCommunityPresets != null
-                    && _plugin.Settings.DownloadedCommunityPresets.Count > 0;
-                if (CommunityCheckNowBtn != null)
-                {
-                    var want = wantCommunityCheck ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-                    if (CommunityCheckNowBtn.Visibility != want) CommunityCheckNowBtn.Visibility = want;
-                }
-                if (CommunityCheckNowStatus != null)
-                {
-                    // The status TextBlock follows the button - hide it when
-                    // the button is hidden, and clear stale text so the
-                    // pending 5s fade in CommunityCheckNowBtn_Click doesn't
-                    // race a downloaded-list emptying that hides the button
-                    // (the "captured == Text" guard would be wrong if the
-                    // button reappeared later with old text still set).
-                    if (!wantCommunityCheck && !string.IsNullOrEmpty(CommunityCheckNowStatus.Text))
-                        CommunityCheckNowStatus.Text = "";
-                    bool showStatus = wantCommunityCheck
-                        && !string.IsNullOrEmpty(CommunityCheckNowStatus.Text);
-                    var want = showStatus ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-                    if (CommunityCheckNowStatus.Visibility != want) CommunityCheckNowStatus.Visibility = want;
-                }
+                // (The header "check community for updates" link was removed; community-preset
+                // update review lives in the Preset browser's updates chip.)
 
                 // "What's new" banner + per-effect NEW badges. Both driven by
                 // the plugin's SeenEffects / LastSeenVersion state.
@@ -1351,14 +1375,15 @@ namespace TrueforceForAll.Plugin
                     if (ForzaDiscoveryBanner != null)
                     {
                         int alt = _plugin.DiscoveredAlternatePort;
-                        bool show = fzSrc != null && alt > 0;
+                        bool show = _forceForzaInfoBanners == 1 || (fzSrc != null && alt > 0);
                         ForzaDiscoveryBanner.Visibility = show
                             ? System.Windows.Visibility.Visible
                             : System.Windows.Visibility.Collapsed;
                         if (show && ForzaDiscoveryText != null)
                         {
-                            ForzaDiscoveryText.Text =
-                                $"Forza packets detected on port {alt}. Switch to it?";
+                            ForzaDiscoveryText.Text = alt > 0
+                                ? $"Forza packets detected on port {alt}. Switch to it?"
+                                : "Forza packets detected on a different port. Switch to it?";
                         }
                     }
                 }
@@ -1373,7 +1398,7 @@ namespace TrueforceForAll.Plugin
                 bool onSimHubFallback = _plugin.ForzaOnSimHubFallback;
                 if (onSimHubFallback) forzaNeedsSetup = false;
                 UpdateUdpSetupBanner(forzaNeedsSetup);
-                UpdateForzaFallbackBanner(onSimHubFallback);
+                UpdateForzaFallbackBanner(onSimHubFallback || _forceForzaInfoBanners == 1);
             }
 
             // Telemetry-source line in Diagnostics: source name + live measured Hz,
@@ -1556,7 +1581,18 @@ namespace TrueforceForAll.Plugin
             if (!enabled)                       { text = "Disabled";              bg = PillGreyBg;  dot = PillGreyDot;  }
             else if (!wheelOk)                  { text = "Wheel not detected";    bg = PillAmberBg; dot = PillAmberDot; }
             else if (!streamOk)                 { text = "Stream stopped";        bg = PillAmberBg; dot = PillAmberDot; }
-            else if (!gameOn)                   { text = "Ready";                 bg = PillGreenBg; dot = PillGreenDot; }
+            else if (!gameOn)
+            {
+                // SimHub reports no telemetry-emitting game. Before falling back
+                // to the green "Ready" idle state (which reads as "no game"),
+                // check the real process table: Forza Horizon stops its Data Out
+                // the moment you pause, so the game can be very much running
+                // while SimHub says otherwise. A live process means paused / in
+                // a menu, not back at the desktop.
+                if (_plugin.IsKnownGameProcessRunning(out _))
+                                                { text = "In menu / paused";      bg = PillAmberBg; dot = PillAmberDot; }
+                else                            { text = "Ready";                 bg = PillGreenBg; dot = PillGreenDot; }
+            }
             else if (hz > 0 && useful)          { text = "Active";                bg = PillGreenBg; dot = PillGreenDot; }
             else if (hz > 0)                    { text = "Audio only";            bg = PillMutedBg; dot = PillMutedDot; }
             else                                { text = "Waiting for telemetry"; bg = PillAmberBg; dot = PillAmberDot; }
@@ -2115,7 +2151,7 @@ namespace TrueforceForAll.Plugin
                     HeaderGameShareBtn.Visibility = Visibility.Visible;
                     HeaderGameShareBtn.IsEnabled  = shareable;
                     if (isBuiltin)
-                        HeaderGameShareBtn.ToolTip = "This is a built-in preset and ships with the plugin -- no need to re-share.";
+                        HeaderGameShareBtn.ToolTip = "This is a built-in preset and ships with the plugin. There's no need to re-share it.";
                     else if (isCommunity)
                         HeaderGameShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
                     else if (headerGameMatchesUpload)
@@ -2250,7 +2286,7 @@ namespace TrueforceForAll.Plugin
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
                     "Share preset",
-                    "Enable Community Contributions in Settings to share presets.",
+                    "Turn on 'Use community car data' on the Account tab to share presets.",
                     DialogKind.Info);
                 return;
             }
@@ -2270,7 +2306,7 @@ namespace TrueforceForAll.Plugin
             {
                 TrueforceDialog.Show(owner,
                     "Share preset",
-                    "Pick a username before sharing (Settings > Account & community).",
+                    "Pick a username before sharing (Account tab).",
                     DialogKind.Info);
                 return;
             }
@@ -2395,7 +2431,7 @@ namespace TrueforceForAll.Plugin
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
                     "Share preset",
-                    "Enable Community Contributions in Settings to share presets.",
+                    "Turn on 'Use community car data' on the Account tab to share presets.",
                     DialogKind.Info);
                 return;
             }
@@ -2428,7 +2464,7 @@ namespace TrueforceForAll.Plugin
             {
                 TrueforceDialog.Show(owner,
                     "Share preset",
-                    "Pick a username before sharing (Settings > Account & community).",
+                    "Pick a username before sharing (Account tab).",
                     DialogKind.Info);
                 return;
             }
@@ -2923,7 +2959,7 @@ namespace TrueforceForAll.Plugin
                     // pins that car for editing so edits + Save target it.
                     var prompt = new System.Windows.Controls.ComboBoxItem
                     {
-                        Content = "Select a car preset to edit...",
+                        Content = "Select a car preset to edit…",
                         Tag = null, IsEnabled = false, IsHitTestVisible = false,
                         Opacity = 0.6, FontStyle = FontStyles.Italic,
                     };
@@ -3350,7 +3386,7 @@ namespace TrueforceForAll.Plugin
             _plugin.MarkVoteNudgeShown(communityId);
             if (CommunityVoteNudgeText != null)
                 CommunityVoteNudgeText.Text =
-                    $"You've been running \"{rec.LocalPresetName}\" - rate it?";
+                    $"You've been running \"{rec.LocalPresetName}\". Rate it?";
             CommunityVoteNudge.Visibility = Visibility.Visible;
         }
 
@@ -3972,7 +4008,9 @@ namespace TrueforceForAll.Plugin
             if (!tapLive && !ffbLiveWatch && !(_plugin.Settings?.ExperimentalFfbCapture ?? false))
                 sb.AppendLine("       If your wheel should have force feedback but you feel none, turn on "
                     + "'Enable experimental FFB detection' (Effects tab, under FFB tweaks), then drive a few seconds.");
-            if (!gameRun)
+            if (!gameRun && _plugin.IsKnownGameProcessRunning(out string pausedGame))
+                sb.AppendLine($"[skip] Telemetry: '{pausedGame}' is running but paused or in a menu (telemetry resumes on track)");
+            else if (!gameRun)
                 sb.AppendLine("[skip] Telemetry: no game running (start a game, load a session)");
             else
                 sb.AppendLine((hz > 0 ? "[OK]   " : "[skip] ") + "Telemetry: "
@@ -5528,6 +5566,850 @@ namespace TrueforceForAll.Plugin
             if (newOn) _communityUpdatesCheckedThisSession = false;
         }
 
+        // ---- Cloud backup / sync (Phase 2) ----
+
+        private void AutoSyncBackup_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (AutoSyncBackupCheck == null) return;
+            _plugin.Settings.AutoSyncBackupEnabled = AutoSyncBackupCheck.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Persist AutoSyncBackup failed: " + ex.Message);
+            }
+            _plugin.UpdateAutoPullTimer();   // start/stop the cloud poll to match the toggle
+        }
+
+        private async void BackupNow_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            SetBackupStatus("Backing up...");
+            if (BackupNowBtn != null) BackupNowBtn.IsEnabled = false;
+            try
+            {
+                var outcome = await _plugin.BackupNowAsync();
+                if (outcome.Status == BackupStatus.Diverged)
+                {
+                    var dlg = new BackupConflictWindow(outcome.CloudDeviceLabel, FormatBackupWhen(outcome.CloudWhenUtc))
+                    {
+                        Owner = Window.GetWindow(this),
+                    };
+                    bool? ok = dlg.ShowDialog();
+                    if (ok != true || dlg.Choice == BackupConflictChoice.Cancel) { SetBackupStatus(""); return; }
+                    SetBackupStatus("Resolving...");
+                    var resolved = await _plugin.ResolveBackupConflictAsync(dlg.Choice, dlg.KeepCloudSettings);
+                    SetBackupStatus(resolved.Message);
+                }
+                else
+                {
+                    SetBackupStatus(outcome.Message);
+                }
+            }
+            catch (Exception ex) { SetBackupStatus("Backup error: " + ex.Message); }
+            finally { if (BackupNowBtn != null) BackupNowBtn.IsEnabled = true; }
+        }
+
+        private async void RestoreFromCloud_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var confirm = MessageBox.Show(Window.GetWindow(this),
+                "Download your cloud backup and apply it to this PC? Your local-only presets are kept; global settings are replaced by the cloud's.",
+                "Restore from cloud", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+            SetBackupStatus("Restoring...");
+            if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = false;
+            try
+            {
+                var outcome = await _plugin.RestoreFromCloudAsync();
+                SetBackupStatus(outcome.Message);
+            }
+            catch (Exception ex) { SetBackupStatus("Restore error: " + ex.Message); }
+            finally { if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = true; }
+        }
+
+        private void SetBackupStatus(string msg)
+        {
+            if (BackupStatusText != null) BackupStatusText.Text = msg ?? "";
+        }
+
+        // ---- Discord link (Phase 2, M5) ----
+
+        // Cancels the in-flight link (browser/loopback wait) on re-click, panel teardown, or
+        // sign-out so an abandoned consent can't strand the UI for the full consent timeout.
+        private System.Threading.CancellationTokenSource _discordLinkCts;
+        private bool _discordLinkInProgress;
+        // Newest-wins guard so a slow get_my_discord can't paint stale link state onto a
+        // signed-out / switched-user panel. Mirrors _accountStatsGen.
+        private int _discordRowGen;
+
+        private async void LinkDiscord_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            // While a link is running, the same button cancels it.
+            if (_discordLinkInProgress) { try { _discordLinkCts?.Cancel(); } catch { } return; }
+            if (!_plugin.AuthIsSignedIn) { SetDiscordStatus("Sign in first, then join Discord."); return; }
+
+            _discordLinkInProgress = true;
+            _discordLinkCts?.Dispose();
+            _discordLinkCts = new System.Threading.CancellationTokenSource();
+            SetDiscordStatus("Opening Discord in your browser...");
+            if (LinkDiscordBtn != null) LinkDiscordBtn.Content = "Cancel";
+            if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = false;
+            try
+            {
+                var res = await _plugin.LinkDiscordAsync(_discordLinkCts.Token);
+                SetDiscordStatus(res.Message);
+                if (res.Ok)
+                {
+                    _ = _plugin.SyncMyRolesAsync(System.Threading.CancellationToken.None);
+                    _ = RefreshAchievementsAndNotifyAsync();
+                }
+            }
+            catch (Exception ex) { SetDiscordStatus("Discord link error: " + ex.Message); }
+            finally
+            {
+                _discordLinkInProgress = false;
+                try { _discordLinkCts?.Dispose(); } catch { }
+                _discordLinkCts = null;
+                if (LinkDiscordBtn != null) { LinkDiscordBtn.Content = "Join Discord"; LinkDiscordBtn.IsEnabled = true; }
+                if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = true;
+                await RefreshDiscordRowAsync();
+            }
+        }
+
+        private async void UnlinkDiscord_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var confirm = MessageBox.Show(Window.GetWindow(this),
+                "Unlink your Discord account from Trueforce? You can re-link any time.",
+                "Unlink Discord", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+            if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = false;
+            try
+            {
+                var res = await _plugin.UnlinkDiscordAsync(System.Threading.CancellationToken.None);
+                SetDiscordStatus(res.Message);
+                await RefreshDiscordRowAsync();
+            }
+            catch (Exception ex) { SetDiscordStatus("Unlink error: " + ex.Message); }
+            finally { if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = true; }
+        }
+
+        private void SetDiscordStatus(string msg)
+        {
+            if (DiscordLinkStatusText != null) DiscordLinkStatusText.Text = msg ?? "";
+        }
+
+        // ---- Supporter badge (Phase 2) ----
+
+        private int _supporterBadgeGen;
+
+        // Show the supporter tier. A dev DISPLAY override (the SUPPORTER access code) wins for
+        // preview; otherwise the real entitlement from get_my_entitlement. Display-only: this
+        // never gates backup (server-side RLS does). Hidden when not a supporter.
+        private async Task RefreshSupporterBadgeAsync()
+        {
+            if (SupporterBadge == null) return;
+            string dev = _plugin?.Settings?.DevSupporterBadgeOverride ?? "";
+            if (!string.IsNullOrEmpty(dev)) { ShowSupporterBadge(dev, true); return; }
+            if (_plugin == null || !_plugin.AuthIsSignedIn)
+            {
+                SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+            int gen = unchecked(++_supporterBadgeGen);
+            try
+            {
+                var (isSupporter, tier, _) = await _plugin.GetSupporterTierAsync(System.Threading.CancellationToken.None);
+                if (gen != _supporterBadgeGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
+                string devNow = _plugin.Settings?.DevSupporterBadgeOverride ?? "";   // override set mid-await still wins
+                if (!string.IsNullOrEmpty(devNow)) { ShowSupporterBadge(devNow, true); return; }
+                if (isSupporter) ShowSupporterBadge(string.IsNullOrEmpty(tier) ? "Supporter" : tier, false);
+                else SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
+            }
+            catch { /* leave hidden */ }
+        }
+
+        private void ShowSupporterBadge(string tier, bool preview)
+        {
+            if (SupporterBadge == null || SupporterBadgeText == null) return;
+            string t = (tier ?? "").Trim().ToLowerInvariant();
+            string accent = t.Contains("platinum") ? "#FFCDD3DE"
+                          : t.Contains("gold")     ? "#FFE5C04A"
+                          :                          "#FF5AA0E5";
+            try
+            {
+                var col = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(accent);
+                var bg = col; bg.A = 0x33;
+                SupporterBadge.BorderBrush    = new System.Windows.Media.SolidColorBrush(col);
+                SupporterBadge.Background      = new System.Windows.Media.SolidColorBrush(bg);
+                SupporterBadgeText.Foreground = new System.Windows.Media.SolidColorBrush(col);
+            }
+            catch { /* keep XAML defaults */ }
+            SupporterBadgeText.Text = (string.IsNullOrEmpty(tier) ? "Supporter" : tier) + (preview ? "  (preview)" : "");
+            SupporterBadge.Visibility = System.Windows.Visibility.Visible;
+        }
+
+        // ---- Cloud upload gating (supporter-only) ----
+        private int _cloudGatingGen;
+
+        // Dev display-only preview of the lapsed cloud-backup state (LAPSED access code). -1 = off;
+        // otherwise an index into the representative days-out cycle below. Never persisted, never
+        // enables uploads, never touches the real entitlement.
+        private int _lapsedPreviewIndex = -1;
+        private static readonly int[] _lapsedPreviewDays = { 400, 180, 30, 7, 1 };
+
+        // Gate the cloud UPLOAD controls (Back up now, Auto-sync) on real supporter status, and the
+        // whole section on sign-in. Download (Restore from cloud) stays active for any signed-in user,
+        // matching the server policy (migration 0034: SELECT ungated, INSERT/UPDATE require
+        // is_active_supporter). Three non-supporter states:
+        //   * never a supporter (no retain date): plain "supporter feature" note, no restore pitch
+        //     (there is nothing stored to restore).
+        //   * lapsed (retain date set): contextual lapsed note + an orange "Data removal in: X"
+        //     countdown once the deletion date is within the warning window.
+        //   * supporter: uploads enabled, no notes.
+        // Uses the REAL entitlement, never the dev display override, so the SUPPORTER preview code
+        // can't appear to unlock uploads.
+        private async Task RefreshCloudBackupGatingAsync()
+        {
+            if (BackupNowBtn == null) return;   // panel not built yet
+            if (_lapsedPreviewIndex >= 0)
+            {
+                // Dev preview of the lapsed look. Uploads stay OFF (display only, grants nothing);
+                // download stays active if signed in. Representative removal date from the cycle.
+                if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = _plugin != null && _plugin.AuthIsSignedIn;
+                SetCloudUploadEnabled(false);
+                SetCloudBackupMessage("Preview (lapsed): your support has paused, so new cloud backups are off. You can still use \"Restore from cloud\" to download any backup you saved.");
+                int dp = _lapsedPreviewDays[_lapsedPreviewIndex];
+                SetRemovalCountdown(dp <= 180 ? (DateTime?)DateTime.UtcNow.AddDays(dp) : (DateTime?)null);
+                return;
+            }
+            if (_plugin == null || !_plugin.AuthIsSignedIn)
+            {
+                if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = false;
+                SetCloudUploadEnabled(false);
+                SetCloudBackupMessage(null);
+                SetRemovalCountdown(null);
+                return;
+            }
+            if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = true;   // download stays active
+            int gen = unchecked(++_cloudGatingGen);
+            bool isSupporter = false;
+            DateTime? retain = null;
+            try
+            {
+                var (sup, _, ru) = await _plugin.GetSupporterTierAsync(System.Threading.CancellationToken.None);
+                if (gen != _cloudGatingGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
+                isSupporter = sup;
+                retain = ru;
+            }
+            catch { /* on error, gate uploads closed (safe default) */ }
+
+            if (isSupporter)
+            {
+                SetCloudUploadEnabled(true);     // uploads enabled, no notes
+                SetCloudBackupMessage(null);
+                SetRemovalCountdown(null);
+                return;
+            }
+
+            // Non-supporter: grey out the upload controls; the download button stays active.
+            SetCloudUploadEnabled(false);
+            if (retain.HasValue)
+            {
+                // Lapsed supporter whose backup is still inside the 2-year retention window.
+                SetCloudBackupMessage("Your support has paused, so new cloud backups are off. You can still use \"Restore from cloud\" to download any backup you saved.");
+                double daysLeft = (retain.Value - DateTime.UtcNow).TotalDays;
+                SetRemovalCountdown(daysLeft <= 180 ? retain : (DateTime?)null);   // surface the countdown as removal approaches
+            }
+            else
+            {
+                // Never a supporter: nothing is stored, so don't pitch a restore. Just explain the gate.
+                SetCloudBackupMessage("Cloud backup is a supporter feature.");
+                SetRemovalCountdown(null);
+            }
+        }
+
+        // Enable/disable the two UPLOAD controls together (Back up now + Auto-sync).
+        private void SetCloudUploadEnabled(bool canUpload)
+        {
+            if (BackupNowBtn != null) BackupNowBtn.IsEnabled = canUpload;
+            if (AutoSyncBackupCheck != null) AutoSyncBackupCheck.IsEnabled = canUpload;
+        }
+
+        // Contextual note under the cloud-backup buttons (supporter gate / lapsed). Null hides it.
+        private void SetCloudBackupMessage(string msg)
+        {
+            if (CloudUploadHint == null) return;
+            CloudUploadHint.Text = msg ?? "";
+            CloudUploadHint.Visibility = string.IsNullOrEmpty(msg)
+                ? System.Windows.Visibility.Collapsed
+                : System.Windows.Visibility.Visible;
+        }
+
+        // Orange "Data removal in: X" line, shown only as the deletion date approaches. Null hides it.
+        private void SetRemovalCountdown(DateTime? retainUtc)
+        {
+            if (CloudRemovalText == null) return;
+            if (!retainUtc.HasValue)
+            {
+                CloudRemovalText.Text = "";
+                CloudRemovalText.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+            double days = (retainUtc.Value - DateTime.UtcNow).TotalDays;
+            if (days < 0) days = 0;
+            CloudRemovalText.Text = "Data removal in: " + FormatRemoval(days);
+            CloudRemovalText.Visibility = System.Windows.Visibility.Visible;
+        }
+
+        private static string FormatRemoval(double days)
+        {
+            if (days < 1) return "less than a day";
+            int d = (int)Math.Round(days);
+            if (d == 1) return "1 day";
+            if (d < 45) return d + " days";
+            int months = (int)Math.Round(days / 30.0);
+            return months <= 1 ? "about 1 month" : "about " + months + " months";
+        }
+
+        // Tab lazy-load. The Account block is expanded by default on its own tab, so
+        // Expander.Expanded won't fire on open; refresh account state when the Account tab is
+        // selected, and load the supporters wall when the Support tab is selected. SelectionChanged
+        // is a routed event that also bubbles up from ComboBoxes inside any tab, so ignore
+        // anything that didn't originate from the TabControl itself.
+        private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
+            if (_plugin == null || MainTabs == null) return;
+            if (AccountTab != null && ReferenceEquals(MainTabs.SelectedItem, AccountTab))
+            {
+                RefreshAccountStats();
+                _ = RefreshDiscordRowAsync();
+                _ = RefreshPatreonRowAsync();
+                _ = RefreshSupporterBadgeAsync();
+                _ = RefreshCloudBackupGatingAsync();
+            }
+            else if (SupportTab != null && ReferenceEquals(MainTabs.SelectedItem, SupportTab))
+            {
+                _ = RefreshSupportersWallAsync();
+            }
+        }
+
+        private int _supportersWallGen;
+
+        // Load + render the public supporters wall (first name + last initial, sourced
+        // from Patreon server-side). Public: renders even when signed out. Reloaded each
+        // time the Account tab is shown so a new patron appears without restarting SimHub.
+        private async Task RefreshSupportersWallAsync()
+        {
+            if (SupportersWallPanel == null || _plugin == null) return;
+            int gen = unchecked(++_supportersWallGen);
+            if (SupportersWallStatus != null)
+            {
+                SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
+                SupportersWallStatus.Text = "Loading supporters…";
+            }
+
+            System.Collections.Generic.List<SupportersClient.SupporterRow> rows;
+            try { rows = await _plugin.GetSupportersAsync(System.Threading.CancellationToken.None); }
+            catch { rows = null; }
+            if (gen != _supportersWallGen || SupportersWallPanel == null) return;
+
+            SupportersWallPanel.Children.Clear();
+            if (rows == null || rows.Count == 0)
+            {
+                if (SupportersWallStatus != null)
+                {
+                    SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
+                    SupportersWallStatus.Text = "Be the first to support Trueforce For All.";
+                }
+                return;
+            }
+            if (SupportersWallStatus != null) SupportersWallStatus.Visibility = System.Windows.Visibility.Collapsed;
+            RenderSupportersGrouped(rows);
+        }
+
+        // Group the roster into tier sections (tier header + a wrap of name pills). The server
+        // already returns rows in display order (tier sections by top pledge, top lifetime
+        // spender first within a tier), and sends no amounts, so we just group by tier in
+        // encounter order and preserve the order within each group.
+        private void RenderSupportersGrouped(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
+        {
+            var order  = new System.Collections.Generic.List<string>();
+            var byTier = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<SupportersClient.SupporterRow>>();
+            foreach (var r in rows)
+            {
+                string tier = string.IsNullOrWhiteSpace(r.Tier) ? "Supporters" : r.Tier;
+                if (!byTier.TryGetValue(tier, out var list))
+                {
+                    list = new System.Collections.Generic.List<SupportersClient.SupporterRow>();
+                    byTier[tier] = list; order.Add(tier);
+                }
+                list.Add(r);
+            }
+
+            bool first = true;
+            foreach (var tier in order)
+            {
+                SupportersWallPanel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text       = tier,
+                    FontSize   = 12,
+                    FontWeight = System.Windows.FontWeights.SemiBold,
+                    Opacity    = 0.85,
+                    Margin     = new System.Windows.Thickness(0, first ? 0 : 12, 0, 5),
+                });
+                first = false;
+                var wrap = new System.Windows.Controls.WrapPanel();
+                foreach (var r in byTier[tier]) wrap.Children.Add(BuildSupporterChip(r));
+                SupportersWallPanel.Children.Add(wrap);
+            }
+        }
+
+        // A pill per supporter, tinted by tier (platinum / gold / default blue), mirroring
+        // the supporter-badge accent logic. Tier shows in the tooltip.
+        private System.Windows.UIElement BuildSupporterChip(SupportersClient.SupporterRow row)
+        {
+            string t = (row.Tier ?? "").Trim().ToLowerInvariant();
+            string accent = t.Contains("platinum") ? "#FFCDD3DE"
+                          : t.Contains("gold")     ? "#FFE5C04A"
+                          :                          "#FF5AA0E5";
+            var col = System.Windows.Media.Colors.SteelBlue;
+            try { col = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(accent); } catch { }
+            var bg = col; bg.A = 0x22;
+            var border = new System.Windows.Controls.Border
+            {
+                CornerRadius    = new System.Windows.CornerRadius(9),
+                Padding         = new System.Windows.Thickness(10, 3, 10, 3),
+                Margin          = new System.Windows.Thickness(0, 0, 6, 6),
+                Background      = new System.Windows.Media.SolidColorBrush(bg),
+                BorderBrush     = new System.Windows.Media.SolidColorBrush(col),
+                BorderThickness = new System.Windows.Thickness(1),
+            };
+            var text = new System.Windows.Controls.TextBlock
+            {
+                Text       = row.Name,
+                FontSize   = 12,
+                FontWeight = System.Windows.FontWeights.SemiBold,
+                Foreground = new System.Windows.Media.SolidColorBrush(col),
+            };
+            if (!string.IsNullOrWhiteSpace(row.Tier)) border.ToolTip = row.Tier;
+            border.Child = text;
+            return border;
+        }
+
+        // ---- Achievement tracker + celebration toast (Phase 2, M5) ----
+
+        private readonly System.Collections.Generic.Queue<(string label, bool needsLink)> _toastQueue = new System.Collections.Generic.Queue<(string label, bool needsLink)>();
+        private System.Windows.Threading.DispatcherTimer _toastTimer;
+        private int _achievementsRefreshGen;
+        private int _toastPreviewIndex;
+        private bool _discordLinked;          // cached link state for the toast's "Link" button
+        private bool _achievementsWindowOpen; // single-flight guard for the tracker modal
+
+        private void AchievementCrown_Click(object sender, RoutedEventArgs e) => _ = OpenAchievementsWindowAsync();
+
+        private void AchievementToast_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            // Ignore clicks that land on a child button (× close or the Link button).
+            var d = e.OriginalSource as System.Windows.DependencyObject;
+            while (d is System.Windows.Media.Visual) { if (d is Button) return; d = System.Windows.Media.VisualTreeHelper.GetParent(d); }
+            DismissToast();
+            _ = OpenAchievementsWindowAsync();
+        }
+
+        private void AchievementToastLink_Click(object sender, RoutedEventArgs e)
+        {
+            DismissToast();
+            _ = OpenAchievementsWindowAsync(startLinking: true);   // opens the tracker straight into "check your browser"
+        }
+
+        private void AchievementToastClose_Click(object sender, RoutedEventArgs e) => DismissToast();
+
+        // Open the Achievements tracker: clear the new-achievement dot, fire an immediate
+        // self-scoped role sync (claim what's earned), and show the latest progress.
+        private async Task OpenAchievementsWindowAsync(bool startLinking = false)
+        {
+            if (_plugin == null) return;
+            if (!_plugin.AuthIsSignedIn)
+            {
+                MessageBox.Show(Window.GetWindow(this), "Sign in to see your achievements.",
+                    "Achievements", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (_achievementsWindowOpen) return;   // single-flight: don't stack modal windows
+            _achievementsWindowOpen = true;
+            try
+            {
+                DismissToast();   // a queued toast can't re-trigger while the tracker is open
+
+                System.Collections.Generic.List<AchievementClient.AchievementRow> list = null;
+                bool linked = false;
+                try
+                {
+                    list = await _plugin.GetAchievementsAsync(System.Threading.CancellationToken.None);
+                    var (isLinked, _) = await _plugin.GetDiscordStatusAsync(System.Threading.CancellationToken.None);
+                    linked = isLinked; _discordLinked = isLinked;
+                }
+                catch { }
+                if (list == null)
+                {
+                    MessageBox.Show(Window.GetWindow(this), "Couldn't load your achievements right now. Try again in a moment.",
+                        "Achievements", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                // Clear the new-achievement dot only AFTER a successful load.
+                if (_plugin.Settings != null && _plugin.Settings.AchievementUnseen)
+                {
+                    _plugin.Settings.AchievementUnseen = false;
+                    try { _plugin.PersistSettings(); } catch { }
+                }
+                RefreshAchievementCrown();
+
+                _ = _plugin.SyncMyRolesAsync(System.Threading.CancellationToken.None);   // claim in the background
+
+                bool showCeleb = _plugin.Settings?.ShowAchievementCelebrations ?? true;
+                var win = new AchievementsWindow(list, linked, showCeleb,
+                    onLinkAsync: () => LinkDiscordCoreAsync(),
+                    onReloadAsync: async () =>
+                    {
+                        var fresh = await _plugin.GetAchievementsAsync(System.Threading.CancellationToken.None);
+                        var (lk, _u) = await _plugin.GetDiscordStatusAsync(System.Threading.CancellationToken.None);
+                        _discordLinked = lk;
+                        if (lk) _ = _plugin.SyncMyRolesAsync(System.Threading.CancellationToken.None);
+                        return (fresh, lk);
+                    },
+                    onToggleCelebrations: (on) =>
+                    {
+                        if (_plugin?.Settings == null) return;
+                        _plugin.Settings.ShowAchievementCelebrations = on;
+                        try { _plugin.PersistSettings(); } catch { }
+                    },
+                    autoStartLink: startLinking)
+                { Owner = Window.GetWindow(this) };
+                win.ShowDialog();
+            }
+            finally { _achievementsWindowOpen = false; }
+        }
+
+        private async Task<bool> LinkDiscordCoreAsync()
+        {
+            if (_plugin == null) return false;
+            if (_discordLinkInProgress) return false;
+            if (!_plugin.AuthIsSignedIn) { SetDiscordStatus("Sign in first, then join Discord."); return false; }
+            _discordLinkInProgress = true;
+            _discordLinkCts?.Dispose();
+            _discordLinkCts = new System.Threading.CancellationTokenSource();
+            bool ok = false;
+            try
+            {
+                var res = await _plugin.LinkDiscordAsync(_discordLinkCts.Token);
+                SetDiscordStatus(res.Message);
+                ok = res.Ok && _plugin.AuthIsSignedIn;
+                if (ok)
+                {
+                    _ = _plugin.SyncMyRolesAsync(System.Threading.CancellationToken.None);
+                    _ = RefreshAchievementsAndNotifyAsync();
+                }
+            }
+            catch (Exception ex) { SetDiscordStatus("Discord link error: " + ex.Message); ok = false; }
+            finally
+            {
+                _discordLinkInProgress = false;
+                try { _discordLinkCts?.Dispose(); } catch { }
+                _discordLinkCts = null;
+                await RefreshDiscordRowAsync();
+            }
+            return ok;
+        }
+
+        // Header crown + its new-achievement dot.
+        private void RefreshAchievementCrown()
+        {
+            if (AchievementCrownButton == null) return;
+            bool signedIn = _plugin != null && _plugin.AuthIsSignedIn;
+            AchievementCrownButton.Visibility = signedIn ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+            if (AchievementCrownDot != null)
+                AchievementCrownDot.Visibility = (signedIn && _plugin.Settings?.AchievementUnseen == true)
+                    ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        }
+
+        // Fetch progress, detect genuinely-new earns vs the saved baseline, celebrate (toast
+        // if enabled) + raise the notify dot. Seeds silently on first run for an account.
+        private async Task RefreshAchievementsAndNotifyAsync()
+        {
+            if (_plugin == null || !_plugin.AuthIsSignedIn || _plugin.Settings == null) return;
+            int gen = unchecked(++_achievementsRefreshGen);
+            System.Collections.Generic.List<AchievementClient.AchievementRow> list;
+            try { list = await _plugin.GetAchievementsAsync(System.Threading.CancellationToken.None); }
+            catch { return; }
+            if (list == null || gen != _achievementsRefreshGen || _plugin?.Settings == null || !_plugin.AuthIsSignedIn) return;
+
+            // The baseline is keyed by account id so switching users (or a leaked baseline on
+            // disk) re-seeds silently for the new account instead of diffing against the old one.
+            string uid = _plugin.Settings.AuthSession?.UserId ?? "";
+            var earned = new System.Collections.Generic.List<string>();
+            foreach (var a in list) if (a.Earned) earned.Add(a.Key);
+            earned.Sort(StringComparer.Ordinal);
+            string newCsv = earned.Count == 0 ? "-" : string.Join(",", earned);
+            string newStored = uid + "|" + newCsv;
+
+            string stored = _plugin.Settings.AchievementBaseline ?? "";
+            int sep = stored.IndexOf('|');
+            string storedUid = sep >= 0 ? stored.Substring(0, sep) : null;
+            string storedCsv = sep >= 0 ? stored.Substring(sep + 1) : null;
+
+            if (storedCsv == null || storedUid != uid)
+            {
+                // First run for this account (or switched accounts): seed silently.
+                _plugin.Settings.AchievementBaseline = newStored;
+                if (_plugin.Settings.AchievementUnseen) { _plugin.Settings.AchievementUnseen = false; RefreshAchievementCrown(); }
+                try { _plugin.PersistSettings(); } catch { }
+                return;
+            }
+
+            var prevSet = new System.Collections.Generic.HashSet<string>(
+                storedCsv == "-" ? new string[0] : storedCsv.Split(','), StringComparer.Ordinal);
+            var fresh = new System.Collections.Generic.List<AchievementClient.AchievementRow>();
+            foreach (var a in list) if (a.Earned && !prevSet.Contains(a.Key)) fresh.Add(a);
+
+            if (fresh.Count > 0)
+            {
+                _plugin.Settings.AchievementBaseline = newStored;
+                _plugin.Settings.AchievementUnseen = true;
+                try { _plugin.PersistSettings(); } catch { }
+                RefreshAchievementCrown();
+                if (_plugin.Settings.ShowAchievementCelebrations)
+                    foreach (var a in fresh) EnqueueAchievementToast(a.Label ?? a.Key, !_discordLinked);
+            }
+            else if (newStored != stored)
+            {
+                _plugin.Settings.AchievementBaseline = newStored;   // lost one / set changed
+                try { _plugin.PersistSettings(); } catch { }
+            }
+        }
+
+        private void EnqueueAchievementToast(string label, bool needsLink)
+        {
+            if (string.IsNullOrEmpty(label)) label = "Achievement";
+            _toastQueue.Enqueue((label, needsLink));
+            if (AchievementToast != null && AchievementToast.Visibility != System.Windows.Visibility.Visible)
+                ShowNextToast();
+        }
+
+        private void ShowNextToast()
+        {
+            if (AchievementToast == null) return;
+            if (_toastQueue.Count == 0) { HideToast(); return; }
+            var (label, needsLink) = _toastQueue.Dequeue();
+            if (AchievementToastBody != null)
+                AchievementToastBody.Text = label + (needsLink ? ".  Link your Discord to join the server and claim the role." : ".  Click to view.");
+            if (AchievementToastLinkBtn != null)
+                AchievementToastLinkBtn.Visibility = needsLink ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+            AchievementToast.Visibility = System.Windows.Visibility.Visible;
+            if (_toastTimer == null)
+            {
+                _toastTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+                _toastTimer.Tick += (s, e) => { _toastTimer.Stop(); ShowNextToast(); };
+            }
+            _toastTimer.Stop(); _toastTimer.Start();
+        }
+
+        private void HideToast()
+        {
+            if (_toastTimer != null) _toastTimer.Stop();
+            if (AchievementToast != null) AchievementToast.Visibility = System.Windows.Visibility.Collapsed;
+        }
+
+        private void DismissToast()
+        {
+            _toastQueue.Clear();
+            HideToast();
+        }
+
+        // Dev preview: fire a toast cycling through achievements, WITHOUT touching the real
+        // baseline/"earned once" state (so it never suppresses a genuine first-earn).
+        private async Task PreviewAchievementToastAsync()
+        {
+            string label = "Tuner";
+            try
+            {
+                var list = _plugin != null ? await _plugin.GetAchievementsAsync(System.Threading.CancellationToken.None) : null;
+                if (list != null && list.Count > 0)
+                    label = list[_toastPreviewIndex % list.Count].Label ?? "Achievement";
+            }
+            catch { }
+            bool needsLink = (_toastPreviewIndex % 2 == 1);   // alternate so both toast variants preview
+            _toastPreviewIndex++;
+            EnqueueAchievementToast(label, needsLink);
+        }
+
+        // WARNEMAIL dev code: which warning stage (1..5) the next trigger sends. Cycles 1->5->1.
+        private int _warnPreviewStage = 1;
+
+        // Email the stage-N backup-deletion warning to the signed-in user's own address, so we
+        // can preview the escalating copy. The server scopes it to the JWT email claim and never
+        // touches the real entitlement / retention timer.
+        private async Task SendWarnPreviewAndReport(int stage)
+        {
+            if (_plugin == null) return;
+            try
+            {
+                var (ok, message) = await _plugin.SendWarnEmailPreviewAsync(stage, System.Threading.CancellationToken.None);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = message;
+            }
+            catch (Exception ex) { if (AccessCodeStatus != null) AccessCodeStatus.Text = "Warning email error: " + ex.Message; }
+        }
+
+        // Reflect the current link state. Signed out -> prompt + disabled; signed in -> query
+        // get_my_discord and show "Linked as <name>" with the Unlink button. Skips button churn
+        // while a link is in progress, and uses a generation + signed-in re-check so a stale
+        // in-flight result can't clobber a newer (signed-out / switched-user) state.
+        private async Task RefreshDiscordRowAsync()
+        {
+            if (_plugin == null || DiscordLinkStatusText == null) return;
+            if (_discordLinkInProgress) return;           // don't fight the live link flow
+            int gen = unchecked(++_discordRowGen);
+            if (!_plugin.AuthIsSignedIn)
+            {
+                SetDiscordStatus("Sign in to join Discord.");
+                if (LinkDiscordBtn != null) { LinkDiscordBtn.IsEnabled = false; LinkDiscordBtn.Content = "Join Discord"; LinkDiscordBtn.ToolTip = "Sign in first, then you can join the community Discord."; }
+                if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+            if (LinkDiscordBtn != null) LinkDiscordBtn.IsEnabled = true;
+            try
+            {
+                var (linked, username) = await _plugin.GetDiscordStatusAsync(System.Threading.CancellationToken.None);
+                // Bail if a newer refresh started, a link began, or the user signed out mid-call.
+                if (gen != _discordRowGen || _plugin == null || _discordLinkInProgress || !_plugin.AuthIsSignedIn) return;
+                _discordLinked = linked;
+                if (linked)
+                {
+                    SetDiscordStatus(string.IsNullOrEmpty(username) ? "Joined the community Discord." : "Joined as " + username + ".");
+                    if (LinkDiscordBtn != null) { LinkDiscordBtn.Content = "Linked"; LinkDiscordBtn.ToolTip = "You're a member of the community Discord. Wooo!"; }
+                    if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.Visibility = System.Windows.Visibility.Visible;
+                }
+                else
+                {
+                    SetDiscordStatus("Joins you to the community Discord and links your account, so your contributions earn roles.");
+                    if (LinkDiscordBtn != null) { LinkDiscordBtn.Content = "Join Discord"; LinkDiscordBtn.ToolTip = "You're not a member of the community Discord yet. Click to join."; }
+                    if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.Visibility = System.Windows.Visibility.Collapsed;
+                }
+            }
+            catch { /* leave the current text */ }
+        }
+
+        // ---- Patreon link (mirror of the Discord link handlers) ----
+        private bool _patreonLinkInProgress;
+        private System.Threading.CancellationTokenSource _patreonLinkCts;
+        private int _patreonRowGen;
+
+        private async void LinkPatreon_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            // While a link is running, the same button cancels it.
+            if (_patreonLinkInProgress) { try { _patreonLinkCts?.Cancel(); } catch { } return; }
+            if (!_plugin.AuthIsSignedIn) { SetPatreonStatus("Sign in first, then link Patreon."); return; }
+
+            _patreonLinkInProgress = true;
+            _patreonLinkCts?.Dispose();
+            _patreonLinkCts = new System.Threading.CancellationTokenSource();
+            SetPatreonStatus("Opening Patreon in your browser...");
+            if (LinkPatreonBtn != null) LinkPatreonBtn.Content = "Cancel";
+            if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = false;
+            try
+            {
+                var res = await _plugin.LinkPatreonAsync(_patreonLinkCts.Token);
+                SetPatreonStatus(res.Message);
+                if (res.Ok)
+                {
+                    // A successful link may have flipped supporter status and/or auto-linked Discord.
+                    _ = RefreshSupporterBadgeAsync();
+                    _ = RefreshCloudBackupGatingAsync();
+                    _ = RefreshDiscordRowAsync();
+                }
+            }
+            catch (Exception ex) { SetPatreonStatus("Patreon link error: " + ex.Message); }
+            finally
+            {
+                _patreonLinkInProgress = false;
+                try { _patreonLinkCts?.Dispose(); } catch { }
+                _patreonLinkCts = null;
+                if (LinkPatreonBtn != null) { LinkPatreonBtn.Content = "Link Patreon"; LinkPatreonBtn.IsEnabled = true; }
+                if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = true;
+                await RefreshPatreonRowAsync();
+            }
+        }
+
+        private async void UnlinkPatreon_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var confirm = MessageBox.Show(Window.GetWindow(this),
+                "Unlink your Patreon account from Trueforce? You can re-link any time.",
+                "Unlink Patreon", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+            if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = false;
+            try
+            {
+                var res = await _plugin.UnlinkPatreonAsync(System.Threading.CancellationToken.None);
+                SetPatreonStatus(res.Message);
+                await RefreshPatreonRowAsync();
+            }
+            catch (Exception ex) { SetPatreonStatus("Unlink error: " + ex.Message); }
+            finally { if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = true; }
+        }
+
+        private void SetPatreonStatus(string msg)
+        {
+            if (PatreonLinkStatusText != null) PatreonLinkStatusText.Text = msg ?? "";
+        }
+
+        private async Task RefreshPatreonRowAsync()
+        {
+            if (_plugin == null || PatreonLinkStatusText == null) return;
+            if (_patreonLinkInProgress) return;           // don't fight the live link flow
+            int gen = unchecked(++_patreonRowGen);
+            if (!_plugin.AuthIsSignedIn)
+            {
+                SetPatreonStatus("Sign in to link Patreon.");
+                if (LinkPatreonBtn != null) { LinkPatreonBtn.IsEnabled = false; LinkPatreonBtn.Content = "Link Patreon"; }
+                if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+            if (LinkPatreonBtn != null) LinkPatreonBtn.IsEnabled = true;
+            try
+            {
+                var (linked, name) = await _plugin.GetPatreonStatusAsync(System.Threading.CancellationToken.None);
+                if (gen != _patreonRowGen || _plugin == null || _patreonLinkInProgress || !_plugin.AuthIsSignedIn) return;
+                if (linked)
+                {
+                    SetPatreonStatus(string.IsNullOrEmpty(name) ? "Linked." : "Linked as " + name + ".");
+                    if (LinkPatreonBtn != null) LinkPatreonBtn.Content = "Linked";
+                    if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.Visibility = System.Windows.Visibility.Visible;
+                }
+                else
+                {
+                    SetPatreonStatus("Link Patreon to unlock the supporter badge and cloud backup from your pledge.");
+                    if (LinkPatreonBtn != null) LinkPatreonBtn.Content = "Link Patreon";
+                    if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.Visibility = System.Windows.Visibility.Collapsed;
+                }
+            }
+            catch { /* leave the current text */ }
+        }
+
+        private static string FormatBackupWhen(string iso)
+        {
+            if (string.IsNullOrEmpty(iso)) return "";
+            if (DateTime.TryParse(iso, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                return dt.ToLocalTime().ToString("g");
+            return "";
+        }
+
         // Sync the Account expander to the current plugin auth state.
         // Sign-in is independent of the Community toggle - users can
         // claim a username even with community pull/push off.
@@ -5558,6 +6440,7 @@ namespace TrueforceForAll.Plugin
                         : uname;
                 if (AccountChangeUsernameBtn != null)
                     AccountChangeUsernameBtn.Visibility = System.Windows.Visibility.Visible;
+                if (AccountUsernameHelp != null) AccountUsernameHelp.Visibility = System.Windows.Visibility.Collapsed;
             }
             else
             {
@@ -5569,9 +6452,14 @@ namespace TrueforceForAll.Plugin
                     AccountUsernameDisplay.Text = "(anonymous)";
                 if (AccountChangeUsernameBtn != null)
                     AccountChangeUsernameBtn.Visibility = System.Windows.Visibility.Collapsed;
+                if (AccountUsernameHelp != null) AccountUsernameHelp.Visibility = System.Windows.Visibility.Visible;
             }
             if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
             AccountAuthBtn.IsEnabled = true;
+            _ = RefreshDiscordRowAsync();
+            _ = RefreshPatreonRowAsync();
+            _ = RefreshSupporterBadgeAsync();
+            _ = RefreshCloudBackupGatingAsync();
         }
 
         // Header-card account chip. Signed out -> "Sign in" (no icon/caret).
@@ -5602,6 +6490,7 @@ namespace TrueforceForAll.Plugin
                 if (AccountChipCaret != null) AccountChipCaret.Visibility = System.Windows.Visibility.Collapsed;
                 AccountChipButton.ToolTip = "Sign in to share presets and use community car data.";
             }
+            RefreshAchievementCrown();
         }
 
         // Signed out -> open the sign-in dialog (same flow as the Settings-tab
@@ -5623,6 +6512,8 @@ namespace TrueforceForAll.Plugin
             }
 
             var menu = new ContextMenu();
+            var achievements = new MenuItem { Header = "Achievements…" };
+            achievements.Click += (s, ev) => { _ = OpenAchievementsWindowAsync(); };
             var manage = new MenuItem { Header = "Account settings…" };
             manage.Click += (s, ev) => OpenAccountSection();
             var signOut = new MenuItem { Header = "Sign out" };
@@ -5636,6 +6527,7 @@ namespace TrueforceForAll.Plugin
                 _plugin.AuthSignOut();
                 RefreshAccountRow();
             };
+            menu.Items.Add(achievements);
             menu.Items.Add(manage);
             menu.Items.Add(signOut);
             menu.PlacementTarget = AccountChipButton;
@@ -5643,11 +6535,12 @@ namespace TrueforceForAll.Plugin
             menu.IsOpen = true;
         }
 
-        // Bring the Settings tab forward and expand the Account & community
-        // section (the chip's "Account settings…" target).
+        // Bring the Account tab forward and expand the Account & community section
+        // (the chip's "Account settings…" target). The section moved out of Settings
+        // into its own Account tab, so navigate there.
         private void OpenAccountSection()
         {
-            if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
+            if (MainTabs != null && AccountTab != null) MainTabs.SelectedItem = AccountTab;
             if (AccountExpander != null)
             {
                 AccountExpander.IsExpanded = true;
@@ -5704,6 +6597,7 @@ namespace TrueforceForAll.Plugin
                     "Sign out", MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
                 if (confirm != MessageBoxResult.Yes) return;
+                try { _discordLinkCts?.Cancel(); } catch { }
                 _plugin.AuthSignOut();
                 RefreshAccountRow();
                 return;
@@ -5784,6 +6678,15 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = username;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = username;
+                // Repaint the visible Account label + header chip, which read
+                // SharingAuthor. AuthorNameBox/AccountAuthorBox are hidden
+                // binding stubs, so without this the account row keeps showing
+                // "(not set yet)" until the next refresh - this method is
+                // async-void, so RefreshAccountRow already ran (with an empty
+                // SharingAuthor) before this server fetch resolved. This is the
+                // path a second machine hits: the username exists server-side
+                // but only lands locally here.
+                RefreshAccountRow();
                 return;
             }
 
@@ -5811,7 +6714,7 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Info(
                     "[Trueforce] Username prompt skipped: Trueforce panel unloaded before bootstrap finished. " +
-                    "Re-open Settings > Account & community to pick a username.");
+                    "Re-open the Account tab to pick a username.");
                 return;
             }
             var picker = new PickUsernameWindow(_plugin, seed) { Owner = owner };
@@ -5823,6 +6726,10 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
+                // Repaint the visible Account label + header chip (see the
+                // server-username branch above for why the hidden boxes alone
+                // aren't enough).
+                RefreshAccountRow();
             }
         }
 
@@ -6026,6 +6933,9 @@ namespace TrueforceForAll.Plugin
         private void AccountExpander_Expanded(object sender, RoutedEventArgs e)
         {
             RefreshAccountStats();
+            _ = RefreshDiscordRowAsync();
+            _ = RefreshSupporterBadgeAsync();
+            _ = RefreshCloudBackupGatingAsync();
         }
 
         // Pull account stats on demand. Cheap RPC; no caching here so
@@ -6097,27 +7007,248 @@ namespace TrueforceForAll.Plugin
             AccountStatsDownloads.Text = "Downloads received: " + dls;
             AccountStatsVotes.Text     = "Votes received: +" + upvotes + " / -" + downvotes;
 
-            // Sessions card next to stats. JWT decode is local; no extra
-            // RPC. Just shows the current device's session info.
+            // Active sessions across devices. Loaded via the get_my_sessions
+            // RPC (async); the card builds one row per session and offers a
+            // per-row revoke plus "sign out everywhere else".
             if (AccountSessionsBox != null)
             {
                 AccountSessionsBox.Visibility = Visibility.Visible;
-                (DateTime? iat, DateTime? exp, string _) = _plugin.AuthGetSessionInfo();
-                string machine = Environment.MachineName ?? "this device";
-                AccountSessionDevice.Text  = "This device: " + machine;
-                AccountSessionStarted.Text = iat.HasValue
-                    ? "Signed in: " + iat.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
-                    : "Signed in: (unknown)";
-                AccountSessionExpires.Text = exp.HasValue
-                    ? "Token expires: " + exp.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
-                      + "  (refreshes automatically)"
-                    : "Token expires: (unknown)";
+                RefreshAccountSessions();
             }
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[Trueforce] RefreshAccountStats failed: " + ex.Message);
                 if (AccountStatsCreated != null) AccountStatsCreated.Text = "Could not load stats.";
+            }
+        }
+
+        // Generation guard for the async session list (a stale RPC return must
+        // not repaint the card after the user collapsed/re-opened or signed out).
+        private int _accountSessionsGen;
+
+        private async void RefreshAccountSessions()
+        {
+            try
+            {
+                if (_plugin == null || AccountSessionsBox == null) return;
+                if (!_plugin.AuthIsSignedIn) { AccountSessionsBox.Visibility = Visibility.Collapsed; return; }
+
+                // Opportunistic heartbeat: if THIS device was revoked from elsewhere, opening
+                // the Account tab signs it out now instead of waiting for the next timer tick.
+                _plugin.PokeSessionHeartbeat();
+
+                int gen = unchecked(++_accountSessionsGen);
+                if (AccountSessionsList != null) AccountSessionsList.Children.Clear();
+                if (AccountSignOutOthersBtn != null) AccountSignOutOthersBtn.Visibility = Visibility.Collapsed;
+                SetSessionsStatus("Loading sessions...");
+
+                System.Collections.Generic.List<SessionClient.SessionRow> sessions = null;
+                try { sessions = await _plugin.AuthGetSessionsAsync(System.Threading.CancellationToken.None); }
+                catch { /* fall through to error copy */ }
+
+                if (gen != _accountSessionsGen) return;   // superseded or signed out mid-await
+
+                if (sessions == null) { SetSessionsStatus("Couldn't load your sessions."); return; }
+                if (sessions.Count == 0) { SetSessionsStatus("No active sessions found."); return; }
+
+                SetSessionsStatus(null);   // hide status, show the rows
+                int others = 0;
+                foreach (var s in sessions)
+                {
+                    if (!s.IsCurrent) others++;
+                    AccountSessionsList.Children.Add(BuildSessionRow(s));
+                }
+                if (AccountSignOutOthersBtn != null)
+                {
+                    AccountSignOutOthersBtn.Content = "Sign out everywhere else";
+                    AccountSignOutOthersBtn.IsEnabled = others > 0;
+                    AccountSignOutOthersBtn.Visibility = others > 0 ? Visibility.Visible : Visibility.Collapsed;
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] RefreshAccountSessions failed: " + ex.Message);
+                SetSessionsStatus("Couldn't load your sessions.");
+            }
+        }
+
+        private void SetSessionsStatus(string text)
+        {
+            if (AccountSessionsStatus == null) return;
+            if (string.IsNullOrEmpty(text))
+            {
+                AccountSessionsStatus.Text = "";
+                AccountSessionsStatus.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                AccountSessionsStatus.Text = text;
+                AccountSessionsStatus.Visibility = Visibility.Visible;
+            }
+        }
+
+        // One session row: device label + signed-in / last-active lines on the
+        // left, and (for non-current sessions) a Revoke button on the right.
+        private UIElement BuildSessionRow(SessionClient.SessionRow s)
+        {
+            var grid = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+
+            var deviceLine = new TextBlock
+            {
+                Text = s.IsCurrent ? "This device" : DescribeSession(s),
+                FontSize = 11,
+                FontWeight = s.IsCurrent ? FontWeights.SemiBold : FontWeights.Normal,
+                Foreground = s.IsCurrent
+                    ? new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A))   // gold for current
+                    : new SolidColorBrush(Color.FromRgb(0xDA, 0xDA, 0xDA)),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            if (!string.IsNullOrEmpty(s.UserAgent)) deviceLine.ToolTip = s.UserAgent;
+            info.Children.Add(deviceLine);
+
+            // Hardware line: last-used wheel + plugin version, once the device has
+            // heartbeated (null/blank for a brand-new sign-in or an old client).
+            string wheel = (s.Wheel ?? "").Trim();
+            string ver   = (s.PluginVersion ?? "").Trim();
+            if (wheel.Length > 0 || ver.Length > 0)
+            {
+                string hw = wheel.Length > 0 ? "Wheel: " + wheel : "";
+                if (ver.Length > 0) hw += (hw.Length > 0 ? "    " : "") + "TF4ALL v" + ver;
+                info.Children.Add(new TextBlock
+                {
+                    Text = hw,
+                    FontSize = 10,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xA8, 0xA8, 0xA8)),
+                    Margin = new Thickness(0, 1, 0, 0),
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            }
+
+            // s.LastActive already folds in the heartbeat last-seen server-side (greatest()).
+            string lastActive = s.LastActive.HasValue
+                ? s.LastActive.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                : "unknown";
+            string signedIn = s.CreatedAt.HasValue
+                ? s.CreatedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                : "unknown";
+            info.Children.Add(new TextBlock
+            {
+                Text = "Last active: " + lastActive + "    Signed in: " + signedIn,
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xA8, 0xA8, 0xA8)),
+                Margin = new Thickness(0, 1, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+            Grid.SetColumn(info, 0);
+            grid.Children.Add(info);
+
+            if (!s.IsCurrent)
+            {
+                var revoke = new Button
+                {
+                    Content = "Revoke",
+                    Tag = s.Id,
+                    Padding = new Thickness(8, 1, 8, 1),
+                    Height = 22,
+                    FontSize = 10,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(8, 0, 0, 0),
+                    ToolTip = "Sign this device out of your account.",
+                };
+                revoke.Click += AccountRevokeSession_Click;
+                Grid.SetColumn(revoke, 1);
+                grid.Children.Add(revoke);
+            }
+
+            return grid;
+        }
+
+        // Human label for a non-current session. Prefer the heartbeat's device name
+        // (the computer name); fall back to the descriptive User-Agent set at sign-in,
+        // then a generic label, and append the IP so devices stay distinguishable.
+        private static string DescribeSession(SessionClient.SessionRow s)
+        {
+            string label = (s.DeviceName ?? "").Trim();
+            if (label.Length == 0)
+            {
+                string ua = (s.UserAgent ?? "").Trim();
+                if (ua.Length > 0 && !ua.StartsWith("Go-http", StringComparison.OrdinalIgnoreCase))
+                    label = ua.Length <= 48 ? ua : ua.Substring(0, 48) + "...";
+            }
+            if (label.Length == 0) label = "Other device";
+            if (!string.IsNullOrEmpty(s.Ip)) label += "  (" + s.Ip + ")";
+            return label;
+        }
+
+        private void AccountSessionsRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshAccountSessions();
+        }
+
+        private async void AccountRevokeSession_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var btn = sender as Button;
+                string id = btn?.Tag as string;
+                if (string.IsNullOrEmpty(id) || _plugin == null) return;
+
+                var confirm = MessageBox.Show(
+                    "Sign this device out of your account? A running device signs out within a few minutes; an offline or sleeping one signs out the next time it comes online.",
+                    "Revoke session", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.OK) return;
+
+                if (btn != null) { btn.IsEnabled = false; btn.Content = "Revoking..."; }
+                bool ok = await _plugin.AuthRevokeSessionAsync(id, System.Threading.CancellationToken.None);
+                if (ok)
+                {
+                    RefreshAccountSessions();
+                }
+                else
+                {
+                    if (btn != null) { btn.IsEnabled = true; btn.Content = "Revoke"; }
+                    MessageBox.Show("Couldn't revoke that session. It may have already ended.",
+                        "Revoke session", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Revoke session failed: " + ex.Message);
+            }
+        }
+
+        private async void AccountSignOutOthers_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (_plugin == null) return;
+                var confirm = MessageBox.Show(
+                    "Sign out every other device? Running devices sign out within a few minutes; offline ones when they next come online. This device stays signed in.",
+                    "Sign out everywhere else", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.OK) return;
+
+                if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = false; AccountSignOutOthersBtn.Content = "Signing out..."; }
+                bool ok = await _plugin.AuthSignOutOtherSessionsAsync();
+                if (ok)
+                {
+                    RefreshAccountSessions();
+                }
+                else
+                {
+                    if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
+                    MessageBox.Show("Couldn't sign out the other devices. Check your connection and try again.",
+                        "Sign out everywhere else", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[Trueforce] Sign-out-others failed: " + ex.Message);
             }
         }
 
@@ -6173,7 +7304,7 @@ namespace TrueforceForAll.Plugin
             string email = _plugin.AuthSignedInEmail ?? "(unknown)";
             var confirm1 = MessageBox.Show(Window.GetWindow(this),
                 "Delete the account for " + email + "?\n\n"
-                + "Your presets stay - people who downloaded them keep them - but your name comes off them and your account is gone for good. Your vote + carfact contribution history is anonymized.",
+                + "Your presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and carfact contribution history is anonymized.",
                 "Delete account", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (confirm1 != MessageBoxResult.Yes) return;
 
@@ -6491,6 +7622,15 @@ namespace TrueforceForAll.Plugin
             var owner = Window.GetWindow(this);
             if (owner == null) return;
 
+            // Process-wide guard: never stack a second welcome modal. The
+            // init/telemetry path and this control's own Loaded + car-change
+            // dispatches can otherwise have a queued ShowDialog open on top of
+            // the one already on screen; the second would survive the first's
+            // dismissal. Checked at the commit point so the early-return gates
+            // above don't consume it.
+            if (WelcomeWindow.ShownThisSession) return;
+            WelcomeWindow.ShownThisSession = true;
+
             // We're committed to showing the dialog: consume the session
             // latch so concurrent dispatches from Loaded + MeterTimer
             // don't queue a second one behind this.
@@ -6585,7 +7725,7 @@ namespace TrueforceForAll.Plugin
             if (signInCancelled)
             {
                 MessageBox.Show(owner,
-                    "We'll remind you about community features later. Sign in anytime from Account & community in Settings.",
+                    "We'll remind you about community features later. Sign in anytime from the Account tab.",
                     "Community features",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -7376,6 +8516,7 @@ namespace TrueforceForAll.Plugin
             "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
             "UDP            Toggle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> off.\n" +
+            "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
             "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
@@ -7388,7 +8529,7 @@ namespace TrueforceForAll.Plugin
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
-            "HOMEBOX        Toggle the Trueforce master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
+            "HOMEBOX        Toggle the TF4ALL master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
@@ -7396,7 +8537,12 @@ namespace TrueforceForAll.Plugin
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).\n" +
             "F8SWEEP / F8   Experimental: sweep the rev LEDs via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
-            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.";
+            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
+            "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
+            "TOAST          Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
+            "SHOWALL        Reveal hidden/secret achievements (OG, Founding Supporter) in the tracker even when unearned, for testing. Reopen the tracker after toggling. Persists. Toggle.\n" +
+            "WARNEMAIL      Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
+            "LAPSED         Preview the lapsed cloud-backup look in the Account tab (note + orange 'Data removal in: X'), cycling 400d -> 180d -> 30d -> 7d -> 1d -> off. Display only; uploads stay off, nothing changed.";
 
         private void CommitAccessCode()
         {
@@ -7520,6 +8666,21 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Toggle the two info-tier Forza banners (SimHub-fallback notice +
+            // discovered-port banner) so their InfoBannerButton styling can be
+            // checked without getting Forza into those telemetry states. Lands
+            // on the next refresh tick, same as UDP.
+            if (code.Equals("FZBANNERS", StringComparison.OrdinalIgnoreCase))
+            {
+                _forceForzaInfoBanners = (_forceForzaInfoBanners + 1) % 2;
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text =
+                        _forceForzaInfoBanners == 1 ? "Forza info banners forced on (type FZBANNERS again to clear)."
+                      : "Forza info banners cleared.";
+                return;
+            }
+
             // Dev-only: filter the preset library to built-ins only, so we can
             // see the fresh-install library a brand-new user gets. Toggle: type
             // FRESH again to restore the full view. Nothing is deleted; the
@@ -7534,6 +8695,104 @@ namespace TrueforceForAll.Plugin
                         AccessCodeStatus.Text = _presetManager.BuiltinsOnly
                             ? "Built-ins-only view ON: the Presets tab now shows only the shipped factory presets (your own are hidden, not deleted). Type FRESH again to restore."
                             : "Built-ins-only view OFF: your full preset library is back.";
+                }
+                return;
+            }
+
+            // Dev-only: cycle the supporter BADGE through tiers so the badge UI can be
+            // previewed without being a real supporter. DISPLAY ONLY: it sets a local
+            // override feeding only the badge label; the real backup gate is enforced
+            // server-side (RLS), so this never grants supporter access. Persists. Cycles
+            // none -> Supporter -> Gold Supporter -> Platinum Supporter -> none.
+            if (code.Equals("SUPPORTER", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("BADGE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string cur = _plugin.Settings.DevSupporterBadgeOverride ?? "";
+                string next;
+                switch (cur)
+                {
+                    case "":               next = "Supporter";          break;
+                    case "Supporter":      next = "Gold Supporter";     break;
+                    case "Gold Supporter": next = "Platinum Supporter"; break;
+                    default:               next = "";                   break;
+                }
+                _plugin.Settings.DevSupporterBadgeOverride = next;
+                try { _plugin.PersistSettings(); } catch { }
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = string.IsNullOrEmpty(next)
+                        ? "Supporter badge override cleared (shows your real entitlement again)."
+                        : "Supporter badge preview: " + next + " (DISPLAY ONLY; does not grant supporter access).";
+                _ = RefreshSupporterBadgeAsync();
+                return;
+            }
+
+            // Dev-only: preview the achievement celebration toast, cycling through the
+            // achievements on each use. Does NOT affect the real "earned once" baseline.
+            if (code.Equals("TOAST", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("CELEBRATE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                _ = PreviewAchievementToastAsync();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Preview achievement toast fired (does not affect your real progress).";
+                return;
+            }
+
+            // Dev-only: reveal the secret achievements (OG, Founding Supporter) in the tracker even
+            // when unearned, by asking the server to include them (get_my_achievements p_include_secret).
+            // Toggle; persists (machine-local).
+            if (code.Equals("SHOWALL", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("ALLACHIEVEMENTS", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                bool next = !_plugin.Settings.DevShowAllAchievements;
+                _plugin.Settings.DevShowAllAchievements = next;
+                try { _plugin.PersistSettings(); } catch { }
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = next
+                        ? "Showing ALL achievements incl. hidden ones. Reopen the achievements tracker to see them."
+                        : "Hidden achievements back to normal (shown only when earned).";
+                return;
+            }
+
+            // Dev-only: email yourself the backup-deletion warning, cycling stage 1..5
+            // (6mo / 3mo / 1mo / 1wk / 1day) on each use so you can see the escalating copy.
+            // Sends to your signed-in address; never changes your real entitlement / timer.
+            if (code.Equals("WARNEMAIL", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("WARN", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (_plugin == null || !_plugin.AuthIsSignedIn)
+                {
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = "Sign in first to test the warning email.";
+                    return;
+                }
+                int stage = _warnPreviewStage;
+                _warnPreviewStage = stage >= 5 ? 1 : stage + 1;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Sending warning email stage " + stage + "/5 to your address...";
+                _ = SendWarnPreviewAndReport(stage);
+                return;
+            }
+
+            // Dev-only: cycle a DISPLAY-ONLY preview of the lapsed cloud-backup state in the Account
+            // tab (the contextual note + the orange "Data removal in: X" countdown), stepping the
+            // representative removal date 400d -> 180d -> 30d -> 7d -> 1d -> off. Never enables
+            // uploads and never touches your real entitlement; it only changes what is drawn.
+            if (code.Equals("LAPSED", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("LAPSE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                _lapsedPreviewIndex++;
+                if (_lapsedPreviewIndex >= _lapsedPreviewDays.Length) _lapsedPreviewIndex = -1;   // wrap to off
+                _ = RefreshCloudBackupGatingAsync();
+                if (AccessCodeStatus != null)
+                {
+                    AccessCodeStatus.Text = _lapsedPreviewIndex < 0
+                        ? "Lapsed cloud-backup preview off (showing your real state). Open the Account tab to see it."
+                        : "Lapsed cloud-backup preview: removal in ~" + _lapsedPreviewDays[_lapsedPreviewIndex]
+                          + " days (display only; uploads stay off, nothing changed). Open the Account tab to see it.";
                 }
                 return;
             }
@@ -7685,7 +8944,9 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = "Networked-welcome state reset: opening the modal now.";
                 // Re-trigger via the same gate the normal startup path
                 // uses so any preconditions (backend URL configured,
-                // etc.) apply identically.
+                // etc.) apply identically. Clear the per-session guard
+                // first or the reset would no-op after an earlier show.
+                WelcomeWindow.ShownThisSession = false;
                 MaybeShowNetworkedWelcome();
                 return;
             }
@@ -7760,7 +9021,7 @@ namespace TrueforceForAll.Plugin
                 _plugin.DebugForceStreamFault();
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Stream fault forced: status should read 'Stream lost - auto-reconnecting', then recover within a few seconds (watchdog re-attaches the wheel).";
+                    AccessCodeStatus.Text = "Stream fault forced: status should read 'Stream lost, auto-reconnecting', then recover within a few seconds (watchdog re-attaches the wheel).";
                 return;
             }
 
@@ -7906,6 +9167,31 @@ namespace TrueforceForAll.Plugin
             bool on = _plugin?.Settings?.DevModeUnlocked == true;
             if (_presetManager != null)
                 _presetManager.DevMode = on;
+            if (BackupSelfTestButton != null)
+                BackupSelfTestButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // Dev-only: run the full backup round-trip + classification audit in-process
+        // and show the pass/fail checklist. Same RunRoundTrip the console harness uses;
+        // the audit lines flag any unclassified TrueforceSettings field (the one-line
+        // classification reminder when a new top-level setting/effect is added).
+        private void BackupSelfTest_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var (ok, lines) = BackupSelfTest.RunRoundTrip();
+                System.Windows.MessageBox.Show(
+                    string.Join(Environment.NewLine, lines),
+                    ok ? "Backup self-test: PASS" : "Backup self-test: FAIL",
+                    System.Windows.MessageBoxButton.OK,
+                    ok ? System.Windows.MessageBoxImage.Information : System.Windows.MessageBoxImage.Warning);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show("Backup self-test threw: " + ex.Message,
+                    "Backup self-test", System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
         }
 
         // ---------- Rim rev/shift LEDs (iRacing) ----------
@@ -8383,7 +9669,19 @@ namespace TrueforceForAll.Plugin
                 // includes "(Built-In)" and collides with the merged-dict
                 // key for the factory entry, so silentOk always falls
                 // false and the rename prompt fires.
-                string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : carId;
+                // Pre-fill rules:
+                //   • Forking a built-in: strip the " (Built-In)" suffix off
+                //     the built-in's own name so the suggestion doesn't
+                //     immediately collide with the factory entry.
+                //   • Fresh fork (no built-in basis): prefer the active car's
+                //     human display name (resolved from CarFacts CarName ->
+                //     community consensus -> baked name tables) so Forza
+                //     ordinals like "Car_2267" pre-fill as "2016 Mazda MX-5"
+                //     instead. Falls back to carId only when no name has
+                //     been resolved for this car yet.
+                string fallbackName = !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName)
+                    ? _plugin.ActiveCarDisplayName : carId;
+                string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
                 bool silentOk = !string.IsNullOrEmpty(suggestion)
                                 && (existing == null || !existing.ContainsKey(suggestion));
@@ -8421,6 +9719,10 @@ namespace TrueforceForAll.Plugin
                 }
             }
             RefreshFromPlugin();
+            // Tell the Preset Manager the local library just changed so its
+            // rows reflect the new / updated car preset without the user
+            // having to hit Refresh library by hand.
+            _presetManager?.OnLocalLibraryChanged();
             // Prompt only on the sections whose values carry a per-car
             // fact (Engine -> layout, RevLimiter -> implied redline from
             // Threshold). Saves on other sections (Bumps, Traction, etc.)
@@ -8469,6 +9771,9 @@ namespace TrueforceForAll.Plugin
                 _plugin.SetDefaultPresetForActiveGame(name);
             ClearDirty();
             RefreshFromPlugin();
+            // Tell the Preset Manager the local library just changed so the
+            // newly-saved game preset shows up in its list automatically.
+            _presetManager?.OnLocalLibraryChanged();
             MessageBox.Show(
                 string.IsNullOrEmpty(game)
                     ? $"Saved as '{name}'."
@@ -8682,7 +9987,19 @@ namespace TrueforceForAll.Plugin
                 // ToDiskName strips " (Built-In)" (NOT " (default)" which is
                 // a separate legacy suffix). Without this the suggestion
                 // collides with the merged-dict key for the factory entry.
-                string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : carId;
+                // Pre-fill rules:
+                //   • Forking a built-in: strip the " (Built-In)" suffix off
+                //     the built-in's own name so the suggestion doesn't
+                //     immediately collide with the factory entry.
+                //   • Fresh fork (no built-in basis): prefer the active car's
+                //     human display name (resolved from CarFacts CarName ->
+                //     community consensus -> baked name tables) so Forza
+                //     ordinals like "Car_2267" pre-fill as "2016 Mazda MX-5"
+                //     instead. Falls back to carId only when no name has
+                //     been resolved for this car yet.
+                string fallbackName = !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName)
+                    ? _plugin.ActiveCarDisplayName : carId;
+                string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
                 // Silent fork: suggest the stripped builtin name (or the
                 // carId when forking fresh). When that name is free, save
@@ -8802,7 +10119,18 @@ namespace TrueforceForAll.Plugin
             // doesn't pre-fill a name that would immediately collide with
             // the factory entry (StripDefaultSuffix targets " (default)",
             // a separate legacy suffix).
-            string suggestion = string.IsNullOrEmpty(activeName) ? carId : TrueforcePlugin.ToDiskName(activeName);
+            // Pre-fill priority:
+            //   1. Current preset's stripped name (lets a fork start from the
+            //      preset the user is currently driving).
+            //   2. Active car's resolved display name (CarFacts CarName ->
+            //      community -> baked tables) so Forza ordinals don't
+            //      pre-fill as "Car_2267".
+            //   3. carId itself as the last resort.
+            string fallbackName = !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName)
+                ? _plugin.ActiveCarDisplayName : carId;
+            string suggestion = string.IsNullOrEmpty(activeName)
+                ? fallbackName
+                : TrueforcePlugin.ToDiskName(activeName);
             string newName = PromptForCarPresetName(
                 title: "Save as new car preset",
                 body:  $"Save the current tuning as a new user preset for '{carId}':",
@@ -9062,13 +10390,13 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             var open = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Trueforce backup (*.zip)|*.zip|All files (*.*)|*.*",
+                Filter = "TF4ALL backup (*.zip)|*.zip|All files (*.*)|*.*",
                 Title  = "Restore from backup",
             };
             if (open.ShowDialog(Window.GetWindow(this)) != true) return;
 
             var confirm = MessageBox.Show(Window.GetWindow(this),
-                "Restore will REPLACE all current Trueforce settings, presets, defaults, and car tunings with the backup's contents.\n\nYour current data will be moved to a .pre-restore-<timestamp> folder next to the user library as a safety net, but the live state will be the backup's.\n\nContinue?",
+                "Restore will REPLACE all current TF4ALL settings, presets, defaults, and car tunings with the backup's contents.\n\nYour current data will be moved to a .pre-restore-<timestamp> folder next to the user library as a safety net, but the live state will be the backup's.\n\nContinue?",
                 "Trueforce For All", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (confirm != MessageBoxResult.Yes) return;
 
@@ -9749,7 +11077,7 @@ namespace TrueforceForAll.Plugin
         private void PerfAudioRingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
-            int v = NearestPow2((int)Math.Round(e.NewValue), 8, 128);
+            int v = NearestPow2((int)Math.Round(e.NewValue), 16, 128);
             if (PerfAudioRingText != null) PerfAudioRingText.Text = FormatRing(v);
             if (_plugin.Settings?.Performance?.Mode == PerformanceMode.Manual)
                 _plugin.ApplyAudioRingSize(v);
@@ -9810,7 +11138,7 @@ namespace TrueforceForAll.Plugin
             string tfLabel = $" (cap {_plugin.CurrentTfRingSize})";
             string auLabel = $" (cap {_plugin.CurrentAudioRingSize})";
             PerfCountersText.Text =
-                $"Trueforce ring{tfLabel}: {tfWindow} underruns/min · " +
+                $"Output ring{tfLabel}: {tfWindow} underruns/min · " +
                 $"Audio ring{auLabel}: {auWindow} glitches/min";
         }
 
@@ -9890,7 +11218,7 @@ namespace TrueforceForAll.Plugin
             if (_ratchetTfOriginalCap is int tfOrig && !tfBackToStart)
             {
                 segments.Add(
-                    $"Trueforce ring: {tfOrig} → {_ratchetTfLatestCap} samples " +
+                    $"Output ring: {tfOrig} → {_ratchetTfLatestCap} samples " +
                     $"({tfOrig * 0.25:0.#} → {_ratchetTfLatestCap * 0.25:0.#} ms)");
             }
             if (_ratchetAudioOriginalCap is int auOrig && !auBackToStart)
@@ -9955,12 +11283,30 @@ namespace TrueforceForAll.Plugin
 
         // ---------- Support ----------
 
-        private const string DonateUrl = "https://ko-fi.com/mhytee";
+        private const string DonateUrl  = "https://ko-fi.com/mhytee";
+        private const string PatreonUrl = "https://www.patreon.com/Mhytee";
+        private const string PayPalUrl  = "https://www.paypal.me/mhytee";
+
+        private void Patreon_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening Patreon in your browser…";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PatreonUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
+                MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {PatreonUrl}",
+                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
 
         private void Donate_Click(object sender, RoutedEventArgs e)
         {
             try
             {
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening Ko-fi in your browser…";
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(DonateUrl)
                 {
                     UseShellExecute = true,  // .NET Framework 4.8 launches the URL via the default browser
@@ -9968,8 +11314,39 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
                 MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {DonateUrl}",
                                 "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void Paypal_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening PayPal in your browser…";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PayPalUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
+                MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {PayPalUrl}",
+                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // Copy the project link for sharing. Brief inline confirmation; falls back to showing
+        // the URL if the clipboard is locked by another app.
+        private void CopyShareLink_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                System.Windows.Clipboard.SetText(RepoUrl);
+                if (SupportShareStatus != null) SupportShareStatus.Text = "Link copied.";
+            }
+            catch
+            {
+                if (SupportShareStatus != null) SupportShareStatus.Text = "Couldn't copy. Link: " + RepoUrl;
             }
         }
 
@@ -10217,121 +11594,9 @@ namespace TrueforceForAll.Plugin
                 CheckForUpdatesStatus.Text = "";
         }
 
-        // Manual "Check now" for community preset updates. Resets the
-        // per-session latch and re-invokes the same sweep that runs on
-        // Loaded, so users don't have to reload the panel to re-check.
-        // The auto-check on Loaded only fires once; this handler is the
-        // user-driven retry path.
-        private async void CommunityCheckNowBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            if (CommunityCheckNowBtn == null || CommunityCheckNowStatus == null) return;
-
-            CommunityCheckNowBtn.IsEnabled = false;
-            CommunityCheckNowStatus.Visibility = System.Windows.Visibility.Visible;
-            CommunityCheckNowStatus.Text = "Checking…";
-            // Consume the auto-check session latch up front: if the
-            // auto-check on Loaded races this one (control reload
-            // mid-flight) it should defer to the user's explicit click.
-            _communityUpdatesCheckedThisSession = true;
-
-            int found = 0;
-            string finalText;
-            try
-            {
-                var updates = await _plugin.FindCommunityPresetUpdatesAsync();
-                found = updates?.Count ?? 0;
-                int autoApplied = 0;
-                if (found > 0)
-                {
-                    int before = found;
-                    try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
-                    catch (Exception ex)
-                    {
-                        SimHub.Logging.Current.Info("[Trueforce] Auto-apply update sweep failed: " + ex.Message);
-                    }
-                    found = updates?.Count ?? 0;
-                    autoApplied = before - found;
-                }
-                _presetManager?.RefreshUpdatesChip(found);
-                if (found == 0)
-                {
-                    finalText = autoApplied > 0
-                        ? (autoApplied == 1
-                            ? "1 auto-updated"
-                            : autoApplied + " auto-updated")
-                        : "You're up to date";
-                }
-                else
-                {
-                    // Owner may go null if the user navigated away from
-                    // the Trueforce panel during the async fetch; if so
-                    // skip the dialog and just report the count.
-                    var owner = Window.GetWindow(this);
-                    if (owner == null)
-                    {
-                        finalText = found == 1 ? "1 update available" : $"{found} updates available";
-                        if (autoApplied > 0) finalText += ", " + autoApplied + " auto-updated";
-                    }
-                    else
-                    {
-                        var dialog = new PresetUpdatesAvailableWindow(updates) { Owner = owner };
-                        bool? ok = dialog.ShowDialog();
-                        if (ok != true)
-                        {
-                            // User explicitly dismissed without picking
-                            // anything - don't lie that updates are
-                            // "available" (they rejected them).
-                            finalText = "";
-                        }
-                        else
-                        {
-                            int applied = 0, skipped = 0;
-                            foreach (var o in dialog.Outcomes)
-                            {
-                                if (o.Action == PresetUpdatesAvailableWindow.RowAction.Skip)
-                                {
-                                    _plugin.AcknowledgeCommunityPresetVersion(o.Id, o.ServerContentVersion);
-                                    skipped++;
-                                    continue;
-                                }
-                                if (o.Action != PresetUpdatesAvailableWindow.RowAction.Update) continue;
-                                try
-                                {
-                                    if (await ApplyCommunityUpdate(o)) applied++;
-                                }
-                                catch (Exception ex)
-                                {
-                                    SimHub.Logging.Current.Info(
-                                        "[Trueforce] Apply update failed for " + o.Id + ": " + ex.Message);
-                                }
-                            }
-                            finalText = $"{applied} applied, {skipped} skipped";
-                            if (autoApplied > 0)
-                                finalText += ", " + autoApplied + " auto-updated";
-                        }
-                        await RecomputeUpdatesChipAsync();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Info("[Trueforce] Manual update check failed: " + ex.Message);
-                finalText = "Check failed";
-            }
-            finally
-            {
-                if (CommunityCheckNowBtn != null) CommunityCheckNowBtn.IsEnabled = true;
-            }
-
-            if (CommunityCheckNowStatus != null)
-                CommunityCheckNowStatus.Text = finalText;
-
-            string captured = CommunityCheckNowStatus?.Text;
-            await Task.Delay(TimeSpan.FromSeconds(5));
-            if (CommunityCheckNowStatus != null && CommunityCheckNowStatus.Text == captured)
-                CommunityCheckNowStatus.Text = "";
-        }
+        // (The header "Check now for community updates" button was removed; community-preset
+        // update review is reached from the Preset browser's updates chip, which calls the
+        // same FindCommunityPresetUpdatesAsync / PresetUpdatesAvailableWindow plumbing.)
 
         /// <summary>True when there are unsaved tuning changes (a Save / Revert
         /// button is showing): any per-section dirty bit, or the active car

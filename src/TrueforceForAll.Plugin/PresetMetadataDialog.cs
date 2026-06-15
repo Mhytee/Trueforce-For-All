@@ -88,10 +88,11 @@ namespace TrueforceForAll.Plugin
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
-            var ok = new Button { Content = "Save & export", Width = 130, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true };
-            btnRow.Children.Add(ok);
+            // Cancel left, affirmative (default) right, matching every other dialog.
+            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+            var ok = new Button { Content = "Save & export", Width = 130, Height = 28, IsDefault = true };
             btnRow.Children.Add(cancel);
+            btnRow.Children.Add(ok);
             sp.Children.Add(btnRow);
 
             ok.Click += (s, e) =>

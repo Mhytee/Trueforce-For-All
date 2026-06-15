@@ -467,6 +467,10 @@ namespace TrueforceForAll.Plugin
         public void Init(TrueforcePlugin plugin, InitialTab initialTab = InitialTab.GamePresets)
         {
             _plugin = plugin;
+            // Redraw automatically when a cloud restore/merge reloads the library (idempotent
+            // re-subscribe so a second Init can't double-fire).
+            _plugin.LibraryReloaded -= OnLibraryReloaded;
+            _plugin.LibraryReloaded += OnLibraryReloaded;
             _initializing = true;
             try
             {
@@ -712,7 +716,7 @@ namespace TrueforceForAll.Plugin
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
                     "Create pack",
-                    "Enable Community Contributions in Settings to share packs.",
+                    "Turn on 'Use community car data' on the Account tab to share packs.",
                     DialogKind.Info);
                 return;
             }
@@ -728,7 +732,7 @@ namespace TrueforceForAll.Plugin
                 {
                     TrueforceDialog.Show(owner,
                         "Create pack",
-                        "Pick a username before sharing (Settings > Account & community).",
+                        "Pick a username before sharing (Account tab).",
                         DialogKind.Info);
                     return;
                 }
@@ -935,6 +939,12 @@ namespace TrueforceForAll.Plugin
         private void RelabelCommunityScopeRadio()
         {
             if (CommunityModeForCar == null) return;
+            // Car ID column is meaningful only for car presets; hide it
+            // for the game/engine/pack kinds where every row's CarId is
+            // empty (game presets are per-game, not per-car).
+            if (CommunityCarIdCol != null)
+                CommunityCarIdCol.Visibility = _communityKind == "car"
+                    ? Visibility.Visible : Visibility.Collapsed;
             // When the last fetch fell back to "no scope" (no active
             // game/car), the radio says "All ..." so the label matches
             // what the list actually shows. Was "Trending ..." which
@@ -1721,6 +1731,24 @@ namespace TrueforceForAll.Plugin
             finally { _initializing = false; }
         }
 
+        // A cloud restore/merge re-applied the library to live state; redraw all tabs so the user
+        // doesn't have to hit Refresh library. Marshalled to the UI thread defensively (the event
+        // fires from the restore apply path).
+        private void OnLibraryReloaded()
+        {
+            if (_plugin == null) return;
+            Action redraw = () =>
+            {
+                _initializing = true;
+                try { ReloadGames(); ReloadCars(); ReloadCustoms(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] Preset browser auto-refresh failed: {ex.Message}"); }
+                finally { _initializing = false; }
+            };
+            var d = Dispatcher;
+            if (d != null && !d.CheckAccess()) d.BeginInvoke(redraw);
+            else redraw();
+        }
+
         // Keep the leftmost (select-all checkbox) column pinned at DisplayIndex 0
         // no matter what the user drags. CanUserReorder=False on the column +
         // FrozenColumnCount=1 on the DataGrid disallow dragging the checkbox
@@ -1997,9 +2025,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     GameShareBtn.Content   = "★ Share pack";
                     GameShareBtn.IsEnabled = gShareCommunityOn && gShareSignedIn;
                     GameShareBtn.ToolTip   = !gShareCommunityOn
-                        ? "Enable Community Contributions in Settings to share presets."
+                        ? "Turn on 'Use community car data' on the Account tab to share presets."
                         : !gShareSignedIn
-                            ? "Sign in (Account & community in Settings) to share presets."
+                            ? "Sign in (Account tab) to share presets."
                             : $"Bundle these {checkedCount} presets into a community pack.";
                 }
                 else
@@ -2009,9 +2037,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         && !sel.Builtin && gShareCommunityOn && gShareSignedIn
                         && !gShareMatchesUpload;
                     if (!gShareCommunityOn)
-                        GameShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
+                        GameShareBtn.ToolTip = "Turn on 'Use community car data' on the Account tab to share presets.";
                     else if (!gShareSignedIn)
-                        GameShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
+                        GameShareBtn.ToolTip = "Sign in (Account tab) to share presets.";
                     else if (anySelected && sel.Builtin)
                         GameShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
                     else if (gShareMatchesUpload)
@@ -2116,9 +2144,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CarShareBtn.Content   = "★ Share pack";
                 CarShareBtn.IsEnabled = communityOn && signedIn;
                 CarShareBtn.ToolTip   = !communityOn
-                    ? "Enable Community Contributions in Settings to share presets."
+                    ? "Turn on 'Use community car data' on the Account tab to share presets."
                     : !signedIn
-                        ? "Sign in (Account & community in Settings) to share presets."
+                        ? "Sign in (Account tab) to share presets."
                         : $"Bundle these {checkedCount} presets into a community pack.";
                 return;
             }
@@ -2127,11 +2155,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 && communityOn && signedIn && !isCommunitySourced && !isBuiltinSel
                 && !carShareMatchesUpload;
             if (!communityOn)
-                CarShareBtn.ToolTip = "Enable Community Contributions in Settings to share presets.";
+                CarShareBtn.ToolTip = "Turn on 'Use community car data' on the Account tab to share presets.";
             else if (!signedIn)
-                CarShareBtn.ToolTip = "Sign in (Account & community in Settings) to share presets.";
+                CarShareBtn.ToolTip = "Sign in (Account tab) to share presets.";
             else if (isBuiltinSel)
-                CarShareBtn.ToolTip = "Built-in presets ship with the plugin -- no need to re-share.";
+                CarShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
             else if (isCommunitySourced)
                 CarShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
             else if (carShareMatchesUpload)
@@ -2193,7 +2221,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CustomShareBtn.IsEnabled = any && checkedCount <= 1
                     && cuShareCommunityOn && !cuShareMatchesUpload;
                 if (!cuShareCommunityOn)
-                    CustomShareBtn.ToolTip = "Enable Community Contributions in Settings to share.";
+                    CustomShareBtn.ToolTip = "Turn on 'Use community car data' on the Account tab to share.";
                 else if (cuShareMatchesUpload)
                     CustomShareBtn.ToolTip = $"This matches your last upload ({cuShareDef.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
                 else if (cuShareHasPriorUpload)
@@ -2292,7 +2320,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
                     "Share preset",
-                    "Enable Community Contributions in Settings to share presets.",
+                    "Turn on 'Use community car data' on the Account tab to share presets.",
                     DialogKind.Info);
                 return;
             }
@@ -2313,7 +2341,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     TrueforceDialog.Show(owner,
                         "Share preset",
-                        "Pick a username before sharing (Settings > Account & community).",
+                        "Pick a username before sharing (Account tab).",
                         DialogKind.Info);
                     return;
                 }
@@ -2565,7 +2593,44 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             //    persisted; the user can still Rename to override.
             if (BuiltinCarCylinders.TryGetDisplayName(game, carId, out var catalogName))
                 return catalogName;
-            return "";
+            // 3. Auto-derive from underscore-separated carIds (AC modder
+            //    filenames like "bmw_m3_e30" → "Bmw M3 E30"). Skips ordinal
+            //    patterns like "Car_2267" where we have no real info; those
+            //    stay blank so the row reads as "needs a name."
+            string derived = TryDeriveReadableCarName(carId);
+            return derived ?? "";
+        }
+
+        // Title-case an underscore/hyphen-separated carId into a readable
+        // name. Returns null for ordinal patterns (Car_2267, etc.) so they
+        // stay blank rather than pretending we know the car. AC, ACC, AMS2
+        // and most non-Forza titles use descriptive carIds that benefit
+        // from this; Forza ordinals do not.
+        private static string TryDeriveReadableCarName(string carId)
+        {
+            if (string.IsNullOrEmpty(carId)) return null;
+            // Ordinal pattern (Car_\d+): blank cell instead of "Car 2267"
+            // so unnamed cars are visually distinct from named ones.
+            if (System.Text.RegularExpressions.Regex.IsMatch(carId,
+                    @"^Car_\d+$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                return null;
+            var tokens = carId.Split(new[] { '_', '-' },
+                System.StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0) return null;
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                string t = tokens[i];
+                if (t.Length == 0) continue;
+                // Capitalize first letter; rest as-is so abbreviations
+                // like "GT" and "RX" stay uppercase when the modder
+                // already wrote them that way.
+                sb.Append(char.ToUpperInvariant(t[0]));
+                if (t.Length > 1) sb.Append(t.Substring(1));
+            }
+            return sb.ToString();
         }
 
         // Open the upload modal for the selected car preset. Reads the
@@ -2618,7 +2683,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     TrueforceDialog.Show(owner,
                         "Share pack",
-                        "Pick a username before sharing (Settings > Account & community).",
+                        "Pick a username before sharing (Account tab).",
                         DialogKind.Info);
                     return;
                 }
@@ -2650,7 +2715,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     TrueforceDialog.Show(owner,
                         "Share pack",
-                        "Pick a username before sharing (Settings > Account & community).",
+                        "Pick a username before sharing (Account tab).",
                         DialogKind.Info);
                     return;
                 }
@@ -2681,7 +2746,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
                     "Share preset",
-                    "Enable Community Contributions in Settings to share presets.",
+                    "Turn on 'Use community car data' on the Account tab to share presets.",
                     DialogKind.Info);
                 return;
             }
@@ -2734,7 +2799,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     TrueforceDialog.Show(owner,
                         "Share preset",
-                        "Pick a username before sharing (Settings > Account & community).",
+                        "Pick a username before sharing (Account tab).",
                         DialogKind.Info);
                     return;
                 }
@@ -2858,7 +2923,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (string.IsNullOrEmpty(activeName)) return;
                 if (_plugin.IsBuiltinPreset(activeName)) return;
                 payload = new EmptyShareCtaPayload { Kind = "game", PresetName = activeName };
-                label = "★ Share your '" + activeName + "' tune";
+                label = "★ Share your '" + ShortenForCta(activeName) + "' tune";
             }
             else if (kind == "car")
             {
@@ -2880,7 +2945,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     Kind = "car", PresetName = activeName,
                     CarId = activeCar, GameName = activeGame,
                 };
-                label = "★ Share your '" + activeName + "' tune";
+                label = "★ Share your '" + ShortenForCta(activeName) + "' tune";
             }
             else return;
 
@@ -2888,6 +2953,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             EmptyShareCtaBtn.Content = label;
             EmptyShareCtaBtn.Visibility = System.Windows.Visibility.Visible;
         }
+
+        // Bound the preset name in the empty-state share CTA so a long name
+        // doesn't blow out (the button auto-sizes to its text now) or clip.
+        private static string ShortenForCta(string name)
+            => (name != null && name.Length > 30) ? name.Substring(0, 29) + "…" : name;
 
         // Per-car (not per-preset) rename: opens the styled
         // CarNameInputWindow, writes the result to the CarFacts bundle
@@ -3151,7 +3221,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
                     "Share custom engine",
-                    "Enable Community Contributions in Settings to share custom engines.",
+                    "Turn on 'Use community car data' on the Account tab to share custom engines.",
                     DialogKind.Info);
                 return;
             }
@@ -3163,7 +3233,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     TrueforceDialog.Show(owner,
                         "Share custom engine",
-                        "Pick a username before sharing (Settings > Account & community).",
+                        "Pick a username before sharing (Account tab).",
                         DialogKind.Info);
                     return;
                 }
@@ -3627,6 +3697,16 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         public void OnActiveCarChanged(bool gameAlsoChanged = true)
         {
             UpdateCommunityActiveCarLabel();
+            // Refresh the local lists so the row for the newly-active car
+            // (or the new game's presets) appears without the user having
+            // to hit Refresh library by hand. Cheap (in-memory rebuild
+            // from _plugin.GetAllCarPresets and Settings.Presets); only
+            // the community fetch involves network I/O.
+            if (_plugin != null)
+            {
+                ReloadCars();
+                if (gameAlsoChanged) ReloadGames();
+            }
             if (CommunityPanel == null
                 || CommunityPanel.Visibility != Visibility.Visible
                 || _plugin == null)
@@ -3636,6 +3716,19 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 || (_communityKind == "game" && gameAlsoChanged);
             if (shouldRefresh)
                 _ = CommunityRefreshAsync();
+        }
+
+        // Host hook for "the user just saved or downloaded a preset that
+        // could change the rows the manager shows." Always cheap: an
+        // in-memory rebuild from the plugin's current state. The host
+        // calls this from preset-save / preset-download / preset-delete
+        // paths so the rows reflect reality without a manual refresh.
+        public void OnLocalLibraryChanged()
+        {
+            if (_plugin == null) return;
+            ReloadGames();
+            ReloadCars();
+            ReloadCustoms();
         }
 
         private void UpdateCommunityActiveCarLabel()
@@ -3726,7 +3819,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 _communityRows.Clear();
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Community Contributions is off (toggle it in Settings).";
+                    CommunityStatusLabel.Text = "'Use community car data' is off (enable it on the Account tab).";
                 CommunityList_SelectionChanged(null, null);
                 return;
             }
@@ -3736,7 +3829,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 _communityRows.Clear();
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Sign in (Account & community in Settings) to see your uploads.";
+                    CommunityStatusLabel.Text = "Sign in (Account tab) to see your uploads.";
                 CommunityList_SelectionChanged(null, null);
                 return;
             }
@@ -4215,7 +4308,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (!_plugin.AuthIsSignedIn)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Sign in (Account & community in Settings) to vote.";
+                    CommunityStatusLabel.Text = "Sign in (Account tab) to vote.";
                 return;
             }
             // A refresh mid-fetch would replace _communityRows with new

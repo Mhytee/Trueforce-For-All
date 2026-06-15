@@ -106,6 +106,39 @@ namespace TrueforceForAll.Plugin
         // CarFacts dict above. Migrate-once + idempotent.
         public bool CarFactsMigratedV1 { get; set; } = false;
 
+        // One-time migration latch. Flips true after car presets whose name
+        // matches the ordinal "Car_NNN" pattern have been renamed to their
+        // baked human-readable car name (per game, via
+        // BuiltinCarCylinders.TryGetDisplayName). Saves "Car_2267" presets
+        // as "1997 Mazda RX-7" so the Preset Manager rows read sensibly out
+        // of the box for Forza Horizon. Idempotent.
+        public bool CarPresetOrdinalNamesMigratedV1 { get; set; } = false;
+
+        // V2 re-runs the same rename pass with two fixes vs V1: (a) V1 ran
+        // before _carStore was initialised in Init() so the LoadAll guard
+        // tripped and nothing got migrated, (b) V1 only consulted the baked
+        // name tables and missed user-set Settings.CarFacts[k].CarName
+        // overrides. V2 calls the migration after _carStore is alive and
+        // walks CarFacts user names first, then baked names. Set
+        // CarPresetOrdinalNamesMigratedV2 to true once the corrected pass
+        // has run; safe to keep both flags forever.
+        public bool CarPresetOrdinalNamesMigratedV2 { get; set; } = false;
+
+        // One-time migration latch. Flips true after legacy "Forza_NNN" car
+        // ids have been normalized to "Car_NNN". Released builds stored Forza
+        // car tunings under the id "Forza_<ordinal>" (the old UDP-fallback
+        // shape); this branch's telemetry emits "Car_<ordinal>" and rewrites
+        // any incoming Forza_<n> to Car_<n> before every lookup, so an
+        // un-normalized Forza_<n> car file / default binding can never be
+        // found again and the user's per-car tuning silently stops applying.
+        // On the first launch after this build ships we run the same
+        // normalization the NORMALIZEFORZA dev tool performs (rename folders,
+        // rewrite CarId + PresetName + both car-defaults.json files + the live
+        // Settings.CarDefaults/CarOverrides dicts) so those tunings keep
+        // applying. Idempotent and content-preserving (a Forza_<n> that
+        // collides with an existing Car_<n> is merged, never dropped).
+        public bool ForzaCarIdsNormalizedV1 { get; set; } = false;
+
         // Per-(game, carId) signatures the user dismissed the
         // "register this new engine variant?" prompt for. Key:
         // "{game}/{carId}". Value: list of telemetry signature strings
@@ -464,6 +497,62 @@ namespace TrueforceForAll.Plugin
         // on the user's own preset uploads.
         public CommunityAuthSession AuthSession { get; set; }
 
+        // The last Trueforce wheel model detected on THIS PC, as a short chassis
+        // label (e.g. "G PRO"). Shown in the Account "Active sessions" list so a
+        // device is identifiable by its wheel, and reported by the session
+        // heartbeat. MACHINE-LOCAL: describes this PC's hardware, so it never
+        // travels in cloud backup. Empty until a wheel is first detected; sticky
+        // across unplugs and restarts (only overwritten by a new detection).
+        public string LastUsedWheel { get; set; } = "";
+
+        // Cloud-backup sync bookkeeping (Phase 2). The Storage object `version` of
+        // the backup this PC last pushed or pulled. MACHINE-LOCAL: each PC tracks its
+        // own sync point and it is NEVER itself backed up. Used to detect divergence
+        // (cloud changed since this PC last synced) so a manual backup can
+        // fast-forward, or on conflict offer the merge dialog. Empty = never synced.
+        public string BackupLastSyncedRevision { get; set; } = "";
+
+        // Last-synced portable settings projection (Settings+Forza JObjects, serialized): the COMMON
+        // ANCESTOR for the auto-sync field-level 3-way merge, so edits on each PC to DIFFERENT
+        // settings fields both survive instead of one side winning the whole object. Per-PC sync
+        // bookkeeping; never itself backed up. Empty = no baseline yet.
+        public string BackupLastSyncedEnvelopeJson { get; set; } = "";
+
+        // Auto-sync backup (Phase 2). When on, the plugin pushes a fresh cloud backup
+        // shortly after settings/preset changes (debounced, FAST-FORWARD ONLY: on a
+        // detected divergence it does NOT silently merge, it logs and waits for a manual
+        // reconcile via the conflict dialog). MACHINE-LOCAL: each PC opts in to
+        // background uploads explicitly, so a freshly-restored second PC never starts
+        // pushing unprompted.
+        public bool AutoSyncBackupEnabled { get; set; } = false;
+
+        // DEV/TEST ONLY: forces the supporter BADGE to display a given tier
+        // ("Supporter" / "Gold Supporter" / "Platinum Supporter"); empty = show the real
+        // entitlement. Set via the SUPPORTER access code. MACHINE-LOCAL + display-only: it
+        // feeds ONLY the badge label, never the backup gate (which is enforced server-side
+        // by RLS), so it can never grant real supporter access.
+        public string DevSupporterBadgeOverride { get; set; } = "";
+
+        // Dev/test: when true, the achievements tracker requests secret achievements too (OG,
+        // Founding Supporter) even when unearned, so they can be previewed. Toggled by the SHOWALL
+        // access code. MACHINE-LOCAL (not backed up).
+        public bool DevShowAllAchievements { get; set; }
+
+        // Show in-plugin achievement celebration toasts (default on). A global opt-out;
+        // each achievement only celebrates once regardless. PORTABLE preference.
+        public bool ShowAchievementCelebrations { get; set; } = true;
+
+        // Baseline of already-seen earned achievement keys (CSV) so a newly-EARNED one is
+        // celebrated exactly once. Seeded silently on first run (no flood for existing earns)
+        // and reset on account switch. EXCLUDED from backup (transient local detection state;
+        // a fresh PC re-seeds its own baseline silently).
+        public string AchievementBaseline { get; set; } = "";
+
+        // Notification-dot state: a newly-earned achievement the user hasn't opened the
+        // tracker to see yet. Set on detect, cleared when the Achievements window opens.
+        // EXCLUDED from backup (transient local UI state; resets on account switch).
+        public bool AchievementUnseen { get; set; } = false;
+
         // Welcome modal lifecycle. We show the pitch up to TWO times:
         // first plugin load (DeclineCount==0, NextShowAt==null), then
         // again after WelcomeReshowDays (~14 days) if the user picked
@@ -518,15 +607,21 @@ namespace TrueforceForAll.Plugin
             = new Dictionary<string, UserDataSlot>();
 
         // The key whose slot is currently mounted into the legacy
-        // DownloadedCommunityPresets + SharingAuthor fields. Empty
-        // string = anonymous. Set by the slot manager on sign-in /
-        // sign-out; do not write directly.
+        // DownloadedCommunityPresets + SharingAuthor fields. The key is
+        // the immutable Supabase user-id (empty string = anonymous), so a
+        // later email change can't orphan a slot. Set by the slot manager
+        // on sign-in / sign-out; do not write directly.
         public string ActiveSlotKey { get; set; } = "";
 
         // One-time migration latch: the first run after the slot
         // feature ships moves any pre-existing DownloadedCommunityPresets
         // + SharingAuthor into the appropriate slot.
         public bool UserSlotsMigratedV1 { get; set; } = false;
+
+        // One-time migration latch: re-key any email-keyed slots (from the
+        // never-shipped email scheme / pre-user-id test builds) to the
+        // immutable user-id, so keying is stable across an email change.
+        public bool SlotsKeyedByUserIdV1 { get; set; } = false;
 
         // Snapshot of the email that owned legacy (pre-slot) data; set once on first sign-in so migration targets the right slot even if the user re-auths before EnsureUserSlotsMounted runs.
         public string LegacyDataOwnerEmail { get; set; } = "";
@@ -1088,13 +1183,15 @@ namespace TrueforceForAll.Plugin
         // each sample is 0.25 ms, so 8 = 2 ms, 64 = 16 ms.
         public int TfRingSize { get; set; } = 8;
 
-        // Audio loopback ring depth (samples; pow-of-two; 8..128). At 4 kHz
-        // each sample is 0.25 ms, so 8 = 2 ms, 128 = 32 ms. Defaults to the
-        // minimum (8 = 2 ms) so low-latency hardware gets the best feel out
-        // of the box. The two-way auto-ratchet bumps it up on the first
-        // noisy moment and shrinks it back down once the system settles, so
-        // it self-tunes to whatever the user's hardware actually needs.
-        public int AudioRingSize { get; set; } = 8;
+        // Audio loopback ring depth (samples; pow-of-two; 16..128). At 4 kHz
+        // each sample is 0.25 ms, so 16 = 4 ms, 128 = 32 ms. Defaults to the
+        // minimum (16 = 4 ms): one WASAPI engine-period burst (~10.7 decimated
+        // samples) cannot fit a smaller ring, so 8 always laps and ratchets
+        // straight back to 16 (see AudioCaptureSource ring-depth notes). The
+        // two-way auto-ratchet bumps it up under sustained pressure and shrinks
+        // it back to 16 once the system settles. Persisted 8s from older builds
+        // are clamped up to 16 on load via SanitizePow2.
+        public int AudioRingSize { get; set; } = 16;
     }
 
     /// <summary>What EnginePulse should do when the resolver flags the
@@ -1605,10 +1702,10 @@ namespace TrueforceForAll.Plugin
     /// belongs to a specific Supabase account on this install, so a
     /// sign-out doesn't lose the user's data and a second user signing
     /// in on the same machine doesn't see the first user's history.
-    /// Keyed in Settings.UserSlots by lower-cased email (or "" for
-    /// anonymous activity). Designed so a future cloud-sync feature
-    /// can push/pull a slot to the server without changing call
-    /// sites.</summary>
+    /// Keyed in Settings.UserSlots by the immutable Supabase user-id (or
+    /// "" for anonymous activity) so an email change never orphans a
+    /// slot. Designed so a future cloud-sync feature can push/pull a slot
+    /// to the server without changing call sites.</summary>
     public sealed class UserDataSlot
     {
         public Dictionary<string, DownloadedPresetRecord> DownloadedCommunityPresets { get; set; }
@@ -1635,5 +1732,32 @@ namespace TrueforceForAll.Plugin
         // (the user re-bound it explicitly so the suppression is gone).
         public HashSet<string> SuppressedCarDefaults { get; set; }
             = new HashSet<string>(StringComparer.Ordinal);
+
+        // ---- Per-account profile (feel/effects + library + sync state) ----
+        // A signed-in account gets its OWN settings profile and preset library, isolated from
+        // other accounts on the same PC. Only the portable subset (the same one that travels to
+        // the cloud) is per-account; true device/hardware config stays global on TrueforceSettings.
+
+        // Filesystem-safe token (Supabase user_id UUID preferred) naming this account's private
+        // library folder under <root>\accounts\<token>. Cached so it survives sign-out (when the
+        // live AuthSession.UserId is gone). Empty for the anonymous slot (uses the shared folder).
+        public string LibraryToken { get; set; } = "";
+        // Latch: this account's library folder has been seeded (copied) from the shared library.
+        public bool LibrarySeededV1 { get; set; } = false;
+        // Latch: ProfileSettingsJson has been populated at least once (distinguishes a brand-new
+        // account, which inherits the current live profile, from one with a saved profile to apply).
+        public bool ProfileSeededV1 { get; set; } = false;
+        // The account's saved PORTABLE settings projection (effects/gains/car facts/custom engines/
+        // feature toggles), minus the community-history fields above which mount separately. Applied
+        // onto live settings on switch-in, refreshed from live on switch-out.
+        public string ProfileSettingsJson { get; set; } = "";
+        // The account's Forza portable fields ({Enabled, Port}) as JSON, or empty.
+        public string ProfileForzaJson { get; set; } = "";
+        // Auto-sync opt-in follows the account (per the per-account profile choice).
+        public bool AutoSyncBackupEnabled { get; set; } = false;
+        // Per-account cloud-sync bookkeeping so each account syncs against its OWN baseline (no
+        // cross-account contamination when two accounts share one PC).
+        public string BackupLastSyncedRevision { get; set; } = "";
+        public string BackupLastSyncedEnvelopeJson { get; set; } = "";
     }
 }

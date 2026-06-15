@@ -87,6 +87,12 @@ SetupIconFile=
 Type: files; Name: "{app}\User.SimHubTrueforce.dll"
 Type: files; Name: "{app}\SimHubTrueforce.Core.dll"
 Type: files; Name: "{app}\SimHubTrueforce.LoopbackHelper.exe"
+; Wipe the shipped factory built-ins before [Files] re-copies the current set, so stale built-ins
+; left by an older/larger install can't linger and inflate the built-in count (which made two PCs
+; show different preset totals even with user presets in sync). The bundled builtins folder is the
+; source of truth, so this regenerates cleanly. The sibling 'user' preset folder and all cloud
+; backups are NOT touched. only this factory folder is rebuilt.
+Type: filesandordirs; Name: "{app}\PluginsData\Common\TrueforceForAll\factory"
 
 [Files]
 ; Our own files — always overwrite on upgrade.
@@ -144,6 +150,12 @@ Source: "{#UsbPcapSetup}"; DestDir: "{app}\vendor"; DestName: "USBPcapSetup.exe"
 ; own choice (preserves disable/hide on upgrade installs).
 Source: "RegisterPlugin.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
+; PowerShell helper that flips SimHub's "Start minimized" preference off just
+; before we launch SimHub, so a post-install launch opens visibly instead of
+; into the system tray. Drops a marker the plugin reads to restore the user's
+; real preference in memory (invisible round-trip). See the [Run] step below.
+Source: "PrepareVisibleLaunch.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall
+
 ; License redistribution for the bundled USBPcap.
 Source: "USBPcap-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 
@@ -174,6 +186,22 @@ Filename: "powershell.exe"; \
     StatusMsg: "Registering Trueforce For All with SimHub..."; \
     Flags: runhidden waituntilterminated
 
+; Open SimHub VISIBLY on the launch below, even when the user has SimHub's
+; "Start minimized" preference enabled (which would otherwise drop it straight
+; into the system tray). Someone who just ran this installer wants to see
+; SimHub. PrepareVisibleLaunch.ps1 flips StartMinimized off for this one launch
+; and drops a marker the plugin reads to restore the user's real preference in
+; SimHub's memory (SimHub re-persists it on exit, so the round-trip is
+; invisible). Runs elevated (the settings file lives under Program Files) and
+; ONLY when we're actually about to launch (ShouldPrepareVisibleLaunch). A no-op
+; for users who don't use Start minimized. Must run before both launch steps
+; below; waituntilterminated so the flip lands before SimHub reads the file.
+Filename: "powershell.exe"; \
+    Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\PrepareVisibleLaunch.ps1"" -SettingsPath ""{app}\PluginsData\GlobalSimhubSettings.json"" -MarkerDir ""{app}\PluginsData\Common\TrueforceForAll"""; \
+    StatusMsg: "Preparing SimHub to open..."; \
+    Check: ShouldPrepareVisibleLaunch; \
+    Flags: runhidden waituntilterminated
+
 ; Auto-relaunch SimHub for an update where we closed a running instance. The
 ; user was using SimHub, so just bring it back, no Finished-page prompt. Runs
 ; now (not postinstall) and reuses the same shell-launch trick as the checkbox
@@ -193,14 +221,13 @@ Filename: "{cmd}"; \
 ; Task Manager, no visible window) in 0.1.0-localtest8. cmd /c start
 ; spawns through the shell's normal launch path which avoids that.
 ;
-; If the user has SimHub's "Start minimized" preference enabled,
-; SimHub will minimize itself to the taskbar after launch regardless
-; of how we start it. An earlier revision shipped a PowerShell shim
-; that polled for the window and called ShowWindow + SetForegroundWindow
-; to overrule the minimize, but SimHub re-applies its preference late
-; in WPF init and would re-minimize after our restore. The Finished
-; page text (set in CurPageChanged below) tells the user to look at
-; the taskbar in that case.
+; "Start minimized" handling: the PrepareVisibleLaunch step above already
+; flipped that preference off for this launch (and the plugin restores it
+; in memory), so SimHub opens to a visible window here instead of the tray.
+; An earlier revision instead polled for the window post-launch and called
+; ShowWindow + SetForegroundWindow, but SimHub re-applies its preference
+; late in WPF init and re-minimized after the restore; flipping the setting
+; before launch is deterministic and avoids that race.
 Filename: "{cmd}"; \
     Parameters: "/c start """" /D ""{app}"" ""{app}\SimHubWPF.exe"""; \
     Description: "Launch SimHub now"; \
@@ -655,6 +682,16 @@ begin
   Result := PluginWasInstalled and ClosedSimHub and (not UsbPcapInstalledThisRun);
 end;
 
+// Gate for the PrepareVisibleLaunch [Run] step: run it whenever we're about to
+// launch SimHub, i.e. either the silent update relaunch or the (default-checked)
+// first-install "Launch SimHub now" checkbox. Same reboot-pending suppression
+// both paths already apply (the launch itself is skipped then, so there's
+// nothing to make visible). The script itself no-ops unless StartMinimized is on.
+function ShouldPrepareVisibleLaunch: Boolean;
+begin
+  Result := ShouldAutoRelaunchSimHub or CanLaunchNow;
+end;
+
 // Skip the GPL info page and the EULA accept page on an update when the user
 // has already agreed to the same legal text. The revision they agreed to is
 // recorded by RegisterPreviousData; a non-empty match against the current
@@ -716,8 +753,7 @@ begin
         'Update complete. SimHub is reopening now; give it a few seconds to come back up.'
     else
       WizardForm.FinishedLabel.Caption :=
-        'Close Logitech G HUB before launching SimHub. G HUB claims the wheel''s HID interface and will block this plugin.' + #13#10 + #13#10 +
-        'If you have "Start minimized" enabled in SimHub, the window will open minimized to the taskbar. Click the SimHub icon to bring it up.';
+        'Close Logitech G HUB before launching SimHub. G HUB claims the wheel''s HID interface and will block this plugin.';
 
     // The default FinishedLabel is sized for a short single-paragraph
     // message and clips longer text behind the RunList (the postinstall

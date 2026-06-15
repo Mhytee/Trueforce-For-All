@@ -309,7 +309,7 @@ namespace TrueforceForAll.Plugin
                 _plugin.MasterGain = (float)e.NewValue;   // live: mixer + settings
                 _pendingPersist = true;
             };
-            _masterToggle = MakeToggle("Master", "Turn all Trueforce haptics on/off");
+            _masterToggle = MakeToggle("Master", "Turn all TF4ALL haptics on/off");
             _masterToggle.Checked   += (s, e) => { if (!_syncing) _plugin.SetPluginEnabled(true); };
             _masterToggle.Unchecked += (s, e) => { if (!_syncing) _plugin.SetPluginEnabled(false); };
             content.Children.Add(MakeRow(_masterToggle, _masterSlider));
