@@ -403,6 +403,31 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Edge Function JWT verification, pinned per function so the setting is source-controlled
+# and cannot silently drift on redeploy. A drifted verify_jwt=false on discord-role-sync
+# was the one critical finding of the 2026-06-14 security audit (it let any anon-key holder
+# forge a service_role token and read every linked member's Discord identity). Every function
+# authenticates its caller from a Supabase-signed JWT: a user JWT from the plugin, or the
+# Vault service_role JWT sent by pg_cron. None implements custom or webhook auth, so all of
+# them require a valid JWT at the gateway.
+[functions.discord-role-sync]
+verify_jwt = true
+
+[functions.discord-link]
+verify_jwt = true
+
+[functions.patreon-link]
+verify_jwt = true
+
+[functions.patreon-supporters-sync]
+verify_jwt = true
+
+[functions.backup-retention-warn]
+verify_jwt = true
+
+[functions.backup-retention-gc]
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327
