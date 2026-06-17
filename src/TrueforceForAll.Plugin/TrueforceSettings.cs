@@ -124,6 +124,16 @@ namespace TrueforceForAll.Plugin
         public double StationarySpringStrength  { get; set; } = 0.5;
         public double StationarySpringCutoffKmh { get; set; } = 12.0;  // spring fully gone at/above this speed
 
+        // Issue #13: while the game is paused, fully leave Trueforce mode so the
+        // wheel reverts to its native force feedback (e.g. Forza's own
+        // auto-center) instead of the plugin holding the last captured force.
+        // An active Trueforce stream overrides the wheel's native FFB, so a
+        // parked car's held force walked the wheel to full lock (G923 / FH6).
+        // On by default (standard behaviour); exposed only as a hand-edit escape
+        // hatch, no UI, in case a wheel ever misbehaves on the pause/resume
+        // transition.
+        public bool   StopStreamOnPause          { get; set; } = true;
+
         // FFB spike taming: tames AC's over-the-top curb / collision FFB so
         // it lands as a firm shove instead of a wheel-yanking jolt. Two
         // knobs: FfbSpikeMaxLsbPerMs caps slew rate (LSB/ms); FfbPeakSoftLimitLsb

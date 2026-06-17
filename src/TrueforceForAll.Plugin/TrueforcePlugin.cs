@@ -832,6 +832,72 @@ namespace TrueforceForAll.Plugin
         public void SetStationarySpringCutoffKmh(double v)
         { if (Settings != null) Settings.StationarySpringCutoffKmh = v; }
 
+        // ---------- Issue #13: leave Trueforce mode while paused ----------
+        //
+        // While the game is paused, fully stop the Trueforce stream so the wheel
+        // reverts to its native force feedback (e.g. Forza's own DirectInput
+        // auto-center) instead of the plugin holding the last captured force.
+        // An ACTIVE stream makes the wheel use our cur as motor torque and
+        // ignore its native FFB, so a parked car's held force walked the wheel
+        // to full lock (G923 / FH6, issue #13). Streaming a zero force is not
+        // enough: that is still an active stream and still overrides the game's
+        // auto-center. SendStopCommand + Pause (the same primitive the plugin
+        // uses when disabled) is what actually hands the wheel back; we re-enter
+        // on resume. Called every DataUpdate so it keeps ticking after telemetry
+        // stops. StopStreamOnPause defaults true; flipping it false restores the
+        // old return-zero pause-release (the FfbTargetProvider lambda).
+        private bool _stopStreamPauseActive;
+        // A real pause stops telemetry far longer than this; the threshold only
+        // has to clear normal inter-frame jitter (Forza runs 60-160 Hz).
+        private const double StopStreamPauseStaleMs = 250.0;
+
+        private void UpdateStopStreamOnPauseGate()
+        {
+            if (Settings == null || !Settings.StopStreamOnPause)
+            {
+                // Disabled via the escape hatch: never leave the stream stopped
+                // behind us. Resume only while the plugin is still driving.
+                if (_stopStreamPauseActive)
+                {
+                    if (Settings != null && Settings.PluginEnabled && _device != null)
+                    {
+                        _device.Resume();
+                        _device.SendStartCommand();
+                    }
+                    _stopStreamPauseActive = false;
+                }
+                return;
+            }
+
+            if (!Settings.PluginEnabled || _device == null) return;
+            var src = _telemetrySource;
+            if (src == null || string.IsNullOrEmpty(_activeGame)) return;
+
+            // Paused = the game's own session flag is down (authoritative, or the
+            // physics proxy with no telemetry), OR telemetry has actually stopped
+            // flowing. The staleness arm catches FH6 fast-travel / teleport /
+            // race-start, where Forza halts UDP so IsRaceOn freezes at 1 and
+            // IsSessionActive never reports the pause on its own.
+            bool paused = (!src.IsSessionActive && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
+                          || src.MsSinceLastFrame > StopStreamPauseStaleMs;
+
+            if (paused && !_stopStreamPauseActive)
+            {
+                _device.SendStopCommand();
+                _device.Pause();
+                _stopStreamPauseActive = true;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Pause: left Trueforce mode so the wheel reverts to native FFB (issue #13).");
+            }
+            else if (!paused && _stopStreamPauseActive)
+            {
+                _device.Resume();
+                _device.SendStartCommand();
+                _stopStreamPauseActive = false;
+                SimHub.Logging.Current.Info("[TF4ALL] Resume: restarted Trueforce stream.");
+            }
+        }
+
         // Fast gate on the baseline FFB path: when the spring is off AND no
         // desk self-test is armed, return the game's FFB target untouched
         // WITHOUT entering the spring logic at all. Keeps the stationary
@@ -1984,6 +2050,9 @@ namespace TrueforceForAll.Plugin
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
             }
+
+            // Issue #13: hand the wheel back to the game while paused.
+            UpdateStopStreamOnPauseGate();
 
             // Track game changes and auto-apply that game's default preset
             // (if one is bound in GameDefaults). Done before per-car override
