@@ -846,10 +846,22 @@ namespace TrueforceForAll.Plugin
         // on resume. Called every DataUpdate so it keeps ticking after telemetry
         // stops. StopStreamOnPause defaults true; flipping it false restores the
         // old return-zero pause-release (the FfbTargetProvider lambda).
+        //
+        // Transition handling (the quick-travel-after-pause case): a teleport /
+        // quick travel flaps telemetry back to "active" for a frame or two while
+        // it loads. Two guards keep that flap from re-locking the wheel:
+        //   1. On stop we ClearLastFfbTarget, so the tap can't replay the stale
+        //      pre-pause force if the stream restarts mid-transition.
+        //   2. Resume waits for telemetry to read active continuously for
+        //      ResumeHoldMs, so a one-frame flap never restarts the stream.
         private bool _stopStreamPauseActive;
         // A real pause stops telemetry far longer than this; the threshold only
         // has to clear normal inter-frame jitter (Forza runs 60-160 Hz).
         private const double StopStreamPauseStaleMs = 250.0;
+        // Telemetry must read active continuously for this long before we restart
+        // the stream, so a quick-travel / teleport flap can't re-engage us.
+        private const long ResumeHoldMs = 300;
+        private long _resumeCandidateSinceTicks;   // 0 = no resume pending
 
         private void UpdateStopStreamOnPauseGate()
         {
@@ -866,6 +878,7 @@ namespace TrueforceForAll.Plugin
                     }
                     _stopStreamPauseActive = false;
                 }
+                _resumeCandidateSinceTicks = 0;
                 return;
             }
 
@@ -881,21 +894,38 @@ namespace TrueforceForAll.Plugin
             bool paused = (!src.IsSessionActive && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
                           || src.MsSinceLastFrame > StopStreamPauseStaleMs;
 
-            if (paused && !_stopStreamPauseActive)
+            if (paused)
             {
-                _device.SendStopCommand();
-                _device.Pause();
-                _stopStreamPauseActive = true;
-                SimHub.Logging.Current.Info(
-                    "[TF4ALL] Pause: left Trueforce mode so the wheel reverts to native FFB (issue #13).");
+                _resumeCandidateSinceTicks = 0;   // cancel any pending resume
+                if (!_stopStreamPauseActive)
+                {
+                    // Drop the pre-pause force so a stream restart during a
+                    // quick-travel / teleport flap can't replay it (issue #13).
+                    _ffbTap?.ClearLastFfbTarget();
+                    _device.SendStopCommand();
+                    _device.Pause();
+                    _stopStreamPauseActive = true;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Pause: left Trueforce mode so the wheel reverts to native FFB (issue #13).");
+                }
+                return;
             }
-            else if (!paused && _stopStreamPauseActive)
-            {
-                _device.Resume();
-                _device.SendStartCommand();
-                _stopStreamPauseActive = false;
-                SimHub.Logging.Current.Info("[TF4ALL] Resume: restarted Trueforce stream.");
-            }
+
+            // Not paused. If we never stopped, nothing to do. If we did, require
+            // telemetry to stay active for ResumeHoldMs before restarting so a
+            // transient flap mid-transition can't re-engage us.
+            if (!_stopStreamPauseActive) { _resumeCandidateSinceTicks = 0; return; }
+
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_resumeCandidateSinceTicks == 0) _resumeCandidateSinceTicks = now;
+            long heldMs = (now - _resumeCandidateSinceTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
+            if (heldMs < ResumeHoldMs) return;
+
+            _device.Resume();
+            _device.SendStartCommand();
+            _stopStreamPauseActive = false;
+            _resumeCandidateSinceTicks = 0;
+            SimHub.Logging.Current.Info("[TF4ALL] Resume: restarted Trueforce stream.");
         }
 
         // Fast gate on the baseline FFB path: when the spring is off AND no
