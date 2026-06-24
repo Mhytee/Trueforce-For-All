@@ -882,14 +882,28 @@ namespace TrueforceForAll.Plugin
 
         private void UpdateStopStreamOnPauseGate()
         {
-            if (Settings == null || !Settings.StopStreamOnPause)
+            // We may only hold the stream stopped while the escape hatch is on
+            // AND we have a live game/source to judge pause state against. In
+            // every other case (escape hatch off, plugin disabled, no device,
+            // no active game, no source) we must NOT leave the stream stopped:
+            // if we previously stopped it for a pause, resume now so the device
+            // is never stranded paused. A stranded pause silently kills the Test
+            // buttons (and any forced output) until SimHub restarts, because the
+            // early-return here used to skip the resume once the game closed
+            // (a pause nulls _activeGame). Resume only while the plugin is still
+            // meant to be driving; clear the held tap force first so we never
+            // replay a stale snapshot on restart (issue #13).
+            var src = _telemetrySource;
+            bool canGate = Settings != null && Settings.StopStreamOnPause
+                           && Settings.PluginEnabled && _device != null
+                           && src != null && !string.IsNullOrEmpty(_activeGame);
+            if (!canGate)
             {
-                // Disabled via the escape hatch: never leave the stream stopped
-                // behind us. Resume only while the plugin is still driving.
                 if (_stopStreamPauseActive)
                 {
                     if (Settings != null && Settings.PluginEnabled && _device != null)
                     {
+                        _ffbTap?.ClearLastFfbTarget();
                         _device.Resume();
                         _device.SendStartCommand();
                     }
@@ -898,10 +912,6 @@ namespace TrueforceForAll.Plugin
                 _resumeCandidateSinceTicks = 0;
                 return;
             }
-
-            if (!Settings.PluginEnabled || _device == null) return;
-            var src = _telemetrySource;
-            if (src == null || string.IsNullOrEmpty(_activeGame)) return;
 
             // Paused = the game's own session flag is down (authoritative, or the
             // physics proxy with no telemetry), OR telemetry has actually stopped

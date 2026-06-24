@@ -616,10 +616,14 @@ namespace TrueforceForAll.Core
                 if (allCenter) hasAudio = false;
             }
 
-            if (_paused) return;
+            // An explicit test (ForceActiveFor) overrides the pause gate so the
+            // Test buttons play even when something has paused the device (e.g.
+            // the issue #13 pause gate left Trueforce mode). A normal pause with
+            // no test still emits nothing.
+            bool forceActive = Stopwatch.GetTimestamp() < System.Threading.Interlocked.Read(ref _forceActiveUntilTicks);
+            if (_paused && !forceActive) return;
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
-            bool forceActive = Stopwatch.GetTimestamp() < System.Threading.Interlocked.Read(ref _forceActiveUntilTicks);
             bool sendActive = ffbTargetMaybe.HasValue || forceActive;
 
             if (sendActive)
