@@ -494,5 +494,15 @@ namespace TrueforceForAll.Plugin.Effects
                 ? baseAmp * LoadLayerGain * Gain * AutoGainScale
                 : 0.0;
         }
+
+        // Telemetry stopped (game closed / crashed / page froze). The pulse is
+        // continuous and runs straight off these amplitudes, so without this it
+        // keeps humming the last frame forever. Drop both voices to silence;
+        // the next real frame's OnTelemetry sets them again.
+        public override void OnTelemetryStall()
+        {
+            _wavetableAmp = 0;
+            _loadLayerAmp = 0;
+        }
     }
 }
