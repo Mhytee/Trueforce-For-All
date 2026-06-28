@@ -199,6 +199,15 @@ namespace TrueforceForAll.Plugin.Effects
             _amp = stillEngaged ? ActiveAmp : 0;
         }
 
+        // Telemetry stopped: if the game closed while at the rev limit, the buzz
+        // would hold forever. Drop the amplitude and clear the hold so it can't
+        // re-engage off a stale timestamp.
+        public override void OnTelemetryStall()
+        {
+            _amp = 0;
+            _lastActiveTicks = 0;
+        }
+
         /// <summary>Open a render window for the REV self-test WITHOUT forcing
         /// _amp (unlike TestPlay, which slams it to ActiveAmp). The plugin then
         /// drives <see cref="DebugFeedRpm"/> across the window so the real

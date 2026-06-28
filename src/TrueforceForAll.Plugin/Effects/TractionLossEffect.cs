@@ -210,6 +210,14 @@ namespace TrueforceForAll.Plugin.Effects
             _noise.Amp = (float)(_slipEma * 0.40 * Gain);
         }
 
+        // Telemetry stopped: if the game closed mid-slide, the buzz amplitude
+        // would hold forever. Clear the smoothed slip and silence the noise.
+        public override void OnTelemetryStall()
+        {
+            _slipEma = 0;
+            _noise.Amp = 0;
+        }
+
         private void DecayAndEmit()
         {
             _slipEma *= 0.4;

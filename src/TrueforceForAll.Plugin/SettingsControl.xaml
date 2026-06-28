@@ -789,6 +789,19 @@
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Try this if you are not getting force feedback in a game that should have it."/>
 
+            <!-- Driver testing mode. Hidden by default (Collapsed); revealed
+                 only after the DRIVER access code is entered, and kept revealed
+                 across restarts via Settings.DriverTestingUnlocked (mirrors the
+                 MANUALPIN unlock pattern). Routes FFB through the kernel filter
+                 driver; needs the TFFA filter driver installed. -->
+            <CheckBox x:Name="DriverInterceptCheck" Visibility="Collapsed"
+                      Content="Driver testing mode: route FFB through the kernel filter driver (claims sole wheel ownership). Experimental."
+                      Margin="0,0,0,2" Checked="DriverIntercept_Changed" Unchecked="DriverIntercept_Changed"
+                      ToolTip="Experimental. Claims sole ownership of the wheel through the TFFA kernel filter driver and routes the game's force feedback through the Trueforce stream. Needs the TFFA filter driver installed. Takes effect on the next plugin start (restart SimHub or re-detect)."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                       x:Name="DriverInterceptHelp" Visibility="Collapsed"
+                       Text="Restart SimHub or re-detect the wheel after changing this."/>
+
             <!-- (The old "Active car" Save/Delete box was removed: per-car
                  tuning now saves via each effect's ★/Save popover ("For this
                  car"), and deleting a car preset lives in Manage Presets. The

@@ -122,6 +122,19 @@ namespace TrueforceForAll.Plugin
         // frame; never touches the ep3 audio-haptic device.
         private RpmLedController _rpmLeds;
 
+        // EXPERIMENTAL: kernel-driver IOCTL channel for the wheel-ownership
+        // architecture. Null when the ExperimentalDriverIntercept setting is
+        // off OR the TFFA filter driver isn't installed. Constructed in Init,
+        // disposed in End. Gated behind the hidden DRIVER access code.
+        private TFFADriverChannel _driverChannel;
+        private long _driverChannelIntercepts;
+        private long _ffbDiagTick;
+        // Plugin-owned HID++ channel used (while we own the wheel via the
+        // filter driver and are the only authorised writer) to drive LEDs
+        // without contending with game FFB writes. Kept separate from
+        // _rpmLeds because RpmLedController is iRacing-scoped.
+        private WheelLedChannel _driverLedChannel;
+
         // Active telemetry source. The plugin currently always uses
         // SimHubTelemetrySource (universal, ~60 Hz from the SimHub data
         // pipeline). Per-game enhanced sources (AC native MMF, etc.) will
@@ -197,6 +210,19 @@ namespace TrueforceForAll.Plugin
         private volatile float _lastSpeedKmh;
         private long _lastSteerTicks;
         private static readonly long SteerMaxAgeTicks = Stopwatch.Frequency / 2; // 500 ms
+
+        // Telemetry-freshness stamp for the stall watchdog. Set (Stopwatch
+        // ticks) every time DispatchFrame receives a real frame; read from the
+        // continuous DataUpdate tick. When the active source stops emitting
+        // (game closed, crashed, paused with the physics page frozen, alt-tab),
+        // sustained effects keep playing their last amplitude because they only
+        // settle on a received frame. The watchdog notices the gap and tells
+        // those effects to fall silent. 0 = no frame seen yet (nothing to age).
+        private long _lastFrameTicks;
+        // Latch so we settle the effects once per stall episode instead of
+        // every DataUpdate tick. Cleared the moment a real frame arrives again.
+        private bool _telemetryStalled;
+        private static readonly long FrameStallTicks = Stopwatch.Frequency / 2; // 500 ms
 
         // Smoothed steering used by the spring. Eased toward _lastSteerNorm on
         // each provider call (~250 Hz) so a low-resolution source (Forza's
@@ -831,6 +857,127 @@ namespace TrueforceForAll.Plugin
         { if (Settings != null) Settings.StationarySpringStrength = v; }
         public void SetStationarySpringCutoffKmh(double v)
         { if (Settings != null) Settings.StationarySpringCutoffKmh = v; }
+
+        // ---------- Issue #13: leave Trueforce mode while paused ----------
+        //
+        // While the game is paused, fully stop the Trueforce stream so the wheel
+        // reverts to its native force feedback (e.g. Forza's own DirectInput
+        // auto-center) instead of the plugin holding the last captured force.
+        // An ACTIVE stream makes the wheel use our cur as motor torque and
+        // ignore its native FFB, so a parked car's held force walked the wheel
+        // to full lock (G923 / FH6, issue #13). Streaming a zero force is not
+        // enough: that is still an active stream and still overrides the game's
+        // auto-center. SendStopCommand + Pause (the same primitive the plugin
+        // uses when disabled) is what actually hands the wheel back; we re-enter
+        // on resume. Called every DataUpdate so it keeps ticking after telemetry
+        // stops. StopStreamOnPause defaults true; flipping it false restores the
+        // old return-zero pause-release (the FfbTargetProvider lambda).
+        //
+        // Transition handling (the quick-travel-after-pause case): a teleport /
+        // quick travel flaps telemetry back to "active" for a frame or two while
+        // it loads. Two guards keep that flap from re-locking the wheel:
+        //   1. We ClearLastFfbTarget on EVERY tick while stopped, not just at the
+        //      pause instant. The tap keeps capturing off the wire while paused,
+        //      so if the user turns the wheel against the game's auto-center the
+        //      game's counter-force lands in the tap; continuous clearing stops
+        //      that (or any mid-transition capture) from surviving to the restart
+        //      and slamming the wheel.
+        //   2. Resume waits for telemetry to read active continuously for
+        //      ResumeHoldMs, so a one-frame flap never restarts the stream.
+        private bool _stopStreamPauseActive;
+        // A real pause stops telemetry far longer than this; the threshold only
+        // has to clear normal inter-frame jitter (Forza runs 60-160 Hz).
+        private const double StopStreamPauseStaleMs = 250.0;
+        // Telemetry must read active continuously for this long before we restart
+        // the stream, so a quick-travel / teleport flap can't re-engage us.
+        private const long ResumeHoldMs = 300;
+        private long _resumeCandidateSinceTicks;   // 0 = no resume pending
+
+        private void UpdateStopStreamOnPauseGate()
+        {
+            // We may only hold the stream stopped while the escape hatch is on
+            // AND we have a live game/source to judge pause state against. In
+            // every other case (escape hatch off, plugin disabled, no device,
+            // no active game, no source) we must NOT leave the stream stopped:
+            // if we previously stopped it for a pause, resume now so the device
+            // is never stranded paused. A stranded pause silently kills the Test
+            // buttons (and any forced output) until SimHub restarts, because the
+            // early-return here used to skip the resume once the game closed
+            // (a pause nulls _activeGame). Resume only while the plugin is still
+            // meant to be driving; clear the held tap force first so we never
+            // replay a stale snapshot on restart (issue #13).
+            var src = _telemetrySource;
+            bool canGate = Settings != null && Settings.StopStreamOnPause
+                           && Settings.PluginEnabled && _device != null
+                           && src != null && !string.IsNullOrEmpty(_activeGame);
+            if (!canGate)
+            {
+                if (_stopStreamPauseActive)
+                {
+                    if (Settings != null && Settings.PluginEnabled && _device != null)
+                    {
+                        _ffbTap?.ClearLastFfbTarget();
+                        _device.Resume();
+                        _device.SendStartCommand();
+                    }
+                    _stopStreamPauseActive = false;
+                }
+                _resumeCandidateSinceTicks = 0;
+                return;
+            }
+
+            // Paused = the game's own session flag is down (authoritative, or the
+            // physics proxy with no telemetry), OR telemetry has actually stopped
+            // flowing. The staleness arm catches FH6 fast-travel / teleport /
+            // race-start, where Forza halts UDP so IsRaceOn freezes at 1 and
+            // IsSessionActive never reports the pause on its own.
+            bool paused = (!src.IsSessionActive && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
+                          || src.MsSinceLastFrame > StopStreamPauseStaleMs;
+
+            if (paused)
+            {
+                _resumeCandidateSinceTicks = 0;   // cancel any pending resume
+                if (!_stopStreamPauseActive)
+                {
+                    _device.SendStopCommand();
+                    _device.Pause();
+                    _stopStreamPauseActive = true;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Pause: left Trueforce mode so the wheel reverts to native FFB (issue #13).");
+                }
+                // Keep the held force cleared the WHOLE time we're stopped, not
+                // just at the pause instant: the tap keeps capturing while paused,
+                // so turning the wheel against the game's auto-center would
+                // otherwise land a strong counter-force in the tap that replays
+                // on the next restart and slams the wheel (issue #13).
+                _ffbTap?.ClearLastFfbTarget();
+                return;
+            }
+
+            // Not paused. If we never stopped, nothing to do.
+            if (!_stopStreamPauseActive) { _resumeCandidateSinceTicks = 0; return; }
+
+            // Stopped + telemetry back: wait out the hysteresis so a one-frame
+            // flap mid-transition can't restart us, and stay cleared until we do.
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_resumeCandidateSinceTicks == 0) _resumeCandidateSinceTicks = now;
+            long heldMs = (now - _resumeCandidateSinceTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
+            if (heldMs < ResumeHoldMs)
+            {
+                _ffbTap?.ClearLastFfbTarget();
+                return;
+            }
+
+            // Restart from a clean slate: discard anything the tap grabbed during
+            // the pause / transition so the first force we emit is the game's
+            // current FFB, not a stale captured snapshot.
+            _ffbTap?.ClearLastFfbTarget();
+            _device.Resume();
+            _device.SendStartCommand();
+            _stopStreamPauseActive = false;
+            _resumeCandidateSinceTicks = 0;
+            SimHub.Logging.Current.Info("[TF4ALL] Resume: restarted Trueforce stream.");
+        }
 
         // Fast gate on the baseline FFB path: when the spring is off AND no
         // desk self-test is armed, return the game's FFB target untouched
@@ -1530,7 +1677,36 @@ namespace TrueforceForAll.Plugin
                     // that rely on ep0 (vanilla AC, F1, PC2), this kills FFB.
                     if (Settings != null && Settings.SkipFfbPassthrough)
                         return ApplyStationarySpringIfActive((short?)0);
-                    return ApplyStationarySpringIfActive(_ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs));
+
+                    // EXPERIMENTAL driver-intercept path takes precedence ONLY
+                    // when it's active AND has a fresh sample. The intercepted
+                    // bytes ARE the game's HID++ 0x8123 fn2 frames; USBPcap
+                    // won't see them once the driver completes the write before
+                    // it reaches the USB stack. _driverChannel is non-null only
+                    // when ExperimentalDriverIntercept is on (it's gated in Init),
+                    // so when the setting is off this whole block is skipped and
+                    // the FFB pipeline behaves exactly as it does without the
+                    // feature: fall back to the USBPcap tap.
+                    short? chosen = null;
+                    string ffbSrc = "none";
+                    if (_driverChannel != null && _driverChannel.IsOpen)
+                    {
+                        chosen = _driverChannel.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                        if (chosen.HasValue) ffbSrc = "driver";
+                    }
+                    if (!chosen.HasValue)
+                    {
+                        chosen = _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                        if (chosen.HasValue) ffbSrc = "pcap";
+                    }
+                    if (_driverChannel != null)
+                    {
+                        long diagTick = System.Threading.Interlocked.Increment(ref _ffbDiagTick);
+                        if ((diagTick % 1000) == 1)
+                            SimHub.Logging.Current.Info(
+                                $"[Trueforce] ffb-pipeline tick#{diagTick} src={ffbSrc} target={(chosen.HasValue ? chosen.Value.ToString() : "null")} driverDecoded={_driverChannel.FfbSamplesDecoded}");
+                    }
+                    return ApplyStationarySpringIfActive(chosen);
                 };
                 _device.FfbScale                 = Settings.FfbScale;
                 _device.FfbInvertSign            = Settings.FfbInvertSign;
@@ -1692,6 +1868,97 @@ namespace TrueforceForAll.Plugin
             foreach (var fx in _effects) _mixer.Add(fx);
 
             _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
+
+            // EXPERIMENTAL: open the kernel-driver IOCTL channel ONLY when the
+            // user has opted in via ExperimentalDriverIntercept (hidden DRIVER
+            // access code). Wrapped in try/catch so a missing or misbehaving
+            // driver can never crash plugin init. The channel itself is also
+            // fault-tolerant: if the driver isn't installed, construction
+            // succeeds but IsOpen = false. When the setting is off, none of
+            // this runs and _driverChannel / _driverLedChannel stay null.
+            if (Settings != null && Settings.ExperimentalDriverIntercept)
+            {
+                try
+                {
+                    SimHub.Logging.Current.Info("[Trueforce] ExperimentalDriverIntercept enabled; opening TFFA filter control channel...");
+
+                    // Plugin-owned HID++ LED channel: while the filter driver
+                    // owns the wheel and we are the only authorised writer, our
+                    // LED writes don't contend with game FFB writes.
+                    _driverLedChannel = new WheelLedChannel(msg => SimHub.Logging.Current.Info(msg));
+                    bool ledOk = false;
+                    try { ledOk = _driverLedChannel.OpenAndResolve(); }
+                    catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] driver-LED channel open threw: {ex.GetType().Name}: {ex.Message}"); }
+                    if (!ledOk)
+                    {
+                        SimHub.Logging.Current.Warn("[Trueforce] driver-LED channel did not open; LED path disabled this session (retries on wheel re-attach).");
+                        try { _driverLedChannel?.Dispose(); } catch { }
+                        _driverLedChannel = null;
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Info("[Trueforce] driver-LED channel open and ready.");
+                    }
+
+                    _driverChannel = new TFFADriverChannel(
+                        log: msg => SimHub.Logging.Current.Info(msg),
+                        onIntercepted: (buf, len) =>
+                        {
+                            long n = System.Threading.Interlocked.Increment(ref _driverChannelIntercepts);
+                            // The driver intercepts the game's FFB (feat 0x0E)
+                            // and LED (feat 0x09) writes. FFB writes have bytes
+                            // 10-11 (int16 target) decoded by RecvLoop into the
+                            // channel's _packed for the TF stream packer to use
+                            // as ep3 cur; that already happened before this
+                            // callback. Here we only classify for logging - we
+                            // do NOT echo (FFB is absorbed after decode, LEDs
+                            // are driven by the plugin from telemetry), so the
+                            // wheel only receives writes the plugin produced.
+                            string klass = "other";
+                            if (len >= 4)
+                            {
+                                byte b0 = buf[0], b1 = buf[1], b2 = buf[2], b3 = buf[3];
+                                bool hidpp = (b0 == 0x10 || b0 == 0x11 || b0 == 0x12) && b1 == 0xFF;
+                                if (hidpp)
+                                {
+                                    if (b2 == 0x0E && ((b3 & 0xF0) == 0x20 || (b3 & 0xF0) == 0x30)) klass = "FFB";
+                                    else if (b2 == 0x09) klass = "LED";
+                                }
+                            }
+
+                            if (n <= 30 || (n % 100) == 1)
+                            {
+                                int show = len < 12 ? len : 12;
+                                var sb = new System.Text.StringBuilder(160);
+                                sb.AppendFormat("[Trueforce] intercept #{0} len={1} class={2} decoded={3} bytes[0..{4}]=",
+                                    n, len, klass,
+                                    _driverChannel != null ? _driverChannel.FfbSamplesDecoded : 0,
+                                    show - 1);
+                                for (int i = 0; i < show; i++) { if (i > 0) sb.Append(' '); sb.AppendFormat("{0:X2}", buf[i]); }
+                                SimHub.Logging.Current.Info(sb.ToString());
+                            }
+                        });
+                    if (_driverChannel.IsOpen)
+                    {
+                        SimHub.Logging.Current.Info("[Trueforce] TFFA filter channel open; plugin is now the wheel owner.");
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Warn("[Trueforce] TFFA filter channel did not open; experimental intercept inactive this session.");
+                        _driverChannel.Dispose();
+                        _driverChannel = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] TFFA filter channel init threw {ex.GetType().Name}: {ex.Message}");
+                    try { _driverChannel?.Dispose(); } catch { }
+                    _driverChannel = null;
+                    try { _driverLedChannel?.Dispose(); } catch { }
+                    _driverLedChannel = null;
+                }
+            }
+
             // Pull initial values from globals (no car detected yet).
             ApplyActiveCarOverride();
 
@@ -1940,6 +2207,16 @@ namespace TrueforceForAll.Plugin
             try { _rpmLeds?.Dispose(); } catch { }
             _rpmLeds = null;
 
+            // Release kernel-driver ownership early in the shutdown sequence so
+            // any in-flight RECV IOCTL completes promptly. Dispose closes the
+            // control-device handle, which reverts the driver to passthrough.
+            // Both fields are null when ExperimentalDriverIntercept is off, so
+            // this is a no-op in the default case.
+            try { _driverChannel?.Dispose(); } catch { }
+            _driverChannel = null;
+            try { _driverLedChannel?.Dispose(); } catch { }
+            _driverLedChannel = null;
+
             try { _audio?.Dispose(); } catch { }
             _audio = null;
 
@@ -1984,6 +2261,59 @@ namespace TrueforceForAll.Plugin
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
             }
+
+            // EXPERIMENTAL: when the kernel-driver intercept is active and we
+            // therefore own the wheel's HID++ pipe, drive rev LEDs from the
+            // game's RPM. With us as sole HID++ author, LED writes don't
+            // contend with game FFB writes. Gated to non-iRacing because
+            // RpmLedController already owns the iRacing LED path. _driverLedChannel
+            // is null unless ExperimentalDriverIntercept is on, so this is a
+            // no-op in the default case.
+            var ledCh = _driverLedChannel;
+            if (ledCh != null && ledCh.IsReady && data?.NewData != null
+                && !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
+            {
+                try
+                {
+                    double rpm    = (double)data.NewData.Rpms;
+                    double maxRpm = (double)data.NewData.MaxRpm;
+                    if (maxRpm > 0)
+                    {
+                        // Standard rev-light curve: ramp from 70%-100% RPM to 0-10 LEDs.
+                        // Below 70% no LEDs; at maxRpm all 10 lit.
+                        double pct = rpm / maxRpm;
+                        int level = 0;
+                        if (pct > 0.70)
+                        {
+                            level = (int)Math.Round((pct - 0.70) * (WheelLedChannel.LedCount / 0.30));
+                            if (level > WheelLedChannel.LedCount) level = WheelLedChannel.LedCount;
+                        }
+                        ledCh.SetLevel(level);
+                    }
+                }
+                catch { /* never let LED issues break DataUpdate */ }
+            }
+
+            // Continuous (telemetry-independent) tick: settle sustained effects
+            // when the telemetry feed goes stale. Effects like the engine pulse,
+            // rev/pit limiter, DRS hum, and traction-loss buzz hold a steady
+            // amplitude set by the last frame; they only drop to silence on a
+            // received frame (e.g. engine-off). When the source stops emitting
+            // entirely (the game closed mid-session, crashed, or its shared-
+            // memory page froze), no such frame ever arrives and the wheel keeps
+            // playing the last sensation forever. Switching games and back used
+            // to be the only way out. Detect the gap here, on a tick that keeps
+            // running after frames stop, and tell those effects to fall silent.
+            long stamp = System.Threading.Interlocked.Read(ref _lastFrameTicks);
+            if (stamp != 0 && !_telemetryStalled
+                && Stopwatch.GetTimestamp() - stamp > FrameStallTicks)
+            {
+                _telemetryStalled = true;
+                SettleEffectsOnStall();
+            }
+
+            // Issue #13: hand the wheel back to the game while paused.
+            UpdateStopStreamOnPauseGate();
 
             // Track game changes and auto-apply that game's default preset
             // (if one is bound in GameDefaults). Done before per-car override
@@ -2321,6 +2651,11 @@ namespace TrueforceForAll.Plugin
         /// break the rest of the haptic pipeline.</summary>
         private void DispatchFrame(TelemetryFrame frame)
         {
+            // Freshness stamp for the stall watchdog in DataUpdate. A real frame
+            // just arrived, so clear the stall latch and re-arm the timer.
+            System.Threading.Interlocked.Exchange(ref _lastFrameTicks, Stopwatch.GetTimestamp());
+            _telemetryStalled = false;
+
             // Enhanced sources (AC MMF, etc.) deliberately skip slow-rate
             // fields whose physics-rate fidelity wouldn't be perceptible.
             // Overlay them from the cached SimHub reading so effects see a
@@ -2430,6 +2765,28 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Error("[Trueforce] RPM-LED telemetry error", ex);
                 }
             }
+        }
+
+        /// <summary>Telemetry feed went stale (the active source stopped
+        /// emitting: game closed, crashed, or its physics page froze). Ask each
+        /// effect that holds a sustained amplitude to fall silent so the wheel
+        /// stops replaying the last frame. Transient effects keep the base
+        /// no-op (they decay on their own). Runs on the DataUpdate tick, which
+        /// keeps firing after frames stop; the source thread is idle in a stall
+        /// so there's no concurrent OnTelemetry to race.</summary>
+        private void SettleEffectsOnStall()
+        {
+            var fx = _effects;
+            if (fx == null) return;
+            for (int i = 0; i < fx.Length; i++)
+            {
+                try { fx[i].OnTelemetryStall(); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error($"[Trueforce] {fx[i].Name} stall-settle error", ex);
+                }
+            }
+            SimHub.Logging.Current.Info("[Trueforce] Telemetry stalled; silenced sustained effects.");
         }
 
         /// <summary>Run the simulated rev/shift sweep on the rim LEDs (settings
@@ -6673,6 +7030,32 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info(ok
                         ? "[Trueforce] Wheel re-attached; stream resumed."
                         : "[Trueforce] Wheel re-attach failed; will keep retrying.");
+
+                    // EXPERIMENTAL: retry the driver-LED channel open if it
+                    // failed during Init (typical when the wheel wasn't
+                    // enumerable yet). Only runs when the driver intercept is
+                    // on AND its control channel opened; otherwise skipped.
+                    if (ok && _driverChannel != null && _driverLedChannel == null
+                        && Settings != null && Settings.ExperimentalDriverIntercept)
+                    {
+                        try
+                        {
+                            var ch = new WheelLedChannel(m => SimHub.Logging.Current.Info(m));
+                            if (ch.OpenAndResolve())
+                            {
+                                _driverLedChannel = ch;
+                                SimHub.Logging.Current.Info("[Trueforce] driver-LED channel opened on wheel re-attach.");
+                            }
+                            else
+                            {
+                                ch.Dispose();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] driver-LED retry threw: {ex.GetType().Name}: {ex.Message}");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {

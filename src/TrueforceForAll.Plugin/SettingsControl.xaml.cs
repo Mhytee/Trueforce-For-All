@@ -216,6 +216,22 @@ namespace TrueforceForAll.Plugin
                 bool expFfb = _plugin.Settings?.ExperimentalFfbCapture ?? false;
                 if (ExperimentalFfbCheck != null)     ExperimentalFfbCheck.IsChecked     = expFfb;
                 if (ExperimentalFfbMainCheck != null) ExperimentalFfbMainCheck.IsChecked = expFfb;
+
+                // Driver testing mode checkbox: hidden until the DRIVER access
+                // code has been entered (DriverTestingUnlocked persists the
+                // revealed state); mirrors the MANUALPIN reveal restore above.
+                {
+                    bool driverUnlocked = _plugin.Settings?.DriverTestingUnlocked == true;
+                    var driverVis = driverUnlocked
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                    if (DriverInterceptCheck != null)
+                    {
+                        DriverInterceptCheck.Visibility = driverVis;
+                        DriverInterceptCheck.IsChecked  = _plugin.Settings?.ExperimentalDriverIntercept == true;
+                    }
+                    if (DriverInterceptHelp != null) DriverInterceptHelp.Visibility = driverVis;
+                }
                 FfbSmoothSlider.Value  = _plugin.Settings?.FfbSmoothTimeConstantMs ?? 0.0;
                 FfbSmoothText.Text     = FfbSmoothSlider.Value.ToString("F1");
                 if (FfbInvertCheck != null)
@@ -2893,6 +2909,22 @@ namespace TrueforceForAll.Plugin
             finally { _suppressEvents = prev; }
         }
 
+        // Driver testing mode checkbox (hidden until the DRIVER access code
+        // reveals it). Toggles the actual on/off (ExperimentalDriverIntercept)
+        // and persists; takes effect on the next plugin start.
+        private void DriverIntercept_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || DriverInterceptCheck == null) return;
+            bool on = DriverInterceptCheck.IsChecked == true;
+            _plugin.Settings.ExperimentalDriverIntercept = on;
+            _plugin.PersistSettings();
+            if (AccessCodeStatus != null)
+                AccessCodeStatus.Text = on
+                    ? "Driver testing mode ON (restart SimHub / re-detect to apply). Needs the TFFA filter driver installed."
+                    : "Driver testing mode OFF (restart SimHub / re-detect to apply).";
+        }
+
         // Open the manual USB-device picker dialog. Always available, not
         // gated on auto-discovery failing. Users can override our detection
         // at any time. Selection persists across restarts.
@@ -4109,6 +4141,7 @@ namespace TrueforceForAll.Plugin
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
+            "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).";
@@ -4372,6 +4405,53 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Experimental FFB capture ON (persists). Load a game and drive for a few seconds so the tap re-resolves the FFB index; check the FFB-tap status. Type FFBX again to turn it off."
                         : "Experimental FFB capture OFF. Back to the standard capture path.";
+                return;
+            }
+
+            // Driver testing mode: route FFB through the TFFA kernel filter
+            // driver (sole wheel ownership) instead of the USBPcap tap. Needs
+            // the TFFA filter driver installed. The code both REVEALS the
+            // hidden "Driver testing mode" checkbox (persisted via
+            // DriverTestingUnlocked, mirrors MANUALPIN) AND toggles the feature
+            // on/off (ExperimentalDriverIntercept). Once revealed the checkbox
+            // stays visible across restarts and the user drives it from there.
+            // Applied on the next plugin init (re-detect / restart SimHub).
+            if (code.Equals("DRIVER", StringComparison.OrdinalIgnoreCase))
+            {
+                // DRIVER is a full on/off for driver testing mode. First entry:
+                // unlock + reveal the checkbox and turn the feature on. Type
+                // DRIVER again to turn it off AND hide the checkbox again (back
+                // to the default hidden state). While unlocked, the revealed
+                // checkbox toggles the feature without hiding it.
+                bool unlocked = false;
+                if (_plugin?.Settings != null)
+                {
+                    unlocked = !_plugin.Settings.DriverTestingUnlocked;
+                    _plugin.Settings.DriverTestingUnlocked       = unlocked;
+                    _plugin.Settings.ExperimentalDriverIntercept = unlocked;
+                    _plugin.PersistSettings();
+                }
+                AccessCodeBox.Text = string.Empty;
+                // Reflect the new state without re-firing the checkbox's Changed
+                // handler (the setters already ran above).
+                var prevSuppress = _suppressEvents;
+                _suppressEvents = true;
+                try
+                {
+                    var vis = unlocked ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    if (DriverInterceptCheck != null)
+                    {
+                        DriverInterceptCheck.Visibility = vis;
+                        DriverInterceptCheck.IsChecked  = unlocked;
+                    }
+                    if (DriverInterceptHelp != null)
+                        DriverInterceptHelp.Visibility = vis;
+                }
+                finally { _suppressEvents = prevSuppress; }
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = unlocked
+                        ? "Driver testing mode ON (restart SimHub / re-detect to apply). Needs the TFFA filter driver installed. A checkbox is now shown in the main effects panel; type DRIVER again to turn it off and hide it."
+                        : "Driver testing mode OFF and hidden. Type DRIVER again to turn it back on.";
                 return;
             }
 

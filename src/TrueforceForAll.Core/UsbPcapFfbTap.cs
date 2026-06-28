@@ -655,6 +655,14 @@ namespace TrueforceForAll.Core
             return value;
         }
 
+        /// <summary>Drop the last captured FFB target so TryGetFreshFfbTarget
+        /// returns null until a genuinely fresh game packet is captured. The
+        /// plugin calls this when it stops the stream for a pause, so a stream
+        /// restart mid-transition (FH6 quick travel / teleport) can't replay the
+        /// stale pre-pause force and slam the wheel to lock (issue #13). The
+        /// reader thread repopulates this the instant real FFB flows again.</summary>
+        public void ClearLastFfbTarget() => System.Threading.Interlocked.Exchange(ref _packed, 0);
+
         // ---------- reader thread ----------
 
         // Resolve and validate which device the tap should capture. Returns

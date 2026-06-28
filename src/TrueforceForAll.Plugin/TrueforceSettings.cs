@@ -124,6 +124,16 @@ namespace TrueforceForAll.Plugin
         public double StationarySpringStrength  { get; set; } = 0.5;
         public double StationarySpringCutoffKmh { get; set; } = 12.0;  // spring fully gone at/above this speed
 
+        // Issue #13: while the game is paused, fully leave Trueforce mode so the
+        // wheel reverts to its native force feedback (e.g. Forza's own
+        // auto-center) instead of the plugin holding the last captured force.
+        // An active Trueforce stream overrides the wheel's native FFB, so a
+        // parked car's held force walked the wheel to full lock (G923 / FH6).
+        // On by default (standard behaviour); exposed only as a hand-edit escape
+        // hatch, no UI, in case a wheel ever misbehaves on the pause/resume
+        // transition.
+        public bool   StopStreamOnPause          { get; set; } = true;
+
         // FFB spike taming: tames AC's over-the-top curb / collision FFB so
         // it lands as a firm shove instead of a wheel-yanking jolt. Two
         // knobs: FfbSpikeMaxLsbPerMs caps slew rate (LSB/ms); FfbPeakSoftLimitLsb
@@ -211,6 +221,23 @@ namespace TrueforceForAll.Plugin
         // until a tester confirms a given wheel/game. Global, not per-preset:
         // it's a capture-system behaviour, not a tuning.
         public bool   ExperimentalFfbCapture     { get; set; } = false;
+
+        // EXPERIMENTAL: claim sole wheel ownership through the TFFA kernel
+        // filter driver and route the game's intercepted HID++ FFB writes
+        // through the Trueforce stream. Off = no driver code path is taken
+        // at all (the FFB pipeline and lifecycle behave exactly as shipped);
+        // needs the TFFA filter driver installed to do anything. The actual
+        // on/off; the DRIVER access code first reveals a hidden checkbox
+        // (DriverTestingUnlocked below) and flips this on.
+        public bool   ExperimentalDriverIntercept { get; set; } = false;
+
+        // Whether the hidden "Driver testing mode" checkbox has been revealed
+        // (via the DRIVER access code). Persists the revealed state so the
+        // checkbox stays visible across restarts once unlocked, while
+        // ExperimentalDriverIntercept above remains the actual on/off. Off =
+        // fully hidden for anyone who has never typed DRIVER. Mirrors the
+        // ShowManualOverrideUi unlock pattern.
+        public bool   DriverTestingUnlocked       { get; set; } = false;
 
         // Latches once the user acts on (or dismisses) the one-time banner that
         // appears when experimental FFB detection was load-bearing in getting

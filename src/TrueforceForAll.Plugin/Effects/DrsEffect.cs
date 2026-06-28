@@ -161,6 +161,16 @@ namespace TrueforceForAll.Plugin.Effects
             _drsHeld = v > 0;
         }
 
+        // Telemetry stopped: if the game closed with DRS held open, the
+        // sustained hum would play forever. Release the hold; the short
+        // activation chirp envelope finishes on its own. Reset _lastDrsValue so
+        // a resumed feed re-fires the activation chirp on the next open.
+        public override void OnTelemetryStall()
+        {
+            _drsHeld = false;
+            _lastDrsValue = 0;
+        }
+
         private void TriggerActivation()
         {
             int samples = (int)(ActivationMs * SampleRate / 1000.0);
