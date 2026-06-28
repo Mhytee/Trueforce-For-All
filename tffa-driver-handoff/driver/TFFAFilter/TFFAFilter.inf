@@ -1,0 +1,104 @@
+; TFFAFilter.inf - TrueforceForAll HID class upper filter, dev-skeleton build.
+;
+; This is a HID CLASS filter, not a per-device function driver. It registers
+; itself as an upper filter on the HIDClass device class registry, which means
+; PnP attaches our driver to every HID device in the stack ABOVE its existing
+; function driver. We do not compete with the function driver for that slot
+; and we do not need to win PnP ranking; class filters are additive.
+;
+; Our driver code (driver.c) does runtime VID/PID gating in EvtDriverDeviceAdd:
+; if the device is not one of the Logitech Trueforce-enabled wheels we target,
+; we return STATUS_NOT_SUPPORTED and the framework skips loading us into that
+; device's stack. So mice, keyboards, headsets, and other HID devices are
+; entirely unaffected at runtime.
+;
+; Install (dev machine, test-signing mode):
+;   pnputil /add-driver TFFAFilter.inf            (stage in driver store)
+;   rundll32.exe SetupApi.dll,InstallHinfSection DefaultInstall 132 <full path>\TFFAFilter.inf
+;     (process the DefaultInstall section: copy file, register service,
+;      add UpperFilters class entry)
+;   Restart HID devices (or reboot) so the new class filter takes effect.
+;
+; Uninstall:
+;   rundll32.exe SetupApi.dll,InstallHinfSection DefaultUninstall 132 <full path>\TFFAFilter.inf
+;   pnputil /delete-driver oem<N>.inf /uninstall
+;   Reboot.
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = HIDClass
+ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
+Provider    = %ProviderName%
+DriverVer   = 05/30/2026,0.2.0.0
+CatalogFile = TFFAFilter.cat
+PnpLockdown = 1                  ; required by WDK 26100 InfVerif (primitive)
+
+[DestinationDirs]
+DefaultDestDir       = 13       ; Driver Store (where pnputil /add-driver puts things)
+TFFAFilter_CopyFiles = 12       ; %SystemRoot%\System32\drivers (where the running service loads from)
+TFFAFilter_DelFiles  = 12       ; uninstall path mirrors the install destination
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+TFFAFilter.sys = 1
+
+; ----------------------------------------------------------------------------
+; DefaultInstall is what InstallHinfSection runs. Class filter install does:
+;   1) copy TFFAFilter.sys into the running drivers folder,
+;   2) append "TFFAFilter" to HIDClass's UpperFilters list,
+;   3) register our kernel service.
+; ----------------------------------------------------------------------------
+
+; Architecture-decorated sections (required by WDK 26100 InfVerif under
+; PnpLockdown=1). Install command must pass the decorated name explicitly:
+;   rundll32 SetupApi.dll,InstallHinfSection DefaultInstall.NTamd64 132 <path>
+; Plain "DefaultInstall" without the .NTamd64 will silently no-op.
+
+[DefaultInstall.NTamd64]
+CopyFiles = TFFAFilter_CopyFiles
+AddReg    = TFFAFilter_ClassFilter_AddReg
+
+[DefaultInstall.NTamd64.Services]
+AddService = TFFAFilter, , TFFAFilter_Service
+
+[DefaultUninstall.NTamd64]
+DelReg   = TFFAFilter_ClassFilter_DelReg
+DelFiles = TFFAFilter_DelFiles
+LegacyUninstall = 1
+
+[DefaultUninstall.NTamd64.Services]
+DelService = TFFAFilter, 0x200    ; SPSVCINST_STOPSERVICE
+
+[TFFAFilter_CopyFiles]
+TFFAFilter.sys
+
+[TFFAFilter_DelFiles]
+TFFAFilter.sys
+
+; ----------------------------------------------------------------------------
+; HIDClass GUID = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}.
+; Flag 0x00010008 = REG_MULTI_SZ + FLG_ADDREG_APPEND
+;   so we append "TFFAFilter" to any existing UpperFilters list rather than
+;   overwriting it (other filters, like HidHide if installed, keep working).
+; ----------------------------------------------------------------------------
+
+[TFFAFilter_ClassFilter_AddReg]
+HKLM, "System\CurrentControlSet\Control\Class\{745A17A0-74D3-11D0-B6FE-00A0C90F57DA}", "UpperFilters", 0x00010008, "TFFAFilter"
+
+[TFFAFilter_ClassFilter_DelReg]
+HKLM, "System\CurrentControlSet\Control\Class\{745A17A0-74D3-11D0-B6FE-00A0C90F57DA}", "UpperFilters", 0x00018002, "TFFAFilter"
+
+[TFFAFilter_Service]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1                ; SERVICE_KERNEL_DRIVER
+StartType      = 3                ; SERVICE_DEMAND_START
+ErrorControl   = 1                ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\TFFAFilter.sys
+LoadOrderGroup = "PNP Filter"
+
+[Strings]
+ProviderName = "TrueforceForAll"
+DiskName     = "TrueforceForAll Filter Disk"
+ServiceDesc  = "TrueforceForAll HID Filter"

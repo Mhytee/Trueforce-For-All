@@ -1,0 +1,17 @@
+# WDK / Visual Studio driver build output. Keep this tree source only.
+x64/
+Win32/
+ARM64/
+ARM/
+Debug/
+Release/
+*.sys
+*.sys.recipe
+*.cat
+*.obj
+*.pdb
+*.tlog
+*.log
+*.lastbuildstate
+*.vcxproj.user
+*.FileListAbsolute.txt

@@ -1,0 +1,101 @@
+; TFFAUsbFilter.inf - TrueforceForAll USB class UPPER filter.
+;
+; This is a USB CLASS filter, NOT a per-device function driver. It registers
+; itself as an upper filter on the USB device class registry, which means
+; PnP loads our driver into the stack ABOVE the existing function driver
+; (usbccgp for composite devices) on EVERY USB device. We do NOT replace
+; usbccgp - we sit on top of it. Our driver.c does runtime VID/PID gating in
+; EvtDeviceAdd: if the device is not one of the Logitech Trueforce-enabled
+; wheels we target, we return STATUS_NOT_SUPPORTED and the framework skips
+; loading us into that device's stack. So mice, keyboards, mass storage,
+; etc. are entirely unaffected at runtime.
+;
+; This mirrors the working pattern from TFFAFilter (HIDClass class filter)
+; but operates one layer lower: at the USB stack, we see every URB sent to
+; the wheel via IOCTL_INTERNAL_USB_SUBMIT_URB regardless of which Windows
+; API (DirectInput, HidD_*, raw WriteFile, WinUSB) the writer used.
+;
+; Install (test-signing mode):
+;   pnputil /add-driver TFFAUsbFilter.inf /install
+;   (Optional: rundll32.exe SetupApi.dll,InstallHinfSection
+;    DefaultInstall.NTamd64 132 <full path>\TFFAUsbFilter.inf)
+;   Reboot OR re-enumerate USB devices so the new class filter takes effect.
+;
+; Uninstall:
+;   rundll32.exe SetupApi.dll,InstallHinfSection DefaultUninstall.NTamd64 132 <full path>\TFFAUsbFilter.inf
+;   pnputil /delete-driver oem<N>.inf /uninstall
+;   Reboot.
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = USB
+ClassGuid   = {36FC9E60-C465-11CF-8056-444553540000}
+Provider    = %ProviderName%
+DriverVer   = 05/31/2026,0.2.0.0
+CatalogFile = TFFAUsbFilter.cat
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir         = 13
+TFFAUsbFilter_CopyFiles = 12
+TFFAUsbFilter_DelFiles  = 12
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+TFFAUsbFilter.sys = 1
+
+; ----------------------------------------------------------------------------
+; DefaultInstall: copy SYS to System32\drivers, append our service name to
+; the USB class UpperFilters list, register our kernel service. Same pattern
+; the working TFFAFilter uses for HIDClass.
+; ----------------------------------------------------------------------------
+
+[DefaultInstall.NTamd64]
+CopyFiles = TFFAUsbFilter_CopyFiles
+AddReg    = TFFAUsbFilter_ClassFilter_AddReg
+
+[DefaultInstall.NTamd64.Services]
+AddService = TFFAUsbFilter, , TFFAUsbFilter_Service
+
+[DefaultUninstall.NTamd64]
+DelReg   = TFFAUsbFilter_ClassFilter_DelReg
+DelFiles = TFFAUsbFilter_DelFiles
+LegacyUninstall = 1
+
+[DefaultUninstall.NTamd64.Services]
+DelService = TFFAUsbFilter, 0x200
+
+[TFFAUsbFilter_CopyFiles]
+TFFAUsbFilter.sys
+
+[TFFAUsbFilter_DelFiles]
+TFFAUsbFilter.sys
+
+; ----------------------------------------------------------------------------
+; USB class GUID = {36FC9E60-C465-11CF-8056-444553540000}.
+; Flag 0x00010008 = REG_MULTI_SZ + FLG_ADDREG_APPEND so we append rather
+; than overwrite any existing UpperFilters list. Required so any other USB
+; class filters (USBPcap is on usbhub, separate; but other USB UpperFilters
+; could exist) keep working.
+; ----------------------------------------------------------------------------
+
+[TFFAUsbFilter_ClassFilter_AddReg]
+HKLM, "System\CurrentControlSet\Control\Class\{36FC9E60-C465-11CF-8056-444553540000}", "UpperFilters", 0x00010008, "TFFAUsbFilter"
+
+[TFFAUsbFilter_ClassFilter_DelReg]
+HKLM, "System\CurrentControlSet\Control\Class\{36FC9E60-C465-11CF-8056-444553540000}", "UpperFilters", 0x00018002, "TFFAUsbFilter"
+
+[TFFAUsbFilter_Service]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\TFFAUsbFilter.sys
+LoadOrderGroup = "PNP Filter"
+
+[Strings]
+ProviderName  = "TrueforceForAll"
+DiskName      = "TFFAUsbFilter Install Disk"
+ServiceDesc   = "TFFAUsbFilter USB-class wheel filter"
