@@ -122,6 +122,19 @@ namespace TrueforceForAll.Plugin
         // frame; never touches the ep3 audio-haptic device.
         private RpmLedController _rpmLeds;
 
+        // EXPERIMENTAL: kernel-driver IOCTL channel for the wheel-ownership
+        // architecture. Null when the ExperimentalDriverIntercept setting is
+        // off OR the TFFA filter driver isn't installed. Constructed in Init,
+        // disposed in End. Gated behind the hidden DRIVER access code.
+        private TFFADriverChannel _driverChannel;
+        private long _driverChannelIntercepts;
+        private long _ffbDiagTick;
+        // Plugin-owned HID++ channel used (while we own the wheel via the
+        // filter driver and are the only authorised writer) to drive LEDs
+        // without contending with game FFB writes. Kept separate from
+        // _rpmLeds because RpmLedController is iRacing-scoped.
+        private WheelLedChannel _driverLedChannel;
+
         // Active telemetry source. The plugin currently always uses
         // SimHubTelemetrySource (universal, ~60 Hz from the SimHub data
         // pipeline). Per-game enhanced sources (AC native MMF, etc.) will
@@ -1664,7 +1677,36 @@ namespace TrueforceForAll.Plugin
                     // that rely on ep0 (vanilla AC, F1, PC2), this kills FFB.
                     if (Settings != null && Settings.SkipFfbPassthrough)
                         return ApplyStationarySpringIfActive((short?)0);
-                    return ApplyStationarySpringIfActive(_ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs));
+
+                    // EXPERIMENTAL driver-intercept path takes precedence ONLY
+                    // when it's active AND has a fresh sample. The intercepted
+                    // bytes ARE the game's HID++ 0x8123 fn2 frames; USBPcap
+                    // won't see them once the driver completes the write before
+                    // it reaches the USB stack. _driverChannel is non-null only
+                    // when ExperimentalDriverIntercept is on (it's gated in Init),
+                    // so when the setting is off this whole block is skipped and
+                    // the FFB pipeline behaves exactly as it does without the
+                    // feature: fall back to the USBPcap tap.
+                    short? chosen = null;
+                    string ffbSrc = "none";
+                    if (_driverChannel != null && _driverChannel.IsOpen)
+                    {
+                        chosen = _driverChannel.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                        if (chosen.HasValue) ffbSrc = "driver";
+                    }
+                    if (!chosen.HasValue)
+                    {
+                        chosen = _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                        if (chosen.HasValue) ffbSrc = "pcap";
+                    }
+                    if (_driverChannel != null)
+                    {
+                        long diagTick = System.Threading.Interlocked.Increment(ref _ffbDiagTick);
+                        if ((diagTick % 1000) == 1)
+                            SimHub.Logging.Current.Info(
+                                $"[Trueforce] ffb-pipeline tick#{diagTick} src={ffbSrc} target={(chosen.HasValue ? chosen.Value.ToString() : "null")} driverDecoded={_driverChannel.FfbSamplesDecoded}");
+                    }
+                    return ApplyStationarySpringIfActive(chosen);
                 };
                 _device.FfbScale                 = Settings.FfbScale;
                 _device.FfbInvertSign            = Settings.FfbInvertSign;
@@ -1826,6 +1868,97 @@ namespace TrueforceForAll.Plugin
             foreach (var fx in _effects) _mixer.Add(fx);
 
             _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
+
+            // EXPERIMENTAL: open the kernel-driver IOCTL channel ONLY when the
+            // user has opted in via ExperimentalDriverIntercept (hidden DRIVER
+            // access code). Wrapped in try/catch so a missing or misbehaving
+            // driver can never crash plugin init. The channel itself is also
+            // fault-tolerant: if the driver isn't installed, construction
+            // succeeds but IsOpen = false. When the setting is off, none of
+            // this runs and _driverChannel / _driverLedChannel stay null.
+            if (Settings != null && Settings.ExperimentalDriverIntercept)
+            {
+                try
+                {
+                    SimHub.Logging.Current.Info("[Trueforce] ExperimentalDriverIntercept enabled; opening TFFA filter control channel...");
+
+                    // Plugin-owned HID++ LED channel: while the filter driver
+                    // owns the wheel and we are the only authorised writer, our
+                    // LED writes don't contend with game FFB writes.
+                    _driverLedChannel = new WheelLedChannel(msg => SimHub.Logging.Current.Info(msg));
+                    bool ledOk = false;
+                    try { ledOk = _driverLedChannel.OpenAndResolve(); }
+                    catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] driver-LED channel open threw: {ex.GetType().Name}: {ex.Message}"); }
+                    if (!ledOk)
+                    {
+                        SimHub.Logging.Current.Warn("[Trueforce] driver-LED channel did not open; LED path disabled this session (retries on wheel re-attach).");
+                        try { _driverLedChannel?.Dispose(); } catch { }
+                        _driverLedChannel = null;
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Info("[Trueforce] driver-LED channel open and ready.");
+                    }
+
+                    _driverChannel = new TFFADriverChannel(
+                        log: msg => SimHub.Logging.Current.Info(msg),
+                        onIntercepted: (buf, len) =>
+                        {
+                            long n = System.Threading.Interlocked.Increment(ref _driverChannelIntercepts);
+                            // The driver intercepts the game's FFB (feat 0x0E)
+                            // and LED (feat 0x09) writes. FFB writes have bytes
+                            // 10-11 (int16 target) decoded by RecvLoop into the
+                            // channel's _packed for the TF stream packer to use
+                            // as ep3 cur; that already happened before this
+                            // callback. Here we only classify for logging - we
+                            // do NOT echo (FFB is absorbed after decode, LEDs
+                            // are driven by the plugin from telemetry), so the
+                            // wheel only receives writes the plugin produced.
+                            string klass = "other";
+                            if (len >= 4)
+                            {
+                                byte b0 = buf[0], b1 = buf[1], b2 = buf[2], b3 = buf[3];
+                                bool hidpp = (b0 == 0x10 || b0 == 0x11 || b0 == 0x12) && b1 == 0xFF;
+                                if (hidpp)
+                                {
+                                    if (b2 == 0x0E && ((b3 & 0xF0) == 0x20 || (b3 & 0xF0) == 0x30)) klass = "FFB";
+                                    else if (b2 == 0x09) klass = "LED";
+                                }
+                            }
+
+                            if (n <= 30 || (n % 100) == 1)
+                            {
+                                int show = len < 12 ? len : 12;
+                                var sb = new System.Text.StringBuilder(160);
+                                sb.AppendFormat("[Trueforce] intercept #{0} len={1} class={2} decoded={3} bytes[0..{4}]=",
+                                    n, len, klass,
+                                    _driverChannel != null ? _driverChannel.FfbSamplesDecoded : 0,
+                                    show - 1);
+                                for (int i = 0; i < show; i++) { if (i > 0) sb.Append(' '); sb.AppendFormat("{0:X2}", buf[i]); }
+                                SimHub.Logging.Current.Info(sb.ToString());
+                            }
+                        });
+                    if (_driverChannel.IsOpen)
+                    {
+                        SimHub.Logging.Current.Info("[Trueforce] TFFA filter channel open; plugin is now the wheel owner.");
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Warn("[Trueforce] TFFA filter channel did not open; experimental intercept inactive this session.");
+                        _driverChannel.Dispose();
+                        _driverChannel = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[Trueforce] TFFA filter channel init threw {ex.GetType().Name}: {ex.Message}");
+                    try { _driverChannel?.Dispose(); } catch { }
+                    _driverChannel = null;
+                    try { _driverLedChannel?.Dispose(); } catch { }
+                    _driverLedChannel = null;
+                }
+            }
+
             // Pull initial values from globals (no car detected yet).
             ApplyActiveCarOverride();
 
@@ -2074,6 +2207,16 @@ namespace TrueforceForAll.Plugin
             try { _rpmLeds?.Dispose(); } catch { }
             _rpmLeds = null;
 
+            // Release kernel-driver ownership early in the shutdown sequence so
+            // any in-flight RECV IOCTL completes promptly. Dispose closes the
+            // control-device handle, which reverts the driver to passthrough.
+            // Both fields are null when ExperimentalDriverIntercept is off, so
+            // this is a no-op in the default case.
+            try { _driverChannel?.Dispose(); } catch { }
+            _driverChannel = null;
+            try { _driverLedChannel?.Dispose(); } catch { }
+            _driverLedChannel = null;
+
             try { _audio?.Dispose(); } catch { }
             _audio = null;
 
@@ -2117,6 +2260,38 @@ namespace TrueforceForAll.Plugin
                 _ffbTap.GameFfbExpected = _telemetrySource?.IsSessionActive ?? false;
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
+            }
+
+            // EXPERIMENTAL: when the kernel-driver intercept is active and we
+            // therefore own the wheel's HID++ pipe, drive rev LEDs from the
+            // game's RPM. With us as sole HID++ author, LED writes don't
+            // contend with game FFB writes. Gated to non-iRacing because
+            // RpmLedController already owns the iRacing LED path. _driverLedChannel
+            // is null unless ExperimentalDriverIntercept is on, so this is a
+            // no-op in the default case.
+            var ledCh = _driverLedChannel;
+            if (ledCh != null && ledCh.IsReady && data?.NewData != null
+                && !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
+            {
+                try
+                {
+                    double rpm    = (double)data.NewData.Rpms;
+                    double maxRpm = (double)data.NewData.MaxRpm;
+                    if (maxRpm > 0)
+                    {
+                        // Standard rev-light curve: ramp from 70%-100% RPM to 0-10 LEDs.
+                        // Below 70% no LEDs; at maxRpm all 10 lit.
+                        double pct = rpm / maxRpm;
+                        int level = 0;
+                        if (pct > 0.70)
+                        {
+                            level = (int)Math.Round((pct - 0.70) * (WheelLedChannel.LedCount / 0.30));
+                            if (level > WheelLedChannel.LedCount) level = WheelLedChannel.LedCount;
+                        }
+                        ledCh.SetLevel(level);
+                    }
+                }
+                catch { /* never let LED issues break DataUpdate */ }
             }
 
             // Continuous (telemetry-independent) tick: settle sustained effects
@@ -6855,6 +7030,32 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info(ok
                         ? "[Trueforce] Wheel re-attached; stream resumed."
                         : "[Trueforce] Wheel re-attach failed; will keep retrying.");
+
+                    // EXPERIMENTAL: retry the driver-LED channel open if it
+                    // failed during Init (typical when the wheel wasn't
+                    // enumerable yet). Only runs when the driver intercept is
+                    // on AND its control channel opened; otherwise skipped.
+                    if (ok && _driverChannel != null && _driverLedChannel == null
+                        && Settings != null && Settings.ExperimentalDriverIntercept)
+                    {
+                        try
+                        {
+                            var ch = new WheelLedChannel(m => SimHub.Logging.Current.Info(m));
+                            if (ch.OpenAndResolve())
+                            {
+                                _driverLedChannel = ch;
+                                SimHub.Logging.Current.Info("[Trueforce] driver-LED channel opened on wheel re-attach.");
+                            }
+                            else
+                            {
+                                ch.Dispose();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] driver-LED retry threw: {ex.GetType().Name}: {ex.Message}");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {

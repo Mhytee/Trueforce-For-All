@@ -222,6 +222,23 @@ namespace TrueforceForAll.Plugin
         // it's a capture-system behaviour, not a tuning.
         public bool   ExperimentalFfbCapture     { get; set; } = false;
 
+        // EXPERIMENTAL: claim sole wheel ownership through the TFFA kernel
+        // filter driver and route the game's intercepted HID++ FFB writes
+        // through the Trueforce stream. Off = no driver code path is taken
+        // at all (the FFB pipeline and lifecycle behave exactly as shipped);
+        // needs the TFFA filter driver installed to do anything. The actual
+        // on/off; the DRIVER access code first reveals a hidden checkbox
+        // (DriverTestingUnlocked below) and flips this on.
+        public bool   ExperimentalDriverIntercept { get; set; } = false;
+
+        // Whether the hidden "Driver testing mode" checkbox has been revealed
+        // (via the DRIVER access code). Persists the revealed state so the
+        // checkbox stays visible across restarts once unlocked, while
+        // ExperimentalDriverIntercept above remains the actual on/off. Off =
+        // fully hidden for anyone who has never typed DRIVER. Mirrors the
+        // ShowManualOverrideUi unlock pattern.
+        public bool   DriverTestingUnlocked       { get; set; } = false;
+
         // Latches once the user acts on (or dismisses) the one-time banner that
         // appears when experimental FFB detection was load-bearing in getting
         // their wheel working, asking them to file a compatibility report. Keeps
