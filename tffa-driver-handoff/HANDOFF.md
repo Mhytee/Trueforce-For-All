@@ -241,20 +241,15 @@ tffa-driver-handoff/
 
 ### Getting the source
 
-Everything you need is on the **`driver`** branch of
-https://github.com/Mhytee/Trueforce-For-All. The branch is the full plugin repo
-plus this `tffa-driver-handoff/` folder, so the driver builds standalone AND the
-plugin (which already includes driver testing mode, shipped in TF4ALL 0.1.24)
-builds and runs for the full-loop test. Fork the repo, branch from `driver`, and
-send your work as pull requests against `driver`. The repo's `CONTRIBUTING.md` describes the flow; open
-a GitHub issue (tag it `driver`) for design questions or progress notes so they
-stay async and visible, and push an early draft/WIP PR so the maintainer can
-course-correct without a back-and-forth.
+Everything is on the **`driver`** branch of
+https://github.com/Mhytee/Trueforce-For-All: the full plugin repo plus this
+`tffa-driver-handoff/` folder. So the driver builds standalone, and the plugin
+(which already includes driver testing mode, shipped in TF4ALL 0.1.24) builds and
+runs for the full-loop test. The user-mode bridge you extend (section 11) is the
+live `src/TrueforceForAll.Core/TFFADriverChannel.cs`.
 
-No prebuilt driver binaries are shipped (they would be signed with the author's
-test certificate and not trusted on another machine anyway), so build and sign
-locally per sections 6 to 7. The user-mode bridge you extend (section 11) is the
-live file `src/TrueforceForAll.Core/TFFADriverChannel.cs` in the repo.
+No prebuilt driver binaries are shipped (test-cert signed, so they would not be
+trusted on another machine), so build and sign locally per sections 6 to 7.
 
 ### License
 
