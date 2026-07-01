@@ -32,7 +32,7 @@ __*
 
 # Maintainer-only marketing copy + design drafts + private docs. Working
 # notes for outreach posts and feature planning; not part of the public
-# product docs (docs/iracing-maira-trueforce.md remains tracked).
+# product docs.
 /docs/marketing/
 /docs/preset-sharing-design.md
 /docs/troubleshooting-ffb.md
