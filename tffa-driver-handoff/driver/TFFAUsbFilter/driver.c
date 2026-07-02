@@ -62,10 +62,12 @@ static ULONG TFFAUsbGetProtectedPid(VOID);
 // ---------- Target wheels (runtime hwid gate) ---------------------------
 //
 // We install as a USB class filter, so PnP loads us into every USB device's
-// stack. EvtDeviceAdd returns STATUS_NOT_SUPPORTED for anything whose
-// hardware-id list doesn't contain one of our wheel VID/PIDs. The framework
-// then skips loading us into that device's stack entirely - zero runtime
-// cost on unrelated USB devices.
+// stack. EvtDeviceAdd attaches a TRANSPARENT filter FDO to every USB device
+// but only builds the interception queue when the hardware-id list matches
+// one of our wheel VID/PIDs. Non-wheel devices get no queue, so the framework
+// auto-forwards all their I/O unchanged. We must never FAIL EvtDeviceAdd to
+// opt out: that tears down the whole device stack (and on hubs/controllers,
+// the entire USB bus). See the long note in EvtDeviceAdd.
 
 typedef struct _TFFAUSB_TARGET_WHEEL {
     PCWSTR HardwareIdSubstring;
@@ -410,16 +412,19 @@ TFFAUsbEvtDeviceAdd(
         WdfObjectDelete(hwIdMem);
     }
 
-    if (matched == NULL) {
-        // Not a wheel we care about. Tell the framework we don't want this
-        // device; we won't appear in its driver stack. This is the runtime
-        // gate that keeps a USB-class filter from imposing any cost on the
-        // hundreds of unrelated USB devices the system enumerates.
-        return STATUS_NOT_SUPPORTED;
-    }
-
-    TFFA_LOG("TFFAUsbFilter: DeviceAdd MATCH (%ws) hwid='%ws'\n", matched->Model, firstHwid);
-
+    // CRITICAL: a KMDF filter must NEVER fail EvtDeviceAdd to "opt out" of a
+    // device. Returning a failure status makes the PnP manager tear down the
+    // ENTIRE device stack, not just skip our filter. Because this driver is a
+    // filter on the whole USB class - which includes root hubs and host
+    // controllers - failing AddDevice on those (they never match a wheel HWID)
+    // kills the hub, and with it every keyboard, mouse and drive downstream.
+    // That is the "all USB input dies on install/boot" bug.
+    //
+    // The correct pattern: ALWAYS attach as a transparent filter, and only
+    // build the interception queue for a matched wheel. A non-wheel device
+    // gets a filter FDO with NO queue, so the framework auto-forwards all of
+    // its I/O to the next lower driver unchanged - zero behavioural effect,
+    // and the bus stays healthy.
     WdfFdoInitSetFilter(DeviceInit);
 
     WDFDEVICE device;
@@ -428,6 +433,14 @@ TFFAUsbEvtDeviceAdd(
         TFFA_LOG("TFFAUsbFilter: WdfDeviceCreate failed 0x%X\n", status);
         return status;
     }
+
+    if (matched == NULL) {
+        // Transparent pass-through FDO: no queue => KMDF forwards every
+        // request to the next lower driver. We never touch this device.
+        return STATUS_SUCCESS;
+    }
+
+    TFFA_LOG("TFFAUsbFilter: DeviceAdd MATCH (%ws) hwid='%ws'\n", matched->Model, firstHwid);
 
     WDF_IO_QUEUE_CONFIG queueConfig;
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queueConfig, WdfIoQueueDispatchParallel);
