@@ -31,7 +31,12 @@ Write-Host "Installing driver..." -ForegroundColor Cyan
 pnputil /add-driver $inf /install
 
 Write-Host ""
-Write-Host "Installed. Now REBOOT so the USB class filter attaches." -ForegroundColor Green
+Write-Host "Installed. BEFORE you reboot, ARM THE SAFETY GUARD:" -ForegroundColor Yellow
+Write-Host "    .\2b-arm-safety.ps1              (passwordless account)" -ForegroundColor Yellow
+Write-Host "    .\2b-arm-safety.ps1 -Password X  (account with a password)" -ForegroundColor Yellow
+Write-Host "  It auto-removes the driver and reboots if USB dies, so you can't get locked out."
+Write-Host ""
+Write-Host "Then REBOOT so the USB filter attaches." -ForegroundColor Green
 Write-Host "After reboot:" -ForegroundColor Cyan
 Write-Host "  1. Run DebugView.exe as admin."
 Write-Host "  2. Capture menu -> tick 'Capture Kernel' AND 'Enable Verbose Kernel Output'."

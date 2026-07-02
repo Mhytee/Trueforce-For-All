@@ -61,8 +61,21 @@ namespace TffaFakeGame
         static extern bool DeviceIoControl(SafeFileHandle h, uint code,
             byte[] inBuf, uint inLen, byte[] outBuf, uint outLen, out uint returned, IntPtr ov);
 
+        [DllImport("kernel32")] static extern IntPtr GetConsoleWindow();
+        [DllImport("user32")]   static extern bool SetForegroundWindow(IntPtr h);
+        [DllImport("user32")]   static extern bool ShowWindow(IntPtr h, int cmd);
+
+        // USB class GUID - our filter is registered as an UpperFilter here.
+        const string UsbClassKey =
+            @"SYSTEM\CurrentControlSet\Control\Class\{36FC9E60-C465-11CF-8056-444553540000}";
+
         static int Main(string[] args)
         {
+            // Dead-man's switch: run at logon by a scheduled task the arm script
+            // installs. If USB is dead you cannot press a key, so on timeout it
+            // strips our filter from the USB class and reboots -> USB restored.
+            if (Has(args, "--guard")) return RunGuard(GetInt(args, "--timeout", 60));
+
             bool resolveOnly = Has(args, "--resolve");
             bool noClaim     = Has(args, "--no-claim");
             int seconds      = GetInt(args, "--seconds", 3);
@@ -248,6 +261,68 @@ namespace TffaFakeGame
             try { ctrl?.Dispose(); } catch { }
         }
 
+        // ---- dead-man's switch ----------------------------------------------
+        static int RunGuard(int timeoutSec)
+        {
+            try { var h = GetConsoleWindow(); ShowWindow(h, 5 /*SW_SHOW*/); SetForegroundWindow(h); } catch { }
+            Console.Clear();
+            Console.WriteLine("==================================================================");
+            Console.WriteLine("  TFFAUsbFilter SAFETY GUARD");
+            Console.WriteLine();
+            Console.WriteLine("  The USB filter driver is loaded.");
+            Console.WriteLine("  If you can read this AND your keyboard works,");
+            Console.WriteLine("  press ANY KEY to KEEP the driver and keep testing.");
+            Console.WriteLine();
+            Console.WriteLine("  If USB is dead you can't press anything - so with no keypress");
+            Console.WriteLine("  the driver auto-removes and the PC reboots to restore USB.");
+            Console.WriteLine("==================================================================");
+
+            for (int remaining = timeoutSec; remaining > 0; remaining--)
+            {
+                Console.Write($"\r  Auto-removing in {remaining,3}s ... press any key to keep.   ");
+                for (int i = 0; i < 10; i++)
+                {
+                    if (Console.KeyAvailable)
+                    {
+                        try { Console.ReadKey(true); } catch { }
+                        Console.WriteLine("\n\n  KEY DETECTED - keeping the driver. Disarming the guard.");
+                        Disarm();
+                        return 0;
+                    }
+                    Thread.Sleep(100);
+                }
+            }
+
+            Console.WriteLine("\n\n  NO KEY - assuming USB is dead. Removing the filter and rebooting...");
+            RemoveFilter();
+            Disarm();
+            Run("shutdown", "/r /t 5 /c \"TFFA guard: filter removed, restoring USB\"");
+            return 1;
+        }
+
+        // Strip our filter from the USB class UpperFilters (what un-breaks USB).
+        static void RemoveFilter()
+        {
+            Run("reg", $"delete \"HKLM\\{UsbClassKey}\" /v UpperFilters /f");
+        }
+
+        // Remove the logon task so the guard doesn't nag on the next boot.
+        static void Disarm()
+        {
+            Run("schtasks", "/delete /tn TFFA-Guard /f");
+        }
+
+        static void Run(string exe, string args)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo(exe, args)
+                { UseShellExecute = false, CreateNoWindow = true };
+                System.Diagnostics.Process.Start(psi)?.WaitForExit(8000);
+            }
+            catch (Exception ex) { Console.WriteLine($"  ({exe} failed: {ex.Message})"); }
+        }
+
         // ---- arg helpers -----------------------------------------------------
         static bool Has(string[] a, string f)
         { foreach (var x in a) if (string.Equals(x, f, StringComparison.OrdinalIgnoreCase)) return true; return false; }
@@ -280,6 +355,9 @@ namespace TffaFakeGame
   --no-claim       do not claim \\.\TFFAControl ownership
   --seconds N      duration per inject phase (default 3)
   --rate N         writes per second (default 200)
+  --guard          dead-man's switch: press any key to keep the driver, else
+                   auto-remove it and reboot (used by the arm scheduled task)
+  --timeout N      guard countdown seconds (default 60)
   --help           this text
 
 Watch DebugView (kernel capture) for 'TFFAUsbFilter:' lines while this runs.");

@@ -13,6 +13,8 @@ self-contained harness). No Visual Studio, no WDK, no G HUB, no SimHub, no game.
 | `TFFAUsbFilter.cer` | its test-signing certificate |
 | `1-check-rig.ps1` | verify the rig is ready (read-only) |
 | `2-install.ps1` | trust cert + install filter |
+| `2b-arm-safety.ps1` | **dead-man's switch** - auto-removes the driver if USB dies |
+| `2c-disarm-safety.ps1` | undo the safety guard when done |
 | `3-uninstall.ps1` | remove filter, return USB to normal |
 | `DebugView.exe` | **you add this** — grab from Sysinternals (portable, no install) |
 | `tffa-fakegame.exe` | **added when built** — sends game-shaped FFB so no real sim is needed |
@@ -45,10 +47,14 @@ Goal: prove the filter loads and **doesn't break USB or the wheel.** It's a USB
 *class* filter, so the thing to rule out is broad USB breakage.
 
 1. Elevated PowerShell: `.\2-install.ps1`
-2. **Reboot.**
-3. Run `DebugView.exe` as admin -> **Capture** menu -> tick **Capture Kernel**
+2. **Arm the safety net** (so a bad driver can't lock you out again):
+   `.\2b-arm-safety.ps1`  (add `-Password X` if the account has a password).
+   On the next boot a guard window appears - **press any key to keep the
+   driver**; if USB is dead you can't, so it auto-removes and reboots.
+3. **Reboot.**
+4. Run `DebugView.exe` as admin -> **Capture** menu -> tick **Capture Kernel**
    and **Enable Verbose Kernel Output**.
-4. Plug in the G923.
+5. Plug in the G923.
 
 **Pass looks like:**
 - Keyboard/mouse/USB all still work after reboot (filter didn't jam USB).
