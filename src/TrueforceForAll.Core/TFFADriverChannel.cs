@@ -207,16 +207,24 @@ namespace TrueforceForAll.Core
                 recvCount++;
                 int len = (int)bytesReturned;
 
-                // Decode HID++ 0x8123 fn2 (G-series FFB) motor target if this
+                // Decode HID++ 0x8123 (G-series FFB) motor target if this
                 // looks like an FFB report from a game. Same bit-layout as
                 // UsbPcapFfbTap's HID++ extraction: report 0x11/0x12, devIdx
-                // 0xff, featIdx == FfbFeatureIndex, funcByte high nibble = 0x20,
-                // motor target int16 BE at offset 10-11.
+                // 0xff, featIdx == FfbFeatureIndex, funcByte high nibble = 0x2_
+                // OR 0x3_, motor target int16 BE at offset 10-11.
+                //
+                // Both function families carry the target: the HIDClass-layer
+                // TFFAFilter classified 0x20 and 0x30 in-kernel, but this bridge
+                // only matched 0x20. Under TFFAUsbFilter the kernel hands up
+                // EVERY intercepted write, so a 0x30 write arrives here and was
+                // silently dropped (no force target) — the "no force" symptom on
+                // wheels/firmware that use 0x30. Match both (handoff §11 step 1).
+                byte funcHi = (byte)(buf.Length > 3 ? buf[3] & 0xF0 : 0);
                 if (len >= 12
                     && (buf[0] == 0x11 || buf[0] == 0x12)
                     && buf[1] == 0xFF
                     && buf[2] == _ffbFeatureIndex
-                    && (buf[3] & 0xF0) == 0x20)
+                    && (funcHi == 0x20 || funcHi == 0x30))
                 {
                     short target = (short)((buf[10] << 8) | buf[11]);
                     long ts = _sw.ElapsedTicks & TimestampMask;
