@@ -46,15 +46,20 @@ watermark on the desktop — that's the green light. All reversible later.
 Goal: prove the filter loads and **doesn't break USB or the wheel.** It's a USB
 *class* filter, so the thing to rule out is broad USB breakage.
 
-1. Elevated PowerShell: `.\2-install.ps1`
-2. **Arm the safety net** (so a bad driver can't lock you out again):
-   `.\2b-arm-safety.ps1`  (add `-Password X` if the account has a password).
-   On the next boot a guard window appears - **press any key to keep the
-   driver**; if USB is dead you can't, so it auto-removes and reboots.
-3. **Reboot.**
-4. Run `DebugView.exe` as admin -> **Capture** menu -> tick **Capture Kernel**
+1. Elevated PowerShell: `.\2-install.ps1`  (add `-Password X` if the account
+   has a login password). This one script now **self-protects**:
+   - arms the reboot-time guard first (covers a hard-power-off if install hangs),
+   - installs the filter,
+   - then runs a **live keypress guard for the install moment** - press any key
+     to KEEP; if USB just died you can't, so it auto-removes and reboots.
+2. If you kept it, **reboot.** The reboot-time guard asks for a keypress again
+   (your USB check for the boot path) - press any key to keep.
+3. Run `DebugView.exe` as admin -> **Capture** menu -> tick **Capture Kernel**
    and **Enable Verbose Kernel Output**.
-5. Plug in the G923.
+4. Plug in the G923.
+
+> The install can no longer lock you out: the moment USB dies (on install *or*
+> reboot), doing nothing triggers the self-heal.
 
 **Pass looks like:**
 - Keyboard/mouse/USB all still work after reboot (filter didn't jam USB).
