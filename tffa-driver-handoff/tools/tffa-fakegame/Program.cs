@@ -49,6 +49,11 @@ namespace TffaFakeGame
         static readonly ushort[] SupportedPids =
             { 0xC272, 0xC268, 0xC276, 0xC266, 0xC26D, 0xC26E };
 
+        // Rev-LED protocol (mirrors WheelLedChannel): page 0x807A, sw-id 0x0D.
+        const ushort PageRevLights = 0x807A;
+        const byte LedSwId = 0x0D;
+        static byte LedFn(int fn) => (byte)((fn << 4) | LedSwId);
+
         // ---- control device P/Invoke ---------------------------------------
         const uint GENERIC_RW = 0xC0000000; const uint OPEN_EXISTING = 3;
         const uint IOCTL_TFFA_PING = 0x222000u; const uint PING_MAGIC = 0x54464641u;
@@ -76,6 +81,12 @@ namespace TffaFakeGame
             // installs. If USB is dead you cannot press a key, so on timeout it
             // strips our filter from the USB class and reboots -> USB restored.
             if (Has(args, "--guard")) return RunGuard(GetInt(args, "--timeout", 60));
+
+            // LED check: drive the rev bar over HID++. No driver / cert / reboot
+            // needed - pure user-mode. Run it on any machine where the wheel is
+            // in PC mode (G HUB present). Close SimHub first so nothing else is
+            // holding the HID++ pipe.
+            if (Has(args, "--leds")) return RunLeds(GetInt(args, "--cycles", 3));
 
             bool resolveOnly = Has(args, "--resolve");
             bool noClaim     = Has(args, "--no-claim");
@@ -279,6 +290,72 @@ namespace TffaFakeGame
             try { ctrl?.Dispose(); } catch { }
         }
 
+        // ---- LED check (drive the rev bar over HID++) ------------------------
+        static int RunLeds(int cycles)
+        {
+            HidStream shortS = null, longS = null, vlongS = null; string name = null;
+            if (!TryOpenWheel(ref shortS, ref longS, ref vlongS, ref name))
+            {
+                Console.WriteLine("ERROR: wheel not found. Is it in PC mode (G HUB installed) and is SimHub closed?");
+                return 2;
+            }
+            Console.WriteLine($"Wheel HID++ open: {name}");
+
+            int idx = ResolveFeature(shortS, longS, vlongS, PageRevLights);
+            if (idx <= 0)
+            {
+                Console.WriteLine("This wheel did not answer getFeature(0x807A) - it may not expose HID++ rev LEDs.");
+                Cleanup(shortS, longS, vlongS, null);
+                return 3;
+            }
+            Console.WriteLine($"Rev-LED feature (page 0x807A) index = 0x{idx:X2}. Lighting the rim - {cycles} cycles...\n");
+
+            // Pad SHORT (0x10) into a LONG (0x11) when the wheel has no 7-byte
+            // collection (G923). Same trick as the WheelLedChannel G923 fix.
+            void WS(byte[] r)
+            {
+                if (shortS != null) { shortS.Write(r); return; }
+                var p = new byte[LenLong]; p[0] = RepLong; Array.Copy(r, 1, p, 1, r.Length - 1);
+                (longS ?? vlongS).Write(p);
+            }
+            void WL(byte[] r) { if (longS != null) longS.Write(r); else if (vlongS != null) vlongS.Write(r); else WS(r); }
+
+            void SendPair(int lvl)
+            {
+                WS(new byte[] { RepShort, DevWired, (byte)idx, LedFn(2), 0, 0, 0 });
+                var f6 = new byte[LenLong];
+                f6[0] = RepLong; f6[1] = DevWired; f6[2] = (byte)idx; f6[3] = LedFn(6);
+                f6[4] = 0; f6[5] = 1; f6[6] = 0; f6[7] = 0x0A; f6[8] = 0; f6[9] = (byte)lvl;
+                WL(f6);
+            }
+            void Bar(int lvl)
+            {
+                SendPair(lvl);
+                Console.Write("\r  revs: [" + new string('#', lvl).PadRight(10) + $"] {lvl,2}/10 ");
+            }
+
+            try
+            {
+                // Arm once (G HUB's sequence), then sweep the bar up and down.
+                WS(new byte[] { RepShort, DevWired, (byte)idx, LedFn(0), 0, 0, 0 }); Thread.Sleep(4);
+                WS(new byte[] { RepShort, DevWired, (byte)idx, LedFn(1), 0, 0, 0 }); Thread.Sleep(4);
+                WS(new byte[] { RepShort, DevWired, (byte)idx, LedFn(2), 0, 0, 0 }); Thread.Sleep(4);
+                WS(new byte[] { RepShort, DevWired, (byte)idx, LedFn(3), 0x02, 0, 0 }); Thread.Sleep(4);
+                WS(new byte[] { RepShort, DevWired, (byte)idx, LedFn(0), 0, 0, 0 }); Thread.Sleep(4);
+
+                for (int c = 0; c < cycles; c++)
+                {
+                    for (int l = 0; l <= 10; l++) { Bar(l); Thread.Sleep(110); }
+                    for (int l = 9; l >= 0; l--) { Bar(l); Thread.Sleep(110); }
+                }
+                SendPair(0);
+                Console.WriteLine("\n\n  Done. If the rim lit up and swept, your G923 rev LEDs work over HID++.");
+            }
+            catch (Exception ex) { Console.WriteLine($"\n  LED write failed: {ex.Message}"); }
+            Cleanup(shortS, longS, vlongS, null);
+            return 0;
+        }
+
         // ---- dead-man's switch ----------------------------------------------
         static int RunGuard(int timeoutSec)
         {
@@ -369,6 +446,8 @@ namespace TffaFakeGame
 
   (no args)        resolve FFB index + claim ownership + 2-phase inject demo
   --resolve        print the wheel's FFB feature index (page 0x8123) and exit
+  --leds           light up the rev bar over HID++ (no driver/cert/reboot needed)
+  --cycles N       number of up/down LED sweeps for --leds (default 3)
   --index 0xNN     inject only, at feature index NN
   --no-claim       do not claim \\.\TFFAControl ownership
   --seconds N      duration per inject phase (default 3)
