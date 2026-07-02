@@ -141,11 +141,10 @@ static WDFSPINLOCK g_OwnerLock        = NULL;
 static ULONG       g_OwnerPid         = 0;
 
 // HID++ feature index that carries FFB (page 0x8123) on the target wheel.
-// Per-wheel: G PRO = 0x0E (confirmed), RS50 = 0x10. UNKNOWN for the G923 -
-// discover it from the NONOWNER_PASS DebugView logs (watch which feat index
-// the game's fn 0x2_/0x3_ writes use) and set it here. See
-// DRIVER-IMPLEMENTATION-NOTES.md. Kept as a variable so a future
-// IOCTL_TFFA_SET_FFB_INDEX can push the plugin-resolved index down.
+// Per-wheel: G PRO = 0x0E (confirmed), RS50 = 0x10, G923 = resolved at runtime.
+// The owner (plugin or tffa-fakegame) resolves it via HID++ getFeature(0x8123)
+// and pushes it down with IOCTL_TFFA_SET_FFB_INDEX, so it is NOT hardcoded per
+// wheel. The 0x0E default only matters until that IOCTL arrives.
 static UCHAR       g_FfbFeatureIndex  = 0x0E;
 
 // IOCTLs on the control device. Same codes as the legacy TFFAFilter so the
@@ -153,6 +152,7 @@ static UCHAR       g_FfbFeatureIndex  = 0x0E;
 #define TFFA_IOCTL(code)        CTL_CODE(FILE_DEVICE_UNKNOWN, (code), METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_TFFA_PING         TFFA_IOCTL(0x800)
 #define IOCTL_TFFA_RECV         TFFA_IOCTL(0x801)
+#define IOCTL_TFFA_SET_FFB_INDEX TFFA_IOCTL(0x802)   // in: ULONG, low byte = FFB feature index
 #define TFFA_PING_MAGIC         0x54464641UL    // 'TFFA'
 
 // ---------- URB-function name helper ------------------------------------
@@ -733,6 +733,21 @@ TFFAUsbEvtControlIoDeviceControl(
                 TFFA_LOG("TFFAUsbFilter: RECV forward-to-queue failed 0x%X\n", s);
                 WdfRequestComplete(Request, s);
             }
+            return;
+        }
+        case IOCTL_TFFA_SET_FFB_INDEX: {
+            PVOID  inBuf = NULL;
+            size_t inLen = 0;
+            NTSTATUS s = WdfRequestRetrieveInputBuffer(Request, sizeof(ULONG), &inBuf, &inLen);
+            if (!NT_SUCCESS(s) || inLen < sizeof(ULONG)) {
+                WdfRequestComplete(Request, STATUS_BUFFER_TOO_SMALL);
+                return;
+            }
+            UCHAR newIdx = (UCHAR)(*(PULONG)inBuf & 0xFF);
+            UCHAR oldIdx = g_FfbFeatureIndex;
+            g_FfbFeatureIndex = newIdx;
+            TFFA_LOG("TFFAUsbFilter: FFB feature index set 0x%02X -> 0x%02X\n", oldIdx, newIdx);
+            WdfRequestComplete(Request, STATUS_SUCCESS);
             return;
         }
         default:

@@ -52,6 +52,7 @@ namespace TffaFakeGame
         // ---- control device P/Invoke ---------------------------------------
         const uint GENERIC_RW = 0xC0000000; const uint OPEN_EXISTING = 3;
         const uint IOCTL_TFFA_PING = 0x222000u; const uint PING_MAGIC = 0x54464641u;
+        const uint IOCTL_TFFA_SET_FFB_INDEX = 0x222008u;
 
         [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
         static extern SafeFileHandle CreateFileW(string name, uint access, uint share,
@@ -130,6 +131,17 @@ namespace TffaFakeGame
                 }
             }
 
+            // Push the resolved index down so the driver intercepts the REAL game
+            // FFB (not just the 0x0E default). This is what closes the loop.
+            if (ctrl != null && ffbIdx > 0)
+            {
+                var inb = BitConverter.GetBytes((uint)ffbIdx);
+                if (DeviceIoControl(ctrl, IOCTL_TFFA_SET_FFB_INDEX, inb, 4, null, 0, out _, IntPtr.Zero))
+                    Console.WriteLine($"SET: driver FFB index -> 0x{ffbIdx:X2} (now intercepts your real FFB).");
+                else
+                    Console.WriteLine($"SET: set-index failed (Win32 {Marshal.GetLastWin32Error()}) - is this the fixed driver build?");
+            }
+
             // --- INJECT ---
             if (explicitIdx >= 0)
             {
@@ -138,14 +150,20 @@ namespace TffaFakeGame
             }
             else
             {
-                Console.WriteLine($"\nPhase 1: inject at driver-default 0x{DriverDefaultIdx:X2} "
-                    + (ctrl != null ? "(owner claimed) -> expect INTERCEPTED in DebugView" : "(no owner) -> expect FFB_LEAK_PASS"));
-                InjectFfb(longS, DriverDefaultIdx, seconds, rate);
+                int realIdx = ffbIdx > 0 ? ffbIdx : DriverDefaultIdx;
+                bool armed = ctrl != null && ffbIdx > 0;
 
-                int leakIdx = ffbIdx > 0 ? ffbIdx : 0x0B;
-                Console.WriteLine($"\nPhase 2: inject at your wheel's index 0x{leakIdx:X2} -> expect "
-                    + $"FFB_LEAK_PASS featIdx=0x{leakIdx:X2} (this is the leak a real game causes today)");
-                InjectFfb(longS, (byte)leakIdx, seconds, rate);
+                Console.WriteLine($"\nPhase 1: inject at your REAL FFB index 0x{realIdx:X2} -> expect "
+                    + (armed ? "INTERCEPTED (driver drops your real game FFB = sole-writer)"
+                             : "FFB_LEAK_PASS (index wasn't set - claim or resolve failed)"));
+                InjectFfb(longS, (byte)realIdx, seconds, rate);
+
+                // A different index proves selectivity: only the configured FFB is
+                // dropped; every other HID++ write still reaches the wheel.
+                byte otherIdx = (byte)(realIdx == DriverDefaultIdx ? 0x10 : DriverDefaultIdx);
+                Console.WriteLine($"\nPhase 2: inject at a DIFFERENT index 0x{otherIdx:X2} -> expect "
+                    + $"FFB_LEAK_PASS featIdx=0x{otherIdx:X2} (proves only your real FFB is dropped, nothing else)");
+                InjectFfb(longS, otherIdx, seconds, rate);
             }
 
             Console.WriteLine("\nDone. Read the DebugView log:");
