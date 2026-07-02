@@ -8,28 +8,32 @@
 // upper) sat too high and missed game writes that take a HID-minidriver-
 // internal shortcut on the way down.
 //
-// Architecture: the plugin opens \\?\TFFAControl (claims wheel ownership).
-// While owner is set:
-//   - Plugin's own writes pass through to the wheel
-//   - Every other (non-owner) host-to-device URB is INTERCEPTED: bytes
-//     copied to the plugin via inverted-call IOCTL_TFFA_RECV, URB
-//     completed with STATUS_SUCCESS locally without forwarding. Wheel
-//     never receives a byte that didn't originate from the plugin process.
-// The plugin then decides per-message what to write back to the wheel:
-//   - FFB writes (LONG/VERY_LONG feat 0x0E func 0x2_): dropped. The int16
-//     target at bytes 10-11 is extracted into the FFB pipeline and injected
-//     into the Trueforce stream ep3 bytes 6-9. Wheel produces force from
-//     our TF stream alone.
-//   - LED writes (feat 0x09 on G PRO): dropped. Plugin owns LED output.
-//   - SHORT 0x3B SET_EFFECT_STATE for feat 0x0E: dropped (wheel never got
-//     the DOWNLOAD_EFFECT either, so playing a phantom slot is a no-op).
-//   - Everything else (root queries, GET_INFO, notifications): plugin
-//     ECHOES via HidStream.Write so the wheel responds and the game's
-//     HID++ session stays alive.
-// Net effect: plugin is the literal sole writer to the wheel. No two-host
-// contention on the wheel's HID++ command processor. FFB still works via
-// TF stream. LEDs work without contention. Game's perception is unchanged
-// (writes succeed, queries get responses).
+// Architecture (CONTENT-based intercept; see DRIVER-IMPLEMENTATION-NOTES.md
+// for why this replaced the original PID/sole-writer design). The plugin
+// opens \\?\TFFAControl (marks the wheel as claimed). While a claim is set:
+//   - The GAME's HID++ FFB writes (LONG/VERY_LONG, devIdx 0xFF, FFB feature
+//     index, func 0x2_/0x3_) are INTERCEPTED: bytes copied to the plugin via
+//     inverted-call IOCTL_TFFA_RECV, then completed STATUS_SUCCESS locally
+//     WITHOUT forwarding. The int16 target at bytes 10-11 is decoded into the
+//     FFB pipeline and injected into the Trueforce ep3 stream (bytes 6-9), so
+//     the wheel produces force from our TF stream alone. Dropping this - the
+//     high-rate traffic - is what frees the shared HID++ command processor
+//     for LED writes.
+//   - EVERYTHING ELSE passes straight through, unchanged:
+//       * our Trueforce ep3 stream (not HID++)  -> force works
+//       * our LED writes (feature 0x09)         -> LEDs work, uncontended
+//       * the game's root/GET_INFO/notifications-> wheel answers them, so the
+//         game's HID++ session stays alive with NO echo step required
+// Interception keys on message CONTENT, not on the requesting PID: at the
+// URB-submit layer the write runs on a system worker thread, so
+// PsGetCurrentProcessId() cannot distinguish the game from the plugin (often
+// PID 4 for both). Content is stable and needs no owner/echo bookkeeping.
+// Net effect: the game's contending FFB never reaches the wheel; force comes
+// from the TF stream; LEDs are uncontended; the game's perception is
+// unchanged (writes succeed, queries get real responses).
+// Failure mode is graceful: if g_FfbFeatureIndex is wrong for a wheel, that
+// wheel's FFB LEAKS through (logged as FFB_LEAK_PASS) = today's contention
+// behaviour, never a dead wheel.
 //
 // Log lines: DbgPrintEx at ERROR level. View with DebugView (admin +
 // Capture Kernel + Verbose Kernel Output checked).
@@ -134,6 +138,14 @@ static WDFQUEUE    g_InterceptedQueue = NULL;
 static WDFSPINLOCK g_OwnerLock        = NULL;
 static ULONG       g_OwnerPid         = 0;
 
+// HID++ feature index that carries FFB (page 0x8123) on the target wheel.
+// Per-wheel: G PRO = 0x0E (confirmed), RS50 = 0x10. UNKNOWN for the G923 -
+// discover it from the NONOWNER_PASS DebugView logs (watch which feat index
+// the game's fn 0x2_/0x3_ writes use) and set it here. See
+// DRIVER-IMPLEMENTATION-NOTES.md. Kept as a variable so a future
+// IOCTL_TFFA_SET_FFB_INDEX can push the plugin-resolved index down.
+static UCHAR       g_FfbFeatureIndex  = 0x0E;
+
 // IOCTLs on the control device. Same codes as the legacy TFFAFilter so the
 // plugin's TFFADriverChannel reaches us without code changes.
 #define TFFA_IOCTL(code)        CTL_CODE(FILE_DEVICE_UNKNOWN, (code), METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -220,6 +232,37 @@ TFFAUsbGetWriteBuffer(
         default:
             return FALSE;
     }
+}
+
+// ---------- Game-FFB classifier (content-based intercept) ---------------
+//
+// Decide whether an intercepted host->device write is the GAME's HID++ FFB
+// (page 0x8123) - the only traffic we must keep off the wheel's shared
+// command processor to stop it starving LED writes. We key on CONTENT, not
+// on the requesting PID: at the URB-submit layer the write runs on a system
+// worker thread, so PsGetCurrentProcessId() is unreliable (often PID 4 for
+// both the game AND the plugin's own re-issued writes). Content is stable.
+//
+// A game FFB write is a HID++ LONG/VERY_LONG report (0x11/0x12) to the wired
+// device index (0xFF), on the FFB feature index, with function nibble 0x2_ or
+// 0x3_. This deliberately does NOT match:
+//   - the plugin's LED writes  (feature 0x09)        -> pass through
+//   - the plugin's Trueforce ep3 stream (not HID++)  -> pass through
+//   - the game's root/GET_INFO queries (fn 0x0_/0x1_)-> pass through, so the
+//     wheel answers them and the HID++ session stays alive (no echo needed)
+// so the plugin's own force + LED output and the game's handshake all survive
+// while only the contending FFB stream is dropped. `snap` is the first up-to
+// 12 bytes already copied out of the transfer buffer under SEH by the caller;
+// `snapLen` is how many of those bytes are valid.
+static BOOLEAN
+TFFAUsbIsGameFfbWrite(_In_reads_(snapLen) const UCHAR *snap, _In_ ULONG snapLen)
+{
+    if (snapLen < 4) return FALSE;
+    if (snap[0] != 0x11 && snap[0] != 0x12) return FALSE;   // HID++ long/vlong
+    if (snap[1] != 0xFF) return FALSE;                      // wired device idx
+    if (snap[2] != g_FfbFeatureIndex) return FALSE;         // FFB feature page
+    UCHAR fnHi = (UCHAR)(snap[3] & 0xF0);
+    return (fnHi == 0x20 || fnHi == 0x30);
 }
 
 // ---------- Control device ----------------------------------------------
@@ -442,24 +485,36 @@ TFFAUsbEvtIoInternalDeviceControl(
         WdfSpinLockRelease(g_OwnerLock);
     }
     if (owner == 0) owner = TFFAUsbGetProtectedPid();
+    // Retained for logging only. NOT used to decide interception: at the
+    // URB-submit layer the write runs on a system worker thread, so this is
+    // often PID 4 (System) for both the game's and the plugin's own writes
+    // and cannot tell them apart. See DRIVER-IMPLEMENTATION-NOTES.md.
     ULONG requestor = HandleToULong(PsGetCurrentProcessId());
 
-    // Intercept criteria: a host->device URB carrying a transfer buffer
-    // came from a non-owner PID (and there IS an owner set). Wheel never
-    // gets these; the plugin will reissue whatever it wants to via its own
-    // HID handle (which passes through this filter since plugin == owner).
-    if (writeBuf != NULL && writeLen > 0 && owner != 0 && requestor != owner) {
-        intercept = TRUE;
+    // Snapshot the first bytes of the transfer buffer (needed BEFORE the
+    // intercept decision now that it is content-based). SEH-guarded because
+    // the buffer may be MDL-only / not directly readable.
+    UCHAR pad[12] = { 0 };
+    ULONG padLen = 0;
+    if (writeBuf != NULL && writeLen > 0) {
+        padLen = writeLen < 12 ? writeLen : 12;
+        __try {
+            RtlCopyMemory(pad, writeBuf, padLen);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            // Buffer is MDL-only or kernel-only; leave pad zeroed (padLen
+            // stays as-is; the classifier will simply not match all-zero).
+            padLen = 0;
+        }
     }
 
-    UCHAR pad[12] = { 0 };
-    if (writeBuf != NULL && writeLen > 0) {
-        ULONG dump = writeLen < 12 ? writeLen : 12;
-        __try {
-            RtlCopyMemory(pad, writeBuf, dump);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-            // Buffer is MDL-only or kernel-only; leave pad zeroed.
-        }
+    // Intercept criteria (CONTENT-based): there IS an owner set (a plugin
+    // has claimed the wheel) AND this write is the game's HID++ FFB stream.
+    // Only that traffic is dropped; the wheel then receives force from our
+    // Trueforce ep3 stream, our LED writes and the game's queries still reach
+    // it, and no PID comparison is involved (that comparison is unreliable at
+    // this layer). Everything else passes through unchanged.
+    if (owner != 0 && TFFAUsbIsGameFfbWrite(pad, padLen)) {
+        intercept = TRUE;
     }
 
     if (intercept) {
@@ -504,35 +559,40 @@ TFFAUsbEvtIoInternalDeviceControl(
         return;
     }
 
-    // Pass-through path. Log throttled. Distinguish non-owner (informational)
-    // vs owner (high-volume; the plugin's own writes flowing through).
+    // Pass-through path. Two log tiers:
+    //   (a) LOUD - a HID++ LONG/VLONG write with FFB function nibble (0x2_/
+    //       0x3_) that we did NOT intercept. That means its feature index
+    //       (pad[2]) != g_FfbFeatureIndex, i.e. the game's FFB is LEAKING to
+    //       the wheel. On a wheel whose index we don't yet know (the G923),
+    //       this line is exactly how we discover the right index: read pad[2]
+    //       and set g_FfbFeatureIndex to it. Every such leak reintroduces the
+    //       LED/FFB contention, so surface all of them.
+    //   (b) THROTTLED - everything else (our TF ep3 stream, LED writes, the
+    //       game's queries). High volume; log sparsely just to prove flow.
     if (writeBuf != NULL && writeLen > 0) {
-        BOOLEAN isOwner = (owner != 0 && requestor == owner);
-        if (!isOwner) {
-            // Non-owner pass: owner was 0 (no plugin claimed yet) OR the
-            // intercept branch above didn't take (rare). Worth logging more
-            // verbosely so we can see boot-time / pre-plugin writes.
-            static volatile LONG s_nonOwnerPassCount = 0;
-            LONG np = InterlockedIncrement(&s_nonOwnerPassCount);
-            if (np <= 40 || (np % 50) == 1) {
+        BOOLEAN ffbShaped = padLen >= 4
+            && (pad[0] == 0x11 || pad[0] == 0x12) && pad[1] == 0xFF
+            && ((pad[3] & 0xF0) == 0x20 || (pad[3] & 0xF0) == 0x30);
+        if (ffbShaped) {
+            static volatile LONG s_ffbLeakCount = 0;
+            LONG lk = InterlockedIncrement(&s_ffbLeakCount);
+            if (lk <= 60 || (lk % 50) == 1) {
                 TFFA_LOG(
-                    "TFFAUsbFilter: URB #%ld NONOWNER_PASS fn=0x%04X (%s) len=%lu pid=%lu owner=%lu  %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
-                    np, urbFunction, TFFAUrbFunctionName(urbFunction), writeLen,
+                    "TFFAUsbFilter: URB #%ld FFB_LEAK_PASS featIdx=0x%02X (expected 0x%02X) fn=0x%04X len=%lu pid=%lu owner=%lu  %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+                    lk, pad[2], g_FfbFeatureIndex, urbFunction, writeLen,
                     requestor, owner,
                     pad[0], pad[1], pad[2], pad[3],
                     pad[4], pad[5], pad[6], pad[7],
                     pad[8], pad[9], pad[10], pad[11]);
             }
         } else {
-            // Owner (plugin) writes: throttle hard, this is the high-volume
-            // TF stream + LED writes + echoed game queries.
-            static volatile LONG s_ownerPassCount = 0;
-            LONG op = InterlockedIncrement(&s_ownerPassCount);
+            static volatile LONG s_passCount = 0;
+            LONG op = InterlockedIncrement(&s_passCount);
             if ((op % 500) == 1) {
                 TFFA_LOG(
-                    "TFFAUsbFilter: URB #%ld OWNER_PASS fn=0x%04X (%s) len=%lu pid=%lu  %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+                    "TFFAUsbFilter: URB #%ld PASS fn=0x%04X (%s) len=%lu pid=%lu owner=%lu  %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
                     op, urbFunction, TFFAUrbFunctionName(urbFunction), writeLen,
-                    requestor,
+                    requestor, owner,
                     pad[0], pad[1], pad[2], pad[3],
                     pad[4], pad[5], pad[6], pad[7],
                     pad[8], pad[9], pad[10], pad[11]);
