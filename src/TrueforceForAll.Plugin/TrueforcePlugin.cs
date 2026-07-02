@@ -1900,6 +1900,12 @@ namespace TrueforceForAll.Plugin
                         SimHub.Logging.Current.Info("[Trueforce] driver-LED channel open and ready.");
                     }
 
+                    // Per-wheel FFB feature index (page 0x8123): G PRO 0x0E,
+                    // G923 Xbox 0x0B, etc. The driver self-defaults this per
+                    // wheel too, but we set it explicitly so our decode of the
+                    // intercepted stream (and the SET-index push) match.
+                    byte ffbIdx = WheelDiscovery.FfbFeatureIndexFor(_hidWheelPid);
+
                     _driverChannel = new TFFADriverChannel(
                         log: msg => SimHub.Logging.Current.Info(msg),
                         onIntercepted: (buf, len) =>
@@ -1921,7 +1927,7 @@ namespace TrueforceForAll.Plugin
                                 bool hidpp = (b0 == 0x10 || b0 == 0x11 || b0 == 0x12) && b1 == 0xFF;
                                 if (hidpp)
                                 {
-                                    if (b2 == 0x0E && ((b3 & 0xF0) == 0x20 || (b3 & 0xF0) == 0x30)) klass = "FFB";
+                                    if (b2 == ffbIdx && ((b3 & 0xF0) == 0x20 || (b3 & 0xF0) == 0x30)) klass = "FFB";
                                     else if (b2 == 0x09) klass = "LED";
                                 }
                             }
@@ -1941,6 +1947,10 @@ namespace TrueforceForAll.Plugin
                     if (_driverChannel.IsOpen)
                     {
                         SimHub.Logging.Current.Info("[Trueforce] TFFA filter channel open; plugin is now the wheel owner.");
+                        // Tell our decode + the driver which HID++ feature index
+                        // carries this wheel's FFB, so interception + re-apply match.
+                        _driverChannel.SetFfbFeatureIndex(ffbIdx);
+                        SimHub.Logging.Current.Info($"[Trueforce] driver FFB feature index set to 0x{ffbIdx:X2} for PID 0x{_hidWheelPid:X4}.");
                     }
                     else
                     {

@@ -72,15 +72,21 @@ static ULONG TFFAUsbGetProtectedPid(VOID);
 typedef struct _TFFAUSB_TARGET_WHEEL {
     PCWSTR HardwareIdSubstring;
     PCWSTR Model;
+    UCHAR  DefaultFfbIndex;   // HID++ feature index carrying FFB (page 0x8123)
 } TFFAUSB_TARGET_WHEEL;
 
+// DefaultFfbIndex: EvtDeviceAdd seeds g_FfbFeatureIndex from this so the driver
+// is correct-by-default per wheel, before any owner pushes an override via
+// IOCTL_TFFA_SET_FFB_INDEX. Confirmed on hardware: G PRO = 0x0E, G923 Xbox
+// (C26D/C26E) = 0x0B (2026-07-02). From capture notes (override if wrong):
+// G923 PS (C266) = 0x08, RS50 = 0x10.
 static const TFFAUSB_TARGET_WHEEL g_TargetWheels[] = {
-    { L"VID_046D&PID_C272", L"Logitech G PRO (Xbox/PC)"      },
-    { L"VID_046D&PID_C268", L"Logitech G PRO (PS/PC)"        },
-    { L"VID_046D&PID_C266", L"Logitech G923 (PS/PC)"         },
-    { L"VID_046D&PID_C26D", L"Logitech G923 (Xbox/PC)"       },
-    { L"VID_046D&PID_C26E", L"Logitech G923 (Xbox/PC, B)"    },
-    { L"VID_046D&PID_C276", L"Logitech RS50"                 },
+    { L"VID_046D&PID_C272", L"Logitech G PRO (Xbox/PC)",   0x0E },
+    { L"VID_046D&PID_C268", L"Logitech G PRO (PS/PC)",     0x0E },
+    { L"VID_046D&PID_C266", L"Logitech G923 (PS/PC)",      0x08 },
+    { L"VID_046D&PID_C26D", L"Logitech G923 (Xbox/PC)",    0x0B },
+    { L"VID_046D&PID_C26E", L"Logitech G923 (Xbox/PC, B)", 0x0B },
+    { L"VID_046D&PID_C276", L"Logitech RS50",              0x10 },
 };
 
 // Case-insensitive substring search for the hwid match. Some kernel headers
@@ -440,7 +446,11 @@ TFFAUsbEvtDeviceAdd(
         return STATUS_SUCCESS;
     }
 
-    TFFA_LOG("TFFAUsbFilter: DeviceAdd MATCH (%ws) hwid='%ws'\n", matched->Model, firstHwid);
+    // Seed the FFB feature index for this wheel so interception is correct out
+    // of the box. An owner may still override it via IOCTL_TFFA_SET_FFB_INDEX.
+    g_FfbFeatureIndex = matched->DefaultFfbIndex;
+    TFFA_LOG("TFFAUsbFilter: DeviceAdd MATCH (%ws) hwid='%ws' ffbIdx=0x%02X\n",
+             matched->Model, firstHwid, g_FfbFeatureIndex);
 
     WDF_IO_QUEUE_CONFIG queueConfig;
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queueConfig, WdfIoQueueDispatchParallel);

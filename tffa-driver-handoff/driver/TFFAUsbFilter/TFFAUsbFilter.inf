@@ -31,7 +31,7 @@ Signature   = "$Windows NT$"
 Class       = USB
 ClassGuid   = {36FC9E60-C465-11CF-8056-444553540000}
 Provider    = %ProviderName%
-DriverVer   = 07/02/2026,0.3.0.0
+DriverVer   = 07/02/2026,0.3.1.0
 CatalogFile = TFFAUsbFilter.cat
 PnpLockdown = 1
 

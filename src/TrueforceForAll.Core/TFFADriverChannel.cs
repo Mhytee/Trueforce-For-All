@@ -39,6 +39,7 @@ namespace TrueforceForAll.Core
         // matches driver-side macros.
         private const uint IOCTL_TFFA_PING = 0x222000u;
         private const uint IOCTL_TFFA_RECV = 0x222004u;
+        private const uint IOCTL_TFFA_SET_FFB_INDEX = 0x222008u; // in: ULONG, low byte = index
         private const uint PING_MAGIC      = 0x54464641u; // 'TFFA' ASCII
 
         private const string ControlDevicePath = @"\\.\TFFAControl";
@@ -70,16 +71,31 @@ namespace TrueforceForAll.Core
         // wide TryGetFreshFfbTarget already won't fire for indices we miss).
         // NOTE: this is decoded entirely from the intercepted byte stream,
         // not via WheelDiscovery; matches UsbPcapFfbTap's FfbFeatureIndexSeed.
-        private byte _ffbFeatureIndex = 0x0e;
+        // volatile: set from the plugin thread, read on the RECV worker thread.
+        private volatile byte _ffbFeatureIndex = 0x0e;
 
         public bool IsOpen   => _handle != null && !_handle.IsInvalid && !_handle.IsClosed;
         public bool IsActive => IsOpen && _worker != null && _worker.IsAlive;
         public long FfbSamplesDecoded => Interlocked.Read(ref _ffbSamplesDecoded);
 
         /// <summary>Set the HID++ feature index that carries 0x8123 (FFB) for
-        /// the active wheel. G PRO = 0x0e (default). RS50 = 0x10. Call this
-        /// after discovery if you know the right index.</summary>
-        public void SetFfbFeatureIndex(byte index) => _ffbFeatureIndex = index;
+        /// the active wheel. G PRO = 0x0e, G923 Xbox = 0x0b, RS50 = 0x10. Sets
+        /// our local decode index AND pushes it to the driver so its interception
+        /// matches this wheel. Safe to call before/after the channel opens.</summary>
+        public void SetFfbFeatureIndex(byte index)
+        {
+            _ffbFeatureIndex = index;
+            if (!IsOpen) return;
+            try
+            {
+                byte[] inb = BitConverter.GetBytes((uint)index);
+                bool ok = DeviceIoControl(_handle, IOCTL_TFFA_SET_FFB_INDEX,
+                    inb, (uint)inb.Length, IntPtr.Zero, 0, out _, IntPtr.Zero);
+                if (ok) _log($"[TFFADriverChannel] pushed FFB index 0x{index:X2} to driver.");
+                else    _log($"[TFFADriverChannel] set-index IOCTL failed: Win32 error {Marshal.GetLastWin32Error()}");
+            }
+            catch (Exception ex) { _log($"[TFFADriverChannel] set-index threw: {ex.Message}"); }
+        }
 
         /// <summary>Return the latest intercepted FFB motor target if it's
         /// fresher than <paramref name="maxAgeMs"/>. Mirrors
@@ -279,6 +295,18 @@ namespace TrueforceForAll.Core
             IntPtr lpInBuffer,
             uint nInBufferSize,
             [Out] byte[] lpOutBuffer,
+            uint nOutBufferSize,
+            out uint lpBytesReturned,
+            IntPtr lpOverlapped);
+
+        // Overload for IOCTLs that take an INPUT buffer and no output (SET_FFB_INDEX).
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool DeviceIoControl(
+            SafeFileHandle hDevice,
+            uint dwIoControlCode,
+            byte[] lpInBuffer,
+            uint nInBufferSize,
+            IntPtr lpOutBuffer,
             uint nOutBufferSize,
             out uint lpBytesReturned,
             IntPtr lpOverlapped);

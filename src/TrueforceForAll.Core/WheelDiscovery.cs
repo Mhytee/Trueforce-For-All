@@ -54,6 +54,23 @@ namespace TrueforceForAll.Core
 
         public static bool IsUnverified(ushort pid) => UnverifiedPids.Contains(pid);
 
+        /// <summary>HID++ feature index that carries FFB (page 0x8123) for a
+        /// given wheel PID. Confirmed on hardware: G PRO = 0x0E, G923 Xbox/PC
+        /// (C26D/C26E) = 0x0B (2026-07-02). From capture notes: G923 PS/PC
+        /// (C266) = 0x08, RS50 = 0x10. Defaults to the G PRO's 0x0E if unknown.
+        /// Used to configure the driver-intercept channel per wheel.</summary>
+        public static byte FfbFeatureIndexFor(ushort pid)
+        {
+            switch (pid)
+            {
+                case 0xC272: case 0xC268: return 0x0E; // G PRO (Xbox/PC, PS/PC)
+                case 0xC266:              return 0x08; // G923 (PS/PC)
+                case 0xC26D: case 0xC26E: return 0x0B; // G923 (Xbox/PC)
+                case 0xC276:              return 0x10; // RS50
+                default:                  return 0x0E;
+            }
+        }
+
         // True when (vid,pid) is one of our supported Trueforce wheels. Used to
         // tell a "USBPcap can't see the FFB" problem apart from "the user pinned
         // a device that isn't even a wheel" so we give the right guidance.
