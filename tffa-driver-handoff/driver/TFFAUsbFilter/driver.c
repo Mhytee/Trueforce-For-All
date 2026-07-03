@@ -8,7 +8,7 @@
 // upper) sat too high and missed game writes that take a HID-minidriver-
 // internal shortcut on the way down.
 //
-// Architecture (CONTENT-based intercept; see DRIVER-IMPLEMENTATION-NOTES.md
+// Architecture (CONTENT-based intercept; see driverNotes.md
 // for why this replaced the original PID/sole-writer design). The plugin
 // opens \\?\TFFAControl (marks the wheel as claimed). While a claim is set:
 //   - The GAME's HID++ FFB writes (LONG/VERY_LONG, devIdx 0xFF, FFB feature
@@ -511,7 +511,7 @@ TFFAUsbEvtIoInternalDeviceControl(
     // Retained for logging only. NOT used to decide interception: at the
     // URB-submit layer the write runs on a system worker thread, so this is
     // often PID 4 (System) for both the game's and the plugin's own writes
-    // and cannot tell them apart. See DRIVER-IMPLEMENTATION-NOTES.md.
+    // and cannot tell them apart. See driverNotes.md.
     ULONG requestor = HandleToULong(PsGetCurrentProcessId());
 
     // Snapshot the first bytes of the transfer buffer (needed BEFORE the
