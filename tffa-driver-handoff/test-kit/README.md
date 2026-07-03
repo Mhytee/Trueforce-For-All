@@ -13,8 +13,6 @@ self-contained harness). No Visual Studio, no WDK, no G HUB, no SimHub, no game.
 | `TFFAUsbFilter.cer` | its test-signing certificate |
 | `1-check-rig.ps1` | verify the rig is ready (read-only) |
 | `2-install.ps1` | trust cert + install filter |
-| `2b-arm-safety.ps1` | **dead-man's switch** - auto-removes the driver if USB dies |
-| `2c-disarm-safety.ps1` | undo the safety guard when done |
 | `3-uninstall.ps1` | remove filter, return USB to normal |
 | `DebugView.exe` | **you add this** — grab from Sysinternals (portable, no install) |
 | `tffa-fakegame.exe` | **added when built** — sends game-shaped FFB so no real sim is needed |
@@ -46,20 +44,11 @@ watermark on the desktop — that's the green light. All reversible later.
 Goal: prove the filter loads and **doesn't break USB or the wheel.** It's a USB
 *class* filter, so the thing to rule out is broad USB breakage.
 
-1. Elevated PowerShell: `.\2-install.ps1`  (add `-Password X` if the account
-   has a login password). This one script now **self-protects**:
-   - arms the reboot-time guard first (covers a hard-power-off if install hangs),
-   - installs the filter,
-   - then runs a **live keypress guard for the install moment** - press any key
-     to KEEP; if USB just died you can't, so it auto-removes and reboots.
-2. If you kept it, **reboot.** The reboot-time guard asks for a keypress again
-   (your USB check for the boot path) - press any key to keep.
+1. Elevated PowerShell: `.\2-install.ps1`
+2. **Reboot** so the USB filter attaches.
 3. Run `DebugView.exe` as admin -> **Capture** menu -> tick **Capture Kernel**
    and **Enable Verbose Kernel Output**.
 4. Plug in the G923.
-
-> The install can no longer lock you out: the moment USB dies (on install *or*
-> reboot), doing nothing triggers the self-heal.
 
 **Pass looks like:**
 - Keyboard/mouse/USB all still work after reboot (filter didn't jam USB).
