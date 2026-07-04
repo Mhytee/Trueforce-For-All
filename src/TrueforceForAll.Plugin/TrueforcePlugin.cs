@@ -16733,6 +16733,18 @@ namespace TrueforceForAll.Plugin
             {
                 _hasActivePeer = peer;
                 try { UpdateSessionHeartbeatTimer(); } catch { }   // start/stop the heartbeat to match
+                // A peer just came ONLINE: the pull loop stopped the last time its gate saw
+                // no peer (that return doesn't re-arm), and nothing else restarts it until a
+                // wake/sign-in reconcile. Without this kick, a peer detected here (e.g. the
+                // Account tab feeding this method) got a heartbeat but no pulls, so edits
+                // from the other PC never arrived. Reset the backoff so the first polls are
+                // snappy, mirroring ReconcileSyncState. The offline flip needs nothing: the
+                // loop's next tick sees no peer and stops itself.
+                if (peer)
+                {
+                    _pullNoChangeStreak = 0;
+                    try { UpdateAutoPullTimer(); } catch { }
+                }
             }
         }
 
