@@ -15944,13 +15944,24 @@ namespace TrueforceForAll.Plugin
         private (bool linked, string username)? _discordCache;
         private DateTime _discordCacheAtUtc;
         private Task<(bool, string)> _discordInFlight;
+        // Identity generation for the two caches above (same idea as _autoPullGen).
+        // Bumped by InvalidateAccountStatusCache; a fetch captures it at start and
+        // refuses to write its result if the generation moved while the network
+        // call was in flight, so an account switch mid-fetch can't seed the NEW
+        // account's cache with the OLD account's supporter/Discord status.
+        private int _accountStatusGen;
 
         /// <summary>Drop the cached supporter + Discord-link state so the next read refetches. Called on
         /// sign-in/out, link/unlink, and any action that can change entitlement.</summary>
         internal void InvalidateAccountStatusCache()
         {
-            lock (_entCacheLock) { _entCache = null; }
-            lock (_discordCacheLock) { _discordCache = null; }
+            // Bump FIRST so an in-flight fetch that completes after this point sees
+            // itself as stale. Also drop the in-flight tasks: without that, a reader
+            // under the new identity would JOIN the old identity's pending fetch and
+            // receive (and previously cache) the old account's status.
+            System.Threading.Interlocked.Increment(ref _accountStatusGen);
+            lock (_entCacheLock) { _entCache = null; _entInFlight = null; }
+            lock (_discordCacheLock) { _discordCache = null; _discordInFlight = null; }
         }
 
         /// <summary>Current Discord link state for the settings UI (linked + display name). Cached;
@@ -15987,12 +15998,19 @@ namespace TrueforceForAll.Plugin
 
         private async Task<(bool, string)> FetchDiscordStatusAsync()
         {
+            // Bound to the identity generation this fetch started under: if the
+            // account switches / signs out during the await, the stale completion
+            // must not write the cache or clobber a fresh in-flight fetch the new
+            // identity already started. Stale results report signed-out defaults.
+            int gen = System.Threading.Volatile.Read(ref _accountStatusGen);
             try
             {
                 var result = await _discordLinkClient
                     .GetMyDiscordAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
                 lock (_discordCacheLock)
                 {
+                    if (gen != System.Threading.Volatile.Read(ref _accountStatusGen))
+                        return (false, null);   // identity moved mid-fetch: don't cache
                     _discordCache = result;
                     _discordCacheAtUtc = DateTime.UtcNow;
                     _discordInFlight = null;
@@ -16003,6 +16021,8 @@ namespace TrueforceForAll.Plugin
             {
                 lock (_discordCacheLock)
                 {
+                    if (gen != System.Threading.Volatile.Read(ref _accountStatusGen))
+                        return (false, null);
                     _discordInFlight = null;
                     if (_discordCache.HasValue) return _discordCache.Value;   // keep last good on a transient failure
                 }
@@ -16113,12 +16133,19 @@ namespace TrueforceForAll.Plugin
 
         private async Task<(bool, string, DateTime?)> FetchEntitlementAsync()
         {
+            // Same identity-generation binding as FetchDiscordStatusAsync: a stale
+            // completion after an account switch must not seed the new account's
+            // cache with the old account's entitlement (supporter badge / cloud
+            // gating would show the wrong account's status until the TTL expired).
+            int gen = System.Threading.Volatile.Read(ref _accountStatusGen);
             try
             {
                 var result = await _entitlementClient
                     .GetMyEntitlementAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
                 lock (_entCacheLock)
                 {
+                    if (gen != System.Threading.Volatile.Read(ref _accountStatusGen))
+                        return (false, null, null);   // identity moved mid-fetch: don't cache
                     _entCache = result;
                     _entCacheAtUtc = DateTime.UtcNow;
                     _entInFlight = null;
@@ -16129,6 +16156,8 @@ namespace TrueforceForAll.Plugin
             {
                 lock (_entCacheLock)
                 {
+                    if (gen != System.Threading.Volatile.Read(ref _accountStatusGen))
+                        return (false, null, null);
                     _entInFlight = null;
                     if (_entCache.HasValue) return _entCache.Value;   // keep last good on a transient failure
                 }
