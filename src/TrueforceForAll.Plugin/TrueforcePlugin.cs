@@ -16914,7 +16914,14 @@ namespace TrueforceForAll.Plugin
                 if (_backupClient == null || _auth == null || !_auth.IsSignedIn) return;
                 if (!_hasActivePeer) return;                                      // solo: nobody else could have written
                 if (!ignoreActivity && !IsUserActive) return;                     // idle: nothing is consuming a pulled change
-                if (IsGameRunning) return;                                        // don't apply mid-drive; a later tick will
+                // Mid-game: don't apply (re-applying effects / rebinding the telemetry source
+                // would blip FFB), but DO re-arm. This gate runs before the finally-block
+                // re-arm, so a bare return here killed the loop for the rest of the session
+                // whenever a tick landed during a race: the user is active with a peer online,
+                // yet no wake event fires when the game ends, and changes from the other PC
+                // never arrive. Re-arming keeps the current backoff cadence and costs zero
+                // network calls per in-game tick (we return before any RPC).
+                if (IsGameRunning) { ArmNextAutoPull(NextPullDelayMs()); return; }
                 // Capture the account we started under. Re-assert after EVERY await before applying,
                 // uploading, or stamping, so a sign-out / account switch during the (up to 90s)
                 // download can't apply or upload one account's data under another's identity.
