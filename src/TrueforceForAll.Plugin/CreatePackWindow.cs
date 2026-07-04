@@ -45,6 +45,19 @@ namespace TrueforceForAll.Plugin
         private readonly List<CarEntry>    _carEntries    = new List<CarEntry>();
         private readonly List<EngineEntry> _engineEntries = new List<EngineEntry>();
 
+        // The upload handler awaits a multi-second network call while only the
+        // buttons are disabled; the title-bar X still closes the window. Once
+        // closed, the continuation must not touch controls or set DialogResult
+        // (which throws on a closed dialog, unhandled from an async void).
+        // Same pattern as SignInWindow.
+        private bool _closed;
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _closed = true;
+            base.OnClosed(e);
+        }
+
         public CreatePackWindow(TrueforcePlugin plugin)
         {
             _plugin = plugin;
@@ -319,11 +332,13 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
+                    if (_closed) return;
                     statusText.Foreground = ErrFg;
                     statusText.Text = "Upload exception: " + ex.Message;
                     uploadBtn.IsEnabled = true; cancelBtn.IsEnabled = true;
                     return;
                 }
+                if (_closed) return;
                 if (string.IsNullOrEmpty(newId))
                 {
                     statusText.Foreground = ErrFg;
