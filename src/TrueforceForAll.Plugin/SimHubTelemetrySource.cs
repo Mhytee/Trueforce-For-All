@@ -63,6 +63,10 @@ namespace TrueforceForAll.Plugin
             double realRedline = d.CarSettings_RedLineRPM > 0 ? d.CarSettings_RedLineRPM
                                : d.CarSettings_CurrentGearRedLineRPM > 0 ? d.CarSettings_CurrentGearRedLineRPM
                                : 0.0;
+            // Per-gear redline (no stable car-level value): used for the buzz but
+            // kept OUT of the variant signature, since it changes every shift and
+            // would otherwise spawn a junk variant per gear.
+            bool redlinePerGear = d.CarSettings_RedLineRPM <= 0 && d.CarSettings_CurrentGearRedLineRPM > 0;
             double red = realRedline > 0 ? realRedline : d.MaxRpm;   // LED span top
             double revPct;
             if (red > 0)
@@ -117,7 +121,8 @@ namespace TrueforceForAll.Plugin
                 // The car's REAL redline/shift RPM, or 0 when the game exposes
                 // none (NOT faked from MaxRpm). The rev limiter falls back to
                 // MaxRpm*Threshold itself when this is 0; see RevLimiterEffect.
-                RedlineRpm     = realRedline,
+                RedlineRpm        = realRedline,
+                RedlineRpmPerGear = redlinePerGear,
             };
             LastRedlineRpm = realRedline;
             EmitFrame(frame);

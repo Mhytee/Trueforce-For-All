@@ -43,6 +43,14 @@ namespace TrueforceForAll.Core
         /// Returns 0 when the source is idle (no frame in the last second).</summary>
         double MeasuredHz { get; }
 
+        /// <summary>Milliseconds since the last emitted frame, or
+        /// PositiveInfinity before the first frame. Detects telemetry that has
+        /// actually stopped (pause / fast-travel / menu) with a tighter
+        /// threshold than MeasuredHz's 1 s idle timeout. Forza freezes its
+        /// IsRaceOn flag at the last value when it stops sending UDP, so
+        /// IsSessionActive alone can't see a fast-travel pause; this can.</summary>
+        double MsSinceLastFrame { get; }
+
         /// <summary>True when the game is in a state where force feedback should
         /// be flowing (on track / car live), vs menus, loading, replays, or
         /// pause. Drives the FFB-tap self-heal escalation so it only fires when
@@ -205,6 +213,13 @@ namespace TrueforceForAll.Core
         /// (e.g. Forza, whose UDP exposes no separate redline).</summary>
         public double RedlineRpm;
 
+        /// <summary>True when <see cref="RedlineRpm"/> came from a PER-GEAR redline
+        /// (the game exposes no stable car-level redline, only the current gear's
+        /// shift point), so it changes on every gear shift. Used for the buzz the
+        /// same as any redline, but EXCLUDED from the engine-variant signature so
+        /// shifting through the gearbox doesn't spawn a new variant per gear.</summary>
+        public bool RedlineRpmPerGear;
+
         // ---- Diagnostics ----
         /// <summary>Stopwatch ticks at which the source captured this frame. Set by EmitFrame.</summary>
         public long CapturedAtTicks;
@@ -251,12 +266,22 @@ namespace TrueforceForAll.Core
         {
             get
             {
-                long last = System.Threading.Volatile.Read(ref _lastFrameTicks);
+                long last = System.Threading.Interlocked.Read(ref _lastFrameTicks);
                 if (last == 0) return 0;
                 double sinceSec = (_sw.ElapsedTicks - last) / (double)Stopwatch.Frequency;
                 if (sinceSec > IdleTimeoutSec) return 0;
                 double interval = _emaIntervalSec;
                 return interval > 0 ? 1.0 / interval : 0;
+            }
+        }
+
+        public double MsSinceLastFrame
+        {
+            get
+            {
+                long last = System.Threading.Interlocked.Read(ref _lastFrameTicks);
+                if (last == 0) return double.PositiveInfinity;
+                return (_sw.ElapsedTicks - last) * 1000.0 / Stopwatch.Frequency;
             }
         }
 
@@ -274,7 +299,7 @@ namespace TrueforceForAll.Core
                         : dtSec;
                 }
             }
-            System.Threading.Volatile.Write(ref _lastFrameTicks, now);
+            System.Threading.Interlocked.Exchange(ref _lastFrameTicks, now);
             frame.CapturedAtTicks = now;
             _lastFrame = frame;
             OnFrame?.Invoke(frame);

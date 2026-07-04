@@ -57,7 +57,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    log?.Invoke($"[Trueforce] Patreon: couldn't bind {prefix}: {ex.Message}");
+                    log?.Invoke($"[TF4ALL] Patreon: couldn't bind {prefix}: {ex.Message}");
                 }
             }
             if (listener == null)
@@ -75,7 +75,7 @@ namespace TrueforceForAll.Plugin
                     + "&redirect_uri=" + Uri.EscapeDataString(redirectUri);
 
                 // Log the URL so support has a manual fallback if the browser didn't actually open.
-                log?.Invoke("[Trueforce] Patreon authorize URL: " + authorizeUrl);
+                log?.Invoke("[TF4ALL] Patreon authorize URL: " + authorizeUrl);
                 try { Process.Start(new ProcessStartInfo(authorizeUrl) { UseShellExecute = true }); }
                 catch (Exception ex) { throw new PatreonOAuthException("Couldn't open your browser. The link is in the SimHub log. (" + ex.Message + ")"); }
 

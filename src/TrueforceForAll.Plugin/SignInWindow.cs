@@ -4,9 +4,11 @@
 //   Stage A: email field + "Email me a sign-in code"
 //   Stage B: 6-digit code field + Sign-in button, with
 //     * "Use a different email" to restart
-//     * "Send a new code" resend with 60-second cooldown matching
-//       Supabase's max_frequency (1 minute) so users don't spam-click
-//       and trip the server-side rate limit
+//     * "Send a new code" resend with a live 60-second countdown matching
+//       Supabase's max_frequency (1 minute). The countdown starts as soon
+//       as the verify step opens (a code was just sent) and again after any
+//       resend or rate-limit, so the button always shows when the next
+//       request is allowed instead of tripping the server-side rate limit.
 //   Error copy is specific per outcome (rate limit / expired / bad code
 //   / network / generic) instead of a single "failed" fallback.
 
@@ -23,7 +25,6 @@ namespace TrueforceForAll.Plugin
     internal sealed class SignInWindow : Window
     {
         private static readonly Brush WindowBg = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
-        private static readonly Brush PanelBg  = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
         private static readonly Brush InputBg  = new SolidColorBrush(Color.FromRgb(0x3D, 0x3D, 0x3D));
         private static readonly Brush TextFg   = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
         private static readonly Brush MutedFg  = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A));
@@ -36,13 +37,14 @@ namespace TrueforceForAll.Plugin
         private const int ResendCooldownSeconds = 60;  // matches Supabase max_frequency
 
         private readonly TrueforcePlugin _plugin;
-        private string _pendingEmail;
+        private bool _closed;
+        private DispatcherTimer _resendTimer;
 
         public SignInWindow(TrueforcePlugin plugin)
         {
             _plugin = plugin;
 
-            Title         = "Sign in to manage your shared presets";
+            Title         = "Sign in to access community features";
             Width         = 440;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -58,6 +60,20 @@ namespace TrueforceForAll.Plugin
             ShowPreviewStep();
         }
 
+        // Once the modal has closed, any in-flight AuthSendOtpAsync /
+        // AuthVerifyOtpAsync continuation must NOT touch controls or set
+        // DialogResult (setting DialogResult on a closed dialog throws, and
+        // from an async void handler that would surface unhandled on the
+        // dispatcher). The click handlers check _closed after each await.
+        // Also stop any running resend-cooldown timer so it doesn't keep
+        // ticking on the now-orphaned button.
+        protected override void OnClosed(EventArgs e)
+        {
+            _closed = true;
+            StopResendTimer();
+            base.OnClosed(e);
+        }
+
         // ---- Stage 0: value-prop preview ---------------------------------
 
         private void ShowPreviewStep()
@@ -71,7 +87,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "Sign in to share your presets, vote, and manage your uploads. We email a 6-digit code (no password).",
+                Text = "Sign in to use community features: browse and share presets, vote, and help fill in car data. We email a 6-digit code (no password).",
                 Foreground = MutedFg, FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 18),
                 TextWrapping = TextWrapping.Wrap,
@@ -84,15 +100,17 @@ namespace TrueforceForAll.Plugin
             var cancelBtn = new Button {
                 Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
-                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+                IsCancel = true,
             };
-            cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
+            ModalButtonTheme.Secondary(cancelBtn);
+            cancelBtn.Click += (s, e) => DialogResult = false;  // setting DialogResult closes the dialog
             btnRow.Children.Add(cancelBtn);
 
             var continueBtn = new Button {
-                Content = "Continue", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                Content = "Continue", Padding = new Thickness(16, 5, 16, 5),
+                FontWeight = FontWeights.SemiBold, IsDefault = true,
             };
+            ModalButtonTheme.Primary(continueBtn);
             continueBtn.Click += (s, e) => ShowEmailStep();
             btnRow.Children.Add(continueBtn);
             root.Children.Add(btnRow);
@@ -102,6 +120,10 @@ namespace TrueforceForAll.Plugin
 
         private void ShowEmailStep(string prefilledEmail = null, string errorMessage = null)
         {
+            // Leaving the verify step (e.g. "Use a different email") must stop
+            // any running resend cooldown so its timer doesn't keep ticking on
+            // the button that's about to be orphaned by the Content swap.
+            StopResendTimer();
             var root = new StackPanel { Margin = new Thickness(18, 16, 18, 14) };
             Content = root;
 
@@ -121,15 +143,28 @@ namespace TrueforceForAll.Plugin
                 Text = "Email", Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 2),
             });
+            // Prefill: an explicit value (e.g. "Use a different email" restart)
+            // wins; otherwise fall back to the remembered email when the user has
+            // "Remember my email" on.
+            string initialEmail = prefilledEmail
+                ?? (_plugin.Settings.RememberSignInEmail ? LoadEmail(_plugin.Settings.LastSignInEmail) : null);
             var emailInput = new TextBox {
-                Text = prefilledEmail ?? "",
+                Text = initialEmail ?? "",
                 Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
                 Padding = new Thickness(6, 4, 6, 4),
                 FontSize = 13, MaxLength = 254,
+                Margin = new Thickness(0, 0, 0, 8),
+            };
+            emailInput.Loaded += (s, e) => { emailInput.Focus(); emailInput.SelectAll(); };
+            root.Children.Add(emailInput);
+
+            var rememberCheck = new CheckBox {
+                Content = "Remember my email",
+                IsChecked = _plugin.Settings.RememberSignInEmail,
+                Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
             };
-            emailInput.Loaded += (s, e) => emailInput.Focus();
-            root.Children.Add(emailInput);
+            root.Children.Add(rememberCheck);
 
             var statusText = new TextBlock {
                 Foreground = string.IsNullOrEmpty(errorMessage) ? MutedFg : ErrFg,
@@ -147,15 +182,17 @@ namespace TrueforceForAll.Plugin
             var cancelBtn = new Button {
                 Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
-                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+                IsCancel = true,
             };
-            cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
+            ModalButtonTheme.Secondary(cancelBtn);
+            cancelBtn.Click += (s, e) => DialogResult = false;  // setting DialogResult closes the dialog
             btnRow.Children.Add(cancelBtn);
 
             var sendBtn = new Button {
-                Content = "Email me a sign-in code", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                Content = "Email me a sign-in code", Padding = new Thickness(16, 5, 16, 5),
+                FontWeight = FontWeights.SemiBold, IsDefault = true,
             };
+            ModalButtonTheme.Primary(sendBtn);
             btnRow.Children.Add(sendBtn);
             root.Children.Add(btnRow);
 
@@ -168,6 +205,15 @@ namespace TrueforceForAll.Plugin
                     statusText.Text = "Enter a valid email address.";
                     return;
                 }
+                // Persist the "remember my email" choice at send time (like most
+                // sites). "Use a different email" returns to this same step and
+                // reads it back, so the checkbox reflects the last choice. If this
+                // send fails, the user's corrected email simply overwrites it on
+                // the next attempt. Stored DPAPI-encrypted.
+                bool remember = rememberCheck.IsChecked == true;
+                _plugin.Settings.RememberSignInEmail = remember;
+                _plugin.Settings.LastSignInEmail = remember ? StoreEmail(email) : "";
+                try { _plugin.PersistSettings(); } catch { }
                 sendBtn.IsEnabled = false;
                 cancelBtn.IsEnabled = false;
                 statusText.Foreground = InfoFg;
@@ -176,16 +222,17 @@ namespace TrueforceForAll.Plugin
                 try { result = await _plugin.AuthSendOtpAsync(email); }
                 catch (Exception ex)
                 {
+                    if (_closed) return;
                     statusText.Foreground = ErrFg;
                     statusText.Text = "Could not send the code: " + ex.Message;
                     sendBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     return;
                 }
+                if (_closed) return;
                 cancelBtn.IsEnabled = true;
                 if (result == AuthCallResult.Ok)
                 {
-                    _pendingEmail = email;
                     ShowVerifyStep(email);
                     return;
                 }
@@ -229,7 +276,7 @@ namespace TrueforceForAll.Plugin
             // input attribute).
             codeInput.PreviewTextInput += (s, e) =>
             {
-                foreach (var ch in e.Text) if (!char.IsDigit(ch)) { e.Handled = true; return; }
+                foreach (var ch in e.Text) if (!IsAsciiDigit(ch)) { e.Handled = true; return; }
             };
             DataObject.AddPastingHandler(codeInput, (s, e) =>
             {
@@ -237,7 +284,7 @@ namespace TrueforceForAll.Plugin
                 {
                     string pasted = (string)e.DataObject.GetData(typeof(string));
                     string digits = "";
-                    foreach (var ch in pasted) if (char.IsDigit(ch)) digits += ch;
+                    foreach (var ch in pasted) if (IsAsciiDigit(ch)) digits += ch;
                     if (digits.Length == 0) { e.CancelCommand(); return; }
                     if (digits.Length != pasted.Length)
                     {
@@ -259,12 +306,14 @@ namespace TrueforceForAll.Plugin
                 VerticalAlignment = VerticalAlignment.Center,
             });
             var resendBtn = new Button {
-                Content = "Send a new code",
                 Padding = new Thickness(0), Margin = new Thickness(0),
                 Background = Brushes.Transparent, BorderBrush = Brushes.Transparent,
-                Foreground = InfoFg, FontSize = 11,
                 Cursor = Cursors.Hand,
             };
+            // A code was just sent to reach this step, but the resend link
+            // stays available (classic pattern). If the user taps too soon,
+            // the server's rate-limit reply drives an accurate countdown.
+            SetResendIdle(resendBtn);
             resendRow.Children.Add(resendBtn);
             root.Children.Add(resendRow);
 
@@ -282,26 +331,26 @@ namespace TrueforceForAll.Plugin
             var restartBtn = new Button {
                 Content = "Use a different email", Padding = new Thickness(10, 5, 10, 5),
                 Margin = new Thickness(0, 0, 8, 0),
-                Foreground = TextFg, Background = PanelBg,
             };
+            ModalButtonTheme.Secondary(restartBtn);
             restartBtn.Click += (s, e) =>
             {
-                _pendingEmail = null;
                 ShowEmailStep(email);
             };
             btnRow.Children.Add(restartBtn);
 
             var signInBtn = new Button {
-                Content = "Sign in", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                Content = "Sign in", Padding = new Thickness(16, 5, 16, 5),
+                FontWeight = FontWeights.SemiBold, IsDefault = true,
             };
+            ModalButtonTheme.Primary(signInBtn);
             btnRow.Children.Add(signInBtn);
             root.Children.Add(btnRow);
 
             signInBtn.Click += async (s, e) =>
             {
                 string code = (codeInput.Text ?? "").Trim();
-                if (code.Length != 6 || !System.Text.RegularExpressions.Regex.IsMatch(code, "^[0-9]{6}$"))
+                if (!System.Text.RegularExpressions.Regex.IsMatch(code, "^[0-9]{6}$"))  // regex already enforces exactly 6 digits
                 {
                     statusText.Foreground = ErrFg;
                     statusText.Text = "Enter the 6-digit code from your email.";
@@ -316,18 +365,19 @@ namespace TrueforceForAll.Plugin
                 try { result = await _plugin.AuthVerifyOtpAsync(email, code); }
                 catch (Exception ex)
                 {
+                    if (_closed) return;
                     statusText.Foreground = ErrFg;
                     statusText.Text = "Verify failed: " + ex.Message;
                     signInBtn.IsEnabled = true;
                     restartBtn.IsEnabled = true;
                     return;
                 }
+                if (_closed) return;
                 if (result == AuthCallResult.Ok)
                 {
                     statusText.Foreground = OkFg;
                     statusText.Text = "Signed in.";
-                    DialogResult = true;
-                    Close();
+                    DialogResult = true;  // setting DialogResult closes the dialog
                     return;
                 }
                 statusText.Foreground = ErrFg;
@@ -346,49 +396,95 @@ namespace TrueforceForAll.Plugin
                 try { result = await _plugin.AuthSendOtpAsync(email); }
                 catch (Exception ex)
                 {
+                    if (_closed) return;
                     statusText.Foreground = ErrFg;
                     statusText.Text = "Could not resend: " + ex.Message;
-                    resendBtn.IsEnabled = true;
+                    SetResendIdle(resendBtn);
                     return;
                 }
+                if (_closed) return;
                 if (result == AuthCallResult.Ok)
                 {
+                    // Classic resend: confirm and leave the link available.
                     statusText.Foreground = OkFg;
-                    statusText.Text = "Sent a new code to " + email + ".";
-                    StartResendCooldown(resendBtn);
+                    statusText.Text = "New code sent to " + email + ".";
+                    SetResendIdle(resendBtn);
+                }
+                else if (result == AuthCallResult.RateLimited)
+                {
+                    // A code went out moments ago. Count down to the moment the
+                    // server will accept the next request: its 429 reply carries
+                    // the wait (fall back to max_frequency if absent). The server
+                    // floors the seconds, so add 1s of slack to the parsed value
+                    // to avoid re-enabling a hair early and earning one more
+                    // rate-limit.
+                    int? serverWait = _plugin.AuthLastSendRetryAfterSeconds;
+                    int wait = serverWait.HasValue ? serverWait.Value + 1 : ResendCooldownSeconds;
+                    statusText.Foreground = InfoFg;
+                    statusText.Text = "You just requested a code.";
+                    StartResendCooldown(resendBtn, wait, "Try again in {0}s");
                 }
                 else
                 {
                     statusText.Foreground = ErrFg;
                     statusText.Text = SendErrorCopy(result);
-                    if (result == AuthCallResult.RateLimited)
-                        StartResendCooldown(resendBtn);
-                    else
-                        resendBtn.IsEnabled = true;
+                    SetResendIdle(resendBtn);
                 }
             };
         }
 
-        // 60-second resend cooldown matching Supabase's max_frequency.
-        // Mirrors housinggrade's setTimeout-driven button-disable.
-        private void StartResendCooldown(Button resendBtn)
+        // Stop and release any running resend-cooldown timer. Safe to call
+        // when none is active (window close, step change, or before starting
+        // a fresh one) so a DispatcherTimer never keeps ticking on a button
+        // orphaned by a Content swap or a closed window.
+        private void StopResendTimer()
         {
-            int remaining = ResendCooldownSeconds;
+            if (_resendTimer != null)
+            {
+                _resendTimer.Stop();
+                _resendTimer = null;
+            }
+        }
+
+        // Resting state for the resend control: a de-emphasized underlined
+        // link, always available. (A code was just sent, but if the user
+        // taps too soon the server's rate-limit reply drives an accurate
+        // countdown via StartResendCooldown.)
+        private void SetResendIdle(Button resendBtn)
+        {
+            StopResendTimer();
+            resendBtn.IsEnabled = true;
+            resendBtn.Content = new TextBlock {
+                Text = "Resend code",
+                Foreground = MutedFg, FontSize = 11,
+                TextDecorations = TextDecorations.Underline,
+            };
+        }
+
+        // Disable the resend link and count down live to the moment the next
+        // request is allowed. seconds comes from the server's rate-limit
+        // reply when available (else the max_frequency default). labelFormat
+        // takes the remaining seconds, e.g. "Try again in {0}s".
+        private void StartResendCooldown(Button resendBtn, int seconds, string labelFormat)
+        {
+            StopResendTimer();
+            int remaining = Math.Max(1, seconds);
             resendBtn.IsEnabled = false;
-            string originalLabel = resendBtn.Content as string ?? "Send a new code";
-            resendBtn.Content = $"Sent. Try again in {remaining}s";
+            resendBtn.Content = string.Format(labelFormat, remaining);
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _resendTimer = timer;
             timer.Tick += (s, e) =>
             {
+                // If a newer cooldown superseded this timer, don't touch the
+                // link the newer one now owns; just retire this stale tick.
+                if (_resendTimer != timer) { timer.Stop(); return; }
                 remaining--;
                 if (remaining <= 0)
                 {
-                    timer.Stop();
-                    resendBtn.Content = originalLabel;
-                    resendBtn.IsEnabled = true;
+                    SetResendIdle(resendBtn);
                     return;
                 }
-                resendBtn.Content = $"Sent. Try again in {remaining}s";
+                resendBtn.Content = string.Format(labelFormat, remaining);
             };
             timer.Start();
         }
@@ -405,6 +501,9 @@ namespace TrueforceForAll.Plugin
                     return "Enter a valid email address.";
                 case AuthCallResult.NetworkFailure:
                     return "Could not reach the sign-in server. Check your internet and try again.";
+                // Generic (and the verify-only Expired/BadCode, which the send
+                // path never returns) share the same fallback copy.
+                case AuthCallResult.Generic:
                 default:
                     return "Could not send the code. Try again in a moment.";
             }
@@ -415,7 +514,7 @@ namespace TrueforceForAll.Plugin
             switch (r)
             {
                 case AuthCallResult.Expired:
-                    return "That code expired. Tap 'Send a new code' to get a fresh one.";
+                    return "That code expired. Tap 'Resend code' to get a fresh one.";
                 case AuthCallResult.BadCode:
                     return "That code didn't match. Double-check or request a new one.";
                 case AuthCallResult.RateLimited:
@@ -424,16 +523,65 @@ namespace TrueforceForAll.Plugin
                     return "Enter the 6-digit code from your email.";
                 case AuthCallResult.NetworkFailure:
                     return "Could not reach the sign-in server. Check your internet and try again.";
+                case AuthCallResult.Generic:
                 default:
                     return "Could not verify the code. Try again.";
             }
         }
 
+        // The remembered email is a per-PC convenience but still PII, so it's
+        // kept DPAPI-encrypted at rest (CurrentUser scope), same as the auth
+        // tokens. Protect falls back to plaintext only if DPAPI is unavailable,
+        // so the "remember" feature never breaks.
+        private static string StoreEmail(string email)
+            => DpapiCipher.Protect(email) ?? email;
+
+        // Read a remembered email back: decrypt if it's marker-wrapped (null on
+        // decrypt failure, e.g. a different Windows user, so we simply don't
+        // prefill); pass legacy plaintext through unchanged (it re-encrypts on
+        // the next successful send).
+        private static string LoadEmail(string stored)
+        {
+            if (string.IsNullOrEmpty(stored)) return null;
+            if (DpapiCipher.IsProtected(stored))
+            {
+                string plain = DpapiCipher.Unprotect(stored);
+                return string.IsNullOrEmpty(plain) ? null : plain;
+            }
+            return stored;
+        }
+
+        // ASCII-only digit test. char.IsDigit also accepts Unicode digits
+        // (Arabic-Indic, Devanagari, fullwidth, etc.), which would pass the
+        // input filters but then fail the ^[0-9]{6}$ check here and on the
+        // server, so a "6-digit" code would be silently rejected. Restrict to
+        // 0-9 up front to match what actually gets accepted.
+        private static bool IsAsciiDigit(char c) => c >= '0' && c <= '9';
+
+        // Best-effort client-side pre-check so obviously malformed addresses
+        // don't waste a send round-trip. The server stays authoritative.
+        // Rejects: blank input, any whitespace, more than one '@', an empty
+        // local or domain label, a domain with no dot, a TLD shorter than 2,
+        // and leading/trailing/consecutive dots.
         private static bool IsLikelyEmail(string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return false;
+            foreach (var ch in s) if (char.IsWhiteSpace(ch)) return false;
+            if (s.IndexOf("..", StringComparison.Ordinal) >= 0) return false;
+
             int at = s.IndexOf('@');
-            return at > 0 && at < s.Length - 3 && s.IndexOf('.', at) > at;
+            if (at <= 0) return false;                   // need a local part
+            if (at != s.LastIndexOf('@')) return false;  // exactly one '@'
+
+            string local  = s.Substring(0, at);
+            string domain = s.Substring(at + 1);
+            if (local[0] == '.' || local[local.Length - 1] == '.') return false;
+            if (domain.Length == 0 || domain[0] == '.') return false;
+
+            int dot = domain.LastIndexOf('.');
+            if (dot <= 0) return false;                  // domain needs a label then a dot
+            if (dot >= domain.Length - 2) return false;  // TLD must be at least 2 chars
+            return true;
         }
     }
 }

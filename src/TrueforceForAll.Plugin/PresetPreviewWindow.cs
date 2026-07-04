@@ -30,6 +30,42 @@ namespace TrueforceForAll.Plugin
 
         public bool DownloadRequested { get; private set; }
 
+        // Pack-only: one checkbox per bundled entry so the user can drill into
+        // each item's tuning (expand) and pick which to import (tick). Empty
+        // for non-pack previews.
+        private readonly List<CheckBox> _packEntryChecks = new List<CheckBox>();
+        private Button _dlBtn;
+
+        /// <summary>Pack-only: the entry keys the user ticked, or null when all
+        /// are ticked (a full install). Correlates with PackEntryKey on the
+        /// same body so the importer can filter.</summary>
+        public HashSet<string> GetSelectedPackKeysOrNull()
+        {
+            if (_packEntryChecks.Count == 0) return null;
+            if (_packEntryChecks.All(c => c.IsChecked == true)) return null;  // full take
+            var set = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (var c in _packEntryChecks)
+                if (c.IsChecked == true && c.Tag is string k) set.Add(k);
+            return set;
+        }
+
+        // Stable identity for a pack entry, shared with the importer so a
+        // ticked checkbox maps to the right bundled item. source_id (the
+        // original preset's server uuid) when present; otherwise a
+        // name/car-based fallback.
+        public static string PackEntryKey(string bucket, JObject e)
+        {
+            if (e == null) return bucket + ":?";
+            switch (bucket)
+            {
+                case "game":   return "game:"   + (e["source_id"]?.ToString() ?? e["name"]?.ToString() ?? "?");
+                case "car":    return "car:"    + (e["source_id"]?.ToString()
+                                                   ?? ((e["car_id"]?.ToString() ?? "?") + "/" + (e["preset_name"]?.ToString() ?? "?")));
+                case "engine": return "engine:" + (e["source_id"]?.ToString() ?? e["Name"]?.ToString() ?? "?");
+                default:       return bucket + ":?";
+            }
+        }
+
         public PresetPreviewWindow(PresetSummary summary, JObject body)
         {
             string kind = (summary?.Kind ?? "car").ToLowerInvariant();
@@ -141,25 +177,40 @@ namespace TrueforceForAll.Plugin
             };
             var closeBtn = new Button {
                 Content = "Close", Padding = new Thickness(12, 5, 12, 5),
-                Margin = new Thickness(0, 0, 8, 0),
-                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+                Margin = new Thickness(0, 0, 8, 0), IsCancel = true,
             };
+            ModalButtonTheme.Secondary(closeBtn);
             closeBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(closeBtn);
 
             var dlBtn = new Button {
                 Content = "Download…", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                IsDefault = true,
             };
+            ModalButtonTheme.Primary(dlBtn);
             dlBtn.Click += (s, e) =>
             {
                 DownloadRequested = true;
                 DialogResult = true;
                 Close();
             };
+            _dlBtn = dlBtn;
             btnRow.Children.Add(dlBtn);
             Grid.SetRow(btnRow, 2);
             grid.Children.Add(btnRow);
+
+            // Pack previews drive the download button off the entry ticks.
+            if (isPack) UpdatePackDownloadButton();
+        }
+
+        // Pack-only: reflect how many entries are ticked in the button, and
+        // disable it when nothing is selected.
+        private void UpdatePackDownloadButton()
+        {
+            if (_dlBtn == null || _packEntryChecks.Count == 0) return;
+            int n = _packEntryChecks.Count(c => c.IsChecked == true);
+            _dlBtn.Content = "Download selected (" + n + ")";
+            _dlBtn.IsEnabled = n > 0;
         }
 
         // ---------------- Renderers ----------------
@@ -208,6 +259,14 @@ namespace TrueforceForAll.Plugin
             // CarOverrides on legacy snapshots is a dict, not a flat
             // field; also skip it from the headline overview.
             sectionKeys.Add("CarOverrides");
+            // Personal fields (never part of shared content) + attribution /
+            // community-tracking metadata (shown in the header, not "settings").
+            foreach (var k in new[] {
+                "MasterGain", "FfbScale",
+                "Author", "AuthorVersion", "PackName", "Description",
+                "CommunitySourceId", "CommunityUploadedById", "CommunityUploadedByUserId",
+                "CommunityUploadedBodyHash", "CommunityUploadedVersion", "CommunityAllowInPacks",
+            }) sectionKeys.Add(k);
 
             var flat = new JObject();
             foreach (var prop in snap.Properties())
@@ -287,9 +346,9 @@ namespace TrueforceForAll.Plugin
 
             int total = (games?.Count ?? 0) + (cars?.Count ?? 0) + (engines?.Count ?? 0);
             bodyPanel.Children.Add(new TextBlock {
-                Text = $"{total} entr{(total == 1 ? "y" : "ies")} bundled",
-                Foreground = MutedFg, FontSize = 11,
-                Margin = new Thickness(0, 0, 0, 6),
+                Text = $"{total} item{(total == 1 ? "" : "s")} bundled. Expand a row to see its tuning; untick anything you don't want, then Download selected.",
+                Foreground = MutedFg, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8),
             });
 
             if (games != null && games.Count > 0)
@@ -299,7 +358,7 @@ namespace TrueforceForAll.Plugin
                 {
                     string nm = UiContentSanitizer.SafeDisplayText(je["name"]?.ToString(), 128) ?? "(unnamed)";
                     string au = UiContentSanitizer.SafeDisplayText(je["source_author"]?.ToString(), 96);
-                    bodyPanel.Children.Add(EntryLine(nm,
+                    bodyPanel.Children.Add(BuildPackEntryRow("game", je, nm,
                         string.IsNullOrEmpty(au) ? null : "by " + au));
                 }
             }
@@ -317,7 +376,7 @@ namespace TrueforceForAll.Plugin
                     if (!string.IsNullOrEmpty(car))  sub.Add(car);
                     if (!string.IsNullOrEmpty(game)) sub.Add(game);
                     if (!string.IsNullOrEmpty(au))   sub.Add("by " + au);
-                    bodyPanel.Children.Add(EntryLine(nm,
+                    bodyPanel.Children.Add(BuildPackEntryRow("car", je, nm,
                         sub.Count == 0 ? null : string.Join("  |  ", sub)));
                 }
             }
@@ -333,13 +392,83 @@ namespace TrueforceForAll.Plugin
                     var sub = new List<string>();
                     if (ev) sub.Add("electric");
                     if (!string.IsNullOrEmpty(au)) sub.Add("by " + au);
-                    bodyPanel.Children.Add(EntryLine(nm,
+                    bodyPanel.Children.Add(BuildPackEntryRow("engine", je, nm,
                         sub.Count == 0 ? null : string.Join("  |  ", sub)));
                 }
             }
 
             if (total == 0)
                 bodyPanel.Children.Add(MutedLine("(empty pack)"));
+        }
+
+        // One pack entry: a ticked checkbox (include in import) next to an
+        // expander that reveals the entry's actual tuning. The checkbox sits
+        // outside the expander header so ticking it doesn't toggle expansion.
+        private FrameworkElement BuildPackEntryRow(string bucket, JObject entry, string title, string subtitle)
+        {
+            var dock = new DockPanel { Margin = new Thickness(8, 1, 0, 2) };
+
+            var cb = new CheckBox {
+                IsChecked = true,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0),
+                Foreground = TextFg,
+                Tag = PackEntryKey(bucket, entry),
+                ToolTip = "Include this item when you download the pack.",
+            };
+            cb.Click += (s, e) => UpdatePackDownloadButton();
+            _packEntryChecks.Add(cb);
+            DockPanel.SetDock(cb, Dock.Left);
+            dock.Children.Add(cb);
+
+            var header = new StackPanel { Orientation = Orientation.Horizontal };
+            header.Children.Add(new TextBlock { Text = title, Foreground = TextFg, FontSize = 12 });
+            if (!string.IsNullOrEmpty(subtitle))
+                header.Children.Add(new TextBlock {
+                    Text = "   " + subtitle, Foreground = MutedFg, FontSize = 11,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+
+            var detail = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
+            RenderPackEntryDetail(bucket, entry, detail);
+
+            var exp = new Expander { Foreground = TextFg, Header = header, Content = detail };
+            dock.Children.Add(exp);
+            return dock;
+        }
+
+        // Render one bundled entry's tuning into host, reusing the same
+        // per-kind renderers the standalone preset preview uses.
+        private void RenderPackEntryDetail(string bucket, JObject entry, StackPanel host)
+        {
+            try
+            {
+                switch (bucket)
+                {
+                    case "game":
+                    {
+                        var snap = entry["snapshot"] as JObject;
+                        if (snap == null) { host.Children.Add(MutedLine("(no snapshot)")); return; }
+                        AddTopLevelGameSettings(host, snap);
+                        AddOverrideSections(host, snap);
+                        break;
+                    }
+                    case "car":
+                    {
+                        var ovr = entry["override"] as JObject;
+                        if (ovr == null) { host.Children.Add(MutedLine("(no override)")); return; }
+                        AddOverrideSections(host, ovr);
+                        break;
+                    }
+                    case "engine":
+                        RenderEngine(host, entry);
+                        break;
+                }
+            }
+            catch
+            {
+                host.Children.Add(MutedLine("(couldn't render this entry)"));
+            }
         }
 
         // ---------------- Shared helpers ----------------
@@ -471,7 +600,7 @@ namespace TrueforceForAll.Plugin
         {
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var nameBlock = new TextBlock {
-                Text = name,
+                Text = PrettyFieldName(name),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 1, 8, 1),
             };
@@ -488,6 +617,44 @@ namespace TrueforceForAll.Plugin
             Grid.SetRow(valBlock, row);
             Grid.SetColumn(valBlock, 1);
             grid.Children.Add(valBlock);
+        }
+
+        // Friendly labels for the raw snapshot property names shown in the
+        // preview. Anything unmapped falls back to a camel-case split.
+        private static readonly System.Collections.Generic.Dictionary<string, string> FieldLabels =
+            new System.Collections.Generic.Dictionary<string, string>(System.StringComparer.Ordinal)
+        {
+            { "FfbInvertSign", "Invert FFB" },
+            { "FfbSmoothTimeConstantMs", "FFB smoothing (ms)" },
+            { "FfbSpikeTamingEnabled", "FFB spike reduction" },
+            { "FfbSpikeUseSlewLimiter", "Spike: slew limiter" },
+            { "FfbSpikeMaxLsbPerMs", "Spike limit" },
+            { "FfbPeakSoftLimitLsb", "Spike cap softness" },
+            { "DuckingEnabled", "Sidechain ducking" },
+            { "DuckDepth", "Duck depth" },
+            { "DuckAttackMs", "Duck attack (ms)" },
+            { "DuckReleaseMs", "Duck release (ms)" },
+            { "StationarySpringEnabled", "Stationary spring" },
+            { "StationarySpringStrength", "Spring strength" },
+            { "StationarySpringCutoffKmh", "Spring fade (km/h)" },
+            { "MasterGain", "Master gain" },
+            { "FfbScale", "FFB scale" },
+            { "PulseFreq", "Pulse rate (Hz)" },
+            { "Freq", "Carrier (Hz)" },
+        };
+
+        private static string PrettyFieldName(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return raw;
+            if (FieldLabels.TryGetValue(raw, out var label)) return label;
+            var sb = new System.Text.StringBuilder(raw.Length + 6);
+            for (int i = 0; i < raw.Length; i++)
+            {
+                char c = raw[i];
+                if (i > 0 && char.IsUpper(c) && !char.IsUpper(raw[i - 1])) sb.Append(' ');
+                sb.Append(c);
+            }
+            return sb.ToString();
         }
 
         // True when the token can be expressed on a single value line.

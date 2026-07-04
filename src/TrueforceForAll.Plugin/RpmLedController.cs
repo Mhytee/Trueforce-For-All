@@ -148,22 +148,6 @@ namespace TrueforceForAll.Plugin
         {
             if (_testing) return 0;
 
-            // Test path opens synchronously so we can report failure to the
-            // user immediately rather than silently doing nothing.
-            if (!_channel.IsReady)
-            {
-                bool ok;
-                try { ok = _channel.OpenAndResolve(); }
-                catch (Exception ex) { _log($"[RPM-LED] test open threw: {ex.Message}"); ok = false; }
-                Interlocked.Exchange(ref _openState, ok ? 2 : 3);
-                if (!ok)
-                {
-                    _log("[RPM-LED] Test: could not open the LED channel. " +
-                         "Check the log above for which interfaces were probed.");
-                    return 0;
-                }
-            }
-
             // Rev-level sweep using the real (captured) G PRO protocol: walk
             // the level 0..10..0 a couple of times, then a brief redline hold.
             // Colours / direction come from the wheel's own profile (the user
@@ -172,11 +156,33 @@ namespace TrueforceForAll.Plugin
             const int redlineMs = 1500;
             int total = (2 * (2 * WheelLedChannel.LedCount + 1)) * stepMs + redlineMs + 400;
 
+            // Mark testing BEFORE returning so the UI's status-poll timer sees the
+            // test immediately (it self-stops ~1 s after RpmLedIsTesting clears).
             _testing = true;
             Task.Run(() =>
             {
+                bool opened = _channel.IsReady;
                 try
                 {
+                    // Open here, not on the caller's (UI) thread: OpenAndResolve can
+                    // block up to ~3 s on a wheel that doesn't answer. Failure
+                    // surfaces via _testStatus, which the panel is already polling.
+                    if (!opened)
+                    {
+                        bool ok;
+                        try { ok = _channel.OpenAndResolve(); }
+                        catch (Exception ex) { _log($"[RPM-LED] test open threw: {ex.Message}"); ok = false; }
+                        Interlocked.Exchange(ref _openState, ok ? 2 : 3);
+                        opened = ok;
+                    }
+                    if (!opened)
+                    {
+                        _testStatus = "could not open the LED channel (see log)";
+                        _log("[RPM-LED] Test: could not open the LED channel. " +
+                             "Check the log above for which interfaces were probed.");
+                        return;
+                    }
+
                     for (int cycle = 0; cycle < 2 && _channel.IsReady; cycle++)
                     {
                         for (int lvl = 0; lvl <= WheelLedChannel.LedCount && _channel.IsReady; lvl++)
@@ -203,11 +209,16 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { _log($"[RPM-LED] test error: {ex.Message}"); }
                 finally
                 {
-                    try { _channel.TurnOff(); } catch { }
-                    _lastBucket = -1;
-                    _testStatus = "test finished — LEDs off";
+                    // Only tidy up / claim "finished" when we actually opened;
+                    // the open-failure path keeps its own status message.
+                    if (opened)
+                    {
+                        try { _channel.TurnOff(); } catch { }
+                        _lastBucket = -1;
+                        _testStatus = "test finished — LEDs off";
+                        _log("[RPM-LED] Test: finished, LEDs off (level 0).");
+                    }
                     _testing = false;
-                    _log("[RPM-LED] Test: finished, LEDs off (level 0).");
                 }
             });
             return total;

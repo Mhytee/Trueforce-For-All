@@ -172,6 +172,37 @@ select created_at, fact_type, payload, submitter_id
  limit 50;
 ```
 
+### Review community reports
+
+Reports normally come to you in the private #preset-reports Discord channel
+(an after-insert trigger on `report_flags` posts each one via the
+`report-notify` Edge Function), and you action them with the Remove / Dismiss
+buttons there. This query is the pull-based backstop / audit view.
+
+```sql
+select rf.created_at, rf.target_type, rf.category, rf.note, rf.status,
+       coalesce(p.name, g.name, ce.name, pk.name) as target_name
+  from report_flags rf
+  left join presets        p  on rf.target_type = 'preset'        and p.id  = rf.target_id
+  left join game_presets   g  on rf.target_type = 'game_preset'   and g.id  = rf.target_id
+  left join custom_engines ce on rf.target_type = 'custom_engine' and ce.id = rf.target_id
+  left join packs          pk on rf.target_type = 'pack'          and pk.id = rf.target_id
+ where rf.status = 'open'
+ order by rf.created_at desc;
+```
+
+To act by hand (the buttons do exactly this): suppress the target and close
+the report.
+
+```sql
+update presets set is_suppressed = true where id = '<target-id>';   -- the right table per target_type
+update report_flags set status = 'removed', resolved_by = 'manual', resolved_at = now()
+ where id = '<report-id>';
+-- or to dismiss without touching the content:
+update report_flags set status = 'dismissed', resolved_by = 'manual', resolved_at = now()
+ where id = '<report-id>';
+```
+
 ## Why Supabase
 
 - Hosted Postgres + PostgREST means we get a HTTP API for free; no Edge

@@ -22,8 +22,13 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush MutedFg  = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A));
         private static readonly Brush HeaderFg = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
         private static readonly Brush BorderFg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
+        private static readonly Brush WarnFg   = new SolidColorBrush(Color.FromRgb(0xE2, 0x6D, 0x5A));
 
         public string EnteredName { get; private set; }
+
+        // The "2 to 96 characters" hint; recolored to a warning on a rejected
+        // submit so Save doesn't look dead when the length is out of range.
+        private TextBlock _hint;
 
         /// <param name="carId">Identifier the plugin sees for this car
         /// (e.g. "Car_2267" or "ks_mazda_rx7"). Shown below the header so
@@ -65,11 +70,12 @@ namespace TrueforceForAll.Plugin
             input.Loaded += (s, e) => { input.Focus(); input.SelectAll(); };
             root.Children.Add(input);
 
-            root.Children.Add(new TextBlock {
+            _hint = new TextBlock {
                 Text = "2 to 96 characters.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
-            });
+            };
+            root.Children.Add(_hint);
 
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
@@ -112,7 +118,15 @@ namespace TrueforceForAll.Plugin
         private void TryCommit(TextBox input)
         {
             string v = (input.Text ?? "").Trim();
-            if (v.Length < 2 || v.Length > 96) return;   // silent reject; muted hint already shown
+            if (v.Length < 2 || v.Length > 96)
+            {
+                // Don't fail silently: flag the length hint so the user sees why
+                // Save did nothing.
+                _hint.Text = "Enter 2 to 96 characters.";
+                _hint.Foreground = WarnFg;
+                input.Focus();
+                return;
+            }
             EnteredName = v;
             DialogResult = true;
             Close();

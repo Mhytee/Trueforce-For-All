@@ -406,10 +406,12 @@ deno_version = 2
 # Edge Function JWT verification, pinned per function so the setting is source-controlled
 # and cannot silently drift on redeploy. A drifted verify_jwt=false on discord-role-sync
 # was the one critical finding of the 2026-06-14 security audit (it let any anon-key holder
-# forge a service_role token and read every linked member's Discord identity). Every function
-# authenticates its caller from a Supabase-signed JWT: a user JWT from the plugin, or the
-# Vault service_role JWT sent by pg_cron. None implements custom or webhook auth, so all of
-# them require a valid JWT at the gateway.
+# forge a service_role token and read every linked member's Discord identity). Almost every
+# function authenticates its caller from a Supabase-signed JWT: a user JWT from the plugin, or
+# the Vault service_role JWT sent by pg_cron / DB triggers, so they require a valid JWT at the
+# gateway. The ONE documented exception is report-action: Discord posts button clicks to it
+# directly with no Supabase JWT, so it must be verify_jwt = false and authenticates via the
+# Ed25519 request signature instead (see its entry below).
 [functions.discord-role-sync]
 verify_jwt = true
 
@@ -427,6 +429,24 @@ verify_jwt = true
 
 [functions.backup-retention-gc]
 verify_jwt = true
+
+# Called by the report_flags after-insert trigger, which sends the Vault
+# service_role JWT (same as pg_cron), so this stays gated like the rest.
+[functions.report-notify]
+verify_jwt = true
+
+# Called by the moderation_notices appeal trigger (Vault service_role JWT),
+# same posture as report-notify.
+[functions.appeal-notify]
+verify_jwt = true
+
+# THE documented exception. Discord's interactions webhook POSTs button clicks
+# here with no Supabase JWT; auth is the Ed25519 signature (X-Signature-Ed25519
+# / X-Signature-Timestamp) verified against DISCORD_APP_PUBLIC_KEY inside the
+# function. Discord will not even enable the endpoint unless the PING handshake
+# returns a valid signed PONG, so a forged-JWT path here does not exist.
+[functions.report-action]
+verify_jwt = false
 
 [analytics]
 enabled = true

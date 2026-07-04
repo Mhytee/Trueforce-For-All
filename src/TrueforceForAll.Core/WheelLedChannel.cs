@@ -196,6 +196,13 @@ namespace TrueforceForAll.Core
 
                 _idxRev = idx;
                 _ready = true;
+                // Dispose any opened-but-not-kept duplicate streams (a non-standard
+                // topology exposing two collections of the same report size opens a
+                // second stream assigned to no slot). The failure paths DisposeAll;
+                // the success path must dispose the orphans or they leak till exit.
+                foreach (var s in opened)
+                    if (s != _short && s != _long && s != _veryLong)
+                        try { s.Dispose(); } catch { }
                 _log($"[RPM-LED] resolved {ResolvedInfo}  (short/long/vlong = "
                      + $"{_short != null}/{_long != null}/{_veryLong != null})");
                 return true;

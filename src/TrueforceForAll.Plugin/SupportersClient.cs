@@ -65,7 +65,7 @@ namespace TrueforceForAll.Plugin
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Supporters read failed: {(int)resp.StatusCode} {Trunc(body)}");
+                            _log?.Invoke($"[TF4ALL] Supporters read failed: {(int)resp.StatusCode} {Trunc(body)}");
                             return result;
                         }
                         var arr = JArray.Parse(body);
@@ -81,7 +81,7 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Supporters read exception: {ex.Message}"); return result; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Supporters read exception: {ex.Message}"); return result; }
         }
 
         private async Task<string> GetBearerAsync()
@@ -101,7 +101,7 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(key)) return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Supporters: rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Supporters: rejecting untrusted backend URL: {url}");
                 return false;
             }
             baseUrl = url.TrimEnd('/');

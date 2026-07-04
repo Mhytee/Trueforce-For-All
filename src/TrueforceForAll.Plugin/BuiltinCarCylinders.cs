@@ -92,6 +92,69 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
+        /// <summary>Reverse of <see cref="TryGetDisplayName"/> for the community
+        /// search box: every carId in a game whose human display name contains
+        /// <paramref name="query"/> (case-insensitive), so a search like "mx5"
+        /// resolves to the opaque car_ids the preset rows actually store. When
+        /// game is null/empty, scans every game. Capped so a 1-2 char query
+        /// can't build a multi-thousand-id request URL.</summary>
+        public static List<string> FindCarIdsByDisplayName(string game, string query, int max = 150)
+        {
+            var hits = new List<string>();
+            if (string.IsNullOrWhiteSpace(query)) return hits;
+            string q = query.Trim();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            void ScanSpecs(IReadOnlyDictionary<string, BuiltinCarSpec> specs)
+            {
+                if (specs == null) return;
+                foreach (var kv in specs)
+                {
+                    if (hits.Count >= max) return;
+                    string dn = kv.Value.DisplayName;
+                    if (!string.IsNullOrEmpty(dn)
+                        && dn.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
+                        && seen.Add(kv.Key))
+                        hits.Add(kv.Key);
+                }
+            }
+            void ScanNames(IReadOnlyDictionary<string, string> names)
+            {
+                if (names == null) return;
+                foreach (var kv in names)
+                {
+                    if (hits.Count >= max) return;
+                    if (!string.IsNullOrEmpty(kv.Value)
+                        && kv.Value.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
+                        && seen.Add(kv.Key))
+                        hits.Add(kv.Key);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(game))
+            {
+                if (ByGame.TryGetValue(game, out var specs)) ScanSpecs(specs);
+                if (NamesByGame.TryGetValue(game, out var names)) ScanNames(names);
+            }
+            else
+            {
+                foreach (var g in ByGame)      { if (hits.Count >= max) break; ScanSpecs(g.Value); }
+                foreach (var g in NamesByGame) { if (hits.Count >= max) break; ScanNames(g.Value); }
+            }
+            return hits;
+        }
+
+        /// <summary>Every game with a built-in car catalog (cylinder specs or
+        /// a name-only ordinal table). Used to seed the community browser's
+        /// game filter alongside games the user has local presets for.</summary>
+        public static List<string> CatalogGames()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in ByGame.Keys)      set.Add(g);
+            foreach (var g in NamesByGame.Keys) set.Add(g);
+            return new List<string>(set);
+        }
+
         // ---- Assetto Corsa: full Kunos lineup (vanilla + every DLC) ----
         //
         // Cylinder count is the firing-frequency-equivalent count.

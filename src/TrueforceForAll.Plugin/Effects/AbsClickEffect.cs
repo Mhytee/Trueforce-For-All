@@ -191,6 +191,16 @@ namespace TrueforceForAll.Plugin.Effects
             }
         }
 
+        // Telemetry stopped mid-braking: Pulse mode's _amp is a hold that only
+        // OnTelemetry refreshes, so a stall while ABS was engaged would leave
+        // the pulse train buzzing forever. PerTick mode self-decays per sample
+        // and needs no help. Mirrors PitLimiterEffect.OnTelemetryStall.
+        public override void OnTelemetryStall()
+        {
+            _amp = 0;
+            _lastActiveTicks = 0;
+        }
+
         public override void Reset()
         {
             _amp = 0;

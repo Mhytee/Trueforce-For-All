@@ -269,6 +269,17 @@ namespace TrueforceForAll.Plugin.Effects
             }
         }
 
+        // Telemetry stopped (game closed / crashed / froze) mid-drive: both
+        // oscillators hold their last amplitude with no self-decay, so the
+        // road/surface buzz would rumble forever (Forza's SurfaceRumble is
+        // non-zero whenever the car moves). Silence both channels; the next
+        // real frame's OnTelemetry sets them again.
+        public override void OnTelemetryStall()
+        {
+            _heave.Amp = 0;
+            _surface.Amp = 0;
+        }
+
         public override void Reset()
         {
             _prevOnRumbleStrip = false;

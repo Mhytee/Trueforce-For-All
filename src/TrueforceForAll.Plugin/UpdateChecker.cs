@@ -96,6 +96,25 @@ namespace TrueforceForAll.Plugin
             LatestVersionTag = "v" + new Version(c.Major, c.Minor + 1, 0).ToString(3);
         }
 
+        /// <summary>Test hook (UPDATEPOLL access code): when true, EVERY CheckAsync
+        /// forces the result to "a newer release exists" (one minor above the
+        /// running build) once the network call has run. Distinct from
+        /// DebugSimulateUpdateAvailable, which a subsequent real CheckAsync would
+        /// immediately overwrite: this re-applies the fake on each poll, so a
+        /// tester can confirm that a BACKGROUND re-check discovers a release that
+        /// "shipped after launch" and surfaces the banner on its own, with no
+        /// restart and no real GitHub release. Sticky until DebugClearForcedUpdate.</summary>
+        public bool DebugForceUpdateAvailable { get; set; }
+
+        /// <summary>Clear the UPDATEPOLL override and drop the simulated tag so the
+        /// banner hides immediately; the next real CheckAsync repopulates the true
+        /// state.</summary>
+        public void DebugClearForcedUpdate()
+        {
+            DebugForceUpdateAvailable = false;
+            LatestVersionTag = null;
+        }
+
         /// <summary>Display string for the latest tag, with the leading "v"
         /// stripped if present so the UI can render "0.1.1" not "v0.1.1".</summary>
         public string LatestVersionDisplay
@@ -175,6 +194,13 @@ namespace TrueforceForAll.Plugin
             {
                 LastError = ex.Message;
                 Log($"Update check failed: {ex.GetType().Name}: {ex.Message}");
+            }
+            finally
+            {
+                // UPDATEPOLL test override: re-apply the simulated newer release
+                // after every poll (success OR failure) so a background re-check
+                // visibly surfaces the banner without a real GitHub release.
+                if (DebugForceUpdateAvailable) DebugSimulateUpdateAvailable();
             }
         }
 

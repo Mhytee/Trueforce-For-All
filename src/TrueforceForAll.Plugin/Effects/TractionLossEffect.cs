@@ -210,6 +210,14 @@ namespace TrueforceForAll.Plugin.Effects
             _noise.Amp = (float)(_slipEma * 0.40 * Gain);
         }
 
+        // Telemetry stopped: if the game closed mid-slide, the buzz amplitude
+        // would hold forever. Clear the smoothed slip and silence the noise.
+        public override void OnTelemetryStall()
+        {
+            _slipEma = 0;
+            _noise.Amp = 0;
+        }
+
         private void DecayAndEmit()
         {
             _slipEma *= 0.4;
@@ -341,7 +349,7 @@ namespace TrueforceForAll.Plugin.Effects
                 if (_peakSlipSinceLastLog > 0.05)
                 {
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] traction diag | spd={speedKmh:F1} thr={throttlePct:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
+                        $"[TF4ALL] traction diag | spd={speedKmh:F1} thr={throttlePct:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
                 }
                 _lastDiagLogTicks = now;
                 _peakSlipSinceLastLog = 0;

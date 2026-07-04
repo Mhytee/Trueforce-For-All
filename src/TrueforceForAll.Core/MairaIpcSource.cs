@@ -105,7 +105,18 @@ namespace TrueforceForAll.Core
                 Rpm = rpm; ShiftFirstRpm = slF; ShiftShiftRpm = slS;
                 return true;
             }
-            catch (Exception ex) { _log($"[MAIRA-IPC] read failed: {ex.Message}"); _opened = false; return false; }
+            catch (Exception ex)
+            {
+                _log($"[MAIRA-IPC] read failed: {ex.Message}");
+                // Dispose the stale view/MMF before marking closed; otherwise the
+                // next EnsureOpen() overwrites _mmf/_view and leaks the old handles
+                // on every reconnect cycle.
+                try { _view?.Dispose(); } catch { }
+                try { _mmf?.Dispose();  } catch { }
+                _view = null; _mmf = null;
+                _opened = false;
+                return false;
+            }
         }
 
         /// <summary>FFB target for the device's FfbTargetProvider, in the same

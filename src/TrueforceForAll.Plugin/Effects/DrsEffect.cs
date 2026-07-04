@@ -24,39 +24,40 @@ namespace TrueforceForAll.Plugin.Effects
     {
         public override string Name => "DRS";
 
-        // ---- Activation chirp (rising edge) ----
+        // NOTE: these field defaults are never the effective values. The plugin
+        // overwrites every one of them from DrsSettings (the authoritative,
+        // user-tuned defaults) via ApplyDrsSettings before any audio plays. They
+        // mirror DrsSettings only so this class isn't misleading to read; keep
+        // the two in sync if you retune.
 
-        /// <summary>Carrier freq for the activation burst (Hz). Higher than
-        /// pit limiter / engine pulse so it punches through other haptics.</summary>
-        public float ActivationFreq { get; set; } = 120.0f;
+        // ---- Activation chirp (rising edge): the "thump" ----
+
+        /// <summary>Carrier freq for the activation burst (Hz).</summary>
+        public float ActivationFreq { get; set; } = 60.0f;
 
         /// <summary>Duration of the activation envelope (ms).</summary>
-        public int ActivationMs { get; set; } = 60;
+        public int ActivationMs { get; set; } = 80;
 
         /// <summary>Peak amplitude of the activation burst.</summary>
-        public float ActivationAmp { get; set; } = 0.30f;
+        public float ActivationAmp { get; set; } = 0.50f;
 
-        // ---- Sustained tone (held while active) ----
+        // ---- Sustained tone (held while active): the quieter, higher trail ----
 
-        /// <summary>Carrier freq while DRS stays open (Hz). Default below
-        /// the activation freq so the chirp + sustained components are
-        /// distinguishable.</summary>
-        public float SustainedFreq { get; set; } = 70.0f;
+        /// <summary>Carrier freq while DRS stays open (Hz).</summary>
+        public float SustainedFreq { get; set; } = 120.0f;
 
         /// <summary>Amplitude of the sustained tone. Set to 0 to disable
         /// the sustained component (chirp-only mode).</summary>
-        public float SustainedAmp { get; set; } = 0.12f;
+        public float SustainedAmp { get; set; } = 0.05f;
 
         /// <summary>Waveform shape for the activation chirp ("blip" on the
         /// rising edge).</summary>
-        public Waveform Waveform { get; set; } = Waveform.Sine;
+        public Waveform Waveform { get; set; } = Waveform.Square;
 
         /// <summary>Waveform shape for the sustained tone ("trail" while
         /// DRS stays open). Split off from <see cref="Waveform"/> in 0.1.3
-        /// so each layer can pick the shape that suits it; pre-0.1.3
-        /// presets had a single shared waveform which deserializes here
-        /// as the default Sine.</summary>
-        public Waveform SustainedWaveform { get; set; } = Waveform.Sine;
+        /// so each layer can pick the shape that suits it.</summary>
+        public Waveform SustainedWaveform { get; set; } = Waveform.Square;
 
         private const double SampleRate = 4000.0;
 
@@ -159,6 +160,16 @@ namespace TrueforceForAll.Plugin.Effects
             if (v > 0 && _lastDrsValue == 0) TriggerActivation();
             _lastDrsValue = v;
             _drsHeld = v > 0;
+        }
+
+        // Telemetry stopped: if the game closed with DRS held open, the
+        // sustained hum would play forever. Release the hold; the short
+        // activation chirp envelope finishes on its own. Reset _lastDrsValue so
+        // a resumed feed re-fires the activation chirp on the next open.
+        public override void OnTelemetryStall()
+        {
+            _drsHeld = false;
+            _lastDrsValue = 0;
         }
 
         private void TriggerActivation()

@@ -31,11 +31,26 @@ namespace TrueforceForAll.Plugin
         private bool   _engineCommunityFetchInFlight;
         private EngineLayoutConsensus _engineCommunityCache;
         // Sibling redline cache, populated by the same per-car fetch loop.
-        // Drives the engine-pulse panel's "Car's redline" line + the
-        // optimistic-injection path in the Correct dialog handler.
+        // Drives the engine-pulse panel's "Car's redline" line.
         private RedlineConsensus _engineRedlineCache;
+        // Variants (game/carId/sig) the user shared a redline for THIS session.
+        // Used to soften the "no community redline yet" nudge into a "pending
+        // confirmation" message: a fresh submission isn't consensus yet, so the
+        // community readout legitimately still shows nothing, but nagging the
+        // user to "share yours" right after they did would read as a bug.
+        private readonly System.Collections.Generic.HashSet<string> _redlineSharedThisSession
+            = new System.Collections.Generic.HashSet<string>();
         private string _lastShownCarId;
         private string _lastShownGame;
+        // Last text we pushed into the CarFacts name / redline boxes. The 16ms
+        // panel refresh rewrites a box only when this changes, so clicking
+        // Set/Save (which pulls focus off the box mid-click, then holds the
+        // button longer than one tick) can't revert the user's uncommitted
+        // text before the handler reads it. Without this guard the tick
+        // clobbers the box back to the resolved value during the button-hold
+        // and the stale value gets saved (the "redline won't set" bug).
+        private string _lastCarFactsRedlineText;
+        private string _lastCarFactsNameText;
         // One-shot per-session latch so the networked-welcome modal can
         // re-fire from the active-car/game change path (so upgraders who
         // never open Settings still see it) without being spammed every
@@ -92,8 +107,8 @@ namespace TrueforceForAll.Plugin
         // Values mirror TrueforcePlugin.SectionKind so we can pass through.
         // Numeric values mirror TrueforcePlugin.SectionKind so we can pass
         // through with a cast.
-        private enum EffectKind { Master = 0, Ducking = 1, Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, SpikeReduction = 8, PitLimiter = 9, Drs = 10, Collision = 11, RevLimiter = 12, Airborne = 13 }
-        private readonly bool[] _effectDirty = new bool[14];
+        private enum EffectKind { Master = 0, Ducking = 1, Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, SpikeReduction = 8, PitLimiter = 9, Drs = 10, Collision = 11, RevLimiter = 12, Airborne = 13, StationarySpring = 14 }
+        private readonly bool[] _effectDirty = new bool[15];
         private System.Windows.Controls.Button GetEffectSaveBtn(EffectKind which)
         {
             switch (which)
@@ -107,6 +122,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.Shift:          return ShiftSaveBtn;
                 case EffectKind.Abs:            return AbsSaveBtn;
                 case EffectKind.SpikeReduction: return SpikeReductionSaveBtn;
+                case EffectKind.StationarySpring: return StationarySpringSaveBtn;
                 case EffectKind.PitLimiter:     return PitLimiterSaveBtn;
                 case EffectKind.Drs:            return DrsSaveBtn;
                 case EffectKind.Collision:      return CollisionSaveBtn;
@@ -128,6 +144,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.Shift:          return ShiftRevertBtn;
                 case EffectKind.Abs:            return AbsRevertBtn;
                 case EffectKind.SpikeReduction: return SpikeReductionRevertBtn;
+                case EffectKind.StationarySpring: return StationarySpringRevertBtn;
                 case EffectKind.PitLimiter:     return PitLimiterRevertBtn;
                 case EffectKind.Drs:            return DrsRevertBtn;
                 case EffectKind.Collision:      return CollisionRevertBtn;
@@ -149,6 +166,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.Shift:          return "Gear shift";
                 case EffectKind.Abs:            return "ABS pulse";
                 case EffectKind.SpikeReduction: return "FFB spike reduction";
+                case EffectKind.StationarySpring: return "Stationary spring";
                 case EffectKind.PitLimiter:     return "Pit limiter";
                 case EffectKind.Drs:            return "DRS";
                 case EffectKind.Collision:      return "Collision";
@@ -161,7 +179,7 @@ namespace TrueforceForAll.Plugin
         // hides the per-car option for these (no override concept).
         private static bool SectionHasCarScope(EffectKind w)
             => w != EffectKind.Master && w != EffectKind.Ducking && w != EffectKind.SpikeReduction
-               && w != EffectKind.Airborne;
+               && w != EffectKind.Airborne && w != EffectKind.StationarySpring;
 
         // Sections whose EDIT handlers route through the per-car DRAFT model
         // (edits land in the car's in-memory override; explicit Save with
@@ -174,6 +192,7 @@ namespace TrueforceForAll.Plugin
         // The inline preset library hosted in the Presets tab (replaces the old
         // Manage Presets pop-up Window). Created in the plugin constructor.
         private PresetManagerControl _presetManager;
+        private MotdStrip _motdStrip;
 
         public SettingsControl()
         {
@@ -201,6 +220,14 @@ namespace TrueforceForAll.Plugin
             _presetManager.EditCarPresetRequested += (carId, name) => EnterOfflineEditModeForCar(carId, name);
             _presetManager.UpdatesChipClicked += OnPresetManagerUpdatesChipClicked;
             PresetManagerHost.Children.Add(_presetManager);
+
+            // Message-of-the-day strip across the top of all tabs. Hosted here so
+            // it sits above the TabControl and shows on every tab.
+            _motdStrip = new MotdStrip();
+            _motdStrip.Init(_plugin);
+            _motdStrip.ShareRequested = () => ShowShareDialog();
+            MotdStripHost.Content = _motdStrip;
+
             ApplyDevModeVisibility();
 
             // Header version readout. Read once at construction; doesn't change
@@ -222,6 +249,16 @@ namespace TrueforceForAll.Plugin
             // interpolation = visibly smoother than 30 Hz + abrupt width snaps.
             _meterTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
             _meterTimer.Tick += MeterTimer_Tick;
+
+            // Activity signal for the sync coordinator: any interaction with the panel marks the user
+            // "active", which is one of the two gates (the other is "a peer is online") that decide
+            // whether the cloud pull runs. Tunneling Preview handlers on the root catch every click,
+            // keypress, and scroll in any descendant, so no per-control wiring is needed. Idle past the
+            // window => the pull goes dormant; the first interaction after that is a WAKE (catch-up pull).
+            void MarkActive(object s, EventArgs e) { try { _plugin?.NoteUserActivity(); } catch { } }
+            PreviewMouseDown  += MarkActive;
+            PreviewKeyDown    += MarkActive;
+            PreviewMouseWheel += MarkActive;
             Loaded   += (_, __) =>
             {
                 _meterTimer.Start();
@@ -244,6 +281,10 @@ namespace TrueforceForAll.Plugin
                     System.Windows.Threading.DispatcherPriority.Background);
                 if (_plugin != null)
                 {
+                    // Opening the panel counts as activity: it wakes the sync coordinator (presence
+                    // probe + catch-up pull if a peer is online) so a change from another device lands
+                    // when you come to the UI, not only after the next interaction.
+                    try { _plugin.NoteUserActivity(); } catch { }
                     _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally += OnMasterGainChangedExternally;
                     // Auth identity change (sign-in, sign-out, refresh
@@ -252,6 +293,9 @@ namespace TrueforceForAll.Plugin
                     // welcome modal / community-update check don't get
                     // silently suppressed by the prior user's gate.
                     _plugin.AuthIdentityChanged += OnAuthIdentityChanged;
+                    // Community toggle from any surface (this checkbox or the share
+                    // funnel) runs the same follow-up via OnCommunityEnabledChanged.
+                    _plugin.CommunityEnabledChanged += OnCommunityEnabledChanged;
                     // A cloud sync (pull/merge/restore) applies new values into Settings; refresh
                     // the visible sliders so a change synced from another PC shows live, not only
                     // after navigating away and back.
@@ -272,6 +316,7 @@ namespace TrueforceForAll.Plugin
                 if (_plugin != null)
                 {
                     _plugin.AuthIdentityChanged -= OnAuthIdentityChanged;
+                    _plugin.CommunityEnabledChanged -= OnCommunityEnabledChanged;
                     _plugin.AutoRatchetBumped -= OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally -= OnMasterGainChangedExternally;
                     _plugin.LibraryReloaded -= OnLibraryReloadedRefreshUi;
@@ -304,6 +349,12 @@ namespace TrueforceForAll.Plugin
             // again for the new user instead of being suppressed.
             _lastShownCarId = null;
             _lastShownGame  = null;
+            // Drop the active-card 'Top community presets' in-memory cache: its
+            // PresetSummary rows carry per-user MyVote / OwnerUserId (Edit/Delete
+            // affordance), which must not bleed across identities. (The on-disk
+            // browse cache is already per-slot; this is its in-memory sibling.)
+            _lastResolvedCarKey    = null;
+            _cachedTopForActiveCar = null;
             // Invalidate any in-flight account stats / Discord-row fetch from the prior user,
             // and cancel any in-flight Discord link so it can't strand the new user's panel.
             unchecked { ++_accountStatsGen; ++_discordRowGen; }
@@ -361,9 +412,11 @@ namespace TrueforceForAll.Plugin
             {
                 PluginEnabledCheck.IsChecked = _plugin.PluginEnabled;
                 string game = _plugin.ActiveGame;
-                PluginEnabledHint.Text = string.IsNullOrEmpty(game)
-                    ? "Choice is auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."
-                    : $"Auto-remembered for '{game}'. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel.";
+                // Hint moved off the card into the checkbox tooltip to reclaim a row.
+                if (PluginEnabledCheck != null)
+                    PluginEnabledCheck.ToolTip = string.IsNullOrEmpty(game)
+                        ? "Choice is auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."
+                        : $"Auto-remembered for '{game}'. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel.";
 
                 if (AuthorNameBox != null)
                     AuthorNameBox.Text = _plugin.Settings?.SharingAuthor ?? "";
@@ -378,8 +431,23 @@ namespace TrueforceForAll.Plugin
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
                 if (CommunityEnabledCheck != null)
                     CommunityEnabledCheck.IsChecked = _plugin.Settings?.CommunityEnabled == true;
+                if (EffectsTabShareButtonsCheck != null)
+                    EffectsTabShareButtonsCheck.IsChecked = _plugin.Settings?.ShowEffectsTabShareButtons ?? true;
+                if (UseCommunityCarFactsCheck != null)
+                    UseCommunityCarFactsCheck.IsChecked = _plugin.Settings?.UseCommunityCarFacts == true;
+                var motdLevel = _plugin.Settings?.MotdLevel ?? MotdLevel.All;
+                if (MotdLevelAllRadio != null)       MotdLevelAllRadio.IsChecked       = motdLevel == MotdLevel.All;
+                if (MotdLevelImportantRadio != null) MotdLevelImportantRadio.IsChecked = motdLevel == MotdLevel.Important;
+                if (MotdLevelNoneRadio != null)      MotdLevelNoneRadio.IsChecked      = motdLevel == MotdLevel.None;
+                if (MotdNoneWarning != null)
+                    MotdNoneWarning.Visibility = motdLevel == MotdLevel.None ? Visibility.Visible : Visibility.Collapsed;
                 if (AutoUpdateDownloadedPresetsCheck != null)
                     AutoUpdateDownloadedPresetsCheck.IsChecked = _plugin.Settings?.AutoUpdateDownloadedPresets == true;
+                if (UpdateCheckIntervalCombo != null)
+                    SelectComboByTag(UpdateCheckIntervalCombo,
+                        (_plugin.Settings?.UpdateCheckIntervalHours ?? 2).ToString());
+                if (AutoSubmitCarFactsCheck != null)
+                    AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
                     AutoSyncBackupCheck.IsChecked = _plugin.Settings?.AutoSyncBackupEnabled == true;
                 RefreshCommunityAuthRow();
@@ -395,22 +463,17 @@ namespace TrueforceForAll.Plugin
                 if (StationarySpringSliders != null)
                     StationarySpringSliders.Visibility =
                         (StationarySpringCheck.IsChecked == true) ? Visibility.Visible : Visibility.Collapsed;
-                bool skipFfb = _plugin.Settings?.SkipFfbPassthrough ?? false;
-                FfbSkipPassthroughCheck.IsChecked         = skipFfb;
-                FfbSkipPassthroughPromotedCheck.IsChecked = skipFfb;
-                FfbSkipPassthroughPromotedPanel.Visibility = _plugin.ActiveGameIsNativeTrueforce
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
                 if (LogUsbBytesCheck != null)
                     LogUsbBytesCheck.IsChecked = _plugin.Settings?.LogUsbBytesEnabled ?? false;
                 bool expFfb = _plugin.Settings?.ExperimentalFfbCapture ?? false;
                 if (ExperimentalFfbCheck != null)     ExperimentalFfbCheck.IsChecked     = expFfb;
-                if (ExperimentalFfbMainCheck != null) ExperimentalFfbMainCheck.IsChecked = expFfb;
                 FfbSmoothSlider.Value  = _plugin.Settings?.FfbSmoothTimeConstantMs ?? 0.0;
                 FfbSmoothText.Text     = FfbSmoothSlider.Value.ToString("F1");
                 if (FfbInvertCheck != null)
                     FfbInvertCheck.IsChecked = _plugin.Settings?.FfbInvertSign ?? true;
                 SpikeTamingEnabledCheck.IsChecked  = _plugin.Settings?.FfbSpikeTamingEnabled  ?? false;
+                if (StopStreamOnPauseCheck != null)
+                    StopStreamOnPauseCheck.IsChecked = _plugin.Settings?.StopStreamOnPause ?? false;
                 bool spikeSlewMode = _plugin.Settings?.FfbSpikeUseSlewLimiter ?? true;
                 SpikeModeSlewRadio.IsChecked      = spikeSlewMode;
                 SpikeModeTransientRadio.IsChecked = !spikeSlewMode;
@@ -439,6 +502,8 @@ namespace TrueforceForAll.Plugin
                     PerfAudioRingText.Text = FormatRing(perf.AudioRingSize);
                 }
 
+                if (DuckingEnabledCheck != null)
+                    DuckingEnabledCheck.IsChecked = _plugin.Settings?.DuckingEnabled ?? true;
                 DuckDepthSlider.Value   = _plugin.Settings?.DuckDepth ?? 0.5;
                 DuckDepthText.Text      = DuckDepthSlider.Value.ToString("F2");
                 DuckAttackSlider.Value  = _plugin.Settings?.DuckAttackMs ?? 5.0;
@@ -486,6 +551,16 @@ namespace TrueforceForAll.Plugin
                 // games whose carIds are already descriptive (AC) or for cars
                 // not in the catalog.
                 HeaderGameText.Text = string.IsNullOrEmpty(game) ? "(none)" : game;
+                // Fire the iRacing app.ini notice once per transition into iRacing
+                // (deferred off the dispatcher so a modal never blocks this refresh).
+                string curGameForNotice = _plugin?.ActiveGame;
+                if (!string.Equals(_lastGameForIracingNotice, curGameForNotice, StringComparison.Ordinal))
+                {
+                    _lastGameForIracingNotice = curGameForNotice;
+                    if (string.Equals(curGameForNotice, "IRacing", StringComparison.Ordinal))
+                        Dispatcher.BeginInvoke(new Action(MaybeShowIracingTrueforceNotice),
+                            System.Windows.Threading.DispatcherPriority.Background);
+                }
                 string headerCar =
                     !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName) ? _plugin.ActiveCarDisplayName
                     : !string.IsNullOrEmpty(_plugin.ActiveCarId)        ? _plugin.ActiveCarId
@@ -514,11 +589,6 @@ namespace TrueforceForAll.Plugin
                 // visibility + content when results arrive (or stays hidden
                 // when count == 0 / community is off / no car).
                 MaybeRefreshCarCommunityCountAsync();
-
-                // Skip-passthrough makes the FFB tuning controls (scale/smooth/invert/
-                // safety limiters) irrelevant (game writes the wheel directly). Grey
-                // them so users don't waste time tuning controls that don't apply.
-                FfbPassthroughControls.IsEnabled = !(_plugin.Settings?.SkipFfbPassthrough ?? false);
 
                 // Engine
                 var es = _plugin.ActiveEngine;
@@ -555,6 +625,8 @@ namespace TrueforceForAll.Plugin
                     UpdateFiringPatternReadout(es);
                     RebuildEngineVariantPicker();
                 }
+                RefreshCarFactsPanel();
+                RebuildPerGearEditors();
                 // Bumps
                 var bs = _plugin.ActiveBumps;
                 if (bs != null)
@@ -707,18 +779,24 @@ namespace TrueforceForAll.Plugin
                     double sliderMax = haveRealMax ? observedMax : 15000;
                     RevLimiterRedlineSlider.Maximum = sliderMax;
                     // Pre-fill rules:
-                    //   1. Saved RedlineRpm wins.
-                    //   2. Else 0.85 * observed MaxRpm, but only when
-                    //      MaxRpm has actually been observed. Without
-                    //      this guard the slider falls back to
-                    //      0.85 * 15000 ≈ 12750, which displays as a
-                    //      misleading "estimated 12000" before
-                    //      telemetry arrives. Show the slider at its
-                    //      minimum instead and let the badge text
-                    //      tell the story until telemetry settles.
+                    //   1. Manual mode: the saved absolute RedlineRpm.
+                    //   2. Else the live resolved redline (CarFacts /
+                    //      telemetry / Threshold-percent of MaxRpm) so Auto
+                    //      shows what the buzz will actually fire at and tracks
+                    //      tune / variant changes.
+                    //   3. Else, before telemetry, Threshold * observed MaxRpm
+                    //      (or the 0.85 default), and finally the slider minimum
+                    //      so we never show a misleading estimate with no MaxRpm.
                     int rpmValue;
-                    if (rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
+                    bool manualMode = rl.EngageMode == RevLimiterEngageMode.Redline;
+                    int? eff = _plugin?.RevLimiter?.EffectiveRedlineRpm;
+                    if (manualMode && rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
                         rpmValue = rl.RedlineRpm.Value;
+                    else if (eff.HasValue && eff.Value >= 500)
+                        rpmValue = eff.Value;
+                    else if (haveRealMax && rl.Threshold >= 0.50f && rl.Threshold <= 1.00f
+                             && Math.Abs(rl.Threshold - 0.85f) > 0.0001f)
+                        rpmValue = (int)Math.Round(observedMax * rl.Threshold);
                     else if (haveRealMax)
                         rpmValue = (int)Math.Round(observedMax * 0.85);
                     else
@@ -898,7 +976,7 @@ namespace TrueforceForAll.Plugin
                         // as the car's default (built into SaveActiveCarPresetAs).
                         if (!_plugin.ExitOfflineEditCarSaveAsAndApply(carClean))
                         {
-                            MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
                             return;
                         }
                     }
@@ -910,7 +988,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditCarSave())
                 {
-                    MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
                     return;
                 }
             }
@@ -927,7 +1005,7 @@ namespace TrueforceForAll.Plugin
                         // the game default.
                         if (!_plugin.ExitOfflineEditSaveAsAndApply(clean))
                         {
-                            MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
                             return;
                         }
                     }
@@ -939,7 +1017,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditSave())
                 {
-                    MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
                     return;
                 }
             }
@@ -972,7 +1050,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.ExitOfflineEditCarSaveAs(newName))
             {
-                MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -1003,7 +1081,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.ExitOfflineEditSaveAs(newName))
             {
-                MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -1030,6 +1108,19 @@ namespace TrueforceForAll.Plugin
             // the "guess" branch. Tick-driven because the underlying
             // flag flips with each ResolveEffectiveRedline call.
             RefreshRedlineGuessBadge();
+
+            // Keep the redline slider's range + displayed value tracking live
+            // telemetry between full RefreshFromPlugin passes (those only run
+            // on car change). In Auto the buzz is derived, so the number must
+            // move when a tune raises MaxRpm or a variant swap loads a
+            // different redline.
+            RefreshRedlineLive();
+            // Hide the per-variant save controls once a draft is cleared (e.g.
+            // a variant change discarded it), and surface the "adopt community
+            // redline?" prompt when arriving at a variant where it differs.
+            UpdateRedlineSaveControls();
+            UpdateRedlineConfirmPrompt();
+            RefreshCarFactsPanel();
 
             var src = _plugin?.AudioCapture;
             if (src != null)
@@ -1063,19 +1154,11 @@ namespace TrueforceForAll.Plugin
                 UpdateUdpSectionVisibility();
                 if (RpmLedSection != null)
                 {
-                    // Two gates, both required: (1) the tester unlocked it
-                    // with the access code (bottom of page) - the MAIRA
-                    // passthrough side is still in PR / unvalidated on
-                    // RS50/G923, so it stays out of the public UI until then;
-                    // and (2) the active SimHub game is iRacing
-                    // (ShouldShowRpmLedSection), since iRacing is the only game
-                    // these toggles apply to. Gate (2) is profile-level, not
-                    // run-state: _activeGame is data.GameName (the
-                    // SimHub-selected game), so it shows in the iRacing profile
-                    // whether or not iRacing is currently running, and stays
-                    // hidden in every other profile.
-                    var want = (_plugin.Settings?.RpmLedUnlocked == true
-                                && _plugin.ShouldShowRpmLedSection)
+                    // Gated only on the MAIRA / TEST access-code unlock now (the
+                    // passthrough side is still in PR, so it stays out of the
+                    // public UI). No longer tied to iRacing being the active
+                    // game: it lives in Settings as a normal collapsible section.
+                    var want = (_plugin.Settings?.RpmLedUnlocked == true)
                         ? System.Windows.Visibility.Visible
                         : System.Windows.Visibility.Collapsed;
                     if (RpmLedSection.Visibility != want) RpmLedSection.Visibility = want;
@@ -1247,8 +1330,8 @@ namespace TrueforceForAll.Plugin
                     // detect fires the per-field share prompt.
 
                     // Community context: surface what other drivers said
-                    // for THIS car upfront so the user can confirm/refute
-                    // before any save. Debounced on (game, carId) so we
+                    // for THIS car upfront so the user can confirm or correct
+                    // it before any save. Debounced on (game, carId) so we
                     // only fetch when the car actually changes. The
                     // render call reflects the latest auto-detect state
                     // each tick - Confirm button shows up as soon as an
@@ -1430,68 +1513,14 @@ namespace TrueforceForAll.Plugin
 
             UpdateStatusPill();
 
-            // Why-is-my-wheel-quiet diagnostic. Always evaluated (cheap).
-            // Sits below the status pill, so users see the actual root cause
-            // without having to mentally cross-reference five separate
-            // status fields.
-            string diag = _plugin?.WheelQuietDiagnostic;
-            if (WheelQuietDiagnosticBox != null)
-            {
-                if (string.IsNullOrEmpty(diag))
-                {
-                    WheelQuietDiagnosticBox.Visibility = Visibility.Collapsed;
-                }
-                else
-                {
-                    WheelQuietDiagnosticBox.Visibility = Visibility.Visible;
-                    if (WheelQuietDiagnosticText.Text != diag)
-                        WheelQuietDiagnosticText.Text = diag;
-                }
-            }
+            // Keep the account-chip connection dot live: flips green<->amber as
+            // token-refresh health changes in the background (guarded so it only
+            // repaints on a transition; no network read).
+            UpdateAccountChipDotLive();
 
-            if (GHubWarningBox != null)
-            {
-                GHubWarningBox.Visibility = (_plugin?.IsLogitechGHubRunning ?? false)
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-            }
-
-            // Admin/elevation warning: SimHub must run as administrator for
-            // reliable FFB. Shown whenever it isn't elevated.
-            if (AdminWarningBox != null)
-            {
-                AdminWarningBox.Visibility = (_plugin != null && !_plugin.IsRunningElevated)
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-            }
-
-            // FFB-tap-picker banner: HID found a wheel but USBPcap discovery
-            // didn't, and the user hasn't set a manual override yet. Surfaces
-            // the picker prominently so users don't have to dig into
-            // Diagnostics to fix a silently-broken FFB pass-through.
-            if (FfbTapPickerBanner != null)
-            {
-                FfbTapPickerBanner.Visibility = (_plugin?.ShouldShowFfbTapPickerBanner ?? false)
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-            }
-
-            // Unverified-wheel info banner (Xbox G923 etc.): show when the
-            // plugin reports a non-null notice for the detected wheel.
-            if (UnverifiedWheelBanner != null)
-            {
-                string notice = _plugin?.UnverifiedWheelNotice;
-                if (string.IsNullOrEmpty(notice))
-                {
-                    UnverifiedWheelBanner.Visibility = Visibility.Collapsed;
-                }
-                else
-                {
-                    UnverifiedWheelBanner.Visibility = Visibility.Visible;
-                    if (UnverifiedWheelText.Text != notice)
-                        UnverifiedWheelText.Text = notice;
-                }
-            }
+            // Card issues (G HUB / admin / wheel-quiet / FFB-tap / unverified)
+            // are coalesced into one banner at a time. See RefreshCardIssues.
+            RefreshCardIssues();
 
             // Performance counters update every meter tick (cheap; array sum
             // of 60 longs). Doesn't depend on any expander being open.
@@ -1551,6 +1580,73 @@ namespace TrueforceForAll.Plugin
             var b = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString(hex);
             b.Freeze();
             return b;
+        }
+
+        // Header account-chip connection dot. Sits on the dark header card (not on
+        // a colored pill), so these run a touch more saturated than the pill dots.
+        // Only two honest states: green = signed in (community on), grey = signed in
+        // but community features toggled off. We deliberately don't show a live
+        // "connection" state - that can't be truthful without polling, which the
+        // sync-cost rework removed. A revoked/expired session signs out, so that
+        // case shows the chip's "Sign in" text, not a dot.
+        private static readonly System.Windows.Media.SolidColorBrush ChipDotGreen = MakeBrush("#66BB6A");
+        private static readonly System.Windows.Media.SolidColorBrush ChipDotGrey  = MakeBrush("#9E9E9E");
+
+        // State shown by the account-chip dot. Only meaningful while signed in;
+        // signed-out hides the dot entirely (the chip reads "Sign in").
+        private enum AccountDot { Green, Grey }
+
+        // Cached so the meter tick only repaints the dot on an actual transition.
+        // Null while signed out so the next sign-in always applies a fresh state.
+        private AccountDot? _lastAccountDot;
+
+        // Caller guarantees signed in. Grey when the user has community features
+        // off (offline by choice, not an error); green otherwise.
+        private AccountDot ComputeAccountDot()
+            => _plugin?.Settings?.CommunityEnabled == true ? AccountDot.Green : AccountDot.Grey;
+
+        private void ApplyAccountDot(AccountDot dot)
+        {
+            if (AccountChipIcon == null) return;
+            // Green = filled, grey = hollow ring. Both are the same Ellipse, so they
+            // are exactly the same diameter (the glyph approach mismatched ● vs ◯).
+            if (dot == AccountDot.Grey)
+            {
+                AccountChipIcon.Fill            = System.Windows.Media.Brushes.Transparent;
+                AccountChipIcon.Stroke          = ChipDotGrey;
+                AccountChipIcon.StrokeThickness = 1.5;
+            }
+            else
+            {
+                AccountChipIcon.Fill            = ChipDotGreen;
+                AccountChipIcon.Stroke          = null;
+                AccountChipIcon.StrokeThickness = 0;
+            }
+            _lastAccountDot = dot;
+        }
+
+        private string BuildAccountChipTooltip(AccountDot dot)
+        {
+            string email = _plugin?.AuthSignedInEmail;
+            string who   = string.IsNullOrEmpty(email) ? "Signed in." : "Signed in as " + email + ".";
+            string state = dot == AccountDot.Grey ? " Community features are off." : " Connected.";
+            return who + state + " Click for account options.";
+        }
+
+        // Live recolor from the meter tick: flips green<->grey when the community
+        // toggle changes, without a full RefreshAccountChip. Guarded so it only
+        // touches the brush on a real transition. (OnCommunityEnabledChanged also
+        // refreshes the chip; this is the cheap backstop for any path that flips
+        // the setting without firing that event.)
+        private void UpdateAccountChipDotLive()
+        {
+            if (_plugin == null || AccountChipIcon == null) return;
+            if (!_plugin.AuthIsSignedIn) return;                 // chip hidden / "Sign in"
+            if (AccountChipIcon.Visibility != Visibility.Visible) return;
+            var dot = ComputeAccountDot();
+            if (_lastAccountDot == dot) return;
+            ApplyAccountDot(dot);
+            AccountChipButton.ToolTip = BuildAccountChipTooltip(dot);
         }
 
         /// <summary>Drives the single colored status pill in the header strip.
@@ -1613,6 +1709,96 @@ namespace TrueforceForAll.Plugin
             {
                 EnhancedBadge.Visibility = Visibility.Collapsed;
             }
+        }
+
+        // True once the user clicks "+N more": expands the coalesced issue stack
+        // to show every active banner. Auto-resets when the active count drops
+        // back to one (or zero), so a transient pile-up doesn't leave the card
+        // stuck expanded.
+        private bool _showAllIssues;
+
+        // Decide which card-issue banners want to show this tick (G HUB / admin
+        // / wheel-quiet / FFB-tap / unverified), set their text, then hand the
+        // ordered list to CoalesceCardIssues. Severity order: the two FFB
+        // blockers (admin, G HUB) first, then the FFB-tap divergence, then the
+        // soft "why is my wheel quiet" diagnostic, then the informational
+        // unverified-wheel notice. Called from the meter tick and from the
+        // "+N more" toggle so a click re-renders immediately.
+        private void RefreshCardIssues()
+        {
+            string diag = _plugin?.WheelQuietDiagnostic;
+            bool wantQuiet = !string.IsNullOrEmpty(diag);
+            if (wantQuiet && WheelQuietDiagnosticText != null && WheelQuietDiagnosticText.Text != diag)
+                WheelQuietDiagnosticText.Text = diag;
+
+            bool wantGHub  = _plugin?.IsLogitechGHubRunning ?? false;
+            bool wantAdmin = _plugin != null && !_plugin.IsRunningElevated;
+            bool wantFfb   = _plugin?.ShouldShowFfbTapPickerBanner ?? false;
+
+            string notice = _plugin?.UnverifiedWheelNotice;
+            bool wantUnverified = !string.IsNullOrEmpty(notice);
+            if (wantUnverified && UnverifiedWheelText != null && UnverifiedWheelText.Text != notice)
+                UnverifiedWheelText.Text = notice;
+
+            CoalesceCardIssues(
+                new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner },
+                new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified });
+        }
+
+        // Render the coalesced card-issue banners. Shows the highest-severity
+        // active banner (array order = severity), collapses the rest, and shows
+        // a "+N more" bar when more than one is active. Clicking the bar flips
+        // _showAllIssues to reveal (or re-hide) the full stack. banners and
+        // wants are parallel arrays of equal length.
+        private void CoalesceCardIssues(UIElement[] banners, bool[] wants)
+        {
+            if (banners == null || wants == null) return;
+            int n = Math.Min(banners.Length, wants.Length);
+
+            int activeCount = 0;
+            for (int i = 0; i < n; i++) if (wants[i]) activeCount++;
+
+            // Back to one (or zero) issues -> nothing left to expand.
+            if (activeCount <= 1) _showAllIssues = false;
+
+            bool shownOne = false;
+            for (int i = 0; i < n; i++)
+            {
+                if (banners[i] == null) continue;
+                bool show;
+                if (!wants[i])           show = false;
+                else if (_showAllIssues) show = true;
+                else if (!shownOne)      { show = true; shownOne = true; }
+                else                     show = false;
+                banners[i].Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (MoreIssuesBar != null)
+            {
+                if (activeCount > 1 && !_showAllIssues)
+                {
+                    int more = activeCount - 1;
+                    if (MoreIssuesText != null)
+                        MoreIssuesText.Text = more == 1 ? "+1 more issue ▾" : $"+{more} more issues ▾";
+                    MoreIssuesBar.Visibility = Visibility.Visible;
+                }
+                else if (activeCount > 1 && _showAllIssues)
+                {
+                    if (MoreIssuesText != null) MoreIssuesText.Text = "Show fewer ▴";
+                    MoreIssuesBar.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    MoreIssuesBar.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+
+        // "+N more" / "Show fewer" toggle for the coalesced issues region.
+        private void MoreIssues_Click(object sender, MouseButtonEventArgs e)
+        {
+            _showAllIssues = !_showAllIssues;
+            RefreshCardIssues(); // re-render now instead of waiting for the next tick
         }
 
         // Apply() is called by per-effect handlers AFTER the _suppressEvents
@@ -1881,6 +2067,17 @@ namespace TrueforceForAll.Plugin
         /// <summary>Themed share dialog. Built in code (like the What's new
         /// modal) so it paints in SimHub's dark chrome instead of falling
         /// back to the white system default.</summary>
+        // Official single-path brand logos (Simple Icons, CC0), embedded as
+        // vector geometry so the share dialog ships zero image assets. 24x24
+        // viewBox. The "F1 " prefix selects nonzero fill to match the SVG
+        // winding rule so the logo cut-outs render correctly (WPF Path defaults
+        // to even-odd, which would invert some of the holes).
+        private const string XLogoPath = "F1 M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z";
+        private const string RedditLogoPath = "F1 M12 0C5.373 0 0 5.373 0 12c0 3.314 1.343 6.314 3.515 8.485l-2.286 2.286C.775 23.225 1.097 24 1.738 24H12c6.627 0 12-5.373 12-12S18.627 0 12 0Zm4.388 3.199c1.104 0 1.999.895 1.999 1.999 0 1.105-.895 2-1.999 2-.946 0-1.739-.657-1.947-1.539v.002c-1.147.162-2.032 1.15-2.032 2.341v.007c1.776.067 3.4.567 4.686 1.363.473-.363 1.064-.58 1.707-.58 1.547 0 2.802 1.254 2.802 2.802 0 1.117-.655 2.081-1.601 2.531-.088 3.256-3.637 5.876-7.997 5.876-4.361 0-7.905-2.617-7.998-5.87-.954-.447-1.614-1.415-1.614-2.538 0-1.548 1.255-2.802 2.803-2.802.645 0 1.239.218 1.712.585 1.275-.79 2.881-1.291 4.64-1.365v-.01c0-1.663 1.263-3.034 2.88-3.207.188-.911.993-1.595 1.959-1.595Zm-8.085 8.376c-.784 0-1.459.78-1.506 1.797-.047 1.016.64 1.429 1.426 1.429.786 0 1.371-.369 1.418-1.385.047-1.017-.553-1.841-1.338-1.841Zm7.406 0c-.786 0-1.385.824-1.338 1.841.047 1.017.634 1.385 1.418 1.385.785 0 1.473-.413 1.426-1.429-.046-1.017-.721-1.797-1.506-1.797Zm-3.703 4.013c-.974 0-1.907.048-2.77.135-.147.015-.241.168-.183.305.483 1.154 1.622 1.964 2.953 1.964 1.33 0 2.47-.81 2.953-1.964.057-.137-.037-.29-.184-.305-.863-.087-1.795-.135-2.769-.135Z";
+        private const string FacebookLogoPath = "F1 M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z";
+        private const string GithubLogoPath = "F1 M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12";
+        private const string NexusLogoPath = "F1 M17.376 0c-.993 0-2.18.686-2.907 1.182-1.676-.36-4.036-.545-6.787.635-1.365-.513-2.425-.562-3.32-.488a2.16 2.16 0 0 0-1.27.429c-.33.22-2.788 2.69-3.069 4.652C-.15 7.508.68 8.932 1.218 9.718c-.44 1.76-.2 4.572.517 6.188-.353 1.041-.713 2.089-.664 3.205.01.584.061 1.188.398 1.684C1.72 21.19 4.528 24 6.545 24c.957 0 1.93-.428 3.07-1.24 2.16.383 4.402.348 6.448-.532 2.573 1.001 4.224.625 4.84.162.587-.457 2.826-2.915 3.07-4.622.1-.672-.023-1.638-1.226-3.397a10.983 10.983 0 0 0-.501-6.455c.396-1.069.673-2.188.59-3.337-.015-.68-.221-1.167-.487-1.507-.209-.335-2.415-2.39-4.028-2.91A3.105 3.105 0 0 0 17.376 0m-.03 2.082c.65.015 2.155 1.093 3.01 1.906l.355.34c-.959-.163-2.125.428-3.26 1.55a10.28 10.28 0 0 0-1.358 1.595c-.28.384-.517.768-.753 1.285l1.18.635-3.895 1.477-1.122-4.18 1.033.547c1.358-3.102 2.524-3.973 3.232-4.416h.015a5.12 5.12 0 0 1 1.49-.724zM12 3.065a8.932 8.932 0 0 1 2.22.279 7.67 7.67 0 0 0-.42.488 8.403 8.403 0 0 0-1.8-.196 8.336 8.336 0 0 0-5.897 2.432 7.86 7.86 0 0 1-.37-.433A8.905 8.905 0 0 1 12 3.065m-7.076.305c.71-.002 1.309.127 2.2.466a9.526 9.526 0 0 0-1.713 1.337c-.327-.542-.624-1.156-.488-1.803m-.606.042c-.162.96.428 2.126 1.55 3.264.457.487 1.003.945 1.594 1.358.383.281.767.517 1.283.754l.62-1.182 1.49 3.914-4.176 1.122.546-1.033c-3.099-1.36-3.969-2.526-4.412-3.235v-.015a5.144 5.144 0 0 1-.723-1.491l-.015-.074c.015-.65 1.092-2.156 1.904-3.013Zm16.035 1.483a1.259 1.259 0 0 1 .26.015l.14.023a5.05 5.05 0 0 1-.13 1.137v.015c-.1.383-.228.765-.377 1.148a9.526 9.526 0 0 0-1.346-1.776c.547-.357 1.051-.546 1.453-.562M18.43 5.8a8.903 8.903 0 0 1 2.506 6.2 8.937 8.937 0 0 1-.27 2.183 7.658 7.658 0 0 0-.488-.425A8.407 8.407 0 0 0 20.364 12 8.334 8.334 0 0 0 18 6.173a7.904 7.904 0 0 1 .429-.373M3.315 9.905c.157.148.319.29.488.425A8.417 8.417 0 0 0 3.636 12c0 2.248.887 4.286 2.327 5.788a8.11 8.11 0 0 1-.426.376A8.902 8.902 0 0 1 3.065 12a8.937 8.937 0 0 1 .25-2.095m13.988 1.541-.546 1.034c3.098 1.359 3.969 2.526 4.412 3.235v.014c.34.488.575.99.723 1.492l.014.074c-.014.65-1.092 2.156-1.903 3.013l-.34.354c.163-.96-.427-2.127-1.549-3.264a10.298 10.298 0 0 0-1.594-1.359 7.008 7.008 0 0 0-1.283-.753l-.605 1.152-1.505-3.87zm-6.006 1.684 1.121 4.18-1.033-.547c-1.357 3.102-2.523 3.973-3.231 4.416h-.015c-.487.34-.989.576-1.49.724l-.074.015c-.65-.015-2.154-1.093-3.01-1.906l-.354-.34c.959.163 2.124-.428 3.26-1.55.488-.458.945-1.004 1.358-1.595.28-.384.517-.768.753-1.285l-1.166-.635ZM3.72 16.663A9.526 9.526 0 0 0 5.086 18.5c-.697.47-1.33.665-1.777.59l-.138-.024c0-.367.038-.748.128-1.137v-.015c.11-.417.254-.835.42-1.252m14.131 1.314c.129.14.253.283.372.43A8.904 8.904 0 0 1 12 20.936a8.932 8.932 0 0 1-2.282-.296 7.757 7.757 0 0 0 .417-.487 8.335 8.335 0 0 0 7.716-2.175m.696.889c.43.666.607 1.267.534 1.698l-.023.138a5.034 5.034 0 0 1-1.136-.128h-.014a10.718 10.718 0 0 1-1.114-.366 9.526 9.526 0 0 0 1.753-1.342";
+
         private void ShowShareDialog()
         {
             var win = new Window
@@ -1900,7 +2097,7 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(new TextBlock
             {
-                Text = "Help another sim racer find TF4ALL",
+                Text = "Help another driver find TF4ALL",
                 FontSize = 16,
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 8),
@@ -1917,30 +2114,80 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 16),
             });
 
-            System.Windows.Controls.Button MakeBtn(string text, RoutedEventHandler onClick)
+            // Brand-coloured cards with the platform's own logo. Built as
+            // Borders (not Buttons) so SimHub's stock theme can't override the
+            // brand fills; the label is handed to the click action so the
+            // copy-link rows can flash "Link copied" feedback in place.
+            Border MakeShareRow(string label, string geometry, Brush bg, Brush border, Action<TextBlock> onClick)
             {
-                var b = new System.Windows.Controls.Button
+                var icon = new System.Windows.Shapes.Path
                 {
-                    Content = text,
-                    Height = 32,
-                    Margin = new Thickness(0, 0, 0, 8),
-                    HorizontalContentAlignment = HorizontalAlignment.Left,
-                    Padding = new Thickness(12, 0, 0, 0),
+                    Data = Geometry.Parse(geometry),
+                    Fill = System.Windows.Media.Brushes.White,
+                    Stretch = Stretch.Uniform,
+                    Width = 17, Height = 17,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 12, 0),
                 };
-                b.Click += onClick;
-                return b;
+                var lbl = new TextBlock
+                {
+                    Text = label,
+                    Foreground = System.Windows.Media.Brushes.White,
+                    FontSize = 13, FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var rowSp = new StackPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(14, 0, 14, 0),
+                };
+                rowSp.Children.Add(icon);
+                rowSp.Children.Add(lbl);
+                var bd = new Border
+                {
+                    Background = bg,
+                    BorderBrush = border,
+                    BorderThickness = new Thickness(border == null ? 0 : 1),
+                    CornerRadius = new CornerRadius(6),
+                    Height = 40,
+                    Margin = new Thickness(0, 0, 0, 8),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    Child = rowSp,
+                };
+                bd.MouseLeftButtonUp += (_, __) => onClick(lbl);
+                bd.MouseEnter += (_, __) => bd.Opacity = 0.88;
+                bd.MouseLeave += (_, __) => bd.Opacity = 1.0;
+                return bd;
             }
 
-            root.Children.Add(MakeBtn("Post on X",
-                (_, __) => OpenUrl(XIntentUrl)));
-            root.Children.Add(MakeBtn("Post on Reddit",
-                (_, __) => OpenUrl(RedditSubmitUrl)));
-            root.Children.Add(MakeBtn("Share on Facebook",
-                (_, __) => OpenUrl(FacebookShareUrl)));
-            root.Children.Add(MakeBtn("Open the Nexus Mods page",
-                (_, __) => OpenUrl(ShareNexusUrl)));
-            root.Children.Add(MakeBtn("Open the project page on GitHub",
-                (_, __) => OpenUrl(ShareProjectUrl)));
+            void CopyLink(string url, TextBlock label)
+            {
+                string original = label.Text;
+                try { System.Windows.Clipboard.SetText(url); }
+                catch { /* clipboard is occasionally locked by another app; ignore */ }
+                label.Text = "Link copied";
+                var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.6) };
+                t.Tick += (_, __) => { label.Text = original; t.Stop(); };
+                t.Start();
+            }
+
+            var darkBorder = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A));
+            root.Children.Add(MakeShareRow("Post on X", XLogoPath,
+                new SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00)), darkBorder,
+                _ => OpenUrl(XIntentUrl)));
+            root.Children.Add(MakeShareRow("Post on Reddit", RedditLogoPath,
+                new SolidColorBrush(Color.FromRgb(0xFF, 0x45, 0x00)), null,
+                _ => OpenUrl(RedditSubmitUrl)));
+            root.Children.Add(MakeShareRow("Share on Facebook", FacebookLogoPath,
+                new SolidColorBrush(Color.FromRgb(0x18, 0x77, 0xF2)), null,
+                _ => OpenUrl(FacebookShareUrl)));
+            root.Children.Add(MakeShareRow("Copy GitHub link", GithubLogoPath,
+                new SolidColorBrush(Color.FromRgb(0x1B, 0x1F, 0x23)), darkBorder,
+                lbl => CopyLink(ShareProjectUrl, lbl)));
+            root.Children.Add(MakeShareRow("Copy Nexus link", NexusLogoPath,
+                new SolidColorBrush(Color.FromRgb(0xC7, 0x7D, 0x33)), null,
+                lbl => CopyLink(ShareNexusUrl, lbl)));
 
             var closeBtn = new System.Windows.Controls.Button
             {
@@ -2117,7 +2364,10 @@ namespace TrueforceForAll.Plugin
         //     pack only when the author opted in via allow_in_packs.
         private void UpdateHeaderShareButtons()
         {
-            bool community = _plugin?.Settings?.CommunityEnabled == true;
+            // Option C: the card's Share buttons no longer hinge on community/sign-in
+            // (the click funnel handles those). They show whenever the user keeps them
+            // on and a preset is present; per-preset reasons still disable them.
+            bool showCardShare = _plugin?.Settings?.ShowEffectsTabShareButtons != false;
 
             if (HeaderGameShareBtn != null)
             {
@@ -2141,12 +2391,11 @@ namespace TrueforceForAll.Plugin
                     headerGameMatchesUpload = string.Equals(
                         headerGameCurrentHash, headerGameSnap.CommunityUploadedBodyHash, StringComparison.Ordinal);
                 }
-                bool shareable = community && present && !isBuiltin && !isCommunity && !headerGameMatchesUpload;
-                // Visible-but-disabled with a tooltip explains why
-                // Share is greyed out (built-in vs downloaded) instead
-                // of silently collapsing it. Hidden entirely only
-                // when community is off or no preset is active.
-                if (community && present)
+                bool shareable = present && !isBuiltin && !isCommunity && !headerGameMatchesUpload;
+                // Visible-but-disabled with a tooltip explains why Share is greyed
+                // out (built-in vs downloaded). Hidden entirely only when the user
+                // turned the card's Share buttons off or no preset is active.
+                if (showCardShare && present)
                 {
                     HeaderGameShareBtn.Visibility = Visibility.Visible;
                     HeaderGameShareBtn.IsEnabled  = shareable;
@@ -2159,7 +2408,7 @@ namespace TrueforceForAll.Plugin
                     else if (headerGameHasPriorUpload)
                         HeaderGameShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
                     else
-                        HeaderGameShareBtn.ToolTip = "Share this game preset with the community. Requires sign-in.";
+                        HeaderGameShareBtn.ToolTip = "Share this game preset with the community.";
                 }
                 else
                 {
@@ -2198,8 +2447,8 @@ namespace TrueforceForAll.Plugin
                     headerCarMatchesUpload = string.Equals(
                         headerCarCurrentHash, headerCarOvr.CommunityUploadedBodyHash, StringComparison.Ordinal);
                 }
-                bool shareable = community && present && !isBuiltin && !isCommunity && !headerCarMatchesUpload;
-                if (community && present)
+                bool shareable = present && !isBuiltin && !isCommunity && !headerCarMatchesUpload;
+                if (showCardShare && present)
                 {
                     HeaderCarShareBtn.Visibility = Visibility.Visible;
                     HeaderCarShareBtn.IsEnabled  = shareable;
@@ -2212,7 +2461,7 @@ namespace TrueforceForAll.Plugin
                     else if (headerCarHasPriorUpload)
                         HeaderCarShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
                     else
-                        HeaderCarShareBtn.ToolTip = "Share this car preset with the community. Requires sign-in.";
+                        HeaderCarShareBtn.ToolTip = "Share this car preset with the community.";
                 }
                 else
                 {
@@ -2282,23 +2531,17 @@ namespace TrueforceForAll.Plugin
             _headerShareInProgress = true;
             try
             {
-            if (_plugin.Settings.CommunityEnabled != true)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share preset",
-                    "Turn on 'Use community car data' on the Account tab to share presets.",
-                    DialogKind.Info);
-                return;
-            }
+            if (!ShareGate.EnsureReady(Window.GetWindow(this), _plugin, "Share preset")) return;
             string name = _plugin.ActivePresetName;
             if (string.IsNullOrEmpty(name)
                 || _plugin.Settings.Presets == null
                 || !_plugin.Settings.Presets.TryGetValue(name, out var snap)
                 || snap == null)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share preset",
                     "No game preset is currently active. Save your tuning as a preset first.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
                 return;
             }
             var owner = Window.GetWindow(this);
@@ -2313,7 +2556,7 @@ namespace TrueforceForAll.Plugin
 
             var body = new Newtonsoft.Json.Linq.JObject
             {
-                ["snapshot"] = Newtonsoft.Json.Linq.JToken.FromObject(snap),
+                ["snapshot"] = PresetSharingClient.BuildShareableSnapshotToken(snap),
             };
             // Mirror PresetManagerControl.CarShare_Click + pack share:
             // bundle any CustomEngineDefs the snapshot references
@@ -2404,11 +2647,12 @@ namespace TrueforceForAll.Plugin
                 // async-void event handler: an uncaught exception here
                 // would propagate to the WPF dispatcher and crash the
                 // plugin. Show the user a recoverable error instead.
-                SimHub.Logging.Current.Info("[Trueforce] Share preset failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
                 var owner = Window.GetWindow(this);
-                MessageBox.Show(owner,
+                TrueforceDialog.Show(owner,
+                    "Share preset",
                     "Share preset failed: " + ex.Message,
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
             }
             finally { _headerShareInProgress = false; }
         }
@@ -2427,14 +2671,7 @@ namespace TrueforceForAll.Plugin
             _headerShareInProgress = true;
             try
             {
-            if (_plugin.Settings.CommunityEnabled != true)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share preset",
-                    "Turn on 'Use community car data' on the Account tab to share presets.",
-                    DialogKind.Info);
-                return;
-            }
+            if (!ShareGate.EnsureReady(Window.GetWindow(this), _plugin, "Share preset")) return;
 
             var pick = HeaderCarPresetCombo?.SelectedItem
                 is System.Windows.Controls.ComboBoxItem ci
@@ -2442,9 +2679,10 @@ namespace TrueforceForAll.Plugin
             if (pick == null || !pick.IsCar || pick.ClearCar
                 || string.IsNullOrEmpty(pick.Name) || string.IsNullOrEmpty(pick.CarId))
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share preset",
                     "Pick a real car preset (not \"None\") before sharing.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
 
@@ -2454,9 +2692,10 @@ namespace TrueforceForAll.Plugin
                 || entry == null
                 || entry.Override == null)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Share preset",
                     $"Could not load preset '{pick.Name}' for car '{pick.CarId}'.",
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
                 return;
             }
             var owner = Window.GetWindow(this);
@@ -2570,11 +2809,12 @@ namespace TrueforceForAll.Plugin
             {
                 // async-void handler: any uncaught throw would crash
                 // the WPF dispatcher. Show a recoverable error instead.
-                SimHub.Logging.Current.Info("[Trueforce] Share preset failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
                 var ownerWnd = Window.GetWindow(this);
-                MessageBox.Show(ownerWnd,
+                TrueforceDialog.Show(ownerWnd,
+                    "Share preset",
                     "Share preset failed: " + ex.Message,
-                    "Share preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
             }
             finally { _headerShareInProgress = false; }
         }
@@ -3270,7 +3510,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 ok = false;
-                SimHub.Logging.Current.Info("[Trueforce] Active-card vote failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Active-card vote failed: " + ex.Message);
             }
             finally { _activeCardVoteInFlight = false; }
 
@@ -3298,6 +3538,10 @@ namespace TrueforceForAll.Plugin
                 cached.Downvotes = _activeCardVoteDown;
                 cached.MyVote    = next;
             }
+            // Drop the on-disk browse-cache family (the active-card preset is a car
+            // preset) so the manager / picker reflect the new vote + Wilson order on
+            // their next open instead of serving the pre-vote cached list.
+            _plugin.InvalidateBrowseCacheForKind("car", _plugin.ActiveGame, _plugin.ActiveCarId);
             if (CommunityVoteStatus != null)
                 CommunityVoteStatus.Text = next == 0
                     ? "Vote retracted." : (next == 1 ? "Thanks for the upvote." : "Downvote recorded.");
@@ -3465,8 +3709,8 @@ namespace TrueforceForAll.Plugin
             {
                 if (TrueforceDialog.Show(Window.GetWindow(this),
                         "Discard unsaved tuning?",
-                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
-                        DialogKind.Confirm) != true)
+                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nCancel to keep editing and Save first.",
+                        DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") != true)
                 {
                     // Cancelled: revert the picker selection without re-entering
                     // this handler.
@@ -3477,7 +3721,7 @@ namespace TrueforceForAll.Plugin
 
             if (!_plugin.ApplyPreset(pick.Name))
             {
-                MessageBox.Show($"Could not apply '{pick.Name}' (preset missing).", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
+                TrueforceDialog.Show(null, "Trueforce", $"Could not apply '{pick.Name}' (preset missing).", DialogKind.Error);
                 return;
             }
             ClearDirty();
@@ -3515,16 +3759,21 @@ namespace TrueforceForAll.Plugin
             // other accounts.
             if (pick.ClearCar)
             {
-                // No-op if the car already has no active preset.
+                // No-op only if nothing would change: the car already has no
+                // preset AND there's no parked pin to release (we're actually
+                // driving it, where the pin must stay). When parked + pinned,
+                // clicking None still releases the pin so the list un-filters
+                // back to the full per-game list and Car Facts hides.
                 if (string.IsNullOrEmpty(_plugin.GetActiveCarPresetName(pick.CarId))
-                    && string.Equals(pick.CarId, _plugin.ActiveCarId, StringComparison.Ordinal))
+                    && string.Equals(pick.CarId, _plugin.ActiveCarId, StringComparison.Ordinal)
+                    && _plugin.IsLiveCarPresent)
                     return;
                 if (_dirty)
                 {
                     if (TrueforceDialog.Show(Window.GetWindow(this),
                             "Clear car preset?",
-                            "Clear this car's preset and use the game preset? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
-                            DialogKind.Confirm) != true)
+                            "Clear this car's preset and use the game preset? Your unsaved tuning will be discarded.\n\nCancel to keep editing and Save first.",
+                            DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") != true)
                     { RefreshCarPresetPicker(); return; }
                 }
                 _plugin.ClearActiveCarPreset(pick.CarId);
@@ -3547,8 +3796,8 @@ namespace TrueforceForAll.Plugin
             {
                 if (TrueforceDialog.Show(Window.GetWindow(this),
                         "Discard unsaved tuning?",
-                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nClick No to cancel and Save first.",
-                        DialogKind.Confirm) != true)
+                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nCancel to keep editing and Save first.",
+                        DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") != true)
                 {
                     // Cancelled: revert the picker selection without re-entering
                     // this handler.
@@ -3581,18 +3830,47 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin == null) return;
             float v = (float)e.NewValue;
             MasterGainText.Text = v.ToString("F2");
+            // Master gain is a global setting, not preset-scoped: apply live and
+            // persist (like MasterGainStep). No dirty/save flow, so it never
+            // shows a Save button or forks a built-in preset. The persist is
+            // debounced: a drag fires dozens of ValueChanged ticks per second
+            // and each persist is a full settings serialize + disk write.
             _plugin.MasterGain = v;
-            MarkEffectDirty(EffectKind.Master);
+            SchedulePersistDebounced();
         }
         // Controls tab: how far each bound-button press moves master gain.
-        // Per-machine (not preset-saved), persisted immediately.
+        // Per-machine (not preset-saved), persisted on the same debounce.
         private void MasterGainStepSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
             float v = (float)e.NewValue;
             MasterGainStepText.Text = v.ToString("F2");
             _plugin.MasterGainStep = v;
-            _plugin.PersistSettings();
+            SchedulePersistDebounced();
+        }
+
+        // Debounced PersistSettings for slider-drag handlers: the live value is
+        // already applied per tick above; only the disk write is deferred, so a
+        // drag costs one serialize instead of dozens. Fires on the UI thread.
+        // The plugin outlives this panel, so a trailing tick after the panel
+        // closes still persists correctly.
+        private System.Windows.Threading.DispatcherTimer _persistDebounce;
+        private void SchedulePersistDebounced()
+        {
+            if (_persistDebounce == null)
+            {
+                _persistDebounce = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(400),
+                };
+                _persistDebounce.Tick += (s, e2) =>
+                {
+                    _persistDebounce.Stop();
+                    try { _plugin?.PersistSettings(); } catch { }
+                };
+            }
+            _persistDebounce.Stop();
+            _persistDebounce.Start();
         }
 
         // ---------- Editable slider readouts ----------
@@ -3705,62 +3983,42 @@ namespace TrueforceForAll.Plugin
             MarkEffectDirty(EffectKind.Master);
         }
 
-        // Stationary-spring handlers. Global setting (not per-game), so they
-        // persist directly via PersistSettings() rather than the per-game
-        // snapshot path the other FFB controls use.
+        // Stationary-spring handlers. Per-game preset-scoped (its own Save/Revert
+        // section, like FFB spike reduction): edits update the live value and
+        // mark the section dirty; the Save button commits it to the active preset.
         private void StationarySpring_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             bool on = StationarySpringCheck.IsChecked == true;
             _plugin.SetStationarySpringEnabled(on);
-            _plugin.PersistSettings();
             if (StationarySpringSliders != null)
                 StationarySpringSliders.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            MarkEffectDirty(EffectKind.StationarySpring);
         }
+
+        // Issue #13 test toggle. Global setting; SetStopStreamOnPause persists
+        // internally, so no extra PersistSettings() call here. Mirrors the
+        // NOLOCK access code (which keeps this checkbox in sync via the handler
+        // in CommitAccessCode).
+        private void StopStreamOnPause_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetStopStreamOnPause(StopStreamOnPauseCheck.IsChecked == true);
+        }
+
         private void StationarySpringStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
             StationarySpringStrengthText.Text = e.NewValue.ToString("F2");
             _plugin.SetStationarySpringStrength(e.NewValue);
-            _plugin.PersistSettings();
+            MarkEffectDirty(EffectKind.StationarySpring);
         }
         private void StationarySpringCutoffSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
             StationarySpringCutoffText.Text = ((int)e.NewValue).ToString();
             _plugin.SetStationarySpringCutoffKmh(e.NewValue);
-            _plugin.PersistSettings();
-        }
-        private void FfbSkipPassthrough_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            bool skip = FfbSkipPassthroughCheck.IsChecked == true;
-            ApplySkipFfbPassthrough(skip, syncSource: FfbSkipPassthroughCheck);
-        }
-        private void FfbSkipPassthroughPromoted_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            bool skip = FfbSkipPassthroughPromotedCheck.IsChecked == true;
-            ApplySkipFfbPassthrough(skip, syncSource: FfbSkipPassthroughPromotedCheck);
-        }
-        private void ApplySkipFfbPassthrough(bool skip, CheckBox syncSource)
-        {
-            _plugin.SetSkipFfbPassthrough(skip);
-            // Keep the promoted (main view) and advanced-modal checkboxes in
-            // sync without firing each other's Changed handler.
-            var prev = _suppressEvents;
-            _suppressEvents = true;
-            try
-            {
-                if (syncSource != FfbSkipPassthroughCheck)
-                    FfbSkipPassthroughCheck.IsChecked = skip;
-                if (syncSource != FfbSkipPassthroughPromotedCheck)
-                    FfbSkipPassthroughPromotedCheck.IsChecked = skip;
-            }
-            finally { _suppressEvents = prev; }
-            // Grey/ungrey the passthrough-only controls live, without a full Refresh.
-            FfbPassthroughControls.IsEnabled = !skip;
-            MarkEffectDirty(EffectKind.Master);
+            MarkEffectDirty(EffectKind.StationarySpring);
         }
         private void SpikeTamingEnabled_Changed(object sender, RoutedEventArgs e)
         {
@@ -3854,6 +4112,12 @@ namespace TrueforceForAll.Plugin
             FfbPeakLimitText.Text = v <= 0 ? "off" : ((int)v).ToString();
             _plugin.SetFfbPeakSoftLimitLsb(v);
             MarkEffectDirty(EffectKind.SpikeReduction);
+        }
+        private void DuckingEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DuckingEnabled = DuckingEnabledCheck.IsChecked == true;
+            MarkEffectDirty(EffectKind.Ducking);
         }
         private void DuckDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -4280,17 +4544,15 @@ namespace TrueforceForAll.Plugin
             // Offer to bundle logs before opening the issue form. GitHub's URL
             // length limits mean we can't paste logs into the body anyway; the
             // user attaches the zip after the form opens.
-            var choice = MessageBox.Show(
-                "Include your SimHub logs with this bug report?\n\n" +
-                "Click Yes to first export your logs to a zip on your Desktop. " +
-                "After the GitHub form opens, drag the zip into the issue body to attach it. " +
-                "Including logs makes bugs MUCH easier to diagnose, especially anything wheel- or USBPcap-related.\n\n" +
-                "Click No to open the form without exporting logs.",
-                "Trueforce: Include logs?",
-                MessageBoxButton.YesNoCancel,
-                MessageBoxImage.Question);
-            if (choice == MessageBoxResult.Cancel) return;
-            if (choice == MessageBoxResult.Yes)
+            var choice = TrueforceDialog.Show(Window.GetWindow(this),
+                "Include logs?",
+                "Attach your SimHub logs to this bug report? They make wheel and USBPcap issues much "
+                + "easier to diagnose. Logs export to a zip on your Desktop; drag it into the GitHub "
+                + "issue after the form opens.\n\n"
+                + "Close this window to cancel the report.",
+                DialogKind.Confirm, okLabel: "Attach logs", cancelLabel: "Skip logs");
+            if (choice == null) return;          // closed/Esc = cancel the whole report
+            if (choice == true)
             {
                 // Re-use the export-logs path. If it fails, surface the error
                 // but still open the issue form so the user can file something.
@@ -4365,21 +4627,25 @@ namespace TrueforceForAll.Plugin
                         try { AddFileToZip(zip, debugLog, "debug.log"); }
                         catch (Exception ex) { TryAddNoteToZip(zip, "debug.log.error.txt", ex.Message); }
                     }
-                    // Full settings snapshot. Serialize the LIVE settings object
-                    // so every setting is captured (UDP ports / bind / forward,
-                    // per-effect config, car overrides, the lot) and any field
-                    // added later is included automatically with no extra code.
-                    // The plugin persists through SimHub's common-settings store
-                    // (not a file we can reliably locate), so we re-serialize the
-                    // in-memory object here rather than copy a guessed path.
+                    // Full settings snapshot for diagnosis (UDP ports / bind /
+                    // forward, per-effect config, car overrides, the lot). We
+                    // re-serialize the in-memory object because the plugin persists
+                    // through SimHub's common-settings store, not a locatable file.
+                    // REDACT secrets/PII first: users attach this zip to public
+                    // GitHub issues, so the auth session (tokens + email), the
+                    // remembered email, and the per-user slot data must never travel.
+                    // Keep this list in sync when adding any secret/PII setting.
                     try
                     {
                         var snapshot = _plugin?.Settings;
                         if (snapshot != null)
                         {
-                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(
-                                snapshot, Newtonsoft.Json.Formatting.Indented);
-                            TryAddNoteToZip(zip, "Trueforce-settings.json", json);
+                            var jo = Newtonsoft.Json.Linq.JObject.FromObject(snapshot);
+                            foreach (var secret in new[] { "AuthSession", "LastSignInEmail",
+                                "LegacyDataOwnerEmail", "UserSlots", "ActiveSlotKey" })
+                                jo.Remove(secret);
+                            TryAddNoteToZip(zip, "Trueforce-settings.json",
+                                jo.ToString(Newtonsoft.Json.Formatting.Indented));
                         }
                     }
                     catch (Exception ex)
@@ -4436,18 +4702,19 @@ namespace TrueforceForAll.Plugin
 
                 if (!silentOnSuccess)
                 {
-                    MessageBox.Show(
-                        $"Exported logs to:\n{zipPath}\n\nAttach this zip to your bug report so support can see what's happening.",
+                    TrueforceDialog.Show(null,
                         "Trueforce: Logs exported",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                        $"Exported logs to:\n{zipPath}\n\nAttach this zip to your bug report so support can see what's happening.",
+                        DialogKind.Info);
                 }
                 return zipPath;
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
+                TrueforceDialog.Show(null,
+                    "Trueforce",
                     $"Couldn't export logs:\n{ex.Message}",
-                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
                 return null;
             }
         }
@@ -4489,26 +4756,7 @@ namespace TrueforceForAll.Plugin
         private void ExperimentalFfbDetection_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null || ExperimentalFfbCheck == null) return;
-            ApplyExperimentalFfbCapture(ExperimentalFfbCheck.IsChecked == true, syncSource: ExperimentalFfbCheck);
-        }
-        private void ExperimentalFfbDetectionMain_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null || ExperimentalFfbMainCheck == null) return;
-            ApplyExperimentalFfbCapture(ExperimentalFfbMainCheck.IsChecked == true, syncSource: ExperimentalFfbMainCheck);
-        }
-        private void ApplyExperimentalFfbCapture(bool on, CheckBox syncSource)
-        {
-            _plugin.SetExperimentalFfbCapture(on);
-            // Keep the main-page and advanced-modal checkboxes in sync without
-            // firing each other's Changed handler.
-            var prev = _suppressEvents;
-            _suppressEvents = true;
-            try
-            {
-                if (syncSource != ExperimentalFfbCheck     && ExperimentalFfbCheck != null)     ExperimentalFfbCheck.IsChecked     = on;
-                if (syncSource != ExperimentalFfbMainCheck && ExperimentalFfbMainCheck != null) ExperimentalFfbMainCheck.IsChecked = on;
-            }
-            finally { _suppressEvents = prev; }
+            _plugin.SetExperimentalFfbCapture(ExperimentalFfbCheck.IsChecked == true);
         }
 
         // Open the manual USB-device picker dialog. Always available, not
@@ -4540,8 +4788,9 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {url}",
-                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(null, "Trueforce",
+                    $"Couldn't open browser:\n{ex.Message}\n\nURL: {url}",
+                    DialogKind.Warning);
             }
         }
 
@@ -4642,6 +4891,15 @@ namespace TrueforceForAll.Plugin
             string dedupeKey = carId + "|custom|" + def.Id;
             if (!_enginePromptedThisSession.Add(dedupeKey)) return;
 
+            // Standing auto-submit: skip the consensus fetch + share modal and
+            // submit straight away (still gated above by CommunityEnabled +
+            // sign-in, so this never sends what the prompt wouldn't have).
+            if (_plugin.Settings?.AutoSubmitCarFacts == true)
+            {
+                ShareCustomEngineToCommunity(game, carId, def);
+                return;
+            }
+
             // Fetch current consensus to frame First / Confirming /
             // Alternative copy in the share modal. Confirming is when
             // the consensus is also CUSTOM with the same name (close-enough
@@ -4692,7 +4950,16 @@ namespace TrueforceForAll.Plugin
             };
             bool? ok = dialog.ShowDialog();
             if (ok != true) return;
+            if (dialog.AlwaysChosen) EnableAutoSubmitCarFacts();
 
+            ShareCustomEngineToCommunity(game, carId, def);
+        }
+
+        // Submit a custom-engine correction + optimistic local injection.
+        // Shared by the share-modal path and the standing auto-submit path.
+        private void ShareCustomEngineToCommunity(string game, string carId, CustomEngineDef def)
+        {
+            string defName = (def.Name ?? "").Trim();
             string modeStr = def.ElectricMode.ToString().ToUpperInvariant();
             _plugin.SubmitCustomEngineToCommunity(game, carId,
                 defName, def.Pattern ?? "", def.IsElectric, modeStr);
@@ -4704,8 +4971,6 @@ namespace TrueforceForAll.Plugin
             {
                 Layout                = "CUSTOM",
                 SupportingSubmissions = (_engineCommunityCache?.SupportingSubmissions ?? 0) + 1,
-                Confirmations         = 0,
-                PayloadHash           = null,
                 Custom                = new CommunityCustomEngine
                 {
                     Name         = defName,
@@ -4731,7 +4996,7 @@ namespace TrueforceForAll.Plugin
         // iRacing) the game itself is the source of truth and Offset is
         // personal shift-cue preference, not a redline claim - so the
         // prompt stays silent.
-        private void MaybePromptToSubmitRedlineData(string carId)
+        private void MaybePromptToSubmitRedlineData(string carId, int? overrideRedline = null)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
             // Community sharing disabled = the underlying submit call
@@ -4755,16 +5020,21 @@ namespace TrueforceForAll.Plugin
             // (Forza family). With a telemetry redline the game itself
             // is the source of truth - no community correction needed.
             if (ep.ObservedRedlineRpm >= 500) return;
-            // The user has to actually have tuned a RedlineRpm. Auto
-            // mode without a saved value falls back to 0.85 * MaxRpm
-            // (the documented default), and there's nothing to claim
-            // about that.
-            if (!rl.RedlineRpm.HasValue) return;
-            int impliedRedline = rl.RedlineRpm.Value;
-            if (impliedRedline < 500 || impliedRedline > 25000) return;
-            // Snap to 100 RPM bands so near-identical user values
-            // don't fragment consensus.
-            impliedRedline = (int)Math.Round(impliedRedline / 100.0) * 100;
+            // The claimed value: an explicit per-variant save passes it in;
+            // otherwise the Manual-mode RedlineRpm the user tuned. Auto mode
+            // without either falls back to 0.85 * MaxRpm (the documented
+            // default), and there's nothing to claim about that.
+            int claimed;
+            if (overrideRedline.HasValue) claimed = overrideRedline.Value;
+            else
+            {
+                if (!rl.RedlineRpm.HasValue) return;
+                claimed = rl.RedlineRpm.Value;
+            }
+            if (claimed < 500 || claimed > 25000) return;
+            // Snap to 50 RPM bands: precise enough to be useful, coarse enough
+            // that near-identical user values don't fragment consensus.
+            int impliedRedline = (int)Math.Round(claimed / 50.0) * 50;
 
             // Dedupe per (carId, value) so we don't badger on repeat saves
             // of the same threshold; a different threshold re-engages the
@@ -4773,13 +5043,11 @@ namespace TrueforceForAll.Plugin
             string dedupeKey = carId + "|redline|" + impliedRedline;
             if (!_enginePromptedThisSession.Add(dedupeKey)) return;
 
-            // Skip when the user's implied redline already matches what
-            // the resolver is using (community-confirmed or otherwise).
-            int? effectiveRedline = null;
-            if (_engineRedlineCache != null && _engineRedlineCache.Rpm > 0)
-                effectiveRedline = _engineRedlineCache.Rpm;
-            else if (_plugin.RevLimiter?.CarFactsRedline is int cf && cf > 0)
-                effectiveRedline = cf;
+            // Skip / phrase against the CONFIRMED community consensus only (>= the
+            // confirmed support floor). A lone, unconfirmed value - very often the
+            // user's own, reflected back - must never be cited as "the community
+            // says X", and must not skip a legitimate correction prompt.
+            int? effectiveRedline = _plugin.GetActiveVariantConfirmedCommunityRedline();
             if (effectiveRedline.HasValue
                 && Math.Abs(effectiveRedline.Value - impliedRedline) <= 100)
                 return;
@@ -4791,25 +5059,32 @@ namespace TrueforceForAll.Plugin
                   + "Submit your value as a correction?"
                 : $"You're claiming the redline of '{carDisplay}' is {impliedRedline} RPM. "
                   + "No one's recorded it yet. Submit yours as the first answer?";
-            if (TrueforceDialog.Show(Window.GetWindow(this),
-                    "Help the community", body, DialogKind.Confirm) != true)
-                return;
-
-            _plugin.SubmitRedlineToCommunity(game, carId, impliedRedline);
-
-            // Optimistic injection so RevLimiter.CarFactsRedline lines up
-            // with the submission immediately. Next per-car refetch
-            // reconciles server-side stickiness.
-            _engineRedlineCache = new RedlineConsensus
+            // Standing auto-submit skips the prompt; otherwise offer Submit /
+            // Always submit / Not now. "Always submit" flips the pref on.
+            if (_plugin.Settings?.AutoSubmitCarFacts != true)
             {
-                Rpm                   = impliedRedline,
-                SupportingSubmissions = (_engineRedlineCache?.SupportingSubmissions ?? 0) + 1,
-                Confirmations         = 0,
-                PayloadHash           = null,
-            };
-            _plugin.NotifyRedlineConsensus(game, carId,
-                _plugin.ComputeActiveCarVariantSignatureForActive(),
-                _engineRedlineCache);
+                var choice = TrueforceDialog.ShowChoice(Window.GetWindow(this),
+                    "Help the community", body, "Submit", "Always submit", "Not now");
+                if (choice == DialogChoice.Cancel) return;
+                if (choice == DialogChoice.Secondary) EnableAutoSubmitCarFacts();
+            }
+
+            // Include the user's per-gear overrides (snapped to 50) so this path
+            // submits the SAME payload shape as the explicit Share button -
+            // otherwise the two emit competing consensus candidates.
+            var src = _plugin.GetActiveVariantPerGearRedlines();
+            var perGear = new System.Collections.Generic.List<GearRedline>();
+            if (src != null)
+                foreach (var g in src)
+                    if (g != null && g.Gear >= 1 && g.Gear <= 16 && g.Rpm >= 500 && g.Rpm <= 25000)
+                        perGear.Add(new GearRedline { Gear = g.Gear, Rpm = (int)Math.Round(g.Rpm / 50.0) * 50 });
+            _plugin.SubmitRedlineToCommunity(game, carId, impliedRedline, perGear);
+            // A single submission is NOT consensus, so don't fake a community
+            // value locally. Re-fetch the real server consensus; it stays
+            // unconfirmed (not "the community") until other drivers agree.
+            MarkRedlineSharedThisSession(game, carId);
+            MarkRedlineProfileHandled(impliedRedline, ToGearDict(perGear));
+            RefreshActiveCommunityRedlineFromServer();
         }
 
         // CONFIRM cases (agrees with detection) and "no data" skip the prompt.
@@ -4859,6 +5134,15 @@ namespace TrueforceForAll.Plugin
             // auto-detect: nothing to share.
             if (ep != null && ep.AutoLayout.HasValue && ep.AutoLayout.Value == userLayout) return;
 
+            // Standing auto-submit: skip the consensus fetch + share modal and
+            // submit straight away (still gated above by CommunityEnabled +
+            // sign-in, so this never sends what the prompt wouldn't have).
+            if (_plugin.Settings?.AutoSubmitCarFacts == true)
+            {
+                ShareEngineLayoutToCommunity(game, carId, userLayout);
+                return;
+            }
+
             string layoutText = Effects.FiringPatternDb.LayoutDisplayName(userLayout);
 
             // Fetch current consensus (best-effort, 2s timeout) so the
@@ -4903,23 +5187,31 @@ namespace TrueforceForAll.Plugin
             };
             bool? ok = dialog.ShowDialog();
             if (ok != true) return;
+            if (dialog.AlwaysChosen) EnableAutoSubmitCarFacts();
 
-            // Share = submit to community ONLY. The local CarFacts User-
-            // source write was removed because writing it made Auto-detect
-            // permanently shadow the resolver cascade for this car
-            // ("locked correction" - user couldn't go back to auto).
-            // The user's submission seeds the consensus row server-side;
-            // the next per-car community fetch returns it as the
-            // Community-source value, which the resolver picks at the top
-            // of the cascade with a "community-confirmed" label.
+            ShareEngineLayoutToCommunity(game, carId, userLayout);
+        }
+
+        // Submit a built-in engine-layout correction + optimistic local
+        // injection. Shared by the share-modal path and the standing
+        // auto-submit path.
+        private void ShareEngineLayoutToCommunity(string game, string carId,
+            Effects.EngineLayout userLayout)
+        {
+            string userLayoutEnum = userLayout.ToString().ToUpperInvariant();
+
+            // Share = submit to community ONLY. The local CarFacts User-source
+            // write was removed because writing it made Auto-detect permanently
+            // shadow the resolver cascade for this car ("locked correction" -
+            // user couldn't go back to auto). The user's submission seeds the
+            // consensus row server-side; the next per-car community fetch
+            // returns it as the Community-source value.
             _plugin.SubmitEngineLayoutToCommunity(game, carId, userLayout);
 
             // Optimistic local injection: pretend the community already
-            // reflects this submission so the resolver flips the
-            // auto-detect label to "(community-confirmed)" without waiting
-            // for the next car-change refetch. Server stickiness might keep
-            // a prior consensus instead, but the user sees that their
-            // action took effect right now. Next refetch reconciles.
+            // reflects this submission so the resolver flips the auto-detect
+            // label to "(community-confirmed)" without waiting for the next
+            // car-change refetch. Next refetch reconciles server stickiness.
             if (_engineCommunityCache == null
                 || !string.Equals(_engineCommunityCache.Layout, userLayoutEnum,
                                   StringComparison.OrdinalIgnoreCase))
@@ -4928,8 +5220,6 @@ namespace TrueforceForAll.Plugin
                 {
                     Layout                = userLayoutEnum,
                     SupportingSubmissions = (_engineCommunityCache?.SupportingSubmissions ?? 0) + 1,
-                    Confirmations         = 0,
-                    PayloadHash           = null,
                 };
             }
             else
@@ -4942,6 +5232,29 @@ namespace TrueforceForAll.Plugin
             RenderEngineCommunityRow();
         }
 
+        // Flip on standing auto-submit (the user picked "Always submit" /
+        // "Always share" in a share prompt), persist it, and sync the Settings
+        // checkbox if the panel is built. Downstream submits stay gated by
+        // CommunityEnabled + sign-in, so this never sends what a prompt wouldn't.
+        private void EnableAutoSubmitCarFacts()
+        {
+            if (_plugin?.Settings == null) return;
+            _plugin.Settings.AutoSubmitCarFacts = true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist AutoSubmitCarFacts failed: " + ex.Message);
+            }
+            if (AutoSubmitCarFactsCheck != null)
+            {
+                bool prev = _suppressEvents;
+                _suppressEvents = true;
+                try { AutoSubmitCarFactsCheck.IsChecked = true; }
+                finally { _suppressEvents = prev; }
+            }
+        }
+
         // ---------- Community context row on the Engine pulse panel ----------
 
         // Fetch the current community consensus for (game, carId) at most
@@ -4950,12 +5263,14 @@ namespace TrueforceForAll.Plugin
         // Called every UI tick from the engine-pulse refresh branch; the
         // _engineCommunityFetchedKey guard makes it a no-op until the
         // active car changes.
-        private void MaybeRefreshEngineCommunityContext(string game, string carId)
+        private void MaybeRefreshEngineCommunityContext(string game, string carId, bool force = false)
         {
             if (EngineCommunityText == null) return;
+            // Apply gate: if the user isn't using community car facts, show + fetch
+            // nothing. (Networking is a separate gate, checked below before fetching.)
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)
                 || _plugin == null
-                || _plugin.Settings?.CommunityEnabled != true)
+                || _plugin.Settings?.UseCommunityCarFacts != true)
             {
                 EngineCommunityText.Visibility = System.Windows.Visibility.Collapsed;
                 _engineCommunityFetchedKey = null;
@@ -4963,21 +5278,28 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Cache key embeds the variant signature so an in-session
-            // engine swap (Forza) invalidates the layout + redline cache
-            // and re-fetches with the new signature without waiting for
-            // a car change.
+            // Key embeds the variant signature so an in-session engine swap (Forza)
+            // re-evaluates with the new signature without waiting for a car change.
             string capturedSignature = _plugin.ComputeActiveCarVariantSignatureForActive() ?? "";
             string key = game + "/" + carId + "/" + capturedSignature;
-            if (_engineCommunityFetchedKey == key) return;
-
+            if (!force && _engineCommunityFetchedKey == key) return;
             _engineCommunityFetchedKey = key;
-            _engineCommunityCache = null;
-            _engineRedlineCache   = null;
-            // Hide the community line during fetch; the Confirm button
-            // visibility is owned by RenderEngineCommunityRow (which we
-            // call once the fetch returns) and the periodic UI refresh.
-            EngineCommunityText.Visibility = System.Windows.Visibility.Collapsed;
+
+            // LOCAL-FIRST: apply whatever is cached right now (instant + offline),
+            // and reflect it in the community-context row. No network.
+            var cached = _plugin.ReplayCommunityCache(game, carId, capturedSignature);
+            _engineCommunityCache = cached?.Layout;
+            _engineRedlineCache   = cached?.Redline;
+            RenderEngineCommunityRow();
+
+            // NETWORK refresh only when the networking master is on, the user is
+            // signed in (consensus reads are authenticated-only, so a signed-out
+            // fetch is doomed - skip it and just ride the cache), AND the cache is
+            // stale (past the TTL) or a manual refresh forced it. Otherwise we ride
+            // the cache - that's the server-load saving + the offline path.
+            bool networkOn = _plugin.Settings?.CommunityEnabled == true && _plugin.AuthIsSignedIn;
+            bool stale = !_plugin.IsCommunityCacheFresh(game, carId, capturedSignature);
+            if (!networkOn || (!force && !stale)) return;
 
             if (_engineCommunityFetchInFlight) return;
             _engineCommunityFetchInFlight = true;
@@ -4986,17 +5308,15 @@ namespace TrueforceForAll.Plugin
             string capturedCar  = carId;
             System.Threading.Tasks.Task.Run(() =>
             {
-                // All three fact-types share a per-car cadence, so they
-                // ride on the same background task to fan out wakeups
-                // tightly. The signature was captured at fetch-trigger
-                // time; it gets stamped into the cache key + the Notify
-                // call so a swap that lands mid-fetch is correctly
+                // All three fact-types share a per-car cadence, so they ride on the
+                // same background task. The captured signature is stamped into the
+                // cache write + the Notify calls so a swap that lands mid-fetch is
                 // recognized as stale.
                 EngineLayoutConsensus layoutResult  = null;
                 CarNameConsensus      nameResult    = null;
                 RedlineConsensus      redlineResult = null;
                 try { layoutResult  = _plugin.FetchEngineLayoutConsensus(capturedGame, capturedCar); }
-                catch { /* swallowed; render the no-data fallback */ }
+                catch { /* swallowed; keep the cached values */ }
                 try { nameResult    = _plugin.FetchCarNameConsensus(capturedGame, capturedCar); }
                 catch { /* same */ }
                 try { redlineResult = _plugin.FetchRedlineConsensus(capturedGame, capturedCar); }
@@ -5005,24 +5325,27 @@ namespace TrueforceForAll.Plugin
                 {
                     _engineCommunityFetchInFlight = false;
                     if (_engineCommunityFetchedKey != capturedGame + "/" + capturedCar + "/" + capturedSignature) return;
+                    // A fetch that returns NOTHING is almost always a network
+                    // failure (offline / timeout), and the fetch primitives can't
+                    // distinguish that from "this car has no community data". Treat
+                    // all-null as "no update": never overwrite or delete a good
+                    // cache (or clear the already-applied in-memory values) on a
+                    // failed refresh. The replayed cache stays in effect - this is
+                    // the offline / expired-but-unreachable path. (A genuinely
+                    // empty car simply re-checks on its next visit; harmless.)
+                    bool anyData = layoutResult != null || nameResult != null || redlineResult != null;
+                    if (!anyData) { RenderEngineCommunityRow(); return; }
                     _engineCommunityCache = layoutResult;
                     _engineRedlineCache   = redlineResult;
-                    // Push the car-name consensus into the resolver too so
-                    // the header / preset rows immediately reflect the
-                    // canonical name. Null is a valid signal here (means
-                    // "no community name yet" - resolver falls back to
-                    // local CarFacts or the catalog).
+                    // Persist the fresh fetch so it applies offline and suppresses
+                    // the next refresh until the TTL expires. A fact type that is
+                    // genuinely absent rides as null here (backend was reachable,
+                    // since something else came back), correctly clearing just that
+                    // type; the all-null failure case was handled above.
+                    _plugin.WriteCommunityFactCache(capturedGame, capturedCar, capturedSignature,
+                        nameResult, layoutResult, redlineResult);
                     _plugin.NotifyCarNameConsensus(capturedGame, capturedCar, nameResult);
-                    // Push the redline consensus too - same null-clears
-                    // semantics. The resolver picks it up immediately for
-                    // RevLimiter.CarFactsRedline so the buzz engagement
-                    // aligns with the canonical redline for this variant.
                     _plugin.NotifyRedlineConsensus(capturedGame, capturedCar, capturedSignature, redlineResult);
-                    // Push the consensus into the plugin's resolver cache
-                    // so Auto-detect uses it as the top of the cascade
-                    // ("auto means auto, sourced from community"). Pass
-                    // even when null - that tells the plugin to clear any
-                    // stale community entry for this car.
                     _plugin.NotifyCommunityConsensus(capturedGame, capturedCar, capturedSignature, layoutResult);
                     RenderEngineCommunityRow();
                 }));
@@ -5313,6 +5636,14 @@ namespace TrueforceForAll.Plugin
                 EngineLayoutCombo.ItemsSource = null;
                 EngineLayoutCombo.ItemsSource = _engineItems;
                 EngineLayoutCombo.SelectedIndex = idx;
+                // Mirror into the Car Facts panel's inline engine-type picker
+                // (same items + selection, so editing either stays in sync).
+                if (CarFactsEngineCombo != null)
+                {
+                    CarFactsEngineCombo.ItemsSource = null;
+                    CarFactsEngineCombo.ItemsSource = _engineItems;
+                    CarFactsEngineCombo.SelectedIndex = idx;
+                }
             }
             finally { _suppressEvents = old; }
         }
@@ -5341,8 +5672,20 @@ namespace TrueforceForAll.Plugin
         private void EngineLayout_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
-            var item = EngineLayoutCombo.SelectedItem as EngineDropdownItem;
-            if (item == null) return;
+            ApplyEngineDropdownSelection(EngineLayoutCombo.SelectedItem as EngineDropdownItem);
+        }
+
+        // The Car Facts panel's inline engine-type picker shares the same items
+        // and apply path as the Engine Pulse section's Layout dropdown.
+        private void CarFactsEngine_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            ApplyEngineDropdownSelection(CarFactsEngineCombo?.SelectedItem as EngineDropdownItem);
+        }
+
+        private void ApplyEngineDropdownSelection(EngineDropdownItem item)
+        {
+            if (item == null || _plugin == null) return;
             var es = _plugin.ActiveEngine;
 
             switch (item.Kind)
@@ -5352,6 +5695,7 @@ namespace TrueforceForAll.Plugin
                     es.CustomEngineId = "";
                     Apply(EffectKind.Engine);
                     UpdateFiringPatternReadout(es);
+                    RebuildEngineLayoutDropdown();   // keep both pickers in sync
                     break;
 
                 case EngineDropdownKind.Custom:
@@ -5359,6 +5703,7 @@ namespace TrueforceForAll.Plugin
                     es.CustomEngineId = item.Custom?.Id ?? "";
                     Apply(EffectKind.Engine);
                     UpdateFiringPatternReadout(es);
+                    RebuildEngineLayoutDropdown();
                     break;
 
                 case EngineDropdownKind.ActionNew:
@@ -5395,7 +5740,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Persist new custom engine failed: " + ex.Message);
+                        "[TF4ALL] Persist new custom engine failed: " + ex.Message);
                 }
 
                 var es = _plugin.ActiveEngine;
@@ -5466,10 +5811,6 @@ namespace TrueforceForAll.Plugin
             if (MainTabs != null) MainTabs.SelectedIndex = 0; // Effects tab
         }
 
-        private void ManagePresetsButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowPresetManager(PresetManagerControl.InitialTab.GamePresets);
-        }
 
         // Persistent nudge for Forza UDP telemetry: shown when Forza is running
         // but no packets are arriving, so a silent wheel points the user at the
@@ -5534,18 +5875,97 @@ namespace TrueforceForAll.Plugin
         // returns from ShouldSubmit), and once Backend Phase 2's consensus
         // pull lands, no pulls in either. The flag already gates the submit
         // path today; tying the future pull to the same flag keeps the user
-        // model simple ("Use community car data" means both directions).
+        // model simple. (Apply-vs-network is now split: "Enable community
+        // features (online)" is the networking master; "Use community car facts"
+        // governs whether car-fact data is applied. See UseCommunityCarFacts_Changed.)
+        // The checkbox only flips the setting; SetCommunityEnabled raises
+        // CommunityEnabledChanged and OnCommunityEnabledChanged does the UI
+        // follow-up. Routing through the event means the share funnel (which also
+        // calls SetCommunityEnabled) gets the identical follow-up.
         private void CommunityEnabled_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
-            bool newOn = CommunityEnabledCheck.IsChecked == true;
-            _plugin.SetCommunityEnabled(newOn);
+            _plugin.SetCommunityEnabled(CommunityEnabledCheck.IsChecked == true);
+        }
+
+        private void OnCommunityEnabledChanged(bool on)
+        {
+            // The event could be raised off the UI thread in theory; marshal so the
+            // control writes below are always on the UI thread.
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke((Action)(() => OnCommunityEnabledChanged(on)));
+                return;
+            }
+            // Keep the checkbox in sync when the toggle came from the share funnel
+            // rather than from this checkbox.
+            if (CommunityEnabledCheck != null && (CommunityEnabledCheck.IsChecked == true) != on)
+            {
+                bool prev = _suppressEvents;
+                _suppressEvents = true;
+                try { CommunityEnabledCheck.IsChecked = on; }
+                finally { _suppressEvents = prev; }
+            }
+            // Re-evaluate the per-car community context next tick (turning
+            // networking on lets a stale cache refresh; off stops refreshing
+            // but keeps applying the cache via UseCommunityCarFacts).
+            _engineCommunityFetchedKey = null;
             // Re-toggling community ON should allow the update-check to
             // re-run; otherwise the per-session latch keeps the
             // notification suppressed until the next plugin restart.
-            if (newOn) _communityUpdatesCheckedThisSession = false;
+            if (on) _communityUpdatesCheckedThisSession = false;
             RefreshAccountRow();
             UpdateHeaderShareButtons();
+            // Coming back online: mark the re-fetchable network caches stale so the
+            // next pulls are fresh, without wiping the offline copies.
+            if (on) _plugin?.MarkAllNetworkCachesStale();
+            // Turning community on/off opens or closes the MOTD gate; refresh the
+            // strip, forcing a fetch when it was just enabled (doubles as the
+            // manual "pull updates now" lever, bypassing the ~6h cache TTL).
+            _motdStrip?.Refresh(forceFetch: on);
+            // Re-evaluate the Preset Manager's community gate so the browser
+            // appears/disappears immediately instead of staying stale until a
+            // manual refresh or restart.
+            _presetManager?.RefreshCommunityGate();
+        }
+
+        // UI toggle: show or hide the active-card preset Share buttons. Pure UI
+        // preference, so persist and re-evaluate the header buttons.
+        private void EffectsTabShareButtons_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.ShowEffectsTabShareButtons = EffectsTabShareButtonsCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            UpdateHeaderShareButtons();
+        }
+
+        // MOTD level radio: All / Important / None. None is honored literally
+        // (the strip hides); the inline warning makes that tradeoff explicit.
+        private void MotdLevel_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            MotdLevel level = MotdLevelNoneRadio?.IsChecked == true ? MotdLevel.None
+                            : MotdLevelImportantRadio?.IsChecked == true ? MotdLevel.Important
+                            : MotdLevel.All;
+            _plugin.SetMotdLevel(level);
+            if (MotdNoneWarning != null)
+                MotdNoneWarning.Visibility = level == MotdLevel.None ? Visibility.Visible : Visibility.Collapsed;
+            _motdStrip?.Refresh();
+        }
+
+        // "Use community car facts" toggle: governs whether community names /
+        // engine layouts / redlines are APPLIED (cache-first, works offline),
+        // independent of the networking master. The plugin applies or clears it
+        // on the active car immediately; reset the per-car latch so the context
+        // row re-evaluates (replay or hide) on the next tick.
+        private void UseCommunityCarFacts_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            if (UseCommunityCarFactsCheck == null) return;
+            bool newOn = UseCommunityCarFactsCheck.IsChecked == true;
+            _plugin.SetUseCommunityCarFacts(newOn);
+            _engineCommunityFetchedKey = null;
+            RefreshFromPlugin();
         }
 
         // Auto-update toggle. Persists the new value and lets the per-
@@ -5561,9 +5981,53 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Persist AutoUpdateDownloadedPresets failed: " + ex.Message);
+                    "[TF4ALL] Persist AutoUpdateDownloadedPresets failed: " + ex.Message);
             }
             if (newOn) _communityUpdatesCheckedThisSession = false;
+        }
+
+        // App-update cadence dropdown. Persists the chosen interval (hours);
+        // the plugin's background re-poll timer reads it live each tick, so the
+        // new cadence takes effect without a restart. 0 = "On startup only".
+        private void UpdateCheckIntervalCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (!(UpdateCheckIntervalCombo?.SelectedItem is ComboBoxItem item)) return;
+            if (!int.TryParse(item.Tag as string, out int hours)) return;
+            _plugin.Settings.UpdateCheckIntervalHours = hours;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist UpdateCheckIntervalHours failed: " + ex.Message);
+            }
+        }
+
+        // Select the ComboBoxItem whose Tag matches the given string (used to
+        // map a stored scalar back onto a fixed dropdown). No-op if none match.
+        private static void SelectComboByTag(ComboBox combo, string tag)
+        {
+            if (combo == null || tag == null) return;
+            foreach (var obj in combo.Items)
+                if (obj is ComboBoxItem item
+                    && string.Equals(item.Tag as string, tag, StringComparison.Ordinal))
+                {
+                    combo.SelectedItem = item;
+                    return;
+                }
+        }
+
+        private void AutoSubmitCarFacts_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (AutoSubmitCarFactsCheck == null) return;
+            _plugin.Settings.AutoSubmitCarFacts = AutoSubmitCarFactsCheck.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist AutoSubmitCarFacts failed: " + ex.Message);
+            }
         }
 
         // ---- Cloud backup / sync (Phase 2) ----
@@ -5576,7 +6040,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Persist AutoSyncBackup failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Persist AutoSyncBackup failed: " + ex.Message);
             }
             _plugin.UpdateAutoPullTimer();   // start/stop the cloud poll to match the toggle
         }
@@ -5613,10 +6077,11 @@ namespace TrueforceForAll.Plugin
         private async void RestoreFromCloud_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            var confirm = MessageBox.Show(Window.GetWindow(this),
+            var confirm = TrueforceDialog.Show(Window.GetWindow(this),
+                "Restore from cloud",
                 "Download your cloud backup and apply it to this PC? Your local-only presets are kept; global settings are replaced by the cloud's.",
-                "Restore from cloud", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (confirm != MessageBoxResult.Yes) return;
+                DialogKind.Destructive, okLabel: "Restore", cancelLabel: "Cancel");
+            if (confirm != true) return;
             SetBackupStatus("Restoring...");
             if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = false;
             try
@@ -5681,10 +6146,11 @@ namespace TrueforceForAll.Plugin
         private async void UnlinkDiscord_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            var confirm = MessageBox.Show(Window.GetWindow(this),
+            var confirm = TrueforceDialog.Show(Window.GetWindow(this),
+                "Unlink Discord",
                 "Unlink your Discord account from Trueforce? You can re-link any time.",
-                "Unlink Discord", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (confirm != MessageBoxResult.Yes) return;
+                DialogKind.Destructive, okLabel: "Unlink", cancelLabel: "Cancel");
+            if (confirm != true) return;
             if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = false;
             try
             {
@@ -5826,7 +6292,7 @@ namespace TrueforceForAll.Plugin
             else
             {
                 // Never a supporter: nothing is stored, so don't pitch a restore. Just explain the gate.
-                SetCloudBackupMessage("Cloud backup is a supporter feature.");
+                SetCloudBackupMessage("Support on Patreon (Account tab) to enable cloud backup.");
                 SetRemovalCountdown(null);
             }
         }
@@ -5883,8 +6349,16 @@ namespace TrueforceForAll.Plugin
         {
             if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
             if (_plugin == null || MainTabs == null) return;
+            // Collapse any expanded MOTD message on a view switch so the cycle resumes.
+            _motdStrip?.OnHostViewChanged();
             if (AccountTab != null && ReferenceEquals(MainTabs.SelectedItem, AccountTab))
             {
+                // Opening the Account tab is explicit intent to see current account state, so force a
+                // fresh entitlement + Discord read (otherwise a newly-entitled supporter could stay
+                // locked out of backup until the weekly backstop). Invalidate once here; the refreshes
+                // below repopulate the cache, and the single-flight coalesces the entitlement double-read
+                // (supporter badge + cloud-gating) into one network call.
+                _plugin.InvalidateAccountStatusCache();
                 RefreshAccountStats();
                 _ = RefreshDiscordRowAsync();
                 _ = RefreshPatreonRowAsync();
@@ -6035,8 +6509,9 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             if (!_plugin.AuthIsSignedIn)
             {
-                MessageBox.Show(Window.GetWindow(this), "Sign in to see your achievements.",
-                    "Achievements", MessageBoxButton.OK, MessageBoxImage.Information);
+                TrueforceDialog.Show(Window.GetWindow(this), "Achievements",
+                    "Sign in to see your achievements.",
+                    DialogKind.Info);
                 return;
             }
             if (_achievementsWindowOpen) return;   // single-flight: don't stack modal windows
@@ -6056,8 +6531,9 @@ namespace TrueforceForAll.Plugin
                 catch { }
                 if (list == null)
                 {
-                    MessageBox.Show(Window.GetWindow(this), "Couldn't load your achievements right now. Try again in a moment.",
-                        "Achievements", MessageBoxButton.OK, MessageBoxImage.Information);
+                    TrueforceDialog.Show(Window.GetWindow(this), "Achievements",
+                        "Couldn't load your achievements right now. Try again in a moment.",
+                        DialogKind.Info);
                     return;
                 }
 
@@ -6348,10 +6824,11 @@ namespace TrueforceForAll.Plugin
         private async void UnlinkPatreon_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            var confirm = MessageBox.Show(Window.GetWindow(this),
+            var confirm = TrueforceDialog.Show(Window.GetWindow(this),
+                "Unlink Patreon",
                 "Unlink your Patreon account from Trueforce? You can re-link any time.",
-                "Unlink Patreon", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (confirm != MessageBoxResult.Yes) return;
+                DialogKind.Destructive, okLabel: "Unlink", cancelLabel: "Cancel");
+            if (confirm != true) return;
             if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = false;
             try
             {
@@ -6422,6 +6899,11 @@ namespace TrueforceForAll.Plugin
             // Account section. The chip has its own null guards, so refresh
             // it even when the Account section's controls aren't realized.
             RefreshAccountChip();
+            // Auth state may have just changed (sign-in / sign-out / account
+            // switch); flip the Preset Manager community gate to match. Placed
+            // before the early-return below so it runs even when the Account
+            // section controls aren't realized (RefreshCommunityGate self-guards).
+            if (_plugin != null) _presetManager?.RefreshCommunityGate();
             if (AccountStatusLabel == null || _plugin == null) return;
             if (_plugin.AuthIsSignedIn)
             {
@@ -6478,10 +6960,12 @@ namespace TrueforceForAll.Plugin
                 if (AccountChipText  != null) AccountChipText.Text       = label;
                 if (AccountChipIcon  != null) AccountChipIcon.Visibility  = System.Windows.Visibility.Visible;
                 if (AccountChipCaret != null) AccountChipCaret.Visibility = System.Windows.Visibility.Visible;
-                string email = _plugin.AuthSignedInEmail;
-                AccountChipButton.ToolTip = string.IsNullOrEmpty(email)
-                    ? "Signed in. Click for account options."
-                    : "Signed in as " + email + ". Click for account options.";
+                // The icon doubles as a connection dot: green = connected,
+                // amber = signed in but can't reach the server, grey = community
+                // features off. Live transitions are picked up by the meter tick.
+                var dot = ComputeAccountDot();
+                ApplyAccountDot(dot);
+                AccountChipButton.ToolTip = BuildAccountChipTooltip(dot);
             }
             else
             {
@@ -6489,6 +6973,7 @@ namespace TrueforceForAll.Plugin
                 if (AccountChipIcon  != null) AccountChipIcon.Visibility  = System.Windows.Visibility.Collapsed;
                 if (AccountChipCaret != null) AccountChipCaret.Visibility = System.Windows.Visibility.Collapsed;
                 AccountChipButton.ToolTip = "Sign in to share presets and use community car data.";
+                _lastAccountDot = null;
             }
             RefreshAchievementCrown();
         }
@@ -6519,11 +7004,12 @@ namespace TrueforceForAll.Plugin
             var signOut = new MenuItem { Header = "Sign out" };
             signOut.Click += (s, ev) =>
             {
-                var confirm = MessageBox.Show(
+                var confirm = TrueforceDialog.Show(
                     Window.GetWindow(this),
+                    "Sign out",
                     "Sign out of your community account?",
-                    "Sign out", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (confirm != MessageBoxResult.Yes) return;
+                    DialogKind.Destructive, okLabel: "Sign out", cancelLabel: "Cancel");
+                if (confirm != true) return;
                 _plugin.AuthSignOut();
                 RefreshAccountRow();
             };
@@ -6535,18 +7021,11 @@ namespace TrueforceForAll.Plugin
             menu.IsOpen = true;
         }
 
-        // Bring the Account tab forward and expand the Account & community section
-        // (the chip's "Account settings…" target). The section moved out of Settings
-        // into its own Account tab, so navigate there.
+        // Bring the Account tab forward (the chip's "Account settings…" target). The account
+        // section is the whole Account tab now (no inner expander), so navigating there is enough.
         private void OpenAccountSection()
         {
             if (MainTabs != null && AccountTab != null) MainTabs.SelectedItem = AccountTab;
-            if (AccountExpander != null)
-            {
-                AccountExpander.IsExpanded = true;
-                Dispatcher.BeginInvoke(new Action(() => AccountExpander.BringIntoView()),
-                    System.Windows.Threading.DispatcherPriority.Background);
-            }
         }
 
         // Rename your username. Opens PickUsernameWindow seeded with
@@ -6569,7 +7048,7 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.Settings.SharingAuthor = picker.ChosenUsername;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
                 RefreshAccountRow();
@@ -6591,12 +7070,12 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             if (_plugin.AuthIsSignedIn)
             {
-                var confirm = MessageBox.Show(
+                var confirm = TrueforceDialog.Show(
                     Window.GetWindow(this),
+                    "Sign out",
                     "Sign out of your community account?",
-                    "Sign out", MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-                if (confirm != MessageBoxResult.Yes) return;
+                    DialogKind.Destructive, okLabel: "Sign out", cancelLabel: "Cancel");
+                if (confirm != true) return;
                 try { _discordLinkCts?.Cancel(); } catch { }
                 _plugin.AuthSignOut();
                 RefreshAccountRow();
@@ -6675,7 +7154,7 @@ namespace TrueforceForAll.Plugin
                 // Server has a username; make local Author match.
                 _plugin.Settings.SharingAuthor = username;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = username;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = username;
                 // Repaint the visible Account label + header chip, which read
@@ -6713,7 +7192,7 @@ namespace TrueforceForAll.Plugin
             if (owner == null)
             {
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Username prompt skipped: Trueforce panel unloaded before bootstrap finished. " +
+                    "[TF4ALL] Username prompt skipped: Trueforce panel unloaded before bootstrap finished. " +
                     "Re-open the Account tab to pick a username.");
                 return;
             }
@@ -6723,7 +7202,7 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.Settings.SharingAuthor = picker.ChosenUsername;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
                 // Repaint the visible Account label + header chip (see the
@@ -6790,7 +7269,7 @@ namespace TrueforceForAll.Plugin
             // Abort if the active slot swapped during the await; otherwise SharingAuthor lands in the wrong partition.
             if ((_plugin.Settings.ActiveSlotKey ?? "") != slotKeyAtEntry)
             {
-                SimHub.Logging.Current.Info("[Trueforce] AccountAuthor_Changed aborted: slot changed during server call");
+                SimHub.Logging.Current.Info("[TF4ALL] AccountAuthor_Changed aborted: slot changed during server call");
                 AccountAuthorBox.Text = oldAuthor;
                 if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
                 return;
@@ -6807,7 +7286,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     persisted = false;
-                    SimHub.Logging.Current.Info("[Trueforce] Persist username failed: " + ex.Message);
+                    SimHub.Logging.Current.Info("[TF4ALL] Persist username failed: " + ex.Message);
                 }
                 if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
                 if (AccountAuthorStatus != null)
@@ -6845,7 +7324,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] AccountAuthor_Changed failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] AccountAuthor_Changed failed: " + ex.Message);
                 if (AccountAuthorStatus != null)
                 {
                     AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
@@ -6883,35 +7362,37 @@ namespace TrueforceForAll.Plugin
             string newEmail = (dlg.Line1Result ?? "").Trim();
             if (!newEmail.Contains("@") || newEmail.IndexOf('.', newEmail.IndexOf('@')) <= newEmail.IndexOf('@'))
             {
-                MessageBox.Show(Window.GetWindow(this),
-                    "Enter a valid email address.", "Change email",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Change email", "Enter a valid email address.",
+                    DialogKind.Warning);
                 return;
             }
             if (string.Equals(newEmail.ToLowerInvariant(), current.ToLowerInvariant(),
                               StringComparison.Ordinal))
             {
-                MessageBox.Show(Window.GetWindow(this),
-                    "That's already your email.", "Change email",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Change email", "That's already your email.",
+                    DialogKind.Info);
                 return;
             }
             AuthCallResult result;
             try { result = await _plugin.AuthUpdateEmailAsync(newEmail); }
             catch (Exception ex)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Change email",
                     "Email update failed: " + ex.Message,
-                    "Change email", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
                 return;
             }
             if (result == AuthCallResult.Ok)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Change email",
                     "We sent a confirmation link to " + newEmail + ". "
                     + "Click it from that inbox to finish the change. "
                     + "Your current address keeps working until then.",
-                    "Change email", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
             string copy;
@@ -6926,15 +7407,14 @@ namespace TrueforceForAll.Plugin
                 default:
                     copy = "Could not update your email. The address may already be taken."; break;
             }
-            MessageBox.Show(Window.GetWindow(this), copy, "Change email",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            TrueforceDialog.Show(Window.GetWindow(this), "Change email", copy,
+                DialogKind.Warning);
         }
 
-        private void AccountExpander_Expanded(object sender, RoutedEventArgs e)
+        // The Backup & sync expander (Settings) holds the cloud-backup controls; refresh their
+        // supporter gating when it's opened. (Account-tab refreshes happen on tab selection.)
+        private void BackupExpander_Expanded(object sender, RoutedEventArgs e)
         {
-            RefreshAccountStats();
-            _ = RefreshDiscordRowAsync();
-            _ = RefreshSupporterBadgeAsync();
             _ = RefreshCloudBackupGatingAsync();
         }
 
@@ -7018,7 +7498,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] RefreshAccountStats failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] RefreshAccountStats failed: " + ex.Message);
                 if (AccountStatsCreated != null) AccountStatsCreated.Text = "Could not load stats.";
             }
         }
@@ -7049,6 +7529,11 @@ namespace TrueforceForAll.Plugin
 
                 if (gen != _accountSessionsGen) return;   // superseded or signed out mid-await
 
+                // Feed the sync coordinator's presence gate for free: the Account tab already loaded
+                // the session list, so reuse it to decide whether a peer is online (drives the pull +
+                // heartbeat gates) instead of making a separate get_my_sessions probe.
+                try { _plugin.ApplySessionsForPresence(sessions); } catch { }
+
                 if (sessions == null) { SetSessionsStatus("Couldn't load your sessions."); return; }
                 if (sessions.Count == 0) { SetSessionsStatus("No active sessions found."); return; }
 
@@ -7068,7 +7553,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] RefreshAccountSessions failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] RefreshAccountSessions failed: " + ex.Message);
                 SetSessionsStatus("Couldn't load your sessions.");
             }
         }
@@ -7199,10 +7684,11 @@ namespace TrueforceForAll.Plugin
                 string id = btn?.Tag as string;
                 if (string.IsNullOrEmpty(id) || _plugin == null) return;
 
-                var confirm = MessageBox.Show(
+                var confirm = TrueforceDialog.Show(null,
+                    "Revoke session",
                     "Sign this device out of your account? A running device signs out within a few minutes; an offline or sleeping one signs out the next time it comes online.",
-                    "Revoke session", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-                if (confirm != MessageBoxResult.OK) return;
+                    DialogKind.Destructive, okLabel: "Revoke", cancelLabel: "Cancel");
+                if (confirm != true) return;
 
                 if (btn != null) { btn.IsEnabled = false; btn.Content = "Revoking..."; }
                 bool ok = await _plugin.AuthRevokeSessionAsync(id, System.Threading.CancellationToken.None);
@@ -7213,13 +7699,14 @@ namespace TrueforceForAll.Plugin
                 else
                 {
                     if (btn != null) { btn.IsEnabled = true; btn.Content = "Revoke"; }
-                    MessageBox.Show("Couldn't revoke that session. It may have already ended.",
-                        "Revoke session", MessageBoxButton.OK, MessageBoxImage.Information);
+                    TrueforceDialog.Show(null, "Revoke session",
+                        "Couldn't revoke that session. It may have already ended.",
+                        DialogKind.Info);
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Revoke session failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Revoke session failed: " + ex.Message);
             }
         }
 
@@ -7228,10 +7715,11 @@ namespace TrueforceForAll.Plugin
             try
             {
                 if (_plugin == null) return;
-                var confirm = MessageBox.Show(
+                var confirm = TrueforceDialog.Show(null,
+                    "Sign out everywhere else",
                     "Sign out every other device? Running devices sign out within a few minutes; offline ones when they next come online. This device stays signed in.",
-                    "Sign out everywhere else", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-                if (confirm != MessageBoxResult.OK) return;
+                    DialogKind.Destructive, okLabel: "Sign out", cancelLabel: "Cancel");
+                if (confirm != true) return;
 
                 if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = false; AccountSignOutOthersBtn.Content = "Signing out..."; }
                 bool ok = await _plugin.AuthSignOutOtherSessionsAsync();
@@ -7242,13 +7730,14 @@ namespace TrueforceForAll.Plugin
                 else
                 {
                     if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
-                    MessageBox.Show("Couldn't sign out the other devices. Check your connection and try again.",
-                        "Sign out everywhere else", MessageBoxButton.OK, MessageBoxImage.Information);
+                    TrueforceDialog.Show(null, "Sign out everywhere else",
+                        "Couldn't sign out the other devices. Check your connection and try again.",
+                        DialogKind.Info);
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Sign-out-others failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Sign-out-others failed: " + ex.Message);
             }
         }
 
@@ -7270,29 +7759,30 @@ namespace TrueforceForAll.Plugin
             try { json = await _plugin.ExportMyDataRawAsync(); }
             catch (Exception ex)
             {
-                MessageBox.Show(Window.GetWindow(this),
-                    "Export failed: " + ex.Message, "Export my data",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Export my data", "Export failed: " + ex.Message,
+                    DialogKind.Warning);
                 return;
             }
             if (string.IsNullOrEmpty(json))
             {
-                MessageBox.Show(Window.GetWindow(this),
-                    "Export returned nothing.", "Export my data",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Export my data", "Export returned nothing.",
+                    DialogKind.Warning);
                 return;
             }
             try { System.IO.File.WriteAllText(dlg.FileName, json); }
             catch (Exception ex)
             {
-                MessageBox.Show(Window.GetWindow(this),
-                    "Could not save file: " + ex.Message, "Export my data",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Export my data", "Could not save file: " + ex.Message,
+                    DialogKind.Warning);
                 return;
             }
-            MessageBox.Show(Window.GetWindow(this),
+            TrueforceDialog.Show(Window.GetWindow(this),
+                "Export my data",
                 "Saved to:\n" + dlg.FileName,
-                "Export my data", MessageBoxButton.OK, MessageBoxImage.Information);
+                DialogKind.Info);
         }
 
         // Delete-account button. Two-step confirm because it's irreversible
@@ -7302,11 +7792,12 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null || !_plugin.AuthIsSignedIn) return;
             string email = _plugin.AuthSignedInEmail ?? "(unknown)";
-            var confirm1 = MessageBox.Show(Window.GetWindow(this),
+            var confirm1 = TrueforceDialog.Show(Window.GetWindow(this),
+                "Delete account",
                 "Delete the account for " + email + "?\n\n"
                 + "Your presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and carfact contribution history is anonymized.",
-                "Delete account", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (confirm1 != MessageBoxResult.Yes) return;
+                DialogKind.Destructive, okLabel: "Delete account", cancelLabel: "Cancel");
+            if (confirm1 != true) return;
 
             // Hard sanity gate: require the user to type DELETE.
             var dlg = new TwoLineEditWindow(
@@ -7323,9 +7814,10 @@ namespace TrueforceForAll.Plugin
             if (typed != true) return;
             if (!string.Equals((dlg.Line1Result ?? "").Trim(), "DELETE", StringComparison.Ordinal))
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Delete account",
                     "Cancelled. Type DELETE exactly to confirm next time.",
-                    "Delete account", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
                 return;
             }
 
@@ -7333,16 +7825,17 @@ namespace TrueforceForAll.Plugin
             try { ok = await _plugin.DeleteMyAccountAsync(); }
             catch (Exception ex)
             {
-                MessageBox.Show(Window.GetWindow(this),
-                    "Delete failed: " + ex.Message, "Delete account",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Delete account", "Delete failed: " + ex.Message,
+                    DialogKind.Warning);
                 return;
             }
             if (!ok)
             {
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Delete account",
                     "Delete failed. The server might be unreachable; try again.",
-                    "Delete account", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
                 return;
             }
             // Server deleted the auth user; clear local session.
@@ -7351,15 +7844,16 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.Settings.SharingAuthor = "";
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
             }
             if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
             if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
             RefreshAccountRow();
             RefreshAccountStats();
-            MessageBox.Show(Window.GetWindow(this),
+            TrueforceDialog.Show(Window.GetWindow(this),
+                "Delete account",
                 "Account deleted.",
-                "Delete account", MessageBoxButton.OK, MessageBoxImage.Information);
+                DialogKind.Info);
         }
 
         // Plugin-load update notification. Runs once per panel-open
@@ -7381,7 +7875,7 @@ namespace TrueforceForAll.Plugin
             try { updates = await _plugin.FindCommunityPresetUpdatesAsync(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Update check failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Update check failed: " + ex.Message);
                 _presetManager?.RefreshUpdatesChip(0);
                 return;
             }
@@ -7398,7 +7892,7 @@ namespace TrueforceForAll.Plugin
             try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Auto-apply update sweep failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Auto-apply update sweep failed: " + ex.Message);
             }
             autoApplied -= updates?.Count ?? 0;
             _presetManager?.RefreshUpdatesChip(updates?.Count ?? 0);
@@ -7439,7 +7933,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Apply update failed for " + o.Id + ": " + ex.Message);
+                        "[TF4ALL] Apply update failed for " + o.Id + ": " + ex.Message);
                 }
             }
             await RecomputeUpdatesChipAsync();
@@ -7448,9 +7942,10 @@ namespace TrueforceForAll.Plugin
                 string summary = $"Updates: {applied} applied, {skipped} skipped";
                 if (autoApplied > 0) summary += ", " + autoApplied + " auto-updated";
                 summary += ".";
-                MessageBox.Show(owner,
+                TrueforceDialog.Show(owner,
+                    "Community preset updates",
                     summary,
-                    "Community preset updates", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
             }
         }
 
@@ -7468,7 +7963,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Updates chip refresh failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Updates chip refresh failed: " + ex.Message);
             }
         }
 
@@ -7483,7 +7978,7 @@ namespace TrueforceForAll.Plugin
             try { updates = await _plugin.FindCommunityPresetUpdatesAsync(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Updates chip check failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Updates chip check failed: " + ex.Message);
                 _presetManager?.RefreshUpdatesChip(0);
                 return;
             }
@@ -7494,7 +7989,7 @@ namespace TrueforceForAll.Plugin
                 try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[Trueforce] Auto-apply update sweep failed: " + ex.Message);
+                    SimHub.Logging.Current.Info("[TF4ALL] Auto-apply update sweep failed: " + ex.Message);
                 }
                 autoApplied = before - (updates?.Count ?? 0);
             }
@@ -7528,7 +8023,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Apply update failed for " + o.Id + ": " + ex.Message);
+                        "[TF4ALL] Apply update failed for " + o.Id + ": " + ex.Message);
                 }
             }
             await RecomputeUpdatesChipAsync();
@@ -7537,9 +8032,10 @@ namespace TrueforceForAll.Plugin
                 string summary = $"Updates: {applied} applied, {skipped} skipped";
                 if (autoApplied > 0) summary += ", " + autoApplied + " auto-updated";
                 summary += ".";
-                MessageBox.Show(owner,
+                TrueforceDialog.Show(owner,
+                    "Community preset updates",
                     summary,
-                    "Community preset updates", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
             }
         }
 
@@ -7597,6 +8093,50 @@ namespace TrueforceForAll.Plugin
         //   * After "Maybe later" + WelcomeReshowDays elapsed
         // "Sign in now" or a second decline locks HasSeen=true and we
         // never show again.
+        // iRacing app.ini Trueforce notice. Re-fires each time iRacing becomes
+        // the active game until the user dismisses it for good. Trigger lives in
+        // RefreshFromPlugin (transition into "IRacing"); this is the show step.
+        private string _lastGameForIracingNotice;
+        private bool _iracingNoticeShowing;
+        private const string IracingTrueforceNoticeBody =
+            "Disable iRacing's built-in Trueforce to use the plugin with iRacing:\n\n" +
+            "1. Fully close iRacing.\n" +
+            "2. Open app.ini in your iRacing documents folder (usually Documents\\iRacing).\n" +
+            "3. Change loadTrueForceAPI=1 to loadTrueForceAPI=0, then save.\n" +
+            "4. Relaunch iRacing.\n\n" +
+            "Until then, iRacing keeps the wheel and the plugin's effects won't come through.";
+
+        private void MaybeShowIracingTrueforceNotice()
+        {
+            if (_plugin?.Settings == null) return;
+            if (_plugin.Settings.IRacingTrueforceNoticeDismissed) return;
+            if (!string.Equals(_plugin.ActiveGame, "IRacing", StringComparison.Ordinal)) return;
+            // SimHub caches this control; a dispatched action can fire after
+            // Unloaded, when GetWindow returns null and a modal would detach.
+            var owner = Window.GetWindow(this);
+            if (owner == null) return;
+            if (_iracingNoticeShowing) return;
+            _iracingNoticeShowing = true;
+            try
+            {
+                bool? r = TrueforceDialog.Show(owner,
+                    "Using Trueforce For All in iRacing",
+                    IracingTrueforceNoticeBody,
+                    DialogKind.Info,
+                    okLabel: "Got it, don't show again",
+                    cancelLabel: "Remind me later",
+                    goldOk: true);
+                // true = dismiss for good. false/null (Remind me later / X) leaves
+                // the latch off, so it re-appears on the next iRacing launch.
+                if (r == true)
+                {
+                    _plugin.Settings.IRacingTrueforceNoticeDismissed = true;
+                    _plugin.PersistSettings();
+                }
+            }
+            finally { _iracingNoticeShowing = false; }
+        }
+
         private void MaybeShowNetworkedWelcome()
         {
             if (_plugin?.Settings == null) return;
@@ -7644,11 +8184,10 @@ namespace TrueforceForAll.Plugin
             // cancelled sign-in doesn't silently flip Community on and
             // remove the welcome forever. authConfirmed is the explicit
             // gate; only on a true value do we treat the welcome as
-            // accepted. signInCancelled lets us nudge the user that
-            // their decline was registered (otherwise the dialog just
-            // vanishes and they get no feedback).
+            // accepted. A cancelled sign-in just falls through to the
+            // "Maybe later" decline path below; closing the dialog is
+            // self-evident, so we don't pop a separate confirmation.
             bool authConfirmed = false;
-            bool signInCancelled = false;
             if (ok == true && welcome.SignInRequested)
             {
                 if (_plugin.AuthIsSignedIn)
@@ -7672,10 +8211,6 @@ namespace TrueforceForAll.Plugin
                         BootstrapUsernameAfterSignIn();
                         authConfirmed = true;
                     }
-                    else
-                    {
-                        signInCancelled = true;
-                    }
                 }
             }
 
@@ -7691,9 +8226,8 @@ namespace TrueforceForAll.Plugin
                     _plugin.SetCommunityEnabled(true);
                     if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
                 }
-                if (AccountExpander != null) AccountExpander.IsExpanded = true;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 RefreshAccountRow();
                 return;
             }
@@ -7716,19 +8250,7 @@ namespace TrueforceForAll.Plugin
                     DateTime.UtcNow.AddDays(WelcomeReshowDays);
             }
             try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
-
-            // Sign-in cancel path: confirm the decline was registered
-            // and point at the Account row in case they change their
-            // mind. Without this, the cancellation feels like the app
-            // forgot what they clicked.
-            if (signInCancelled)
-            {
-                MessageBox.Show(owner,
-                    "We'll remind you about community features later. Sign in anytime from the Account tab.",
-                    "Community features",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the
@@ -8070,13 +8592,674 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin == null) return;
             int rpm = (int)Math.Round(e.NewValue);
             RevLimiterRedlineText.Text = rpm.ToString();
-            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
-            _plugin.ActiveRevLimiter.RedlineRpm = rpm >= 500 ? (int?)rpm : null;
-            // Clear legacy Threshold to default so the migrated preset
-            // never re-runs the lazy migration; the slider now expresses
-            // the truth directly.
-            _plugin.ActiveRevLimiter.Threshold = 0.85f;
-            Apply(EffectKind.RevLimiter);
+            var rl = _plugin.ActiveRevLimiter;
+            if (rl.EngageMode == RevLimiterEngageMode.Redline)
+            {
+                // Manual mode: a fixed absolute redline (global / per-car preset).
+                _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
+                rl.RedlineRpm = rpm >= 500 ? (int?)rpm : null;
+                Apply(EffectKind.RevLimiter);
+            }
+            else
+            {
+                // Auto mode: a PER-VARIANT redline. Dragging previews it live;
+                // "Save for this variant" commits it to the CarFacts layer. It's
+                // not a preset edit, so it doesn't touch the section draft/dirty.
+                _plugin.SetRedlinePreview(rpm);
+                UpdateRedlineSaveControls();
+            }
+        }
+
+        // Show the per-variant "Save / Revert" controls only while an unsaved
+        // Auto-mode redline draft is in flight.
+        private void UpdateRedlineSaveControls()
+        {
+            if (RevLimiterRedlineSaveRow == null) return;
+            bool auto = _plugin?.ActiveRevLimiter != null
+                && _plugin.ActiveRevLimiter.EngageMode != RevLimiterEngageMode.Redline;
+            bool show = auto && (_plugin?.HasRedlinePreview ?? false);
+            var want = show ? Visibility.Visible : Visibility.Collapsed;
+            if (RevLimiterRedlineSaveRow.Visibility != want)
+                RevLimiterRedlineSaveRow.Visibility = want;
+        }
+
+        private void SaveVariantRedline_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            int rpm = (int)Math.Round(RevLimiterRedlineSlider.Value);
+            int? saved = _plugin.SaveActiveVariantUserRedline(rpm);
+            if (saved == null)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Save redline",
+                    "Couldn't identify this car's engine variant yet. Drive for a moment so "
+                    + "the plugin sees the rev range, then save again.", DialogKind.Info);
+                return;
+            }
+            UpdateRedlineSaveControls();
+            RefreshFromPlugin();
+            // Offer to share the value with the community (rounded to 50 RPM).
+            string carId = _plugin.ActiveCarId;
+            if (!string.IsNullOrEmpty(carId))
+                MaybePromptToSubmitRedlineData(carId, saved.Value);
+        }
+
+        private void RevertVariantRedline_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.ClearRedlinePreview();
+            UpdateRedlineSaveControls();
+            RefreshFromPlugin();
+        }
+
+        // Inline (NON-MODAL) "confirm this community redline" prompt. When the
+        // community redline for the active variant is still UNCONFIRMED (a single
+        // submitter), the cascade already uses it, but we invite the user to either
+        // confirm it (become the second supporter, turning it into confirmed
+        // consensus) or correct it (just set their own redline above). Surfaced
+        // inline - never a modal off the 60fps tick - so it can't jump in
+        // unprompted on another tab. Replaced the old "adopt" banner: in Auto the
+        // community value is applied anyway, so the useful action is growing
+        // consensus, not copying the value into a local pin.
+        //
+        // The tick toggles it; the buttons do the work. Idempotent, so no
+        // once-per-arrival key is needed.
+        private string _pendingConfirmSig;   // community profile sig currently offered (for Dismiss)
+
+        private void UpdateRedlineConfirmPrompt()
+        {
+            if (RedlineConfirmBanner == null) return;
+            if (!ShouldOfferRedlineConfirm(out string commSig, out int communityRpm))
+            {
+                _pendingConfirmSig = null;
+                if (RedlineConfirmBanner.Visibility != Visibility.Collapsed)
+                    RedlineConfirmBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+            _pendingConfirmSig = commSig;
+            string carDisplay = _plugin.ActiveCarDisplayName ?? _plugin.ActiveCarId ?? "this car";
+            string text = $"One driver reported the redline for this variant of '{carDisplay}' as {communityRpm} RPM. "
+                        + "Confirm it to make it official, or set your own redline above to correct it.";
+            if (RedlineConfirmBannerText != null && RedlineConfirmBannerText.Text != text)
+                RedlineConfirmBannerText.Text = text;
+            if (RedlineConfirmBanner.Visibility != Visibility.Visible)
+                RedlineConfirmBanner.Visibility = Visibility.Visible;
+        }
+
+        // Offer the confirm prompt only in Auto mode, only when there's an
+        // UNCONFIRMED community redline (a single submitter) the user hasn't
+        // overridden with their own value, isn't their own submission this session,
+        // and hasn't already dismissed.
+        private bool ShouldOfferRedlineConfirm(out string commSig, out int communityRpm)
+        {
+            commSig = null; communityRpm = 0;
+            if (_plugin == null) return false;
+            var rl = _plugin.ActiveRevLimiter;
+            if (rl == null || rl.EngageMode == RevLimiterEngageMode.Redline) return false;  // Auto only
+            if (_plugin.Settings?.CommunityEnabled != true) return false;
+            var consensus = _plugin.GetActiveVariantCommunityConsensus();
+            if (consensus == null || consensus.Rpm < 500 || consensus.Rpm > 25000) return false;
+            // Only while UNCONFIRMED; a confirmed value needs no nudge. (Single
+            // source of truth for the confirmed threshold lives in the plugin.)
+            if (_plugin.IsActiveCommunityRedlineConfirmed()) return false;
+            // The user already has their own value -> they've decided; no nudge.
+            if (_plugin.GetActiveVariantPinnedRedline().HasValue) return false;
+            var userGears = _plugin.GetActiveVariantPerGearRedlines();
+            if (userGears != null && userGears.Count > 0) return false;
+            // Don't ask the user to confirm their OWN submission. The session latch
+            // covers the immediate post-share window (before the server reflects
+            // it); the durable dismissed/submitted sig (below) covers across
+            // restarts so a lone self-submission never re-nags next session.
+            if (WasRedlineSharedThisSession()) return false;
+            communityRpm = consensus.Rpm;
+            commSig = RedlineProfileSig(consensus.Rpm, consensus.Gears);
+            string dismissed = _plugin.GetActiveVariantDeclinedCommunityProfileSig();
+            if (dismissed != null && dismissed == commSig) return false;
+            return true;
+        }
+
+        // Stable signature of a redline profile: overall, then "gear:rpm" pairs
+        // sorted by gear. Server values are already canonical, so this is stable
+        // across calls and matches the dismissed-profile sig.
+        private static string RedlineProfileSig(int overall,
+            System.Collections.Generic.IReadOnlyDictionary<int, int> gears)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append(overall);
+            if (gears != null)
+            {
+                var keys = new System.Collections.Generic.List<int>(gears.Keys);
+                keys.Sort();
+                foreach (var g in keys)
+                    if (g >= 1) sb.Append(';').Append(g).Append(':').Append(gears[g]);
+            }
+            return sb.ToString();
+        }
+
+        private void RedlineConfirm_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            if (!_plugin.AuthIsSignedIn)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Confirm redline",
+                    "Sign in on the Account tab to confirm community values.", DialogKind.Info);
+                return;
+            }
+            var consensus = _plugin.GetActiveVariantCommunityConsensus();
+            if (consensus == null || consensus.Rpm < 500 || consensus.Rpm > 25000) return;
+            // Confirm = re-submit the SAME profile as your own, so you become a
+            // second distinct supporter and it becomes confirmed consensus.
+            var perGear = new System.Collections.Generic.List<GearRedline>();
+            if (consensus.Gears != null)
+                foreach (var kv in consensus.Gears)
+                    if (kv.Key >= 1 && kv.Key <= 16 && kv.Value >= 500 && kv.Value <= 25000)
+                        perGear.Add(new GearRedline { Gear = kv.Key, Rpm = kv.Value });
+            _plugin.SubmitRedlineToCommunity(game, carId, consensus.Rpm, perGear);
+            MarkRedlineSharedThisSession(game, carId);
+            MarkRedlineProfileHandled(consensus.Rpm, consensus.Gears);
+            RefreshActiveCommunityRedlineFromServer();
+            if (RedlineConfirmBanner != null) RedlineConfirmBanner.Visibility = Visibility.Collapsed;
+            _pendingConfirmSig = null;
+            // Neutral copy: the submit is fire-and-forget, so don't assert a server
+            // outcome. It becomes confirmed once the server records your agreement.
+            TrueforceDialog.Show(Window.GetWindow(this), "Thanks",
+                "Thanks for confirming. It counts toward the community value once the server records it.", DialogKind.Info);
+        }
+
+        private void RedlineConfirmDismiss_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (!string.IsNullOrEmpty(_pendingConfirmSig))
+                _plugin.DeclineCommunityRedlineProfileForActiveVariant(_pendingConfirmSig);
+            _pendingConfirmSig = null;
+            if (RedlineConfirmBanner != null) RedlineConfirmBanner.Visibility = Visibility.Collapsed;
+        }
+
+        // ---- Car Facts summary panel (active card) ----
+
+        // Render the at-a-glance facts. Cheap visibility toggle always; the
+        // fuller summary only while the expander is open. Skips the name /
+        // redline boxes while they're focused so it doesn't clobber an edit.
+        private void RefreshCarFactsPanel()
+        {
+            if (CarFactsExpander == null || _plugin == null) return;
+            bool hasCar = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+            CarFactsExpander.Visibility = hasCar ? Visibility.Visible : Visibility.Collapsed;
+            if (!hasCar || !CarFactsExpander.IsExpanded) return;
+
+            var s = _plugin.GetActiveCarFactsSummary();
+            if (!s.HasCar) return;
+
+            string carNameText = s.CarName ?? "";
+            if (CarFactsNameBox != null && !CarFactsNameBox.IsKeyboardFocusWithin
+                && carNameText != _lastCarFactsNameText)
+            {
+                _lastCarFactsNameText = carNameText;
+                CarFactsNameBox.Text = carNameText;
+            }
+            // Recompute the Save button here too: setting the box above to an
+            // unchanged string raises no TextChanged, so a just-saved name would
+            // otherwise leave the button showing.
+            UpdateCarFactsNameSaveVisibility();
+            if (CarFactsCommunityNameText != null)
+            {
+                bool show = !string.IsNullOrEmpty(s.CommunityCarName);
+                CarFactsCommunityNameText.Text = show ? "Community name: " + s.CommunityCarName : "";
+                CarFactsCommunityNameText.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            // The engine TYPE is the inline CarFactsEngineCombo (populated by
+            // RebuildEngineLayoutDropdown). Make sure it's filled the first time
+            // the panel opens, then show a meta line with the rev ceiling that
+            // distinguishes tunes/swaps and where the fact came from.
+            if (CarFactsEngineCombo != null && CarFactsEngineCombo.ItemsSource == null)
+                RebuildEngineLayoutDropdown();
+            if (CarFactsEngineMetaText != null)
+            {
+                string maxPart = s.MaxRpm.HasValue ? s.MaxRpm.Value + " max RPM" : "";
+                string meta;
+                if (s.EngineTypeIsUserOverride)
+                {
+                    // The combo already shows the type the user chose; the meta
+                    // just carries the rev ceiling and "you set this".
+                    meta = string.IsNullOrEmpty(maxPart) ? "You set this" : maxPart + "  ·  You set this";
+                }
+                else
+                {
+                    // Picker shows "Auto", so spell out what auto-detection
+                    // resolved to and where it came from.
+                    string head;
+                    if (string.IsNullOrEmpty(s.EngineTypeDisplay)) head = "Detecting engine…";
+                    else if (s.EngineTypeProvenance == "community") head = "Auto-detected " + s.EngineTypeDisplay + " (from the community)";
+                    else if (s.EngineTypeProvenance == "game")      head = "Auto-detected " + s.EngineTypeDisplay + " (from the game)";
+                    else                                            head = "Auto-detected " + s.EngineTypeDisplay;
+                    meta = string.IsNullOrEmpty(maxPart) ? head : head + "  ·  " + maxPart;
+                }
+                CarFactsEngineMetaText.Text = meta;
+                CarFactsEngineMetaText.Visibility = string.IsNullOrEmpty(meta)
+                    ? Visibility.Collapsed : Visibility.Visible;
+            }
+
+            // Prefer the user's EXACT pinned value over the resolver's
+            // EffectiveRedlineRpm, which only recomputes on a telemetry frame
+            // (so right after Set, while paused, it would show the stale value).
+            int? shownRedline = s.UserRedline ?? s.EffectiveRedline;
+            string redlineText = shownRedline?.ToString() ?? "";
+            if (CarFactsRedlineBox != null && !CarFactsRedlineBox.IsKeyboardFocusWithin
+                && redlineText != _lastCarFactsRedlineText)
+            {
+                _lastCarFactsRedlineText = redlineText;
+                CarFactsRedlineBox.Text = redlineText;
+            }
+            if (CarFactsRedlineSourceText != null)
+                CarFactsRedlineSourceText.Text = RedlineSourceFriendly(s.RedlineSource);
+
+            // Share appears once the user has pinned their own value and the
+            // community is enabled (sign-in is handled on click). When
+            // always-share is on, Set pushes the value itself, so the manual
+            // Share button is redundant - hide it.
+            bool communityOn = _plugin.Settings?.CommunityEnabled == true;
+            bool autoSubmit  = _plugin.Settings?.AutoSubmitCarFacts == true;
+            if (CarFactsShareBtn != null)
+                CarFactsShareBtn.Visibility =
+                    (s.HasUserRedline && communityOn && !autoSubmit) ? Visibility.Visible : Visibility.Collapsed;
+
+            // Surface that we have nothing from the community yet. When the user
+            // has their own value, gently invite a share (the button is right
+            // there). When they don't, keep it purely factual: no "set one then
+            // share" pressure that implies sharing is required. Opted-in only.
+            if (CarFactsNoCommunityNudge != null)
+            {
+                bool showNudge = communityOn && !s.CommunityRedline.HasValue;
+                if (showNudge)
+                {
+                    if (WasRedlineSharedThisSession())
+                        // They just submitted: it isn't consensus yet (support
+                        // floor), so the community line is legitimately empty.
+                        // Say so plainly rather than re-nagging them to share.
+                        CarFactsNoCommunityNudge.Text =
+                            "Thanks for sharing. Your redline will show as a community value once other drivers confirm it.";
+                    else
+                        CarFactsNoCommunityNudge.Text = s.HasUserRedline
+                            ? "No community redline for this car yet. Share yours to help other drivers."
+                            : "No community redline exists for this car yet.";
+                }
+                CarFactsNoCommunityNudge.Visibility = showNudge ? Visibility.Visible : Visibility.Collapsed;
+            }
+            // (The old "Use community value" link was removed with adopt: in Auto
+            // the community value is applied directly, and confirming/correcting an
+            // unconfirmed value is handled by the inline Confirm prompt + Set.)
+        }
+
+        // Provenance phrased so it reads as "where this value came from", not as
+        // an instruction (the old bare "Community" read like "set to community").
+        private static string RedlineSourceFriendly(string src)
+        {
+            switch (src)
+            {
+                case "user":                  return "(your value)";
+                case "community":             return "(from the community)";
+                case "community_unconfirmed": return "(from the community, unconfirmed)";
+                case "game":                  return "(from the game)";
+                case "estimated":             return "(estimated guess)";
+                case "derived":               return "(from your % setting)";
+                default:                      return "";
+            }
+        }
+
+        // The Car facts "Save" button next to the name shows only when the box
+        // holds a valid name that differs from the saved one (_lastCarFactsNameText,
+        // set by RefreshCarFactsPanel). Driven from the TextChanged event AND from
+        // the refresh path (a programmatic set to an unchanged string raises no
+        // TextChanged, so the refresh must recompute too, e.g. right after a save).
+        private void CarFactsNameBox_TextChanged(object sender, TextChangedEventArgs e)
+            => UpdateCarFactsNameSaveVisibility();
+
+        private void UpdateCarFactsNameSaveVisibility()
+        {
+            if (CarFactsNameSaveBtn == null || CarFactsNameBox == null) return;
+            string cur   = (CarFactsNameBox.Text ?? "").Trim();
+            string saved = (_lastCarFactsNameText ?? "").Trim();
+            bool changed = cur.Length >= 2 && !string.Equals(cur, saved, StringComparison.Ordinal);
+            var want = changed ? Visibility.Visible : Visibility.Collapsed;
+            if (CarFactsNameSaveBtn.Visibility != want) CarFactsNameSaveBtn.Visibility = want;
+        }
+
+        private void CarFactsNameSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || CarFactsNameBox == null) return;
+            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            string name = (CarFactsNameBox.Text ?? "").Trim();
+            if (name.Length < 2)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Car name",
+                    "Enter a name of at least 2 characters.", DialogKind.Info);
+                return;
+            }
+            // Same unified official-name flow as the header / Preset Manager
+            // buttons: local write + a gated confirm/correct community share
+            // (no auto-submit). Keeps every name-set entry point consistent.
+            CarNameShareFlow.SetNameAndMaybeShare(_plugin, game, carId, name,
+                Window.GetWindow(this));
+            RefreshFromPlugin();
+        }
+
+        // Enter in the redline box applies it, same as clicking Set.
+        private void CarFactsRedline_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) { e.Handled = true; CarFactsRedlineSet_Click(sender, null); }
+        }
+
+        private void CarFactsRedlineSet_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || CarFactsRedlineBox == null) return;
+            if (!int.TryParse((CarFactsRedlineBox.Text ?? "").Trim(), out int rpm)
+                || rpm < 500 || rpm > 25000)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Redline",
+                    "Enter a redline between 500 and 25000 RPM.", DialogKind.Info);
+                return;
+            }
+            int? saved = _plugin.SaveActiveVariantUserRedline(rpm);
+            if (saved == null)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Redline",
+                    "Couldn't identify this car's engine variant yet. Drive for a moment so the "
+                    + "plugin sees the rev range, then set it again.", DialogKind.Info);
+                return;
+            }
+            // With always-share on, Set pushes to the community itself (the
+            // manual Share button is hidden in that mode) so the CarFacts box
+            // matches the Rev Limiter save. MaybePromptToSubmitRedlineData
+            // submits silently when AutoSubmitCarFacts is set, and self-gates on
+            // CommunityEnabled / signed-in / Forza-only inside. Without it Set
+            // just saves and the visible Share button is how the user pushes.
+            if (_plugin.Settings?.AutoSubmitCarFacts == true)
+                MaybePromptToSubmitRedlineData(_plugin.ActiveCarId, saved.Value);
+            RefreshFromPlugin();
+        }
+
+        private void CarFactsShareRedline_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            // Per-gear overrides, snapped to 50 RPM so near-identical profiles
+            // cluster in consensus.
+            var src = _plugin.GetActiveVariantPerGearRedlines();
+            var perGear = new System.Collections.Generic.List<GearRedline>();
+            if (src != null)
+                foreach (var g in src)
+                    if (g != null && g.Gear >= 1 && g.Gear <= 16 && g.Rpm >= 500 && g.Rpm <= 25000)
+                        perGear.Add(new GearRedline { Gear = g.Gear, Rpm = (int)Math.Round(g.Rpm / 50.0) * 50 });
+
+            // The overall (gear-0) value to submit: a genuine user default, never
+            // the 0.85 guess or community's own. If the user only set per-gear
+            // values (no default), use the highest as the overall redline.
+            int? rl = _plugin.GetActiveVariantUserRedline();
+            if (!rl.HasValue && perGear.Count > 0)
+            {
+                int hi = 0;
+                foreach (var g in perGear) if (g.Rpm > hi) hi = g.Rpm;
+                rl = hi;
+            }
+            if (!rl.HasValue || rl.Value < 500 || rl.Value > 25000) return;
+            int rpm = (int)Math.Round(rl.Value / 50.0) * 50;
+
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Share redline",
+                    "Turn on 'Enable community features (online)' first to share your redline with the community.",
+                    DialogKind.Info);
+                return;
+            }
+            if (!_plugin.AuthIsSignedIn)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Share redline",
+                    "Sign in on the Account tab to share your redline with the community.",
+                    DialogKind.Info);
+                return;
+            }
+            string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
+            string body = perGear.Count > 0
+                ? $"Share your redline of {rpm} RPM plus {perGear.Count} per-gear override{(perGear.Count == 1 ? "" : "s")} for '{carDisplay}' (this engine variant) with the community?"
+                : $"Share your redline of {rpm} RPM for '{carDisplay}' (this engine variant) with the community?";
+            if (TrueforceDialog.Show(Window.GetWindow(this), "Share redline", body, DialogKind.Confirm) != true)
+                return;
+            _plugin.SubmitRedlineToCommunity(game, carId, rpm, perGear);
+            // Don't fake a local consensus: one submission isn't "the community".
+            // Re-fetch the real server consensus, which stays unconfirmed (not
+            // shown as community) until other drivers confirm the same value.
+            MarkRedlineSharedThisSession(game, carId);
+            MarkRedlineProfileHandled(rpm, ToGearDict(perGear));
+            RefreshActiveCommunityRedlineFromServer();
+            TrueforceDialog.Show(Window.GetWindow(this), "Shared",
+                "Thanks. Your redline was submitted to the community. It'll show as a community value once other drivers confirm it.",
+                DialogKind.Info);
+        }
+
+        // Active variant key (game/carId/sig) for the shared-this-session latch.
+        private string ActiveRedlineShareKey()
+        {
+            if (_plugin == null) return null;
+            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
+            return game + "/" + carId + "/" + (_plugin.ComputeActiveCarVariantSignatureForActive() ?? "");
+        }
+
+        private void MarkRedlineSharedThisSession(string game, string carId)
+        {
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            _redlineSharedThisSession.Add(game + "/" + carId + "/"
+                + (_plugin?.ComputeActiveCarVariantSignatureForActive() ?? ""));
+        }
+
+        private bool WasRedlineSharedThisSession()
+        {
+            string k = ActiveRedlineShareKey();
+            return k != null && _redlineSharedThisSession.Contains(k);
+        }
+
+        private static System.Collections.Generic.Dictionary<int, int> ToGearDict(
+            System.Collections.Generic.IEnumerable<GearRedline> perGear)
+        {
+            var d = new System.Collections.Generic.Dictionary<int, int>();
+            if (perGear != null)
+                foreach (var g in perGear)
+                    if (g != null && g.Gear >= 1) d[g.Gear] = g.Rpm;
+            return d;
+        }
+
+        // Durably record that the user has acted on (submitted or confirmed) this
+        // redline profile, so the Confirm prompt is never re-offered for it -
+        // including across restarts (the session latch only covers this session).
+        // Reuses the dismissed-profile field; the effect is identical (this profile
+        // is handled, don't nudge about it).
+        private void MarkRedlineProfileHandled(int overallRpm,
+            System.Collections.Generic.IReadOnlyDictionary<int, int> gears)
+        {
+            if (_plugin == null) return;
+            _plugin.DeclineCommunityRedlineProfileForActiveVariant(RedlineProfileSig(overallRpm, gears));
+        }
+
+        // Re-pull the real community redline consensus from the server and push it
+        // into the plugin (replacing the old optimistic local-injection on share).
+        // The truth is what the server returns; with the support floor, the user's
+        // own lone submission won't masquerade as "the community".
+        private void RefreshActiveCommunityRedlineFromServer()
+        {
+            if (_plugin == null) return;
+            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            string capturedGame = game, capturedCar = carId;
+            string capturedSig = _plugin.ComputeActiveCarVariantSignatureForActive() ?? "";
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                RedlineConsensus result = null;
+                try { result = _plugin.FetchRedlineConsensus(capturedGame, capturedCar); }
+                catch { /* swallowed; leave the readout as-is */ }
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (_plugin == null) return;
+                    if (_plugin.ActiveGame != capturedGame || _plugin.ActiveCarId != capturedCar) return;
+                    _engineRedlineCache = result;
+                    _plugin.NotifyRedlineConsensus(capturedGame, capturedCar, capturedSig, result);
+                    RefreshCarFactsPanel();
+                }));
+            });
+        }
+
+        // ---- Per-gear redline editor (shared by the Car Facts panel + the Rev
+        // Limiter section; both show the same gears, kept in sync) ----
+
+        private void RebuildPerGearEditors()
+        {
+            if (_plugin == null) return;
+            bool show = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+            var list = show ? _plugin.GetActiveVariantPerGearRedlines() : null;
+            BuildPerGearRows(CarFactsPerGearRows, CarFactsPerGearExpander, list, show);
+            BuildPerGearRows(RevLimiterPerGearRows, RevLimiterPerGearExpander, list, show);
+        }
+
+        private void BuildPerGearRows(StackPanel container, Expander expander,
+            IReadOnlyList<GearRedline> list, bool show)
+        {
+            if (expander != null) expander.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (container == null) return;
+            container.Children.Clear();
+            if (!show || list == null) return;
+            foreach (var gr in list)
+            {
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var lbl = new TextBlock { Text = "Gear " + gr.Gear, FontSize = 12, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(lbl, 0);
+                var box = new TextBox { Text = gr.Rpm.ToString(), VerticalAlignment = VerticalAlignment.Center, Tag = gr.Gear };
+                box.LostFocus += PerGearRpm_Commit;
+                box.KeyDown += PerGearRpm_KeyDown;
+                Grid.SetColumn(box, 1);
+                var rpmLbl = new TextBlock { Text = "RPM", FontSize = 11, Opacity = 0.6, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
+                Grid.SetColumn(rpmLbl, 2);
+                var rm = new Button { Content = "Remove", Tag = gr.Gear, Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(8, 1, 8, 1), VerticalAlignment = VerticalAlignment.Center };
+                rm.Click += PerGearRemove_Click;
+                Grid.SetColumn(rm, 3);
+                row.Children.Add(lbl); row.Children.Add(box); row.Children.Add(rpmLbl); row.Children.Add(rm);
+                container.Children.Add(row);
+            }
+        }
+
+        private void PerGearRpm_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            if (!(sender is TextBox tb) || !(tb.Tag is int gear)) return;
+            if (int.TryParse((tb.Text ?? "").Trim(), out int rpm) && rpm >= 500 && rpm <= 25000)
+            {
+                _plugin.SetActiveVariantPerGearRedline(gear, rpm);
+                // Mirror the committed value into the sibling panel's matching
+                // box WITHOUT a full rebuild (a rebuild clears all rows and would
+                // destroy the Tab target mid-transition).
+                MirrorPerGearBox(gear, rpm.ToString());
+            }
+            else
+            {
+                // Invalid / out of range: revert to the stored value. No modal
+                // here - this fires on LostFocus, including during a Tab.
+                int stored = 0;
+                var list = _plugin.GetActiveVariantPerGearRedlines();
+                if (list != null)
+                    foreach (var gr in list) if (gr.Gear == gear) { stored = gr.Rpm; break; }
+                MirrorPerGearBox(gear, stored > 0 ? stored.ToString() : "");
+            }
+        }
+
+        // Set the rpm box for a given gear in BOTH per-gear panels (kept in sync)
+        // without rebuilding rows, so focus / Tab order survives an edit.
+        private void MirrorPerGearBox(int gear, string text)
+        {
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                SetPerGearBoxText(CarFactsPerGearRows, gear, text);
+                SetPerGearBoxText(RevLimiterPerGearRows, gear, text);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        private static void SetPerGearBoxText(StackPanel container, int gear, string text)
+        {
+            if (container == null) return;
+            foreach (var child in container.Children)
+                if (child is Grid g)
+                    foreach (var c in g.Children)
+                        if (c is TextBox tb && tb.Tag is int tg && tg == gear) { tb.Text = text; return; }
+        }
+
+        private void PerGearRpm_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) PerGearRpm_Commit(sender, null);
+        }
+
+        private void PerGearRemove_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (sender is Button b && b.Tag is int gear)
+            {
+                _plugin.RemoveActiveVariantPerGearRedline(gear);
+                RefreshFromPlugin();
+            }
+        }
+
+        private void CarFactsAddGear_Click(object sender, RoutedEventArgs e) => AddGearCommon();
+        private void RevLimiterAddGear_Click(object sender, RoutedEventArgs e) => AddGearCommon();
+        private void AddGearCommon()
+        {
+            if (_plugin == null) return;
+            int g = _plugin.AddActiveVariantGear();
+            if (g == 0)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Add gear",
+                    "Couldn't add a gear yet. Drive for a moment so the plugin identifies this car's "
+                    + "engine variant (or you're already at the 16-gear limit).", DialogKind.Info);
+                return;
+            }
+            RefreshFromPlugin();
+        }
+
+        // Manual "refresh community facts now" for the active car. Bypasses the
+        // 7-day TTL. Guides the user when the relevant toggles are off rather than
+        // silently doing nothing.
+        private void CarFactsRefreshCommunity_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            if (_plugin.Settings?.UseCommunityCarFacts != true)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Refresh community facts",
+                    "Turn on 'Use community car facts' to use community data for your cars.", DialogKind.Info);
+                return;
+            }
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Refresh community facts",
+                    "Turn on 'Enable community features (online)' to refresh from the server. Your cached values keep working offline.",
+                    DialogKind.Info);
+                return;
+            }
+            MaybeRefreshEngineCommunityContext(game, carId, force: true);
+            RefreshFromPlugin();
+        }
+
+        private void CarFactsManageVariants_Click(object sender, RoutedEventArgs e)
+        {
+            EngineVariantManage_Click(sender, e);   // reuse the existing Manage Variants modal
+            RefreshFromPlugin();
         }
 
         // Refresh the "redline is a guess" badge from RevLimiter.IsRedlineGuessed.
@@ -8084,6 +9267,56 @@ namespace TrueforceForAll.Plugin
         // the cascade re-resolves each frame. Visible only when the effect
         // is enabled, in Auto mode, and the cascade fell to the default
         // 0.85 × MaxRpm branch.
+        // Live-update the redline slider's range + shown value from the
+        // resolver, without a full RefreshFromPlugin. Lets MaxRpm changes
+        // (tune upgrades) and variant swaps reflect immediately. Cheap: the
+        // slider is only touched when the resolved value actually changes.
+        private void RefreshRedlineLive()
+        {
+            if (_plugin == null || RevLimiterRedlineSlider == null) return;
+            var rl = _plugin.ActiveRevLimiter;
+            if (rl == null) return;
+            // Never fight an in-progress drag / keyboard edit.
+            if (RevLimiterRedlineSlider.IsMouseCaptureWithin
+                || RevLimiterRedlineSlider.IsKeyboardFocusWithin) return;
+
+            double observedMax = _plugin.EnginePulse?.ObservedMaxRpm ?? 0;
+            double sliderMax = observedMax >= 1000 ? observedMax : 15000;
+            if (Math.Abs(RevLimiterRedlineSlider.Maximum - sliderMax) > 0.5)
+                RevLimiterRedlineSlider.Maximum = sliderMax;
+
+            bool manualMode = rl.EngageMode == RevLimiterEngageMode.Redline;
+            int? preview = _plugin.RedlinePreviewRpm;
+            int rpmValue;
+            if (preview.HasValue && preview.Value >= 500)
+                rpmValue = preview.Value;                      // hold the live draft, even if telemetry pauses
+            else if (manualMode && rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
+                rpmValue = rl.RedlineRpm.Value;
+            else
+            {
+                // Prefer the exact pinned value so a just-saved redline shows
+                // precisely even while paused (EffectiveRedlineRpm lags a frame).
+                int? pin = _plugin.GetActiveVariantUserRedline();
+                if (pin.HasValue && pin.Value >= 500) rpmValue = pin.Value;
+                else
+                {
+                    int? eff = _plugin.RevLimiter?.EffectiveRedlineRpm;
+                    if (!eff.HasValue || eff.Value < 500) return;  // nothing resolved yet
+                    rpmValue = eff.Value;
+                }
+            }
+
+            if ((int)Math.Round(RevLimiterRedlineSlider.Value) == rpmValue) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                RevLimiterRedlineSlider.Value = rpmValue;
+                RevLimiterRedlineText.Text    = rpmValue.ToString();
+            }
+            finally { _suppressEvents = prev; }
+        }
+
         private void RefreshRedlineGuessBadge()
         {
             if (RedlineGuessBadge == null) return;
@@ -8481,7 +9714,7 @@ namespace TrueforceForAll.Plugin
             }
             _plugin.Settings.SharingAuthor = newAuthor;
             try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
 
             // Blank-to-set transition: offer to backfill existing local
             // presets the user authored before setting the name. Stays
@@ -8491,9 +9724,9 @@ namespace TrueforceForAll.Plugin
             {
                 var msg = $"Stamp \"{newAuthor}\" on the presets you've already saved? "
                         + "This updates presets that don't have an author yet (your own work) and leaves community-pack presets alone.";
-                var resp = MessageBox.Show(Window.GetWindow(this), msg, "Trueforce For All",
-                    MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (resp == MessageBoxResult.Yes)
+                var resp = TrueforceDialog.Show(Window.GetWindow(this), "Trueforce For All", msg,
+                    DialogKind.Confirm);
+                if (resp == true)
                 {
                     int n = _plugin.BackfillAuthorOnLocalPresets(newAuthor);
                     if (AuthorNameStatus != null)
@@ -8521,13 +9754,23 @@ namespace TrueforceForAll.Plugin
             "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
             "WELCOME        Reset the networked-welcome modal seen state and re-trigger it now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt all cleared).\n" +
+            "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +
+            "MOTDROLL       Preview the MOTD strip on a RANDOM upcoming day (shows which day in the strip + status). Run again to re-roll. Dismissals + nag cooldown bypassed.\n" +
+            "MOTDDATE<MMDDYYYY>  Preview the MOTD strip as if it were that date, e.g. MOTDDATE12252026, to see upcoming messages before they trigger.\n" +
+            "MOTDLIVE       Leave MOTD preview and return to today's real messages.\n" +
+            "CACHEFACTS     Clear the community car-facts cache (names/engine types/redlines); it refetches per car.\n" +
+            "CACHEBROWSE    Clear the community preset browse cache (the browse/search result lists).\n" +
+            "CLEARCACHES    Clear ALL re-fetchable network caches at once: MOTD (+dismissals), community car-facts, browse lists. Leaves your car corrections, local detections, and sign-in alone.\n" +
+            "STALECACHES    Mark all re-fetchable network caches stale (MOTD, community facts, browse lists) so they refetch fresh, WITHOUT wiping the offline copies. Soft version of CLEARCACHES.\n" +
             "PREVIEW        Render the release-notes markdown on your clipboard exactly as the in-app 'What's new' will (copy the GitHub notes first, then type PREVIEW).\n" +
             "UPDATE         Simulate an available update (banner + update dialog).\n" +
             "CLOSESIM       Pick an installer and run it with /CloseSimHub=1 to test the silent SimHub auto-close. Closes SimHub.\n" +
             "UPDATEDIRTY    Simulate an update with unsaved changes, then run a locally-picked installer instead of downloading (tests the pre-update 'unsaved changes' warning and the silent SimHub close). Closes SimHub.\n" +
+            "UPDATEPOLL     Simulate a release shipping AFTER launch: arms a fake newer release that only a BACKGROUND re-check applies, on a fast cadence (every 5s; UPDATEPOLL<n> for n seconds), so the 'Update to vX.Y.Z' banner appears on its own within seconds, no restart. Tests the periodic re-check end-to-end. Run again to stop + clear. Toggle.\n" +
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
+            "NOLOCK         Issue #13 test: while the game is paused, fully leave Trueforce mode so the wheel reverts to the game's native FFB / auto-center instead of holding a force (stops the G923/FH6 full-lock). Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
             "HOMEBOX        Toggle the TF4ALL master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
@@ -8535,7 +9778,7 @@ namespace TrueforceForAll.Plugin
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "MAIRA / TEST   Unlock the rim rev/shift-LED + MAIRA section (iRacing profile).\n" +
+            "MAIRA / TEST   Unlock the iRacing rev/shift-LED section (in Settings).\n" +
             "F8SWEEP / F8   Experimental: sweep the rev LEDs via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -8546,17 +9789,169 @@ namespace TrueforceForAll.Plugin
 
         private void CommitAccessCode()
         {
+            if (AccessCodeBox == null) return;
+            ExecuteAccessCode((AccessCodeBox.Text ?? string.Empty).Trim());
+        }
+
+        // Open the scrollable test-code browser. It carries its own input box so
+        // codes can be run without closing it; each run reuses ExecuteAccessCode
+        // and surfaces the resulting status back into the window.
+        private void ShowTestCodesWindow()
+        {
+            var win = new TestCodesWindow(TestCodeCatalog, c =>
+            {
+                if (string.IsNullOrWhiteSpace(c)) return null;
+                string code = c.Trim();
+                // Don't recurse into another codes window from inside this one.
+                if (code.Equals("HELP", StringComparison.OrdinalIgnoreCase)
+                    || code.Equals("CODES", StringComparison.OrdinalIgnoreCase) || code == "?")
+                    return "Already showing the code list.";
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = string.Empty;
+                ExecuteAccessCode(code);
+                return AccessCodeStatus?.Text;
+            })
+            { Owner = Window.GetWindow(this) };
+            win.ShowDialog();
+        }
+
+        // Validate a calendar date from MOTDDATE's MMDDYYYY digits.
+        private static bool TryBuildDate(int year, int month, int day, out DateTime date)
+        {
+            date = default(DateTime);
+            if (year < 1 || year > 9999 || month < 1 || month > 12) return false;
+            if (day < 1 || day > DateTime.DaysInMonth(year, month)) return false;
+            date = new DateTime(year, month, day);
+            return true;
+        }
+
+        private void ExecuteAccessCode(string code)
+        {
             if (_suppressEvents || _plugin?.Settings == null || AccessCodeBox == null) return;
-            string code = (AccessCodeBox.Text ?? string.Empty).Trim();
-            // Self-documenting: list every test code and what it does.
+            if (string.IsNullOrEmpty(code)) return;
+            // Self-documenting: open the scrollable test-code browser.
             if (code.Equals("HELP", StringComparison.OrdinalIgnoreCase)
                 || code.Equals("CODES", StringComparison.OrdinalIgnoreCase)
                 || code == "?")
             {
                 AccessCodeBox.Text = string.Empty;
-                MessageBox.Show(Window.GetWindow(this), TestCodeCatalog,
-                    "Trueforce For All: test codes", MessageBoxButton.OK, MessageBoxImage.Information);
-                if (AccessCodeStatus != null) AccessCodeStatus.Text = "Showed the test-code list.";
+                ShowTestCodesWindow();
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = "Opened the test-code list.";
+                return;
+            }
+            // Dev-only: flush the Message-of-the-day cache + every dismissal so a
+            // fresh fetch repopulates and previously-dismissed (or edited)
+            // messages reappear. Bypasses the ~6h cache TTL for testing.
+            if (code.Equals("MOTDFLUSH", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.MotdCache = new MotdCacheData();
+                _plugin.Settings.MotdDismissedIds?.Clear();
+                _plugin.Settings.MotdPoolDismissedOn?.Clear();
+                _plugin.Settings.MotdRecurringDismissedOcc?.Clear();
+                _plugin.SaveMotdState();
+                AccessCodeBox.Text = string.Empty;
+                _motdStrip?.Refresh(forceFetch: true);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "MOTD cache + dismissals cleared; refetching.";
+                return;
+            }
+            // Dev-only: preview the MOTD strip as if it were a random upcoming day
+            // (date-stable rolls shift to it; dismissals + nag cooldown bypassed).
+            // Lets you eyeball pool variety + upcoming recurring messages on demand.
+            if (code.Equals("MOTDROLL", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string summary = _motdStrip?.SimulateRandomDay();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = summary != null
+                        ? "MOTD preview, random day " + summary + ". MOTDROLL again to re-roll, MOTDLIVE to exit."
+                        : "MOTD strip unavailable.";
+                return;
+            }
+            // Dev-only: preview the MOTD strip as if it were a specific date, entered
+            // as MMDDYYYY right after the code (e.g. MOTDDATE12252026), to check
+            // upcoming recurring messages before they trigger.
+            if (code.StartsWith("MOTDDATE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string digits = code.Substring("MOTDDATE".Length).Trim();
+                DateTime simDate = default(DateTime);
+                bool parsedDate = digits.Length == 8
+                    && int.TryParse(digits.Substring(0, 2), out int mm)
+                    && int.TryParse(digits.Substring(2, 2), out int dd)
+                    && int.TryParse(digits.Substring(4, 4), out int yyyy)
+                    && TryBuildDate(yyyy, mm, dd, out simDate);
+                if (parsedDate)
+                {
+                    string summary = _motdStrip?.SimulateDate(simDate);
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "MOTD preview " + summary + ". MOTDLIVE to exit.";
+                }
+                else if (AccessCodeStatus != null)
+                {
+                    AccessCodeStatus.Text = "Enter the date as MMDDYYYY, e.g. MOTDDATE12252026.";
+                }
+                return;
+            }
+            // Dev-only: leave MOTD preview and return to today's real messages.
+            if (code.Equals("MOTDLIVE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                _motdStrip?.ClearSimulation();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "MOTD preview off; showing today's messages.";
+                return;
+            }
+            // Dev-only: clear the community car-facts cache (names/engine types/
+            // redlines). Refetches per car on the next car open.
+            if (code.Equals("CACHEFACTS", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.CommunityFactCache?.Clear();
+                _engineCommunityFetchedKey = null;   // active car re-evaluates next tick
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Community car-facts cache cleared; it refetches per car.";
+                return;
+            }
+            // Dev-only: clear the community preset browse cache (result lists).
+            if (code.Equals("CACHEBROWSE", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.ClearBrowseCache();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Community preset browse cache cleared.";
+                return;
+            }
+            // Dev-only: clear every re-fetchable NETWORK cache at once. Excludes
+            // the destructive / local ones on purpose (car corrections, local
+            // cylinder detections, sign-in).
+            if (code.Equals("CLEARCACHES", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.MotdCache = new MotdCacheData();
+                _plugin.Settings.MotdDismissedIds?.Clear();
+                _plugin.Settings.MotdPoolDismissedOn?.Clear();
+                _plugin.Settings.MotdRecurringDismissedOcc?.Clear();
+                _plugin.Settings.CommunityFactCache?.Clear();
+                _engineCommunityFetchedKey = null;
+                _plugin.ClearBrowseCache();
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                _motdStrip?.Refresh(forceFetch: true);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Cleared all network caches (MOTD, community facts, browse lists).";
+                return;
+            }
+            // Dev-only: mark every re-fetchable network cache stale WITHOUT wiping
+            // it, so the next access refetches fresh while offline copies still
+            // apply. Soft counterpart to CLEARCACHES.
+            if (code.Equals("STALECACHES", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.MarkAllNetworkCachesStale();
+                _engineCommunityFetchedKey = null;   // active car re-evaluates next tick
+                AccessCodeBox.Text = string.Empty;
+                _motdStrip?.Refresh(forceFetch: true);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "All network caches marked stale; refetching fresh (offline copies kept).";
                 return;
             }
             // Dev-only: launch a chosen installer with /CloseSimHub=1 so the
@@ -8585,8 +9980,9 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show(Window.GetWindow(this), "Couldn't launch: " + ex.Message,
-                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                        TrueforceDialog.Show(Window.GetWindow(this), "Trueforce For All",
+                            "Couldn't launch: " + ex.Message,
+                            DialogKind.Error);
                     }
                 }
                 return;
@@ -8861,8 +10257,9 @@ namespace TrueforceForAll.Plugin
                     int n = _plugin.DevNormalizeForzaCarIds(out var details);
                     if (n > 0) _presetManager?.RefreshLists();
                     if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
-                    MessageBox.Show(Window.GetWindow(this), details,
-                        "Trueforce For All: normalize Forza car ids", MessageBoxButton.OK, MessageBoxImage.Information);
+                    TrueforceDialog.Show(Window.GetWindow(this),
+                        "Trueforce For All: normalize Forza car ids", details,
+                        DialogKind.Info);
                 }
                 return;
             }
@@ -8879,8 +10276,9 @@ namespace TrueforceForAll.Plugin
                     if (n > 0) _presetManager?.RefreshLists();
                     if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
                     if (n > 0)
-                        MessageBox.Show(Window.GetWindow(this), details,
-                            "Trueforce For All: consolidated car defaults", MessageBoxButton.OK, MessageBoxImage.Information);
+                        TrueforceDialog.Show(Window.GetWindow(this),
+                            "Trueforce For All: consolidated car defaults", details,
+                            DialogKind.Info);
                 }
                 return;
             }
@@ -8938,7 +10336,7 @@ namespace TrueforceForAll.Plugin
                 _plugin.Settings.WelcomeDeclineCount     = 0;
                 _plugin.Settings.WelcomeNextShowAt       = null;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Networked-welcome state reset: opening the modal now.";
@@ -9012,6 +10410,27 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Dev-only: simulate a release shipping AFTER launch. Arms a fake
+            // newer release that only the background re-check applies, plus a
+            // fast cadence, so the update banner appears on its own within a few
+            // seconds (no restart, no real release) instead of after hours.
+            // Optional trailing number sets the cadence in seconds (e.g.
+            // UPDATEPOLL3); defaults to 5s. Run again to stop + clear.
+            if (code.StartsWith("UPDATEPOLL", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string rest = code.Substring("UPDATEPOLL".Length).Trim();
+                int seconds = 5;
+                if (rest.Length > 0 && int.TryParse(rest, out int parsed) && parsed > 0)
+                    seconds = parsed;
+                int active = _plugin.DebugToggleFastUpdatePolling(seconds);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = active > 0
+                        ? $"Armed: no banner yet, but within ~{active}s a background re-check discovers a simulated newer release and the 'Update to vX.Y.Z' banner appears on its own. No restart. Type UPDATEPOLL again to stop + clear."
+                        : "Stopped: simulated release cleared, back to normal update cadence.";
+                return;
+            }
+
             // Dev-only: force the wheel into the stream-fault state so the
             // recovery watchdog re-attaches it. Verifies the "Stream lost -
             // auto-reconnecting" status + transparent recovery without
@@ -9052,8 +10471,7 @@ namespace TrueforceForAll.Plugin
                 _suppressEvents = true;
                 try
                 {
-                    if (ExperimentalFfbCheck != null)     ExperimentalFfbCheck.IsChecked     = on;
-                    if (ExperimentalFfbMainCheck != null) ExperimentalFfbMainCheck.IsChecked = on;
+                    if (ExperimentalFfbCheck != null) ExperimentalFfbCheck.IsChecked = on;
                 }
                 finally { _suppressEvents = prevSuppress; }
                 AccessCodeBox.Text = string.Empty;
@@ -9061,6 +10479,24 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Experimental FFB capture ON (persists). Load a game and drive for a few seconds so the tap re-resolves the FFB index; check the FFB-tap status. Type FFBX again to turn it off."
                         : "Experimental FFB capture OFF. Back to the standard capture path.";
+                return;
+            }
+
+            // Issue #13 test: stop the Trueforce stream while paused so the wheel
+            // hands back to the game's native FFB / auto-center. Persists. Toggle.
+            if (code.Equals("NOLOCK", StringComparison.OrdinalIgnoreCase))
+            {
+                bool on = _plugin.DebugToggleStopStreamOnPause();
+                // Keep the visible checkbox in sync without re-firing its handler.
+                var prevSuppress = _suppressEvents;
+                _suppressEvents = true;
+                try { if (StopStreamOnPauseCheck != null) StopStreamOnPauseCheck.IsChecked = on; }
+                finally { _suppressEvents = prevSuppress; }
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "Pause behaviour: stop-stream ON (persists). On pause / fast-travel the wheel now reverts to the game's native FFB (auto-center) instead of holding a force. Type NOLOCK again to go back to the default."
+                        : "Pause behaviour: back to default (release FFB to zero while paused).";
                 return;
             }
 
@@ -9143,19 +10579,25 @@ namespace TrueforceForAll.Plugin
                 _plugin.PersistSettings();
             }
             AccessCodeBox.Text = string.Empty;
-            // The unlock persists, but the section only appears in the iRacing
-            // SimHub profile (its toggles apply to iRacing only). If they
-            // unlock from another profile, say so plainly so the "nothing
-            // happened" isn't a mystery.
-            bool showNow = _plugin.ShouldShowRpmLedSection;
+            // The unlock persists. The section now lives in Settings as a normal
+            // collapsible "iRacing" section, shown whenever unlocked.
             if (AccessCodeStatus != null)
-                AccessCodeStatus.Text = showNow
-                    ? "Test features unlocked."
-                    : "Test features unlocked (shows in the iRacing profile).";
+                AccessCodeStatus.Text = "iRacing section unlocked. It's in Settings, just below.";
             if (RpmLedSection != null)
-                RpmLedSection.Visibility = showNow
-                    ? System.Windows.Visibility.Visible
-                    : System.Windows.Visibility.Collapsed;
+                RpmLedSection.Visibility = System.Windows.Visibility.Visible;
+        }
+
+        private void ResetNotices_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.ResetOneTimeNotices();
+            // Also clear this session's guards so notices can re-fire without a restart.
+            _lastGameForIracingNotice = null;
+            _welcomeTriggeredThisSession = false;
+            WelcomeWindow.ShownThisSession = false;
+            try { RefreshFromPlugin(); } catch { }
+            if (ResetNoticesStatus != null)
+                ResetNoticesStatus.Text = "Done. One-time messages will show again.";
         }
 
         // ---------- Developer panel (built-in folder maintenance) ----------
@@ -9180,17 +10622,16 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var (ok, lines) = BackupSelfTest.RunRoundTrip();
-                System.Windows.MessageBox.Show(
-                    string.Join(Environment.NewLine, lines),
+                TrueforceDialog.Show(null,
                     ok ? "Backup self-test: PASS" : "Backup self-test: FAIL",
-                    System.Windows.MessageBoxButton.OK,
-                    ok ? System.Windows.MessageBoxImage.Information : System.Windows.MessageBoxImage.Warning);
+                    string.Join(Environment.NewLine, lines),
+                    ok ? DialogKind.Info : DialogKind.Warning);
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show("Backup self-test threw: " + ex.Message,
-                    "Backup self-test", System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Error);
+                TrueforceDialog.Show(null, "Backup self-test",
+                    "Backup self-test threw: " + ex.Message,
+                    DialogKind.Error);
             }
         }
 
@@ -9382,9 +10823,9 @@ namespace TrueforceForAll.Plugin
             string activeP = _plugin.ActivePresetName;
             if (string.IsNullOrEmpty(activeP)) return;  // nothing to revert to
             string label = EffectLabel(which);
-            if (MessageBox.Show(
+            if (TrueforceDialog.Show(null, "Trueforce",
                     $"Revert {label} to the saved values in preset '{activeP}'? Your unsaved {label} changes will be discarded.",
-                    "Trueforce", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    DialogKind.Destructive, okLabel: "Revert", cancelLabel: "Cancel") != true)
                 return;
             // Car-scoped sections: revert discards the unsaved per-car DRAFT,
             // restoring this car's saved override (or the game default if none),
@@ -9412,16 +10853,18 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Per-effect Save popover. Two adaptive choices:
-        ///   • "For [car]": toggles the override on (snapshotting current
-        ///     section values into the per-car override) when not already
-        ///     overridden; just clears the section's dirty dot if it was.
-        ///   • "Update preset 'X'": updates the active preset in place
-        ///     (whole-snapshot save; clears global dirty too).
-        ///   • "Save as new preset…": appears when there's no active preset;
-        ///     opens the existing name-prompt flow.
-        /// Choices are individually disabled when their precondition isn't
-        /// met (no car detected → no per-car save; no preset → no update).</summary>
+        /// <summary>Per-effect Save popover. Adaptive choices:
+        ///   • "For this car (id)": snapshots the section's current values into
+        ///     the per-car override (toggles the override on). Only when the
+        ///     section has a per-car concept AND a car is identified.
+        ///   • "Update preset 'X'" (suffixed "(game default)" when X is this
+        ///     game's bound auto-load default): overwrites the active user
+        ///     preset in place. It does NOT change the game-default binding;
+        ///     that's the header "Set as default" button's job.
+        ///   • "Save as game defaults": when there's no active preset or it's a
+        ///     built-in, forks to a new user preset and binds it as the default.
+        /// RevLimiter (the one draft-model section) additionally offers "Both"
+        /// and reset-to-default choices.</summary>
         private void ShowEffectSavePopover(EffectKind which)
         {
             string carId       = _plugin.ActiveCarId;
@@ -9436,7 +10879,12 @@ namespace TrueforceForAll.Plugin
             {
                 Title  = $"Save {label}",
                 Width  = 420,
-                Height = (carScope && carDetected) ? 240 : 170,  // shorter when no per-car option
+                // Grow to fit however many choice buttons this section shows.
+                // A fixed height clipped the bottom option + the Cancel row
+                // whenever a section offered 3+ saves (e.g. RevLimiter: For
+                // this car / Both / Reset to default / Update game defaults).
+                SizeToContent = SizeToContent.Height,
+                MinHeight     = 150,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode    = ResizeMode.NoResize,
                 ShowInTaskbar = false,
@@ -9542,27 +10990,44 @@ namespace TrueforceForAll.Plugin
             }
 
             // Choice 2: update game defaults, fork from built-in, or save as new.
+            // With no game active (editing presets while no game is running) there's
+            // nothing to bind a default to, so drop the "game defaults" framing and
+            // talk plainly about the preset. The active preset also isn't always the
+            // game's bound default (you can apply a preset without binding it), so the
+            // "(game default)" annotation only shows when it genuinely is.
+            bool   hasGame = !string.IsNullOrEmpty(_plugin.ActiveGame);
             string presetLabel;
             string presetHint;
             if (!hasPreset)
             {
-                presetLabel = "Save as game defaults";
-                presetHint  = "Saves your current tuning as a new preset and binds it as this game's default.";
+                presetLabel = hasGame ? "Save as game defaults" : "Save as new preset";
+                presetHint  = hasGame
+                    ? "Saves your current tuning as a new preset and binds it as this game's default."
+                    : "Saves your current tuning as a new preset.";
             }
             else if (builtin)
             {
-                presetLabel = "Save as game defaults";
-                presetHint  = $"'{activeP}' is a built-in default that can't be overwritten. Saves your current tuning as a new user preset (named after the game) and binds it as this game's default. The built-in stays available as fallback.";
+                presetLabel = hasGame ? "Save as game defaults" : "Save as new preset";
+                presetHint  = hasGame
+                    ? $"'{activeP}' is a built-in default that can't be overwritten. Saves your current tuning as a new user preset (named after the game) and binds it as this game's default. The built-in stays available as fallback."
+                    : $"'{activeP}' is a built-in that can't be overwritten. Saves your current tuning as a new user preset.";
             }
             else
             {
-                presetLabel = "Update game defaults";
-                presetHint  = $"Overwrites '{activeP}' (this game's default preset) with your current tuning. Per-car preset files are independent and not touched.";
+                bool isDefault = hasGame
+                    && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
+                presetLabel = isDefault
+                    ? $"Update preset '{activeP}' (game default)"
+                    : $"Update preset '{activeP}'";
+                presetHint  = isDefault
+                    ? $"Overwrites '{activeP}' (this game's default preset) with your current tuning. Per-car preset files are independent and not touched."
+                    : $"Overwrites '{activeP}' with your current tuning. Won't change which preset is this game's default. Per-car preset files are independent and not touched.";
             }
             var presetBtn = new Button
             {
                 Content = presetLabel,
                 Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                Style = TryFindResource("PopoverPrimaryButton") as Style,   // green accent: this is the recommended save
             };
             sp.Children.Add(presetBtn);
             sp.Children.Add(new TextBlock
@@ -9631,8 +11096,10 @@ namespace TrueforceForAll.Plugin
                 _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
                 _plugin.SaveSectionToActivePreset((TrueforcePlugin.SectionKind)(int)which);
                 ClearEffectDirty(which);
-                if (!string.IsNullOrEmpty(_plugin.ActiveGame) && !string.IsNullOrEmpty(_plugin.ActivePresetName))
-                    _plugin.SetDefaultPresetForActiveGame(_plugin.ActivePresetName);   // save-to-game-defaults binds
+                // Overwrite the active preset only. Binding it as the game's
+                // auto-load default is a separate, explicit action (the header
+                // "Set as default" button), so saving an edit never silently
+                // changes which preset this game loads.
                 RefreshFromPlugin();
                 win.DialogResult = true;
             };
@@ -9714,7 +11181,7 @@ namespace TrueforceForAll.Plugin
                     (TrueforcePlugin.SectionKind)(int)which);
                 if (!ok)
                 {
-                    MessageBox.Show("Save failed (see SimHub log for details).", "Trueforce");
+                    TrueforceDialog.Show(null, "Trueforce", "Save failed (see SimHub log for details).", DialogKind.Info);
                     return;
                 }
             }
@@ -9774,11 +11241,11 @@ namespace TrueforceForAll.Plugin
             // Tell the Preset Manager the local library just changed so the
             // newly-saved game preset shows up in its list automatically.
             _presetManager?.OnLocalLibraryChanged();
-            MessageBox.Show(
+            TrueforceDialog.Show(null, "Trueforce",
                 string.IsNullOrEmpty(game)
                     ? $"Saved as '{name}'."
                     : $"Saved as '{name}' and bound as the default for '{game}'.",
-                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+                DialogKind.Info);
         }
 
         // ---------- Preset library ----------
@@ -9888,20 +11355,37 @@ namespace TrueforceForAll.Plugin
                 });
                 bothBtn.Click += (s, a) =>
                 {
-                    if (SaveActiveCarPresetWithFork()) { RecomputeAllEffectDirty(); SaveAllGameDefaults(); }
+                    if (SaveActiveCarPresetWithFork()) { RecomputeAllEffectDirty(); SaveAllGameDefaults(bindAsDefault: true); }
                     win.DialogResult = true;
                 };
             }
 
             // Choice 3: game defaults (fork from a built-in / create one when
             // none, else overwrite the active default in place).
-            string gameLabel = (!hasPreset || builtin)
-                ? "Save as game defaults"
-                : $"Update game defaults ('{ToBuiltinDisplay(activeP)}')";
-            string gameHint  = (!hasPreset || builtin)
-                ? "Saves your tuning as a new preset and binds it as this game's default."
-                : $"Overwrites '{ToBuiltinDisplay(activeP)}' (this game's default) with your current tuning.";
-            var gameBtn = new Button { Content = gameLabel, Height = 32, Margin = new Thickness(0, 0, 0, 6) };
+            bool gameHasGame = !string.IsNullOrEmpty(_plugin.ActiveGame);
+            bool gameIsDefault = gameHasGame && hasPreset && !builtin
+                && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
+            string gameLabel;
+            string gameHint;
+            if (!hasPreset || builtin)
+            {
+                gameLabel = gameHasGame ? "Save as game defaults" : "Save as new preset";
+                gameHint  = gameHasGame
+                    ? "Saves your tuning as a new preset and binds it as this game's default."
+                    : "Saves your tuning as a new preset.";
+            }
+            else if (gameIsDefault)
+            {
+                gameLabel = $"Update preset '{ToBuiltinDisplay(activeP)}' (game default)";
+                gameHint  = $"Overwrites '{ToBuiltinDisplay(activeP)}' (this game's default preset) with your current tuning.";
+            }
+            else
+            {
+                gameLabel = $"Update preset '{ToBuiltinDisplay(activeP)}'";
+                gameHint  = $"Overwrites '{ToBuiltinDisplay(activeP)}' with your current tuning. Won't change which preset is this game's default.";
+            }
+            var gameBtn = new Button { Content = gameLabel, Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                Style = TryFindResource("PopoverPrimaryButton") as Style };   // green accent: recommended save target
             sp.Children.Add(gameBtn);
             sp.Children.Add(new TextBlock
             {
@@ -9935,7 +11419,12 @@ namespace TrueforceForAll.Plugin
         // built-in / creates one when there's none, else overwrites in place.
         // Shows a confirmation. The popover choice is the user's intent, so no
         // extra "overwrite?" prompt. Shared by the global Save popover.
-        private void SaveAllGameDefaults()
+        // bindAsDefault: only the explicit "Both" path passes true. A plain
+        // game-side save overwrites the active preset file and leaves the
+        // auto-load binding alone, so saving an edit never silently changes
+        // which preset this game loads (that's the "Set as default" button's
+        // job). The fork branch below establishes its own binding.
+        private void SaveAllGameDefaults(bool bindAsDefault = false)
         {
             string activeP = _plugin.ActivePresetName;
             bool   builtin = !string.IsNullOrEmpty(activeP) && _plugin.IsBuiltinPreset(activeP);
@@ -9945,14 +11434,17 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             _plugin.SavePresetAs(activeP);
-            // A "save to game defaults" binds the result when a game is loaded,
-            // so the saved preset is this game's auto-load default.
-            if (!string.IsNullOrEmpty(_plugin.ActiveGame))
+            if (bindAsDefault && !string.IsNullOrEmpty(_plugin.ActiveGame))
                 _plugin.SetDefaultPresetForActiveGame(activeP);
+            bool isDefault = !string.IsNullOrEmpty(_plugin.ActiveGame)
+                && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
             ClearDirty();
             RefreshFromPlugin();
-            MessageBox.Show($"Saved to game default preset '{ToBuiltinDisplay(activeP)}'.",
-                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+            TrueforceDialog.Show(null, "Trueforce",
+                isDefault
+                    ? $"Saved to game default preset '{ToBuiltinDisplay(activeP)}'."
+                    : $"Saved preset '{ToBuiltinDisplay(activeP)}'.",
+                DialogKind.Info);
         }
 
         // Save all dirty car-scoped tuning to the active car's override (forks a
@@ -9962,8 +11454,9 @@ namespace TrueforceForAll.Plugin
             if (!SaveActiveCarPresetWithFork()) return;   // user cancelled fork prompt
             RecomputeAllEffectDirty();
             RefreshFromPlugin();
-            MessageBox.Show("Saved your current tuning for this car.",
-                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+            TrueforceDialog.Show(null, "Trueforce",
+                "Saved your current tuning for this car.",
+                DialogKind.Info);
         }
 
         /// <summary>Save the live car override to its active preset file.
@@ -10077,11 +11570,11 @@ namespace TrueforceForAll.Plugin
                 _plugin.SetDefaultPresetForActiveGame(newName);
             ClearDirty();
             RefreshFromPlugin();
-            MessageBox.Show(
+            TrueforceDialog.Show(null, "Trueforce",
                 string.IsNullOrEmpty(game)
                     ? $"Saved as '{newName}'."
                     : $"Saved as '{newName}' and bound as the default for '{game}'. The built-in default stays available as fallback.",
-                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);
+                DialogKind.Info);
         }
 
         private void SaveAsPreset_Click(object sender, RoutedEventArgs e)
@@ -10158,12 +11651,10 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
         }
 
-        // Header car-rename affordance. Opens the styled modal, writes the
-        // entered name to local CarFacts on confirm, and pipes through to
-        // the community submission API. When community is OFF the
-        // submission is a no-op (the plugin gate handles that) and only
-        // the local rename takes effect - users still get the per-car
-        // label without participating in the shared name pool.
+        // Header "Set name" affordance. Opens the styled name input, then runs
+        // the shared official-name flow (local write + a confirm/correct
+        // community share for the user's language, no auto-submit). Identical
+        // path to the Preset Manager button so the two can't drift.
         private void HeaderCarRename_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
@@ -10172,13 +11663,13 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
 
             // Pre-fill with whatever's currently displayed (community name,
-            // a prior local rename, or empty). The display name resolves
-            // through the same cascade the header reads, so this matches
-            // what the user sees right above the button.
+            // a prior rename, or empty). The display name resolves through the
+            // same cascade the header reads, so it matches what the user sees
+            // right above the button.
             string currentName = _plugin.ActiveCarDisplayName ?? "";
-            // If the current display name is just the carId (the fallback
-            // for unnamed cars), start the field empty - editing "Car_242"
-            // into a real name is unnecessary friction.
+            // If the current display name is just the carId (the fallback for
+            // unnamed cars), start the field empty. Editing "Car_242" into a
+            // real name is unnecessary friction.
             if (string.Equals(currentName, carId, StringComparison.Ordinal))
                 currentName = "";
 
@@ -10186,44 +11677,12 @@ namespace TrueforceForAll.Plugin
             {
                 Owner = Window.GetWindow(this),
             };
-            bool? ok = dialog.ShowDialog();
-            if (ok != true) return;
+            if (dialog.ShowDialog() != true) return;
             string newName = dialog.EnteredName;
             if (string.IsNullOrEmpty(newName)) return;
 
-            // Local first: header re-renders to the new name on the next
-            // tick. Community submission is fire-and-forget; failures
-            // don't roll back the local change.
-            _plugin.WriteCarNameFact(game, carId, newName);
-
-            // Ask before submitting to community. Only when the toggle
-            // is on AND the user is signed in - submit_car_fact requires
-            // auth.uid() so a signed-out share silently drops at the server.
-            bool submitToCommunity = false;
-            if (_plugin.Settings?.CommunityEnabled == true && _plugin.AuthIsSignedIn)
-            {
-                submitToCommunity = TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share this car name?",
-                    $"Submit '{newName}' as the community name for this car? "
-                    + "Other drivers who load the same car will see your name in their plugin.",
-                    DialogKind.Confirm) == true;
-            }
-
-            if (submitToCommunity)
-            {
-                _plugin.SubmitCarNameToCommunity(game, carId, newName);
-                // Optimistic community-name injection so the "community
-                // says: X" diagnostic doesn't briefly show a stale prior
-                // consensus while the server reconciles. Only fires
-                // when the user actually opted in to share.
-                _plugin.NotifyCarNameConsensus(game, carId, new CarNameConsensus
-                {
-                    Name                  = newName,
-                    SupportingSubmissions = 1,
-                    Confirmations         = 0,
-                    PayloadHash           = null,
-                });
-            }
+            CarNameShareFlow.SetNameAndMaybeShare(_plugin, game, carId, newName,
+                Window.GetWindow(this));
             RefreshFromPlugin();
         }
 
@@ -10280,7 +11739,7 @@ namespace TrueforceForAll.Plugin
             {
                 plugin.Settings.SharingAuthor = newAuthor;
                 try { plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
             }
             return true;
         }
@@ -10371,14 +11830,16 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var (count, bytes) = _plugin.BackupAllToZip(dlg.FileName);
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Trueforce For All",
                     $"Backed up {count} file(s) ({bytes:N0} bytes) to:\n{dlg.FileName}",
-                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(Window.GetWindow(this), $"Backup failed:\n{ex.Message}",
-                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Trueforce For All", $"Backup failed:\n{ex.Message}",
+                    DialogKind.Error);
             }
         }
 
@@ -10395,26 +11856,29 @@ namespace TrueforceForAll.Plugin
             };
             if (open.ShowDialog(Window.GetWindow(this)) != true) return;
 
-            var confirm = MessageBox.Show(Window.GetWindow(this),
+            var confirm = TrueforceDialog.Show(Window.GetWindow(this),
+                "Trueforce For All",
                 "Restore will REPLACE all current TF4ALL settings, presets, defaults, and car tunings with the backup's contents.\n\nYour current data will be moved to a .pre-restore-<timestamp> folder next to the user library as a safety net, but the live state will be the backup's.\n\nContinue?",
-                "Trueforce For All", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (confirm != MessageBoxResult.Yes) return;
+                DialogKind.Destructive, okLabel: "Replace everything", cancelLabel: "Cancel");
+            if (confirm != true) return;
 
             try
             {
                 int n = _plugin.RestoreAllFromZip(open.FileName);
                 ClearDirty();
                 RefreshFromPlugin();
-                MessageBox.Show(Window.GetWindow(this),
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Trueforce For All",
                     n == 0
                         ? "Restore completed but the archive contained no user files. The settings JSON (if any) was applied."
                         : $"Restored {n} file(s) from:\n{open.FileName}\n\nThe previous user library has been preserved at user.pre-restore-<timestamp> next to it.",
-                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                    DialogKind.Info);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(Window.GetWindow(this), $"Restore failed:\n{ex.Message}",
-                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Trueforce For All", $"Restore failed:\n{ex.Message}",
+                    DialogKind.Error);
             }
         }
 
@@ -10457,8 +11921,9 @@ namespace TrueforceForAll.Plugin
                 .ToList();
             if (presets.Count == 0 && cars.Count == 0)
             {
-                MessageBox.Show(owner, "Nothing to share yet. Save a preset (or a per-car tuning) first.",
-                                "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                TrueforceDialog.Show(owner, "Trueforce For All",
+                                "Nothing to share yet. Save a preset (or a per-car tuning) first.",
+                                DialogKind.Info);
                 return;
             }
 
@@ -10529,13 +11994,15 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         plugin.ExportSinglePreset(dlg1.FileName, nm, author, desc, ver, allowInPacks);
-                        MessageBox.Show(owner, $"Exported preset '{nm}' to:\n{dlg1.FileName}",
-                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                        TrueforceDialog.Show(owner, "Trueforce For All",
+                            $"Exported preset '{nm}' to:\n{dlg1.FileName}",
+                            DialogKind.Info);
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show(owner, $"Export failed:\n{ex.Message}",
-                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                        TrueforceDialog.Show(owner, "Trueforce For All",
+                            $"Export failed:\n{ex.Message}",
+                            DialogKind.Error);
                     }
                 }
                 else if (pickedCars.Count == 1)
@@ -10552,13 +12019,15 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         plugin.ExportSingleCarPreset(dlg2.FileName, car.CarId, car.PresetName, author, desc, ver, allowInPacks);
-                        MessageBox.Show(owner, $"Exported car preset '{car.PresetName}' for '{car.CarId}' to:\n{dlg2.FileName}",
-                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                        TrueforceDialog.Show(owner, "Trueforce For All",
+                            $"Exported car preset '{car.PresetName}' for '{car.CarId}' to:\n{dlg2.FileName}",
+                            DialogKind.Info);
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show(owner, $"Export failed:\n{ex.Message}",
-                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                        TrueforceDialog.Show(owner, "Trueforce For All",
+                            $"Export failed:\n{ex.Message}",
+                            DialogKind.Error);
                     }
                 }
                 return;
@@ -10582,12 +12051,13 @@ namespace TrueforceForAll.Plugin
                     pickedPresets,
                     pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)),
                     author, desc, ver, packName, allowInPacks);
-                MessageBox.Show(owner, $"Exported {p} preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
-                                "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                TrueforceDialog.Show(owner, "Trueforce For All",
+                                $"Exported {p} preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
+                                DialogKind.Info);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(owner, $"Export failed:\n{ex.Message}", "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                TrueforceDialog.Show(owner, "Trueforce For All", $"Export failed:\n{ex.Message}", DialogKind.Error);
             }
         }
 
@@ -10780,10 +12250,11 @@ namespace TrueforceForAll.Plugin
                         {
                             // Destructive: prompt per file, outside the
                             // per-item-checkbox model.
-                            var confirm = MessageBox.Show(owner,
+                            var confirm = TrueforceDialog.Show(owner,
+                                "Trueforce For All",
                                 $"'{System.IO.Path.GetFileName(c.Path)}' looks like a full TF4ALL settings backup. Importing replaces all current settings (master, audio, every effect, all per-car overrides). Continue with this file?",
-                                "Trueforce For All", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                            if (confirm == MessageBoxResult.Yes)
+                                DialogKind.Destructive, okLabel: "Replace everything", cancelLabel: "Cancel");
+                            if (confirm == true)
                             {
                                 plugin.ImportSettings(c.Path);
                                 settingsImported++;
@@ -10828,10 +12299,10 @@ namespace TrueforceForAll.Plugin
                 foreach (var f in failures) msg.Append("\n  ").Append(f);
             }
 
-            var icon = failures.Count > 0
-                ? MessageBoxImage.Warning
-                : (counts.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Information);
-            MessageBox.Show(owner, msg.ToString(), "Trueforce For All", MessageBoxButton.OK, icon);
+            var kind = failures.Count > 0
+                ? DialogKind.Warning
+                : DialogKind.Info;
+            TrueforceDialog.Show(owner, "Trueforce For All", msg.ToString(), kind);
 
             return presetsImported > 0 || carsImported > 0 || packsImported > 0 || settingsImported > 0;
         }
@@ -10958,7 +12429,7 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] BuildImportCandidate: peek of pack presets failed: {ex.Message}");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] BuildImportCandidate: peek of pack presets failed: {ex.Message}");
                     }
                     if (manifest.Cars != null)
                     {
@@ -11156,16 +12627,17 @@ namespace TrueforceForAll.Plugin
 
         private void OnAutoRatchetBumped(bool isTf, int oldCap, int newCap)
         {
-            // Fired on the producer thread. Marshal to UI to update the
-            // inline banner and refresh dependent values. Don't block the
-            // producer; BeginInvoke is fire-and-forget.
+            // Fired on the producer thread. Marshal to UI to refresh the
+            // live Performance-tab readout (ring caps / counters) so it
+            // stays accurate while Auto adjusts. The old inline notice
+            // banner is intentionally NOT shown: in Auto the ratchet is
+            // self-healing (walks all the way back down once things go
+            // quiet, and re-drains a warm-started seed next session), so a
+            // per-bump banner over-signals a value the user delegated to
+            // Auto. Don't block the producer; BeginInvoke is fire-and-forget.
             try
             {
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    RefreshFromPlugin();
-                    UpdateRatchetNotice(isTf, oldCap, newCap);
-                }));
+                Dispatcher.BeginInvoke(new Action(RefreshFromPlugin));
             }
             catch { }
         }
@@ -11297,8 +12769,9 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
-                MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {PatreonUrl}",
-                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                TrueforceDialog.Show(null, "Trueforce For All",
+                    $"Couldn't open browser:\n{ex.Message}\n\nURL: {PatreonUrl}",
+                    DialogKind.Error);
             }
         }
 
@@ -11315,8 +12788,9 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
-                MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {DonateUrl}",
-                                "Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);
+                TrueforceDialog.Show(null, "Trueforce",
+                                $"Couldn't open browser:\n{ex.Message}\n\nURL: {DonateUrl}",
+                                DialogKind.Error);
             }
         }
 
@@ -11330,8 +12804,9 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
-                MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {PayPalUrl}",
-                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Error);
+                TrueforceDialog.Show(null, "Trueforce For All",
+                    $"Couldn't open browser:\n{ex.Message}\n\nURL: {PayPalUrl}",
+                    DialogKind.Error);
             }
         }
 
@@ -11570,6 +13045,9 @@ namespace TrueforceForAll.Plugin
             try
             {
                 await upd.CheckAsync(_plugin.UpdateCheckerToken);
+                // Reset the background re-poll clock so the next automatic check
+                // is measured from this manual one, not from startup.
+                _plugin.MarkUpdateChecked();
                 if (upd.IsUpdateAvailable)
                     CheckForUpdatesStatus.Text = $"v{upd.LatestVersionDisplay} available";
                 else if (!string.IsNullOrEmpty(upd.LastError))
@@ -11725,12 +13203,12 @@ namespace TrueforceForAll.Plugin
                 // accepts here, the installer closes SimHub without re-asking.
                 if (HasUnsavedChanges())
                 {
-                    var confirm = MessageBox.Show(Window.GetWindow(this),
+                    var confirm = TrueforceDialog.Show(Window.GetWindow(this),
+                        "Trueforce For All: unsaved changes",
                         "You have unsaved changes that will be discarded if you continue.\n\n" +
                         "Update now? (No to go back and save first.)",
-                        "Trueforce For All: unsaved changes",
-                        MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (confirm != MessageBoxResult.Yes) return;
+                        DialogKind.Destructive, okLabel: "Update", cancelLabel: "Cancel");
+                    if (confirm != true) return;
                 }
 
                 updateBtn.IsEnabled = false;
@@ -12082,9 +13560,9 @@ namespace TrueforceForAll.Plugin
             string leaf = System.IO.Path.GetFileName(path);
             if (!string.Equals(leaf, "USBPcapCMD.exe", StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show(
+                TrueforceDialog.Show(null, "Trueforce",
                     "That file isn't USBPcapCMD.exe. Pick USBPcapCMD.exe from your USBPcap install folder.",
-                    "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DialogKind.Warning);
                 return;
             }
 
@@ -12098,9 +13576,9 @@ namespace TrueforceForAll.Plugin
         private void UsbPcapReinstall_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            if (MessageBox.Show(
+            if (TrueforceDialog.Show(null, "Trueforce",
                     "Run the bundled USBPcap installer? This needs admin (UAC prompt) and reinstalls the USB capture driver. SimHub doesn't need to restart afterwards.",
-                    "Trueforce", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+                    DialogKind.Confirm, okLabel: "Run installer", cancelLabel: "Cancel") != true)
                 return;
             _plugin.ReinstallUsbPcapAsync();
         }

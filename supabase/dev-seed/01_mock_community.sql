@@ -271,22 +271,22 @@ values
 
 with
   pkg_fh6 as (
-    select id, name, game, car_id from public.presets
+    select id, name, game, car_id, body, author, allow_in_packs from public.presets
      where submitter_id = 'mock-seed' and game = 'FH6'
      order by wilson_score desc limit 4
   ),
   pkg_ac as (
-    select id, name, game, car_id from public.presets
+    select id, name, game, car_id, body, author, allow_in_packs from public.presets
      where submitter_id = 'mock-seed' and game = 'AssettoCorsa'
      order by wilson_score desc limit 4
   ),
   pkg_universal_gp as (
-    select id, name, game from public.game_presets
+    select id, name, game, body, author, allow_in_packs from public.game_presets
      where submitter_id = 'mock-seed' and target_games = '{}'
      order by wilson_score desc limit 2
   ),
   pkg_engines as (
-    select id, name from public.custom_engines
+    select id, name, body, author, allow_in_packs from public.custom_engines
      where submitter_id = 'mock-seed'
      order by wilson_score desc limit 2
   )
@@ -299,9 +299,15 @@ select
   'ApexPredator',
   'A curated set of community car presets for FH6, plus a universal game preset and a couple of custom engines.',
   jsonb_build_object(
-    'presets', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'game', game, 'car_id', car_id)), '[]'::jsonb) from pkg_fh6),
-    'game_presets', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name)), '[]'::jsonb) from pkg_universal_gp),
-    'custom_engines', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name)), '[]'::jsonb) from pkg_engines)
+    'car_presets', (select coalesce(jsonb_agg(jsonb_build_object(
+        'preset_name', name, 'car_id', car_id, 'game_name', game,
+        'override', body->'override', 'source_id', id,
+        'source_author', author, 'allow_in_packs', coalesce(allow_in_packs, true))), '[]'::jsonb) from pkg_fh6),
+    'game_presets', (select coalesce(jsonb_agg(jsonb_build_object(
+        'name', name, 'snapshot', body->'snapshot', 'source_id', id,
+        'source_author', author, 'allow_in_packs', coalesce(allow_in_packs, true))), '[]'::jsonb) from pkg_universal_gp),
+    'custom_engines', (select coalesce(jsonb_agg(
+        body || jsonb_build_object('source_id', id, 'allow_in_packs', coalesce(allow_in_packs, true))), '[]'::jsonb) from pkg_engines)
   ),
   (select count(*) from pkg_fh6) + (select count(*) from pkg_universal_gp) + (select count(*) from pkg_engines),
   198, 7, 0.90, 980, 'mock-seed', 'mock-seed-ip', '0.1.24', 1, '1.0.0'
@@ -311,7 +317,10 @@ select
   'NightShift',
   'Community-tested car presets for the most popular AC cars.',
   jsonb_build_object(
-    'presets', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'game', game, 'car_id', car_id)), '[]'::jsonb) from pkg_ac)
+    'car_presets', (select coalesce(jsonb_agg(jsonb_build_object(
+        'preset_name', name, 'car_id', car_id, 'game_name', game,
+        'override', body->'override', 'source_id', id,
+        'source_author', author, 'allow_in_packs', coalesce(allow_in_packs, true))), '[]'::jsonb) from pkg_ac)
   ),
   (select count(*) from pkg_ac),
   74, 4, 0.79, 285, 'mock-seed', 'mock-seed-ip', '0.1.24', 1, '1.0.0'
@@ -321,8 +330,11 @@ select
   'WheelmanRX',
   'Universal game presets plus a couple of custom engines.',
   jsonb_build_object(
-    'game_presets', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name)), '[]'::jsonb) from pkg_universal_gp),
-    'custom_engines', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name)), '[]'::jsonb) from pkg_engines)
+    'game_presets', (select coalesce(jsonb_agg(jsonb_build_object(
+        'name', name, 'snapshot', body->'snapshot', 'source_id', id,
+        'source_author', author, 'allow_in_packs', coalesce(allow_in_packs, true))), '[]'::jsonb) from pkg_universal_gp),
+    'custom_engines', (select coalesce(jsonb_agg(
+        body || jsonb_build_object('source_id', id, 'allow_in_packs', coalesce(allow_in_packs, true))), '[]'::jsonb) from pkg_engines)
   ),
   (select count(*) from pkg_universal_gp) + (select count(*) from pkg_engines),
   31, 5, 0.61, 102, 'mock-seed', 'mock-seed-ip', '0.1.24', 1, '1.0.0';

@@ -62,7 +62,7 @@ namespace TrueforceForAll.Plugin
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Discord config failed: {(int)resp.StatusCode} {Trunc(body)}");
+                            _log?.Invoke($"[TF4ALL] Discord config failed: {(int)resp.StatusCode} {Trunc(body)}");
                             return (null, "Discord linking isn't set up yet.");
                         }
                         var o = JObject.Parse(body);
@@ -86,7 +86,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Discord config exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Discord config exception: {ex.Message}");
                 return (null, "Network error reaching Discord linking. Try again.");
             }
         }
@@ -121,7 +121,7 @@ namespace TrueforceForAll.Plugin
                         }
                         string err = null;
                         try { err = (string)JObject.Parse(body)["error"]; } catch { }
-                        _log?.Invoke($"[Trueforce] Discord exchange failed: {(int)resp.StatusCode} {Trunc(body)}");
+                        _log?.Invoke($"[TF4ALL] Discord exchange failed: {(int)resp.StatusCode} {Trunc(body)}");
                         // Only surface the server's text for the curated 409 conflict; everything
                         // else gets a generic line so internal/proxy strings can't reach the UI.
                         string shown = ((int)resp.StatusCode == 409 && !string.IsNullOrEmpty(err))
@@ -132,7 +132,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Discord exchange exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Discord exchange exception: {ex.Message}");
                 return (false, "Network error linking Discord.", null);
             }
         }
@@ -178,12 +178,12 @@ namespace TrueforceForAll.Plugin
                     {
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
-                            _log?.Invoke($"[Trueforce] Discord {fn} failed: {(int)resp.StatusCode} {Trunc(body)}");
+                            _log?.Invoke($"[TF4ALL] Discord {fn} failed: {(int)resp.StatusCode} {Trunc(body)}");
                         return (resp.IsSuccessStatusCode, body);
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Discord {fn} exception: {ex.Message}"); return (false, null); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Discord {fn} exception: {ex.Message}"); return (false, null); }
         }
 
         private async Task<string> GetBearerAsync()
@@ -205,7 +205,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Discord link: rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Discord link: rejecting untrusted backend URL: {url}");
                 return false;
             }
             baseUrl = url.TrimEnd('/');

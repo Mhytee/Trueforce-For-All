@@ -1,12 +1,10 @@
 {
-  "MasterGain": 1.0,
   "FfbScale": 1.0,
   "FfbInvertSign": true,
   "FfbSmoothTimeConstantMs": 0.0,
   "FfbSpikeTamingEnabled": false,
   "FfbSpikeMaxLsbPerMs": 2060.923,
   "FfbPeakSoftLimitLsb": 1561.78564,
-  "SkipFfbPassthrough": false,
   "DuckDepth": 0.6952232,
   "DuckAttackMs": 5.0,
   "DuckReleaseMs": 80.0,

@@ -33,6 +33,11 @@ namespace TrueforceForAll.Plugin
         public string AuthorVersion { get; set; }
         public string Description   { get; set; }
         public DateTime ImportedAt  { get; set; }
+        // Server uuid when this pack came from the Community browser (null for
+        // a .tfpack imported from disk). Keys AddOrMergePack so a repeat or
+        // partial community download folds into the existing record instead of
+        // spawning a duplicate row. Nullable so older records keep loading.
+        public string CommunitySourceId { get; set; }
         public List<InstalledPackEntry> Entries { get; set; } = new List<InstalledPackEntry>();
     }
 
@@ -52,14 +57,16 @@ namespace TrueforceForAll.Plugin
     /// "potentially edited" so removal won't blow away data we don't recognize.</summary>
     public sealed class InstalledPackEntry
     {
-        public const string KindGame = "game";
-        public const string KindCar  = "car";
+        public const string KindGame   = "game";
+        public const string KindCar    = "car";
+        public const string KindEngine = "engine";
 
         public string Kind         { get; set; }
         public string Name         { get; set; } // game preset name (Kind == "game")
         public string CarId        { get; set; } // car id        (Kind == "car")
         public string PresetName   { get; set; } // car preset    (Kind == "car")
         public string GameName     { get; set; } // car preset's owning game folder
+        public string EngineId     { get; set; } // custom-engine library Id (Kind == "engine")
         public string BaselineHash { get; set; } // SHA1 of JSON we wrote at install
         public List<string> DefaultForGames { get; set; } // optional set-as-default hint (game keys)
     }
@@ -89,6 +96,55 @@ namespace TrueforceForAll.Plugin
     {
         public int EntriesDeleted { get; set; }
         public int EntriesKept    { get; set; }
+    }
+
+    /// <summary>Caller-supplied policy for RemovePack. Defaults are the safe,
+    /// non-interactive choice; the inline Packs grid overrides them from its
+    /// keep/remove prompts.</summary>
+    public sealed class RemovePackOptions
+    {
+        /// <summary>Delete entries even when the user edited them since
+        /// download. Default false (edited entries are preserved).</summary>
+        public bool RemoveEditedEntries { get; set; } = false;
+
+        /// <summary>Delete this pack's custom engines even when other installed
+        /// packs or presets outside this pack still reference them (the dangling
+        /// refs then fall back to Auto). Default false (shared engines are
+        /// kept).</summary>
+        public bool DeleteSharedEngines { get; set; } = false;
+    }
+
+    /// <summary>One custom engine bundled by a pack that is also referenced from
+    /// OUTSIDE that pack, so deleting it on pack removal would affect something
+    /// else. Drives the "keep or delete shared engines?" prompt.</summary>
+    public sealed class SharedEngineRef
+    {
+        public string EngineId       { get; set; }
+        public string EngineName     { get; set; }
+        public int    OtherPackCount    { get; set; } // other installed packs listing it
+        public int    OutsidePresetRefs { get; set; } // presets/overrides outside this pack using it
+    }
+
+    /// <summary>What removing a pack would touch, computed before any deletion
+    /// so the UI can prompt. EditedEntryCount counts provably-edited entries
+    /// (baseline hash present and current content differs).</summary>
+    public sealed class PackRemovalImpact
+    {
+        public int EditedEntryCount { get; set; }
+        public List<SharedEngineRef> SharedEngines { get; set; } = new List<SharedEngineRef>();
+        public bool HasSharedEngines => SharedEngines != null && SharedEngines.Count > 0;
+    }
+
+    /// <summary>How many places reference a given custom engine, for the
+    /// usage-aware delete warning. Counts are distinct presets/overrides.</summary>
+    public sealed class EngineUsage
+    {
+        public int  GamePresetCount { get; set; }
+        public int  CarPresetCount  { get; set; }
+        public bool GlobalDefault   { get; set; }
+        public bool ActiveConfig    { get; set; }
+        public int  TotalPresetRefs => GamePresetCount + CarPresetCount + (GlobalDefault ? 1 : 0);
+        public bool AnyReference    => TotalPresetRefs > 0 || ActiveConfig;
     }
 
     /// <summary>Top-level shape of installed-packs.json.</summary>
@@ -150,7 +206,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Reading installed-packs.json failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Reading installed-packs.json failed: {ex.Message}");
             }
             _cache = file;
             return _cache;
@@ -164,6 +220,62 @@ namespace TrueforceForAll.Plugin
             var file = Load();
             file.Packs.Add(pack);
             SaveToDisk(file);
+        }
+
+        /// <summary>Add a community-downloaded pack, or fold its entries into an
+        /// existing record with the same CommunitySourceId. Used by the Community
+        /// browser's pack download so a full re-download (all entries deduped →
+        /// empty pack → no-op) or a partial download (only the newly-taken
+        /// entries) doesn't pile up duplicate rows for one source pack. Entries
+        /// are merged by identity so the same preset is never listed twice. Disk
+        /// imports keep using AddPack (each .tfpack import is its own record).</summary>
+        public void AddOrMergePack(InstalledPack pack)
+        {
+            if (pack == null || pack.Entries == null || pack.Entries.Count == 0) return;
+            var file = Load();
+            InstalledPack existing = null;
+            if (!string.IsNullOrEmpty(pack.CommunitySourceId))
+            {
+                foreach (var p in file.Packs)
+                    if (p != null
+                        && string.Equals(p.CommunitySourceId, pack.CommunitySourceId, StringComparison.Ordinal))
+                    { existing = p; break; }
+            }
+            if (existing == null)
+            {
+                file.Packs.Add(pack);
+                SaveToDisk(file);
+                return;
+            }
+            if (existing.Entries == null) existing.Entries = new List<InstalledPackEntry>();
+            foreach (var e in pack.Entries)
+            {
+                if (e == null) continue;
+                if (!existing.Entries.Exists(x => SameEntry(x, e))) existing.Entries.Add(e);
+            }
+            // Refresh light metadata so a later download updates the label /
+            // version / description; keep the original ImportedAt.
+            existing.PackName      = pack.PackName      ?? existing.PackName;
+            existing.Author        = pack.Author        ?? existing.Author;
+            existing.AuthorVersion = pack.AuthorVersion ?? existing.AuthorVersion;
+            existing.Description   = pack.Description    ?? existing.Description;
+            SaveToDisk(file);
+        }
+
+        // Identity equality for merge dedup: same kind + same on-disk identity
+        // (game preset name, or carId + preset name). Hash/metadata are ignored.
+        private static bool SameEntry(InstalledPackEntry a, InstalledPackEntry b)
+        {
+            if (a == null || b == null) return false;
+            if (!string.Equals(a.Kind, b.Kind, StringComparison.Ordinal)) return false;
+            if (string.Equals(a.Kind, InstalledPackEntry.KindGame, StringComparison.Ordinal))
+                return string.Equals(a.Name, b.Name, StringComparison.Ordinal);
+            if (string.Equals(a.Kind, InstalledPackEntry.KindCar, StringComparison.Ordinal))
+                return string.Equals(a.CarId, b.CarId, StringComparison.Ordinal)
+                    && string.Equals(a.PresetName, b.PresetName, StringComparison.Ordinal);
+            if (string.Equals(a.Kind, InstalledPackEntry.KindEngine, StringComparison.Ordinal))
+                return string.Equals(a.EngineId, b.EngineId, StringComparison.Ordinal);
+            return false;
         }
 
         /// <summary>Remove a pack record by reference. The caller passes the
@@ -210,7 +322,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Writing installed-packs.json failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Writing installed-packs.json failed: {ex.Message}");
             }
         }
 

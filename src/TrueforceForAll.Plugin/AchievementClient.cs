@@ -79,7 +79,7 @@ namespace TrueforceForAll.Plugin
                 }
                 return list;
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Achievements parse error: {ex.Message}"); return null; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Achievements parse error: {ex.Message}"); return null; }
         }
 
         /// <summary>Fire an immediate self-scoped Discord role sync (claims any earned roles
@@ -118,12 +118,12 @@ namespace TrueforceForAll.Plugin
                     using (var resp = await _http.SendAsync(req, ct).ConfigureAwait(false))
                     {
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
-                        if (!resp.IsSuccessStatusCode) _log?.Invoke($"[Trueforce] {path} failed: {(int)resp.StatusCode} {Trunc(body)}");
+                        if (!resp.IsSuccessStatusCode) _log?.Invoke($"[TF4ALL] {path} failed: {(int)resp.StatusCode} {Trunc(body)}");
                         return (resp.IsSuccessStatusCode, body);
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] {path} exception: {ex.Message}"); return (false, null); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] {path} exception: {ex.Message}"); return (false, null); }
         }
 
         private async Task<string> GetBearerAsync()
@@ -145,7 +145,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Achievements: rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Achievements: rejecting untrusted backend URL: {url}");
                 return false;
             }
             baseUrl = url.TrimEnd('/');

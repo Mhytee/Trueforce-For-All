@@ -128,8 +128,8 @@ namespace TrueforceForAll.Plugin
                 int kept = Candidates.Sum(cand => cand.Items?.Count(it => it.IsChecked) ?? 0);
                 if (kept == 0)
                 {
-                    MessageBox.Show(this, "No items selected for import.", "Trueforce For All",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    TrueforceDialog.Show(this, "Trueforce For All", "No items selected for import.",
+                        DialogKind.Info);
                     return;
                 }
                 DialogResult = true;

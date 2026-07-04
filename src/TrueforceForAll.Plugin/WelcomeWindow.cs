@@ -4,12 +4,14 @@
 // Persistence latch: Settings.HasSeenNetworkedWelcome flips true on
 // dismiss; never reopens unless reset.
 //
-// "Sign in now" routes through the standard sign-in flow.
-// "Maybe later" just dismisses; the user can still browse + upload
-// anonymously, just not edit / delete their own uploads.
+// "Get started" routes through the standard sign-in flow.
+// "Maybe later" just dismisses. Community reads are authenticated-only
+// since migration 0027, so without signing in the community features
+// stay dark; the user can sign in later from the Account tab.
 
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace TrueforceForAll.Plugin
@@ -55,12 +57,12 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Trueforce For All now talks to the community",
+                Text = "Introducing: community presets and car data",
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 17,
                 Margin = new Thickness(0, 0, 0, 6),
             });
             root.Children.Add(new TextBlock {
-                Text = "This update adds shared presets, crowd-sourced car data, and per-car corrections. Sign in to get the most from it, or stay anonymous and use it for free.",
+                Text = "This update adds a community preset browser, crowd-sourced car data, and per-car corrections. They're free to use once you sign in.",
                 Foreground = MutedFg, FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 18),
                 TextWrapping = TextWrapping.Wrap,
@@ -68,19 +70,19 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(MakeBullet(
                 "Crowd-sourced car data",
-                "Engine layouts, redlines, and car names other drivers have confirmed for the cars you load. Right values appear automatically; no setup."));
+                "Some effects need to know things about each car, like its engine layout or redline. Games don't always report them, and a few don't even give the car a real name, just a code like car_123. Now, drivers can fill in the gaps, building a shared pool everyone benefits from. Saved per tune, so a swapped engine keeps its own redline."));
             root.Children.Add(MakeBullet(
                 "Community presets",
-                "Browse and download presets other drivers have shared for the car you're driving. Take just the sections you want."));
+                "Browse and download presets other drivers have shared, for the car you're driving or the game you're playing. Vote on the ones you've tried so the best rise to the top."));
             root.Children.Add(MakeBullet(
-                "Your contributions count",
-                "When you correct a redline or share a preset, your contribution flows to everyone else loading that car. Sign in to put your username on what you share and keep your uploads yours."));
+                "It gets better as it grows",
+                "The more drivers take part, the more often the right setup is already waiting when you load in. What you add helps the next person the same way."));
             root.Children.Add(MakeBullet(
                 "Earn achievements",
-                "Sharing presets and confirming car data unlocks achievements as you go. Link Discord to claim a matching role for what you've contributed."));
+                "Earn achievements for things like sharing presets, confirming car data, and supporting the project. Link your Discord account to get a matching role in the community server."));
             root.Children.Add(MakeBullet(
                 "Privacy by default",
-                "Anonymous if you stay signed out. Sign in with email. No password to remember, no signup form, just a one-time code."));
+                "All it takes is your email. No personal details, no password, no signup form, just a one-time code."));
 
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
@@ -90,14 +92,25 @@ namespace TrueforceForAll.Plugin
             var laterBtn = new Button {
                 Content = "Maybe later", Padding = new Thickness(14, 6, 14, 6),
                 Margin = new Thickness(0, 0, 10, 0),
-                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+                Foreground = TextFg, IsCancel = true,
+                Style = MakeFilledButtonStyle(
+                    TextFg,
+                    Color.FromRgb(0x33, 0x33, 0x33),   // normal (matches PanelBg)
+                    Color.FromRgb(0x40, 0x40, 0x40),   // hover (lighter)
+                    Color.FromRgb(0x2B, 0x2B, 0x2B)),  // pressed (darker)
             };
             laterBtn.Click += (s, e) => { DialogResult = true; Close(); };
             btnRow.Children.Add(laterBtn);
 
             var signInBtn = new Button {
-                Content = "Sign in now", Padding = new Thickness(14, 6, 14, 6),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                Content = "Get started", Padding = new Thickness(16, 6, 16, 6),
+                Foreground = WindowBg,
+                FontWeight = FontWeights.SemiBold, IsDefault = true,
+                Style = MakeFilledButtonStyle(
+                    WindowBg,
+                    Color.FromRgb(0xE5, 0xC0, 0x4A),   // normal (matches HeaderFg)
+                    Color.FromRgb(0xF2, 0xD3, 0x71),   // hover (lighter gold)
+                    Color.FromRgb(0xCF, 0xA9, 0x3A)),  // pressed (deeper gold)
             };
             signInBtn.Click += (s, e) =>
             {
@@ -107,6 +120,39 @@ namespace TrueforceForAll.Plugin
             };
             btnRow.Children.Add(signInBtn);
             root.Children.Add(btnRow);
+        }
+
+        // Filled button with an explicit hover/pressed template. Without a
+        // custom template WPF's default Button chrome ignores our Background on
+        // mouse-over and paints the stock light-gray hover brush, which made the
+        // gold "Get started" button turn gray instead of lightening.
+        private static Style MakeFilledButtonStyle(Brush fg, Color normal, Color hover, Color pressed)
+        {
+            var template = new ControlTemplate(typeof(Button));
+
+            var border = new FrameworkElementFactory(typeof(Border), "bd");
+            border.SetValue(Border.BackgroundProperty, new SolidColorBrush(normal));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+            border.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
+
+            var content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            border.AppendChild(content);
+            template.VisualTree = border;
+
+            var onHover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            onHover.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(hover), "bd"));
+            template.Triggers.Add(onHover);
+
+            var onPress = new Trigger { Property = ButtonBase.IsPressedProperty, Value = true };
+            onPress.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(pressed), "bd"));
+            template.Triggers.Add(onPress);
+
+            var style = new Style(typeof(Button));
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, fg));
+            return style;
         }
 
         private FrameworkElement MakeBullet(string title, string body)

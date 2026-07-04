@@ -56,7 +56,11 @@ namespace TrueforceForAll.Core
 
         /// <summary>Stopwatch ticks of the last successful steering read, so the
         /// consumer can treat a stalled reader as stale. 0 until the first read.</summary>
-        public long LastUpdateTicks { get; private set; }
+        // Backed by an explicit field with Interlocked: written on the HID receiver
+        // thread, read on the FFB stream thread, and a plain 64-bit long read/write
+        // isn't atomic on the 32-bit host (matches the codebase convention).
+        private long _lastUpdateTicks;
+        public long LastUpdateTicks => Interlocked.Read(ref _lastUpdateTicks);
 
         public bool IsRunning => _running != 0;
 
@@ -178,7 +182,7 @@ namespace TrueforceForAll.Core
                 if (norm > 1.0) norm = 1.0; else if (norm < -1.0) norm = -1.0;
 
                 SteerNorm = (float)norm;
-                LastUpdateTicks = Stopwatch.GetTimestamp();
+                Interlocked.Exchange(ref _lastUpdateTicks, Stopwatch.GetTimestamp());
                 return;
             }
         }

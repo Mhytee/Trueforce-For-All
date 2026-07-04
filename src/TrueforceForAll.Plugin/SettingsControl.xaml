@@ -179,6 +179,39 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Primary action button for the per-effect / global Save popovers.
+             Those windows are built in code, so their buttons inherit SimHub's
+             grey stock chrome and the recommended save target reads as dead.
+             A full green ControlTemplate (Background survives the theme) marks
+             the primary "Update preset" choice as the obvious CTA, leaving the
+             secondary targets (For this car / Cancel) in default grey. -->
+        <Style x:Key="PopoverPrimaryButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="#3D8B40" CornerRadius="4" SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="10,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#469A4A"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#347A37"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A3A3A"/>
+                                <Setter Property="Foreground" Value="#888"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- Quiet action button for info-tier banners (Forza fallback /
              discovery). Their translucent fills composite to near-grey over
              the dark panel, so SimHub's default button chrome reads as
@@ -324,6 +357,87 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Compact share affordance for the active-card preset rows. The gold
+             "★ Share" pill competed with the Save all CTA and crowded the row,
+             so community share is now a tinted icon (Segoe MDL2 share glyph).
+             Still gold so it stays discoverable (share drives uploads), but it
+             recedes behind the primary save. Transparent fill so SimHub's stock
+             chrome doesn't box it; faint gold wash on hover. -->
+        <Style x:Key="HeaderShareIconButton" TargetType="Button">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Foreground" Value="#E5C04A"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <!-- Icon-only button: the tooltip is the only label, so surface it
+                 fast instead of after WPF's ~1s default. -->
+            <Setter Property="ToolTipService.InitialShowDelay" Value="250"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#22E5C04A"/>
+                                <Setter Property="Foreground" Value="#F2D165"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Foreground" Value="#C9A53A"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#6B5F3D"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Slim share CTA at the bottom of the Effects tab. A gold OUTLINE
+             (ghost) so it matches the active-card share icon (share = gold
+             across the UI) and stays discoverable, but reads as a quiet
+             secondary action, not a heavy donation-style block. Leading Segoe
+             MDL2 share glyph. Brightens on hover, darkens on press. -->
+        <Style x:Key="EffectsShareButton" TargetType="Button">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#E5C04A"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" BorderBrush="#E5C04A" BorderThickness="1"
+                                CornerRadius="8" SnapsToDevicePixels="True" Padding="13,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="&#xE72D;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                           Margin="0,0,7,0" VerticalAlignment="Center"/>
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#22E5C04A"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#F2D165"/>
+                                <Setter Property="Foreground" Value="#F2D165"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#33E5C04A"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#C9A53A"/>
+                                <Setter Property="Foreground" Value="#C9A53A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="HeaderSaveAllButton" TargetType="Button">
             <Setter Property="Height" Value="26"/>
             <Setter Property="Margin" Value="8,0,0,0"/>
@@ -431,6 +545,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <StackPanel Grid.Row="0" Margin="20,20,20,4">
@@ -506,7 +621,7 @@
                     <TextBlock Grid.Column="0" Foreground="White"
                                FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
                                TextWrapping="Wrap"
-                               Text="Wheel feeling alive in a game that never had Trueforce? Help another sim racer find TF4ALL."/>
+                               Text="Wheel feeling alive in a game that never had Trueforce? Help another driver find TF4ALL."/>
                     <TextBlock Grid.Column="1" Foreground="White" Opacity="0.85"
                                FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0"
                                Text="Share →"/>
@@ -687,13 +802,33 @@
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <CheckBox Grid.Column="0" x:Name="PluginEnabledCheck" FontSize="14" FontWeight="SemiBold"
                                   VerticalAlignment="Center"
                                   Content="Plugin enabled"
+                                  ToolTip="Choice is auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."
                                   Checked="PluginEnabled_Changed" Unchecked="PluginEnabled_Changed"/>
+                        <!-- Live status pill, moved up beside the on/off toggle so the
+                             control and the state it produces read together. The gold
+                             "Enhanced" badge rides alongside when a per-game source is
+                             delivering frames. Reclaims the old dedicated status row. -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Margin="12,0,0,0">
+                            <Border x:Name="StatusPill" CornerRadius="10" Padding="10,3" Background="#3D8B40">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="StatusPillDot" Width="8" Height="8" Fill="#A5D6A7" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock x:Name="StatusPillText" Text="Idle" Foreground="White" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border x:Name="EnhancedBadge" CornerRadius="10" Padding="10,3" Background="#FFB300"
+                                    Margin="6,0,0,0" Visibility="Collapsed"
+                                    ToolTip="Per-game enhanced telemetry source. Higher rate and more physics signals than the standard SimHub data pipe.">
+                                <TextBlock x:Name="EnhancedBadgeText" Text="✨ Enhanced" Foreground="#1A1A1A" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
                         <!-- Account chip. Always visible: a lightweight, persistent
                              entry point to community sign-in that doubles as an
                              identity readout, riding on every tab via this header
@@ -702,7 +837,7 @@
                              menu (Account settings / Sign out). The full Account
                              section still lives on the Settings tab; this is just a
                              shortcut. Driven by RefreshAccountChip. -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        <StackPanel Grid.Column="2" Orientation="Horizontal"
                                     VerticalAlignment="Center" HorizontalAlignment="Right">
                             <!-- Achievements crown + new-achievement dot. Shown when signed
                                  in; click opens the Achievements tracker and clears the dot. -->
@@ -723,8 +858,11 @@
                                     Click="AccountChip_Click"
                                     ToolTip="Sign in to share presets and use community car data.">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="AccountChipIcon" Text="◯" FontSize="12"
-                                               VerticalAlignment="Center" Margin="0,0,6,0" Visibility="Collapsed"/>
+                                    <!-- Connection dot. Drawn as an Ellipse (not a text
+                                         glyph) so green-filled and grey-hollow are exactly
+                                         the same size. Fill/Stroke set in ApplyAccountDot. -->
+                                    <Ellipse x:Name="AccountChipIcon" Width="11" Height="11"
+                                             VerticalAlignment="Center" Margin="0,0,6,0" Visibility="Collapsed"/>
                                     <TextBlock x:Name="AccountChipText" Text="Sign in" FontSize="12"
                                                FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="AccountChipCaret" Text="▾" FontSize="10"
@@ -733,9 +871,35 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <TextBlock x:Name="PluginEnabledHint" FontSize="11" Opacity="0.6"
-                               TextWrapping="Wrap" Margin="22,4,0,10"
-                               Text="Auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."/>
+                    <!-- Game + Car share one row to save vertical space; the 84-wide
+                         label column lines up with the preset labels below. -->
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="84"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Game" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" x:Name="HeaderGameText" Text="(none)" FontSize="12"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <TextBlock Grid.Column="2" Text="Car" FontSize="12" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="HeaderCarText" Text="(none)" FontSize="12"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button x:Name="HeaderCarRenameBtn" Content="Rename…" Margin="8,0,0,0"
+                                    Padding="6,0,6,0" FontSize="10" Height="18"
+                                    VerticalAlignment="Center" Visibility="Collapsed"
+                                    Click="HeaderCarRename_Click"
+                                    ToolTip="Rename this car (set its official in-game name). Always saved locally; if 'Enable community features (online)' is on you'll be asked to confirm or correct the community name for your language."/>
+                            <!-- Old "★ N community" discoverability chip + popover
+                                 removed in favour of the inline "── Top community
+                                 presets ──" section that the car preset dropdown
+                                 surfaces. One path with a preview-first apply
+                                 flow is clearer than two paths with different
+                                 semantics. -->
+                        </StackPanel>
+                    </Grid>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="84"/>
@@ -744,29 +908,9 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Game"   FontSize="12" Opacity="0.6"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="HeaderGameText"   Text="(none)" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Car"    FontSize="12" Opacity="0.6" Margin="0,2,0,0"/>
-                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2,0,0">
-                            <TextBlock x:Name="HeaderCarText" Text="(none)" FontSize="12"
-                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                            <Button x:Name="HeaderCarRenameBtn" Content="Rename" Margin="8,0,0,0"
-                                    Padding="6,0,6,0" FontSize="10" Height="18"
-                                    VerticalAlignment="Center" Visibility="Collapsed"
-                                    Click="HeaderCarRename_Click"
-                                    ToolTip="Give this car a human-readable name. Always saved locally; also submitted to the community when 'Use community car data' is on."/>
-                            <!-- Old "★ N community" discoverability chip + popover
-                                 removed in favour of the inline "── Top community
-                                 presets ──" section that the car preset dropdown
-                                 surfaces. One path with a preview-first apply
-                                 flow is clearer than two paths with different
-                                 semantics. -->
-                        </StackPanel>
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Game preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Game preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
                             <ComboBox x:Name="HeaderPresetCombo" SelectionChanged="HeaderPresetCombo_Changed"
                                       MinWidth="220" MaxWidth="340" VerticalAlignment="Center"
                                       MaxDropDownHeight="420" IsTextSearchEnabled="True"
@@ -779,7 +923,7 @@
                                  UpdateSetDefaultButton). Replaces the old bottom
                                  'Set as default for this game' button. -->
                             <Button x:Name="HeaderSetDefaultBtn" Content="Set as default" Visibility="Collapsed"
-                                    Height="24" Padding="10,0" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"
+                                    Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
                                     Click="HeaderSetDefault_Click"
                                     ToolTip="Auto-load this preset whenever this game launches. Shown only when the active preset isn't already this game's default."/>
                             <!-- Conditional: shown alongside ★ Save all (i.e.
@@ -792,13 +936,14 @@
                             <!-- Conditional: visible when community is on AND the
                                  active preset is user-owned (not a built-in).
                                  Hidden in UpdateHeaderShareButtons. -->
-                            <Button x:Name="HeaderGameShareBtn" Content="★ Share" Visibility="Collapsed"
-                                    Style="{StaticResource HeaderShareButton}"
+                            <Button x:Name="HeaderGameShareBtn" Content="&#xE72D;" Visibility="Collapsed"
+                                    Style="{StaticResource HeaderShareIconButton}"
                                     Click="HeaderGameShare_Click"
-                                    ToolTip="Share this game preset with the community. Requires sign-in."/>
+                                    ToolTipService.ShowOnDisabled="True"
+                                    ToolTip="Share this game preset with the community."/>
                         </StackPanel>
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Car preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Car preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
                             <ComboBox x:Name="HeaderCarPresetCombo" SelectionChanged="HeaderCarPresetCombo_Changed"
                                       MinWidth="220" MaxWidth="340"
                                       VerticalAlignment="Center"
@@ -818,10 +963,11 @@
                                  real car preset is selected (not "(none)" /
                                  not a built-in). Hidden in
                                  UpdateHeaderShareButtons. -->
-                            <Button x:Name="HeaderCarShareBtn" Content="★ Share" Visibility="Collapsed"
-                                    Style="{StaticResource HeaderShareButton}"
+                            <Button x:Name="HeaderCarShareBtn" Content="&#xE72D;" Visibility="Collapsed"
+                                    Style="{StaticResource HeaderShareIconButton}"
                                     Click="HeaderCarShare_Click"
-                                    ToolTip="Share this car preset with the community. Requires sign-in."/>
+                                    ToolTipService.ShowOnDisabled="True"
+                                    ToolTip="Share this car preset with the community."/>
                         </StackPanel>
                     </Grid>
 
@@ -891,37 +1037,103 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Status pill row: status badge (+ optional gold "Enhanced
-                         N Hz" hype badge) on the left; Manage presets… shares the
-                         line on the right to save a row of vertical space. -->
-                    <Grid Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border x:Name="StatusPill" CornerRadius="10" Padding="10,3" Background="#3D8B40">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse x:Name="StatusPillDot" Width="8" Height="8" Fill="#A5D6A7" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock x:Name="StatusPillText" Text="Idle" Foreground="White" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="EnhancedBadge" CornerRadius="10" Padding="10,3" Background="#FFB300"
-                                    Margin="6,0,0,0" Visibility="Collapsed"
-                                    ToolTip="Per-game enhanced telemetry source. Higher rate and more physics signals than the standard SimHub data pipe.">
-                                <TextBlock x:Name="EnhancedBadgeText" Text="✨ Enhanced" Foreground="#1A1A1A" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"/>
-                            </Border>
-                        </StackPanel>
-                        <!-- Full preset library entry point. Shares the status
-                             row to keep all preset handling unified in the card
-                             (pick + save inline above) without spending an extra
-                             line; the old standalone Presets section was removed. -->
-                        <Button x:Name="ManagePresetsButton" Grid.Column="1" Content="Manage presets…"
-                                VerticalAlignment="Center" Height="26" Padding="12,0"
-                                Click="ManagePresetsButton_Click"
-                                ToolTip="Open the full library: rename, duplicate, export, delete, or re-bind defaults for any game preset, car preset, or custom engine. Works even when no game or car is loaded."/>
-                    </Grid>
 
+                    <!-- Car facts summary: at-a-glance view of what the plugin
+                         knows about the active car (name, engine/variant + its
+                         source, redline + its source), editable inline for the
+                         name and redline. Engine/variant edits route to the
+                         existing Manage Variants modal. Shown only when a car is
+                         active; collapsed by default. Populated by
+                         RefreshCarFactsPanel. -->
+                    <Expander x:Name="CarFactsExpander" IsExpanded="False" Margin="0,10,0,0" Visibility="Collapsed"
+                              ToolTip="What the plugin currently believes about this car. Correct anything that looks wrong; your values win over the community for this car / variant.">
+                        <Expander.Header>
+                            <TextBlock Text="Car facts" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,0">
+                            <!-- Name -->
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Car name" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <TextBox  Grid.Column="1" x:Name="CarFactsNameBox" VerticalAlignment="Center" Margin="0,0,8,0"
+                                          TextChanged="CarFactsNameBox_TextChanged"/>
+                                <Button   Grid.Column="2" x:Name="CarFactsNameSaveBtn" Content="Save"
+                                          Style="{StaticResource EffectSaveButton}" Visibility="Collapsed"
+                                          Click="CarFactsNameSave_Click"
+                                          ToolTip="Save a human-readable name for this car. Saved locally; also shared with the community when 'Enable community features (online)' is on."/>
+                            </Grid>
+                            <TextBlock x:Name="CarFactsCommunityNameText" FontSize="11" Opacity="0.55"
+                                       Margin="64,0,0,6" Visibility="Collapsed"/>
+                            <!-- Engine type (inline editable, same picker as the
+                                 Engine Pulse section's Layout dropdown) + a meta
+                                 line for the rev ceiling and the fact's source. -->
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Engine" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <ComboBox  Grid.Column="1" x:Name="CarFactsEngineCombo" SelectionChanged="CarFactsEngine_Changed"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"
+                                           ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong."/>
+                                <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" VerticalAlignment="Center">
+                                    <Hyperlink x:Name="CarFactsRefreshCommunityLink" Click="CarFactsRefreshCommunity_Click"
+                                               ToolTip="Refresh this car's community facts from the server now (they otherwise refresh at most weekly).">↻ Refresh</Hyperlink>
+                                    <Run Text="   "/>
+                                    <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
+                                </TextBlock>
+                            </Grid>
+                            <TextBlock x:Name="CarFactsEngineMetaText" FontSize="11" Opacity="0.55" Margin="64,0,0,6"/>
+                            <!-- Redline -->
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Redline" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <TextBox   Grid.Column="1" x:Name="CarFactsRedlineBox" Width="70" VerticalAlignment="Center"
+                                           KeyDown="CarFactsRedline_KeyDown"/>
+                                <TextBlock Grid.Column="2" Text="RPM" FontSize="11" Opacity="0.6" VerticalAlignment="Center" Margin="4,0,8,0"/>
+                                <Button    Grid.Column="3" x:Name="CarFactsRedlineSetBtn" Content="Set"
+                                           Style="{StaticResource EffectSaveButton}" Visibility="Visible"
+                                           Click="CarFactsRedlineSet_Click"
+                                           ToolTip="Pin this redline for the current variant (this tune). Wins over the community value for this variant."/>
+                                <TextBlock Grid.Column="4" x:Name="CarFactsRedlineSourceText" FontSize="11" Opacity="0.6"
+                                           VerticalAlignment="Center" Margin="2,0,0,0"/>
+                            </Grid>
+                            <!-- Nudge to contribute when we have no community redline for
+                                 this car/variant yet. Gold so it reads as a gentle prompt. -->
+                            <TextBlock x:Name="CarFactsNoCommunityNudge" Margin="64,4,0,0" FontSize="11"
+                                       Foreground="#FFE082" TextWrapping="Wrap" Visibility="Collapsed"/>
+                            <StackPanel Orientation="Horizontal" Margin="64,4,0,2">
+                                <Button x:Name="CarFactsShareBtn" Content="★ Share with community"
+                                        Style="{StaticResource HeaderShareButton}" Visibility="Collapsed"
+                                        Click="CarFactsShareRedline_Click"
+                                        ToolTip="Submit your redline for this car / variant so other drivers get it too."/>
+                            </StackPanel>
+                            <!-- Per-gear redline overrides (gears 1..N). The redline above
+                                 is the default (gear 0); rows here override specific gears,
+                                 e.g. a lower 1st-gear limit. Rows are built in code by
+                                 RebuildPerGearEditors and kept in sync with the Rev Limiter
+                                 section's copy. -->
+                            <Expander x:Name="CarFactsPerGearExpander" IsExpanded="False" Margin="0,6,0,0" Visibility="Collapsed">
+                                <Expander.Header>
+                                    <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
+                                </Expander.Header>
+                                <StackPanel Margin="0,4,0,0">
+                                    <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
+                                               Text="Optional. Buzz at a different RPM in specific gears (e.g. a lower 1st-gear limit). Gears you don't list use the redline above."/>
+                                    <StackPanel x:Name="CarFactsPerGearRows"/>
+                                    <Button x:Name="CarFactsAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
+                                            Padding="10,2" Margin="0,2,0,0" Click="CarFactsAddGear_Click"/>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Expander>
+
+                    <!-- Coalesced "issues" region: at most one banner shows at a
+                         time (severity order), with a "+N more" bar to reveal the
+                         rest. Keeps a misconfigured machine from stacking five
+                         full-width banners and crushing the tabs below. Driven by
+                         CoalesceCardIssues on the refresh tick. -->
+                    <StackPanel x:Name="IssuesHost">
                     <!-- Logitech G HUB warning banner. G HUB claims the wheel's
                          HID interface; while it's running we can't talk to the
                          wheel. Surfaced as a dedicated red banner (separate from
@@ -1021,28 +1233,40 @@
                                        Text=""/>
                         </StackPanel>
                     </Border>
+
+                    <!-- "+N more" reveal. Shown only when more than one issue is
+                         active; the collapsed view shows just the top-severity
+                         banner. Clicking expands to the full stack (and back). -->
+                    <Border x:Name="MoreIssuesBar" Visibility="Collapsed" Cursor="Hand"
+                            Background="#1FFFFFFF" CornerRadius="4" Padding="10,5" Margin="0,8,0,0"
+                            MouseLeftButtonUp="MoreIssues_Click"
+                            ToolTip="Show the other active issues.">
+                        <TextBlock x:Name="MoreIssuesText" FontSize="12" Foreground="#E0E0E0"
+                                   Text="+1 more issue ▾"/>
+                    </Border>
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </StackPanel>
 
-        <sh:SHTabControl x:Name="MainTabs" Grid.Row="1" Margin="20,4,20,12" SelectionChanged="MainTabs_SelectionChanged">
+        <!-- Message-of-the-day strip: spans all tabs, sits between the header and
+             the tab content. Hosts the MotdStrip control (added in code-behind);
+             collapses to nothing when there's no message. -->
+        <ContentControl x:Name="MotdStripHost" Grid.Row="1" Margin="20,0,20,8"/>
+
+        <sh:SHTabControl x:Name="MainTabs" Grid.Row="2" Margin="20,4,20,12" SelectionChanged="MainTabs_SelectionChanged">
             <!-- ============================ EFFECTS (main) ============================ -->
             <sh:SHTabItem Header="Effects">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
-            <!-- Master -->
+            <!-- Master. Master gain is a GLOBAL setting (auto-saved, not
+                 preset-scoped), so this section has no Save/Revert. The
+                 FFB pass-through Save/Revert (which cover scale/smooth/invert,
+                 EffectKind.Master) live with those controls in the FFB tweaks
+                 expander below. -->
             <Border Style="{StaticResource SectionHeaderBorder}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Master" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
-                    <Button Grid.Column="1" x:Name="MasterRevertBtn" Content="↶" Tag="Master" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                    <Button Grid.Column="2" x:Name="MasterSaveBtn"   Content="Save…" Tag="Master" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                </Grid>
+                <TextBlock Text="Master" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
             </Border>
             <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1052,17 +1276,6 @@
                             TickFrequency="0.25" ValueChanged="MasterGainSlider_ValueChanged" VerticalAlignment="Center"/>
                 <TextBox Grid.Column="2" x:Name="MasterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
             </Grid>
-            <!-- Promoted FFB pass-through toggle. Visible only when the active
-                 game ships native Trueforce (see ActiveGameIsNativeTrueforce).
-                 For every other game the same toggle lives in the Settings tab's
-                 FFB pass-through section, where it almost never needs touching. -->
-            <StackPanel x:Name="FfbSkipPassthroughPromotedPanel" Visibility="Collapsed">
-                <CheckBox x:Name="FfbSkipPassthroughPromotedCheck" Content="Skip FFB pass-through (native Trueforce games)"
-                          Margin="0,0,0,2" Checked="FfbSkipPassthroughPromoted_Changed" Unchecked="FfbSkipPassthroughPromoted_Changed"/>
-                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                           Text="This game ships native Trueforce. Enable to let the game drive the wheel directly while our effects play on top. Disable only if you prefer to mirror the game's FFB through our capture (rarely needed)."/>
-            </StackPanel>
-
             <!-- (The old "Active car" Save/Delete box was removed: per-car
                  tuning now saves via each effect's ★/Save popover ("For this
                  car"), and deleting a car preset lives in Manage Presets. The
@@ -1079,10 +1292,7 @@
                 <StackPanel Margin="0,10,0,0">
 
                 <!-- FFB pass-through: how the game's own force feedback is
-                     mirrored to the wheel - output scale, smoothing, and sign.
-                     FfbPassthroughControls is greyed for native-Trueforce games
-                     where pass-through is skipped (the game drives the wheel
-                     directly); invert lives here too so all three grey together. -->
+                     mirrored to the wheel - output scale, smoothing, and sign. -->
                 <Expander IsExpanded="False" Margin="0,0,0,4">
                     <Expander.Header>
                         <TextBlock Text="FFB pass-through" FontWeight="SemiBold" VerticalAlignment="Center"/>
@@ -1099,17 +1309,25 @@
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="FFB smooth (ms):" Style="{StaticResource LabelText}"
-                                       ToolTip="Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms; smoothing converts the staircase into a ramp. Higher = smoother feel but more lag. Lower = tighter response but possible faint mechanical tick. 0 = pure passthrough (tightest response)."/>
+                                       ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
                             <Slider     Grid.Column="1" x:Name="FfbSmoothSlider"
                                         Minimum="0" Maximum="10" SmallChange="0.5" LargeChange="1"
                                         TickFrequency="1" ValueChanged="FfbSmoothSlider_ValueChanged" VerticalAlignment="Center"
-                                        ToolTip="Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms; smoothing converts the staircase into a ramp. Higher = smoother feel but more lag. Lower = tighter response but possible faint mechanical tick. 0 = pure passthrough (tightest response)."/>
+                                        ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
                             <TextBox Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
                         </Grid>
                         <CheckBox x:Name="FfbInvertCheck" Content="Invert FFB sign (uncheck if forces feel reversed)"
                                   Margin="0,2,0,0" VerticalAlignment="Center"
                                   Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"
                                   ToolTip="Flips the direction of the game's force feedback sent to the wheel. On by default. If your wheel pushes the wrong way (e.g. forces feel reversed in RaceRoom), uncheck this."/>
+                        <!-- Save/Revert for the FFB pass-through trio (scale/smooth/
+                             invert). Tag="Master" so the existing EffectKind.Master
+                             save/revert handlers apply unchanged. Shown only when
+                             these values drift from the active preset. -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                            <Button x:Name="MasterRevertBtn" Content="↶" Tag="Master" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="MasterSaveBtn"   Content="Save…" Tag="Master" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
                     </StackPanel>
                 </Expander>
 
@@ -1125,7 +1343,11 @@
                      smooths it. -->
                 <Expander IsExpanded="False" Margin="0,0,0,4">
                     <Expander.Header>
-                        <TextBlock Text="Stationary spring" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Stationary spring" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button x:Name="StationarySpringRevertBtn" Content="↶" Tag="StationarySpring" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="StationarySpringSaveBtn"   Content="Save…" Tag="StationarySpring" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
@@ -1219,24 +1441,6 @@
                                            Text="How hard spikes above the threshold get compressed. Peak force during a big hit asymptotes toward threshold plus this value. Transient method only."/>
                             </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </Expander>
-
-                <!-- Experimental FFB detection. Synced with the copy in the
-                     Settings tab's FFB pass-through expander and the FFBX access
-                     code. A recovery tool for games that should have force
-                     feedback but give none, so it lives with the other FFB
-                     tweaks. -->
-                <Expander IsExpanded="False" Margin="0,0,0,4">
-                    <Expander.Header>
-                        <TextBlock Text="Experimental FFB detection" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </Expander.Header>
-                    <StackPanel Margin="0,8,0,0">
-                        <CheckBox x:Name="ExperimentalFfbMainCheck" Content="Enable experimental FFB detection"
-                                  Margin="0,0,0,2" Checked="ExperimentalFfbDetectionMain_Changed" Unchecked="ExperimentalFfbDetectionMain_Changed"
-                                  ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). After enabling, load the game and drive for a few seconds. Turn it back off if it causes any trouble."/>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
-                                   Text="Try this if you are not getting force feedback in a game that should have it."/>
                     </StackPanel>
                 </Expander>
                 </StackPanel>
@@ -1406,9 +1610,9 @@
                              chose for the active car when the user has Auto
                              selected. Empty otherwise. The Community context
                              line below surfaces what other drivers said for
-                             this car (plus thumbs up/down voting) so the
-                             user can confirm/refute upfront rather than only
-                             after a save. -->
+                             this car so the user can confirm it (re-submit the
+                             same value) or correct it (submit a different one)
+                             upfront rather than only after a save. -->
                         <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,4" Text=""/>
                         <TextBlock x:Name="EngineCommunityText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="" Visibility="Collapsed"/>
                         <!-- Active variant readout + Manage link. Auto-detect
@@ -2016,6 +2220,34 @@
                                         TickFrequency="1000" ValueChanged="RevLimiterRedlineSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="RevLimiterRedlineText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6800"/>
                         </Grid>
+                        <!-- Per-variant redline save: appears in Auto mode while
+                             the user is dragging a redline they haven't committed.
+                             Saving pins it to THIS engine variant (this tune) in
+                             the CarFacts layer, where it wins over the community
+                             value for that variant. Revert discards the draft. -->
+                        <Grid x:Name="RevLimiterRedlineSaveRow" Margin="140,0,0,10" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Save for this variant" Click="SaveVariantRedline_Click" Padding="10,3" Margin="0,0,8,0"
+                                        ToolTip="Saves this redline just for the current engine variant (this tune). It wins over the community value for this variant; switching to another variant loads that variant's own value."/>
+                                <Button Content="Revert" Click="RevertVariantRedline_Click" Padding="10,3"
+                                        ToolTip="Discard this unsaved redline change."/>
+                            </StackPanel>
+                        </Grid>
+                        <!-- Per-gear redline overrides (gears 1..N). The redline slider
+                             above is the default (gear 0). Same editor as the Car Facts
+                             panel; both are rebuilt by RebuildPerGearEditors. -->
+                        <Expander x:Name="RevLimiterPerGearExpander" IsExpanded="False" Margin="140,0,0,8" Visibility="Collapsed">
+                            <Expander.Header>
+                                <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
+                            </Expander.Header>
+                            <StackPanel Margin="0,4,0,0">
+                                <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="Optional. Buzz at a different RPM in specific gears (e.g. a lower 1st-gear limit). Gears you don't list use the redline above."/>
+                                <StackPanel x:Name="RevLimiterPerGearRows"/>
+                                <Button x:Name="RevLimiterAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
+                                        Padding="10,2" Margin="0,2,0,0" Click="RevLimiterAddGear_Click"/>
+                            </StackPanel>
+                        </Expander>
                         <!-- Coverage badge: shown when the rev-limiter cascade fell
                              all the way to the 0.85 × MaxRpm estimate (no telemetry
                              redline, no CarFacts, no preset, no legacy Threshold).
@@ -2040,10 +2272,33 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+                        <!-- Community-redline CONFIRM prompt. Non-modal: surfaced
+                             inline (NOT a popup off the meter tick) when the
+                             community redline for this variant is still unconfirmed
+                             (a single submitter) and the user hasn't set their own.
+                             Confirm makes the user a second supporter so it becomes
+                             confirmed consensus; correcting is just setting your own
+                             redline above. The tick toggles it via
+                             UpdateRedlineConfirmPrompt. -->
+                        <Border x:Name="RedlineConfirmBanner" Visibility="Collapsed"
+                                Background="#2633C2FF" BorderBrush="#FF4FB0E0" BorderThickness="1"
+                                CornerRadius="3" Padding="10,8" Margin="140,0,0,10">
+                            <StackPanel>
+                                <TextBlock x:Name="RedlineConfirmBannerText" TextWrapping="Wrap"
+                                           Foreground="#FFD4ECFA" FontSize="12"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <Button x:Name="RedlineConfirmBtn" Content="Confirm"
+                                            Padding="10,2" Margin="0,0,8,0" Click="RedlineConfirm_Click"
+                                            ToolTip="Agree with this value so it counts toward a confirmed community redline once the server records it."/>
+                                    <Button x:Name="RedlineConfirmDismissBtn" Content="Dismiss"
+                                            Padding="10,2" Click="RedlineConfirmDismiss_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                         <Grid x:Name="RevLimiterOffsetRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Redline offset:" Style="{StaticResource LabelText}"
-                                       ToolTip="Shift the engage point relative to the car's redline. Negative fires the buzz before the redline (an early shift cue); positive fires it after. 0 = right at the redline. Only used when firing at a real redline; the percentage path ignores it."/>
+                                       ToolTip="Shift the engage point relative to the car's redline. Negative fires the buzz before the redline (an early shift cue); positive fires it after. 0 = right at the redline."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterOffsetSlider" Minimum="-3000" Maximum="1000" SmallChange="50" LargeChange="250"
                                         TickFrequency="250" ValueChanged="RevLimiterOffsetSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="RevLimiterOffsetText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0"/>
@@ -2089,6 +2344,12 @@
                         </Grid>
                     </StackPanel>
                 </Expander>
+
+                <!-- Ducking: cross-effect amplitude coordinators. Airborne
+                     ducking cuts effects while the car is off the ground;
+                     sidechain ducking dips continuous effects when transient
+                     ones fire. Neither is a voice of its own. -->
+                <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12"><TextBlock Text="Ducking" Style="{StaticResource SectionHeaderText}"/></Border>
 
                 <!-- Airborne ducking. A coordinator, not a voice: it produces
                      no haptic of its own, it pulls down the OTHER effects while
@@ -2138,96 +2399,71 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Sidechain ducking. When transient effects fire, continuous
+                     effects duck to make room. Sits next to Airborne ducking:
+                     both are cross-effect amplitude coordinators rather than
+                     voices of their own. -->
+                <Expander x:Name="DuckingExpander" IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="DuckingEnabledCheck" Content="Sidechain ducking"
+                                      FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Checked="DuckingEnabled_Changed" Unchecked="DuckingEnabled_Changed"/>
+                            <Button x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="DuckingSaveBtn"   Content="Save…" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                            Text="When transient effects (gear shift, ABS, road bumps, traction loss) fire, continuous effects (engine pulse, audio capture) duck to make room."/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Depth:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
+                                        Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+                        </Grid>
+                        <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
+                            <Expander.Header>
+                                <TextBlock Text="Advanced (envelope)" FontSize="12"/>
+                            </Expander.Header>
+                            <StackPanel Margin="0,8,0,0">
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Attack (ms):" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
+                                                Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
+                                                TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Release (ms):" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
+                                                Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
+                                                TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Expander>
+
             </StackPanel> <!-- /TelemetryEffectsPanel -->
 
-            <!-- Rev/shift LEDs (iRacing + MAIRA). MAIRA users lose the wheel's
-                 LEDs (iRacing's Trueforce being off takes them with it); these
-                 toggles plus MAIRA's matching toggle bring them back. Drives
-                 rim or base LEDs depending on the wheel. -->
-            <StackPanel x:Name="RpmLedSection" Visibility="Collapsed" Margin="0,20,0,0">
-            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Rev/shift LEDs (iRacing)" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="Running MAIRA turns iRacing's Trueforce off, which also turns your wheel's LEDs off. With these toggles on (and MAIRA's matching toggle), TF4ALL drives the LEDs again from your RPM. Click Test to check they light up. If they do not work, use Feedback then Report an issue and attach your logs so I can take a look."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                <CheckBox x:Name="RpmLedEnabledCheck" Content="Drive the wheel's LEDs in iRacing"
-                          VerticalAlignment="Center"
-                          Checked="RpmLedEnabled_Changed" Unchecked="RpmLedEnabled_Changed"
-                          ToolTip="Only active in iRacing with MAIRA. No effect in other games."/>
-                <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
-            </StackPanel>
-            <CheckBox x:Name="MairaPassthroughCheck" Content="Auto-link with MAIRA (recommended)"
-                      VerticalAlignment="Center" Margin="0,0,0,6"
-                      Checked="MairaPassthrough_Changed" Unchecked="MairaPassthrough_Changed"
-                      ToolTip="Leave on. When you turn on MAIRA's matching 'Pass FFB through TF4ALL' toggle, the two link up automatically and your LEDs come back. With MAIRA's toggle off, TF4ALL works exactly as before."/>
-            <Grid Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="LED status:" Style="{StaticResource LabelText}"/>
-                <TextBlock Grid.Column="1" x:Name="RpmLedStatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
-            </Grid>
-            <TextBlock Style="{StaticResource HelpText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"
-                Text="Your LEDs and TF4ALL's haptics work together once MAIRA's 'Pass FFB through TF4ALL' toggle is on. Get MAIRA below."/>
-            <TextBlock Margin="0,0,0,8" FontSize="12">
-                <Hyperlink Foreground="#FF4DA3FF" Click="GetMaira_Click">
-                    <Run Text="Get MAIRA Refactored (recommended for iRacing)"/>
-                </Hyperlink>
-            </TextBlock>
-            </StackPanel> <!-- /RpmLedSection -->
-
-            <!-- Support development -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,12"><TextBlock Text="Support Trueforce For All" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" FontSize="12"
-                Text="Trueforce For All is free and always will be. If you'd like to help cover the time and server costs, you can become a supporter on Patreon (which also unlocks cloud backup and supporter perks). A one-time tip is welcome too, never expected."/>
-            <!-- Custom-templated button: SimHub's theme overrides Button.Background on stock
-                 buttons, so a full ControlTemplate preserves Patreon's brand colour + logo. -->
-            <Button x:Name="PatreonButton" Click="Patreon_Click" Cursor="Hand"
-                    HorizontalAlignment="Left" Height="44" Margin="0,0,0,6">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="PatreonBd" Background="#FFF96854" CornerRadius="8" BorderThickness="0"
-                                SnapsToDevicePixels="True">
-                            <Border.Effect>
-                                <DropShadowEffect Color="#000000" BlurRadius="6" ShadowDepth="1" Opacity="0.35"/>
-                            </Border.Effect>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,16,0">
-                                <Canvas Width="22" Height="22" Margin="0,0,9,0" VerticalAlignment="Center">
-                                    <Rectangle Canvas.Left="0" Canvas.Top="0" Width="4.5" Height="22" Fill="White"/>
-                                    <Ellipse Canvas.Left="7" Canvas.Top="1" Width="14" Height="14" Fill="White"/>
-                                </Canvas>
-                                <TextBlock Text="Become a supporter on Patreon"
-                                           Foreground="White" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PatreonBd" Property="Background" Value="#FFE0573F"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="PatreonBd" Property="Background" Value="#FFC94A35"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
-            <!-- Secondary one-time tip on Ko-fi (demoted to a small link). -->
-            <Button x:Name="DonateButton" Click="Donate_Click" Cursor="Hand" Style="{StaticResource LinkButton}"
-                    HorizontalAlignment="Left" Margin="2,0,0,8" Padding="0"
-                    Content="or buy me a coffee on Ko-fi"
-                    ToolTip="One-time tip on Ko-fi (ko-fi.com/mhytee)"/>
-
-            <!-- Spread the word. Always available (unlike the one-and-done
-                 banner up top). Word of mouth is the only thing that gets
-                 this in front of people, so it's a first-class action here,
-                 not buried. Same dialog the banner opens. -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Spread the word" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="Almost nobody knows this plugin exists; sharing is the best way to help get the word out."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button x:Name="SharePanelButton" Content="Share TF4ALL…" Width="160" Height="28" Margin="0,0,8,0"
-                        Click="SharePanelButton_Click"
-                        ToolTip="Post on X, Reddit, or Facebook, or open the Nexus Mods / GitHub page."/>
+            <!-- The donation block (Patreon / Ko-fi) and the full "Spread the
+                 word" section moved to the dedicated "Support us" tab, to keep
+                 the tuning flow non-salesy. Discovery is the bottleneck though,
+                 so a single slim Share action stays on this high-traffic Effects
+                 tab rather than being buried a tab away. -->
+            <StackPanel Orientation="Horizontal" Margin="0,16,0,16" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource HelpText}" FontSize="12" VerticalAlignment="Center"
+                           Margin="0,0,8,0" Text="Enjoying this? Help others find it:"/>
+                <Button x:Name="SharePanelButton" Content="Share TF4ALL…"
+                        Style="{StaticResource EffectsShareButton}"
+                        Click="SharePanelButton_Click" ToolTipService.InitialShowDelay="250"
+                        ToolTip="Post on X, Reddit, or Facebook, or copy the GitHub / Nexus link."/>
             </StackPanel>
 
                     </StackPanel>
@@ -2284,6 +2520,33 @@
             <sh:SHTabItem x:Name="SettingsTab" Header="Settings">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
+
+            <!-- Updates: how often the plugin re-checks GitHub for a newer
+                 build. A check always runs at startup and on the header's
+                 "Check for updates" link regardless of this; the dropdown only
+                 sets the background re-check cadence during a running session. -->
+            <Expander x:Name="UpdatesExpander" IsExpanded="False" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="Updates" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Check for app updates:" Style="{StaticResource LabelText}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox x:Name="UpdateCheckIntervalCombo" Width="160"
+                                  SelectionChanged="UpdateCheckIntervalCombo_SelectionChanged"
+                                  ToolTip="How often the plugin checks GitHub for a newer release while it's running. A check always runs once when SimHub starts, and the header's 'Check for updates' link checks on demand, no matter what you pick here. 'On startup only' just turns off the background re-checks.">
+                            <ComboBoxItem Tag="0" Content="On startup only"/>
+                            <ComboBoxItem Tag="1" Content="Every hour"/>
+                            <ComboBoxItem Tag="2" Content="Every 2 hours"/>
+                            <ComboBoxItem Tag="6" Content="Every 6 hours"/>
+                            <ComboBoxItem Tag="24" Content="Daily"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="The plugin already checks once each time SimHub starts. This adds background re-checks so a fix released mid-session still shows the update banner without a restart. When one's available, an 'Update to vX.Y.Z' button appears in the header up top."/>
+                </StackPanel>
+            </Expander>
 
             <!-- UDP telemetry: Forza UDP setup as its own collapsible, so it
                  reads as a primary setting rather than trailing Diagnostics.
@@ -2426,33 +2689,36 @@
                  can reach them. -->
             <StackPanel x:Name="AdvancedSettingsHost" Margin="0,0,0,0">
 
-                <!-- FFB pass-through. Only relevant for games that ship native
-                     Trueforce (AC Rally, iRacing, etc). For those games the
-                     same toggle is also promoted to the Effects tab so users
-                     don't have to dig for it. -->
+                <!-- Advanced force-feedback options: experimental FFB detection
+                     and the pause-release wheel handoff. -->
                 <Expander x:Name="FfbPassthroughExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
-                        <TextBlock Text="FFB pass-through" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="Force feedback (advanced)" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
-                        <CheckBox x:Name="FfbSkipPassthroughCheck" Content="Skip FFB pass-through (native Trueforce games)"
-                                  Margin="0,0,0,2" Checked="FfbSkipPassthrough_Changed" Unchecked="FfbSkipPassthrough_Changed"/>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                                   Text="Enable for games with native Trueforce support (e.g. AC Rally, iRacing). Plugin effects still play, but the wheel's force comes from the game's own FFB path instead of being mirrored from our capture. Avoids fighting with the game's own writes to the wheel."/>
-
                         <!-- Experimental FFB detection. Off by default so the
                              proven capture path is unchanged for everyone; opt
                              in if a game that should have force feedback gives
                              none. Widens how the tap recognizes the wheel's FFB
                              on the bus (HID++ report 0x12 + faster index
                              resolve; helps e.g. the RS50 in Forza, issue #8).
-                             Synced with the copy in the Effects tab's FFB tweaks
-                             and the FFBX access code. -->
+                             Synced with the FFBX access code. -->
                         <CheckBox x:Name="ExperimentalFfbCheck" Content="Enable experimental FFB detection"
                                   Margin="0,4,0,2" Checked="ExperimentalFfbDetection_Changed" Unchecked="ExperimentalFfbDetection_Changed"
                                   ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). After enabling, load the game and drive for a few seconds. Turn it back off if it causes any trouble."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
                                    Text="Try this if you are not getting force feedback in a game that should have it. Load the game and drive for a few seconds after turning it on. Leave it off if your force feedback already works."/>
+
+                        <!-- Release the wheel while paused (issue #13 test, NOLOCK
+                             access code). When on, the plugin fully leaves Trueforce
+                             mode while the game is paused so the wheel reverts to the
+                             game's own FFB / auto-center instead of holding a force.
+                             Global, not preset-saved. Default off. -->
+                        <CheckBox x:Name="StopStreamOnPauseCheck" Content="Hand the wheel back to the game while paused"
+                                  Margin="0,4,0,2" Checked="StopStreamOnPause_Changed" Unchecked="StopStreamOnPause_Changed"
+                                  ToolTip="Off by default. When the game pauses (menu, fast travel, race start) the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center instead of holding the last force. Turn this on if your wheel jerks or runs to full lock when you pause (seen on the G923 in Forza Horizon 6)."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
+                                   Text="Try this if the wheel pulls to one side or locks up when you pause the game."/>
                     </StackPanel>
                 </Expander>
 
@@ -2519,60 +2785,14 @@
                     </StackPanel>
                 </Expander>
 
-                <!-- Sidechain ducking. When transient effects fire,
-                     continuous effects duck to make room. -->
-                <Expander x:Name="DuckingExpander" IsExpanded="False" Margin="0,0,0,8">
-                    <Expander.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Sidechain ducking" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <Button x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                            <Button x:Name="DuckingSaveBtn"   Content="Save…" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                        </StackPanel>
-                    </Expander.Header>
-                    <StackPanel Margin="0,8,0,0">
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                            Text="When transient effects (gear shift, ABS, road bumps, traction loss) fire, continuous effects (engine pulse, audio capture) duck to make room."/>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Depth:" Style="{StaticResource LabelText}"/>
-                            <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
-                                        Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                                        TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="DuckDepthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
-                        </Grid>
-                        <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
-                            <Expander.Header>
-                                <TextBlock Text="Advanced (envelope)" FontSize="12"/>
-                            </Expander.Header>
-                            <StackPanel Margin="0,8,0,0">
-                                <Grid Margin="0,0,0,4">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Attack (ms):" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
-                                                Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
-                                                TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="2" x:Name="DuckAttackText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="5"/>
-                                </Grid>
-                                <Grid Margin="0,0,0,0">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Release (ms):" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
-                                                Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
-                                                TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
-                                </Grid>
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Expander>
-
                 <!-- Diagnostics. Wheel / stream / FFB / telemetry status.
                      Useful for troubleshooting; rarely needed otherwise. -->
                 <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
-                        <TextBlock Text="Diagnostics" FontSize="13" FontWeight="SemiBold"/>
+                        <TextBlock Text="Diagnostics &amp; support" FontWeight="SemiBold"/>
                     </Expander.Header>
-                    <Grid Margin="0,8,0,0">
+                    <StackPanel Margin="0,8,0,0">
+                        <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
                             <ColumnDefinition Width="*"/>
@@ -2663,31 +2883,50 @@
                                    Visibility="Collapsed"
                                    Margin="0,8,0,0" TextWrapping="Wrap"
                                    FontFamily="Consolas" FontSize="12"/>
-                    </Grid>
+                        </Grid>
+                        <!-- Issue reporting (bugs, feature requests, weird behavior).
+                             Folded in here so the get-help tools live together. -->
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,14,0,8" FontSize="12"
+                            Text="Found a bug, weird behavior, or have a feature request? Open an issue on GitHub."/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Button x:Name="ReportIssueButton" Content="Report an issue…" Width="160" Height="26"
+                                    Click="ReportIssue_Click" Margin="0,0,8,0"
+                                    ToolTip="Opens a new GitHub issue. Pre-fills plugin version and active game so you don't have to type it."/>
+                            <Button x:Name="ExportLogsButton" Content="Export logs…" Width="120" Height="26"
+                                    Click="ExportLogs_Click" Margin="0,0,8,0"
+                                    ToolTip="Zips your SimHub logs + TF4ALL settings to your Desktop. Attach the zip to your GitHub issue so I can debug what's happening on your machine."/>
+                            <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
+                                    Click="OpenRepo_Click"
+                                    ToolTip="github.com/Mhytee/Trueforce-For-All"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button x:Name="ResetNoticesButton" Content="Show one-time messages again" Width="220" Height="26"
+                                    Click="ResetNotices_Click"
+                                    ToolTip="Reset the pop-ups that only show once or were dismissed with 'Don't show again' (welcome, what's new, the iRacing Trueforce notice, share prompt) so they can appear again."/>
+                            <TextBlock x:Name="ResetNoticesStatus" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center" Opacity="0.85"/>
+                        </StackPanel>
+                    </StackPanel>
                 </Expander>
 
-                <!-- Dev-only: run the backup round-trip + classification self-test
-                     in-app. Hidden unless DevModeUnlocked (ApplyDevModeVisibility). -->
-                <Button x:Name="BackupSelfTestButton" Content="Run backup self-test (dev)"
-                        HorizontalAlignment="Left" Margin="0,4,0,0" Padding="10,3"
-                        Visibility="Collapsed" Click="BackupSelfTest_Click"
-                        ToolTip="Dev only: runs the backup round-trip + the classification audit (flags any unclassified TrueforceSettings field) and shows the result."/>
-
-                
             </StackPanel>
 
 
 
 
-            <!-- Extras: misc preferences that aren't game/FFB tuning. Placed
-                 below the collapsibles (not above) so it doesn't read as their
-                 parent. Currently just the home-screen gain tile toggle. -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,12"><TextBlock Text="Extras" Style="{StaticResource SectionHeaderText}"/></Border>
-            <CheckBox x:Name="ShowFeedbackBoxCheck" Content="Show TF4ALL gain tile on SimHub's home screen"
-                      Margin="0,0,0,2" Checked="ShowFeedbackBox_Changed" Unchecked="ShowFeedbackBox_Changed"
-                      ToolTip="Adds a TF4ALL master + audio gain box to SimHub's home 'Feedback' section, next to Motors and Wind, for quick access without opening this panel."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
-                       Text="Quick master + audio gain control from SimHub's home screen. Turn off to remove the tile."/>
+            <!-- Widgets: optional SimHub home-screen tiles. A collapsible since it's an extra
+                 surface most users set once; currently just the gain tile. -->
+            <Expander x:Name="WidgetsExpander" IsExpanded="False" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="Widgets" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+                    <CheckBox x:Name="ShowFeedbackBoxCheck" Content="Show TF4ALL gain tile on SimHub's home screen"
+                              Margin="0,0,0,2" Checked="ShowFeedbackBox_Changed" Unchecked="ShowFeedbackBox_Changed"
+                              ToolTip="Adds a TF4ALL master + audio gain box to SimHub's home 'Feedback' section, next to Motors and Wind, for quick access without opening this panel."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
+                               Text="Quick master + audio gain control from SimHub's home screen. Turn off to remove the tile."/>
+                </StackPanel>
+            </Expander>
 
             <!-- Account & community moved to its own Account tab (see the AccountTab
                  SHTabItem below). The relocated Expander keeps every x:Name, so the
@@ -2703,19 +2942,152 @@
                  conditional Set-as-default + Save as new inline with the game
                  preset dropdown; Manage presets… at the bottom of that card). -->
 
-            <!-- Backup & sync. Two smart buttons: Export opens the pack
-                 picker (preselects the current car, hides built-ins);
-                 Import auto-detects the file kind (preset, car preset,
-                 pack, or full settings backup). -->
+            <!-- Community: online community features (community car facts, preset sharing
+                 + auto-update, message of the day). Cloud backup/sync now lives in the
+                 Backup & sync expander below, next to local file backup. Collapsed by default. -->
+            <Expander x:Name="NetworkExpander" IsExpanded="False" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="Community" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+                    <!-- Networking master toggle (online community features: car-fact
+                         fetch/submit + preset sharing). Does NOT gate account sign-in
+                         or cloud backup, which have their own controls. -->
+                    <CheckBox x:Name="CommunityEnabledCheck" Content="Enable community features (online)"
+                              Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
+                              ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, and sharing presets. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
+                               Text="Sign-in required to share. Your username isn't shown on submitted data."/>
+                    <!-- ===== Community car facts: apply (read) + auto-submit (write) ===== -->
+                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
+                        <TextBlock Text="Community car facts" Style="{StaticResource SectionHeaderText}"/>
+                    </Border>
+                    <!-- Apply community car facts (cache-first; works offline). Separate
+                         from the networking master so cached data keeps applying with
+                         networking off. -->
+                    <CheckBox x:Name="UseCommunityCarFactsCheck" Content="Use community car facts (names, engine types, redlines)"
+                              Margin="0,0,0,2" Checked="UseCommunityCarFacts_Changed" Unchecked="UseCommunityCarFacts_Changed"
+                              ToolTip="Apply community-sourced car facts to your cars: human-readable names, engine types, and redlines. Uses a local cache, so it keeps working offline and only refreshes from the server every few days (or when you hit the refresh icon). Turn off to ignore community car facts entirely and use only your own values."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
+                               Text="Cached locally and refreshed at most weekly per car, so it works offline and keeps server traffic low."/>
+                    <!-- Auto-submit car-fact corrections. Off by default; the user opts in via
+                         the "Always submit" button in a share prompt or here. Gated by the
+                         community master toggle + sign-in just like the per-edit prompts. -->
+                    <CheckBox x:Name="AutoSubmitCarFactsCheck"
+                              Content="Auto-submit my car fact corrections to the community"
+                              Margin="0,0,0,2"
+                              Checked="AutoSubmitCarFacts_Changed"
+                              Unchecked="AutoSubmitCarFacts_Changed"
+                              ToolTip="When on, your redline, engine-type, and car-name corrections are shared with the community without asking each time. Requires community features on and being signed in. Turn off to be asked each time."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
+                               Text="Shares the same corrections the per-edit prompt would, just without asking. Submitted as your signed-in account; your username isn't shown on car-fact submissions."/>
+
+                    <!-- ===== Community presets: share buttons + auto-update of downloads ===== -->
+                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
+                        <TextBlock Text="Community presets" Style="{StaticResource SectionHeaderText}"/>
+                    </Border>
+                    <!-- Effects-tab share buttons: lets a user who uses community data
+                         but never shares presets declutter the active card. The Preset
+                         Manager stays the place to share regardless. -->
+                    <CheckBox x:Name="EffectsTabShareButtonsCheck" Content="Show preset Share buttons on the active car/game card"
+                              Margin="0,0,0,2" Checked="EffectsTabShareButtons_Changed" Unchecked="EffectsTabShareButtons_Changed"
+                              ToolTip="Adds a Share button to the active game and car on the header card so you can share the preset you're driving. Turn off to keep the Effects tab clean; the Preset Manager is still the place to share. Doesn't affect community car facts."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
+                               Text="Off hides the card's Share buttons. You can still share anytime from the Preset Manager."/>
+                    <!-- Auto-update downloaded community presets. Off by default; only fires on
+                         presets you haven't locally edited since download. -->
+                    <CheckBox x:Name="AutoUpdateDownloadedPresetsCheck"
+                              Content="Auto-update downloaded community presets"
+                              Margin="0,0,0,2"
+                              Checked="AutoUpdateDownloadedPresets_Changed"
+                              Unchecked="AutoUpdateDownloadedPresets_Changed"
+                              ToolTip="When a curator publishes a new version of a preset you downloaded, apply it silently. Only runs when you haven't edited your local copy since download."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
+                               Text="Only runs on downloads you haven't edited locally. If you've changed your local copy, those changes are kept; the curator's update is offered through the updates-available chip instead."/>
+
+                    <!-- Message of the day: how much of the top strip the user wants.
+                         Gated by the community master above (the strip is hidden when
+                         community features are off). None is honored literally. -->
+                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
+                        <TextBlock Text="Message of the day" Style="{StaticResource SectionHeaderText}"/>
+                    </Border>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="12" TextWrapping="Wrap"
+                               Text="A short message at the top of this window: announcements, tips, and the occasional bit of news."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <RadioButton x:Name="MotdLevelAllRadio" GroupName="MotdLevel"
+                                     Content="Show all" VerticalAlignment="Center"
+                                     Checked="MotdLevel_Changed"/>
+                        <RadioButton x:Name="MotdLevelImportantRadio" GroupName="MotdLevel"
+                                     Content="Important only" VerticalAlignment="Center"
+                                     Margin="18,0,0,0" Checked="MotdLevel_Changed"/>
+                        <RadioButton x:Name="MotdLevelNoneRadio" GroupName="MotdLevel"
+                                     Content="None" VerticalAlignment="Center"
+                                     Margin="18,0,0,0" Checked="MotdLevel_Changed"/>
+                    </StackPanel>
+                    <TextBlock x:Name="MotdNoneWarning" Visibility="Collapsed"
+                               Foreground="#FFC107" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,10"
+                               Text="With messages off, you may miss important announcements like outage notices or critical fixes."/>
+                </StackPanel>
+            </Expander>
+
+            <!-- Backup & sync. Holds BOTH cloud backup/sync (a supporter perk, moved here
+                 from the old Community section so all backup lives together) and local file
+                 backup. The Expanded handler refreshes the cloud-upload supporter gating. -->
             <!-- Top margin: the UDP telemetry section above is collapsed for
                  most users, so this is the first section after the effects list and
                  would otherwise sit flush against the last effect's 4px margin
                  (this margin formerly lived on the removed Presets header). -->
-            <Expander x:Name="BackupExpander" IsExpanded="False" Margin="0,28,0,4">
+            <Expander x:Name="BackupExpander" IsExpanded="False" Margin="0,0,0,8" Expanded="BackupExpander_Expanded">
                 <Expander.Header>
-                    <TextBlock Text="Backup" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Backup &amp; sync" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
+                    <!-- Cloud backup / sync (moved here from the old Network/Community section).
+                         Backs up the whole setup to the signed-in account; restoring reproduces
+                         it on another PC. Upload (Back up now / Auto-sync) requires an active
+                         supporter (server-enforced); download (Restore) is free. -->
+                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,2,0,8">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Cloud backup" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                            <!-- Small static "Supporter" badge marking this as a member perk, so it's
+                                 clear (right where the feature lives) that Patreon unlocks it. -->
+                            <Border CornerRadius="7" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    Background="#33E5C04A" BorderBrush="#FFE5C04A" BorderThickness="1"
+                                    ToolTip="A supporter perk. Support on Patreon (Account tab) to enable cloud backup.">
+                                <TextBlock Text="Supporter" FontSize="10" FontWeight="SemiBold" Foreground="#FFE5C04A"/>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                    <!-- General cloud-backup description (section intro, above the controls). -->
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                               Text="Backs up your settings, presets, defaults and car facts. Restore the same setup on another PC by signing in there."/>
+                    <CheckBox x:Name="AutoSyncBackupCheck" Content="Keep my devices in sync"
+                              Margin="0,0,0,2" Checked="AutoSyncBackup_Changed" Unchecked="AutoSyncBackup_Changed"
+                              ToolTip="Automatically uploads your setup to the cloud as you change it, and pulls those changes down on your other signed-in devices. Sign-in required."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8" FontSize="12"
+                               Text="Real-time sync across your devices: changes you make on one device flow to the others automatically. Off = back up only when you click 'Back up now'."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <Button x:Name="BackupNowBtn" Content="Back up now"
+                                Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
+                                Click="BackupNow_Click"
+                                ToolTip="Upload your current setup to the cloud now."/>
+                        <Button x:Name="RestoreFromCloudBtn" Content="Restore from cloud"
+                                Margin="8,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
+                                Click="RestoreFromCloud_Click"
+                                ToolTip="Download your cloud backup and apply it to this PC (your local-only presets are kept)."/>
+                        <TextBlock x:Name="BackupStatusText" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   FontSize="11" Foreground="#FFC0C0C0" TextWrapping="Wrap" MaxWidth="220"/>
+                    </StackPanel>
+                    <TextBlock x:Name="CloudUploadHint" Style="{StaticResource HelpText}"
+                               Margin="0,2,0,2" FontSize="12" Foreground="#FFE5C04A"
+                               TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="CloudRemovalText" Margin="0,0,0,2" FontSize="12" FontWeight="SemiBold"
+                               Foreground="#FFFFA033" TextWrapping="Wrap" Visibility="Collapsed"/>
+
+                    <!-- Local file backup: bundle everything into one portable archive. -->
+                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,12,0,8">
+                        <TextBlock Text="Backup to file" Style="{StaticResource SectionHeaderText}"/>
+                    </Border>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
                                Text="Bundle your full Trueforce For All state (settings, every preset, every default, every car tuning) into one archive for moving to a new machine. To share individual presets or car tunings with other users, use Import / Export in the Preset Manager (Presets tab) instead."/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -2724,8 +3096,52 @@
                         <Button x:Name="RestoreButton" Content="Restore…" Width="140" Height="28" Click="Restore_Click"
                                 ToolTip="Replace all current Trueforce For All settings, presets, defaults, and car tunings with a backup archive's contents. Destructive: confirm before running."/>
                     </StackPanel>
+                    <!-- Dev-only: backup round-trip + classification self-test. Lives with the
+                         backup tools it validates. Hidden unless DevModeUnlocked (ApplyDevModeVisibility). -->
+                    <Button x:Name="BackupSelfTestButton" Content="Run backup self-test (dev)"
+                            HorizontalAlignment="Left" Margin="0,4,0,0" Padding="10,3"
+                            Visibility="Collapsed" Click="BackupSelfTest_Click"
+                            ToolTip="Dev only: runs the backup round-trip + the classification audit (flags any unclassified TrueforceSettings field) and shows the result."/>
                 </StackPanel>
             </Expander>
+
+            <!-- iRacing. Rev/shift LED support for MAIRA users. Gated behind the
+                 MAIRA / TEST access code (RpmLedUnlocked); shown whenever unlocked,
+                 no longer tied to iRacing being the active game. Placed above the
+                 access-code box (which stays last). -->
+            <Expander x:Name="RpmLedSection" IsExpanded="False" Visibility="Collapsed" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="iRacing" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rim/shift LEDs off. These toggles drive them again from your RPM. They link through MAIRA's 'Pass FFB through TF4ALL' passthrough, which isn't in a released MAIRA build yet, so this is a tester feature for now. Click Test to check they light up; if they don't, report it with your logs from Feedback &gt; Report an issue."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <CheckBox x:Name="RpmLedEnabledCheck" Content="Drive the wheel's LEDs in iRacing"
+                                  VerticalAlignment="Center"
+                                  Checked="RpmLedEnabled_Changed" Unchecked="RpmLedEnabled_Changed"
+                                  ToolTip="Only active in iRacing with MAIRA. No effect in other games."/>
+                        <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
+                    </StackPanel>
+                    <CheckBox x:Name="MairaPassthroughCheck" Content="Auto-link with MAIRA"
+                              VerticalAlignment="Center" Margin="0,0,0,6"
+                              Checked="MairaPassthrough_Changed" Unchecked="MairaPassthrough_Changed"
+                              ToolTip="Leave on. When you turn on MAIRA's matching 'Pass FFB through TF4ALL' toggle, the two link up automatically and your LEDs come back. With MAIRA's toggle off, TF4ALL works exactly as before."/>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="LED status:" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Column="1" x:Name="RpmLedStatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
+                    </Grid>
+                    <TextBlock Margin="0,0,0,8" FontSize="12">
+                        <Hyperlink Foreground="#FF4DA3FF" Click="GetMaira_Click">
+                            <Run Text="Get MAIRA Refactored (recommended for iRacing)"/>
+                        </Hyperlink>
+                    </TextBlock>
+                </StackPanel>
+            </Expander> <!-- /RpmLedSection (iRacing) -->
 
             <!-- Author identity moved into the Account expander above. The
                  hidden TextBox keeps the existing AuthorNameBox bindings
@@ -2734,23 +3150,6 @@
             <TextBox x:Name="AuthorNameBox" Visibility="Collapsed" Width="0" Height="0"
                      LostFocus="AuthorName_Changed" KeyDown="AuthorName_KeyDown"/>
             <TextBlock x:Name="AuthorNameStatus" Visibility="Collapsed"/>
-
-            <!-- Report-issue + repo link: separate from cylinder reporting; this
-                 is for everything else (bugs, feature requests, weird behavior). -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,16,0,0"><TextBlock Text="Issue reporting" Style="{StaticResource SectionHeaderText}"/></Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="Found a bug, weird behavior, or have a feature request? Open an issue on GitHub."/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <Button x:Name="ReportIssueButton" Content="Report an issue…" Width="160" Height="26"
-                        Click="ReportIssue_Click" Margin="0,0,8,0"
-                        ToolTip="Opens a new GitHub issue. Pre-fills plugin version and active game so you don't have to type it."/>
-                <Button x:Name="ExportLogsButton" Content="Export logs…" Width="120" Height="26"
-                        Click="ExportLogs_Click" Margin="0,0,8,0"
-                        ToolTip="Zips your SimHub logs + TF4ALL settings to your Desktop. Attach the zip to your GitHub issue so I can debug what's happening on your machine."/>
-                <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
-                        Click="OpenRepo_Click"
-                        ToolTip="github.com/Mhytee/Trueforce-For-All"/>
-            </StackPanel>
 
 
                     <!-- Tester access code. Unhides the rim-LED / MAIRA
@@ -2778,182 +3177,110 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
-            <!-- Account + Community settings. Consolidated expander that
-                 owns sign-in state, the master "Use community car data"
-                 toggle, and per-account fields (Author name, email
-                 management). Welcome modal triggers on first plugin load
-                 when Settings.HasSeenNetworkedWelcome is false. -->
-            <Expander x:Name="AccountExpander" Header="Account &amp; community"
-                      IsExpanded="True" Margin="0,4,0,12" Expanded="AccountExpander_Expanded">
-                <StackPanel Margin="22,8,0,0">
-                    <!-- Sign-in status + button -->
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock x:Name="AccountStatusLabel" VerticalAlignment="Center" FontSize="12"
-                                   Foreground="#FFE0E0E0" MaxWidth="360" TextWrapping="Wrap"
-                                   Text="Not signed in. Sign in to use community features."/>
-                        <Button x:Name="AccountAuthBtn" Content="Sign in"
-                                Margin="10,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
-                                Click="AccountAuth_Click"
-                                ToolTip="Sign in with email (one-time code, no password) to use community features."/>
-                    </StackPanel>
+            <!-- Account tab content (no outer expander; the tab name says Account). Identity at
+                 top, external-account links under Connections, stats, then a collapsed Account
+                 details section for the rarely-needed sessions + data export/delete. The community
+                 toggles + cloud backup moved to Settings > Network. -->
 
-                    <!-- Supporter badge. Shows your supporter tier from your real
-                         entitlement (or a dev DISPLAY override via the SUPPORTER access
-                         code). Display only: the backup gate is enforced server-side, so
-                         this never grants access. Hidden when not a supporter. -->
-                    <Border x:Name="SupporterBadge" CornerRadius="9" Padding="9,2,9,2" Margin="0,0,0,8"
-                            HorizontalAlignment="Left" Background="#33E5C04A" BorderBrush="#FFE5C04A" BorderThickness="1"
-                            Visibility="Collapsed">
-                        <TextBlock x:Name="SupporterBadgeText" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="#FFE5C04A" Text="Supporter"/>
-                    </Border>
+            <!-- Sign-in status + button -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock x:Name="AccountStatusLabel" VerticalAlignment="Center" FontSize="12"
+                           Foreground="#FFE0E0E0" MaxWidth="360" TextWrapping="Wrap"
+                           Text="Not signed in. Sign in to use community features."/>
+                <Button x:Name="AccountAuthBtn" Content="Sign in"
+                        Margin="10,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
+                        Click="AccountAuth_Click"
+                        ToolTip="Sign in with email (one-time code, no password) to use community features."/>
+            </StackPanel>
 
-                    <!-- Username. Read-only display - the only way to
-                         identify yourself on a community upload is to be
-                         signed in (your username) OR be anonymous. No
-                         freeform Author field; the server enforces this. -->
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <TextBlock Text="Username:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
-                        <TextBlock x:Name="AccountUsernameDisplay" VerticalAlignment="Center" FontSize="13"
-                                   Foreground="#FFE0E0E0" Text="(anonymous)" MinWidth="180"/>
-                        <Button x:Name="AccountChangeUsernameBtn" Content="Change…"
-                                Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
-                                Click="AccountChangeUsername_Click" Visibility="Collapsed"
-                                ToolTip="Pick a new username. Checked against the community for uniqueness."/>
-                        <TextBlock x:Name="AccountAuthorStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
-                        <!-- Hidden TextBox keeps the existing TextBoxBinding pattern
-                             working for parts of the code that still write to it
-                             during the transition; never shown to the user. -->
-                        <TextBox x:Name="AccountAuthorBox" Visibility="Collapsed" Width="0" Height="0"
-                                 LostFocus="AccountAuthor_Changed" KeyDown="AccountAuthor_KeyDown"/>
-                    </StackPanel>
-                    <TextBlock x:Name="AccountUsernameHelp" Style="{StaticResource HelpText}" Margin="100,2,0,12" FontSize="11"
-                               Text="Sign in to claim a username."/>
-                    <!-- Change email button. Only meaningful while signed in. -->
-                    <StackPanel x:Name="AccountChangeEmailRow" Orientation="Horizontal" Margin="0,0,0,4" Visibility="Collapsed">
-                        <TextBlock Text="Email:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
-                        <TextBlock x:Name="AccountEmailValue" VerticalAlignment="Center" FontSize="12" Foreground="#FFE0E0E0" Text=""/>
-                        <Button x:Name="AccountChangeEmailBtn" Content="Change…"
-                                Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
-                                Click="AccountChangeEmail_Click"
-                                ToolTip="Send a confirmation link to a new address. The current address keeps working until you confirm the new one."/>
-                    </StackPanel>
+            <!-- Supporter badge. Real entitlement (or a dev DISPLAY override via SUPPORTER).
+                 Display only: the backup gate is enforced server-side. Hidden when not a supporter. -->
+            <Border x:Name="SupporterBadge" CornerRadius="9" Padding="9,2,9,2" Margin="0,0,0,8"
+                    HorizontalAlignment="Left" Background="#33E5C04A" BorderBrush="#FFE5C04A" BorderThickness="1"
+                    Visibility="Collapsed">
+                <TextBlock x:Name="SupporterBadgeText" FontSize="11" FontWeight="SemiBold"
+                           Foreground="#FFE5C04A" Text="Supporter"/>
+            </Border>
 
-                    <!-- Community master toggle -->
-                    <CheckBox x:Name="CommunityEnabledCheck" Content="Use community car data"
-                              Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
-                              ToolTip="When you save engine data that disagrees with what's detected, the plugin asks if you want to share it. When community data exists for a car you load, the plugin uses it. Turn off to keep everything local: nothing leaves your machine and community values are ignored."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12"
-                               Text="Sign-in required to share. Your username isn't shown on submitted data. Turn off to stay local-only."/>
-                    <!-- Auto-update downloaded community presets. Off by default.
-                         Only fires on presets the user hasn't locally edited
-                         since download (original-body-hash gate). Edits make a
-                         preset sticky and the user picks the update manually
-                         via the updates-available modal. -->
-                    <CheckBox x:Name="AutoUpdateDownloadedPresetsCheck"
-                              Content="Auto-update downloaded community presets"
-                              Margin="0,0,0,2"
-                              Checked="AutoUpdateDownloadedPresets_Changed"
-                              Unchecked="AutoUpdateDownloadedPresets_Changed"
-                              ToolTip="When a curator publishes a new version of a preset you downloaded, apply it silently. Only runs when you haven't edited your local copy since download."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="Only runs on downloads you haven't edited locally. If you've changed your local copy, those changes are kept; the curator's update is offered through the updates-available chip instead."/>
+            <!-- Username (read-only; identity is your signed-in username OR anonymous). -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="Username:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
+                <TextBlock x:Name="AccountUsernameDisplay" VerticalAlignment="Center" FontSize="13"
+                           Foreground="#FFE0E0E0" Text="(anonymous)" MinWidth="180"/>
+                <Button x:Name="AccountChangeUsernameBtn" Content="Change…"
+                        Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
+                        Click="AccountChangeUsername_Click" Visibility="Collapsed"
+                        ToolTip="Pick a new username. Checked against the community for uniqueness."/>
+                <TextBlock x:Name="AccountAuthorStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
+                <!-- Hidden TextBox keeps the existing TextBoxBinding pattern working; never shown. -->
+                <TextBox x:Name="AccountAuthorBox" Visibility="Collapsed" Width="0" Height="0"
+                         LostFocus="AccountAuthor_Changed" KeyDown="AccountAuthor_KeyDown"/>
+            </StackPanel>
+            <TextBlock x:Name="AccountUsernameHelp" Style="{StaticResource HelpText}" Margin="100,2,0,12" FontSize="11"
+                       Text="Sign in to claim a username."/>
+            <!-- Change email button. Only meaningful while signed in. -->
+            <StackPanel x:Name="AccountChangeEmailRow" Orientation="Horizontal" Margin="0,0,0,4" Visibility="Collapsed">
+                <TextBlock Text="Email:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
+                <TextBlock x:Name="AccountEmailValue" VerticalAlignment="Center" FontSize="12" Foreground="#FFE0E0E0" Text=""/>
+                <Button x:Name="AccountChangeEmailBtn" Content="Change…"
+                        Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
+                        Click="AccountChangeEmail_Click"
+                        ToolTip="Send a confirmation link to a new address. The current address keeps working until you confirm the new one."/>
+            </StackPanel>
 
-                    <!-- Cloud backup / sync (Phase 2). Backs up the whole setup
-                         (effects, defaults, presets, car facts) to the signed-in
-                         account; restoring reproduces it on another PC. -->
-                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,12,0,8">
-                        <TextBlock Text="Cloud backup" Style="{StaticResource SectionHeaderText}"/>
-                    </Border>
-                    <CheckBox x:Name="AutoSyncBackupCheck" Content="Auto-sync backup"
-                              Margin="0,0,0,2" Checked="AutoSyncBackup_Changed" Unchecked="AutoSyncBackup_Changed"
-                              ToolTip="When on, your full setup is backed up to the cloud automatically a short while after you change something. Sign-in required."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8" FontSize="12"
-                               Text="Backs up effects, defaults, presets and car facts. Restore the same setup on another PC by signing in there."/>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <Button x:Name="BackupNowBtn" Content="Back up now"
-                                Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
-                                Click="BackupNow_Click"
-                                ToolTip="Upload your current setup to the cloud now."/>
-                        <Button x:Name="RestoreFromCloudBtn" Content="Restore from cloud"
-                                Margin="8,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
-                                Click="RestoreFromCloud_Click"
-                                ToolTip="Download your cloud backup and apply it to this PC (your local-only presets are kept)."/>
-                        <TextBlock x:Name="BackupStatusText" Margin="10,0,0,0" VerticalAlignment="Center"
-                                   FontSize="11" Foreground="#FFC0C0C0" TextWrapping="Wrap" MaxWidth="220"/>
-                    </StackPanel>
-                    <!-- Contextual note for the UPLOAD controls. Back up now / Auto-sync require an
-                         active supporter (server-enforced), so a non-supporter sees a gate note and a
-                         lapsed user sees their status; download (Restore from cloud) stays active. The
-                         orange line below counts down to data removal as the deletion date nears. -->
-                    <TextBlock x:Name="CloudUploadHint" Style="{StaticResource HelpText}"
-                               Margin="0,2,0,2" FontSize="12" Foreground="#FFE5C04A"
-                               TextWrapping="Wrap" Visibility="Collapsed"/>
-                    <TextBlock x:Name="CloudRemovalText" Margin="0,0,0,2" FontSize="12" FontWeight="SemiBold"
-                               Foreground="#FFFFA033" TextWrapping="Wrap" Visibility="Collapsed"/>
+            <!-- Connections: external-account links (Discord, Patreon). One header so future
+                 link types have a home. -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,12,0,8">
+                <TextBlock Text="Connections" Style="{StaticResource SectionHeaderText}"/>
+            </Border>
+            <StackPanel x:Name="DiscordLinkRow" Orientation="Horizontal" Margin="0,0,0,8">
+                <Button x:Name="LinkDiscordBtn" Content="Join Discord" Style="{StaticResource DiscordButton}"
+                        Height="26" VerticalAlignment="Center"
+                        Click="LinkDiscord_Click"
+                        ToolTip="Opens Discord in your browser to link your account and add you to the Trueforce For All community server, where your contributions earn roles."/>
+                <Button x:Name="UnlinkDiscordBtn" Content="Unlink"
+                        Margin="8,0,0,0" Padding="8,2,8,2" Height="24" VerticalAlignment="Center"
+                        Click="UnlinkDiscord_Click" Visibility="Collapsed"
+                        ToolTip="Remove the link between your TF4ALL account and your Discord account."/>
+                <TextBlock x:Name="DiscordLinkStatusText" VerticalAlignment="Center" FontSize="12"
+                           Foreground="#FFC0C0C0" MaxWidth="320" TextWrapping="Wrap" Margin="12,0,0,0"
+                           Text="Sign in to join Discord."/>
+            </StackPanel>
+            <!-- Patreon link. An active pledge unlocks the supporter badge + cloud backup. If the
+                 patron has Discord connected on Patreon AND is already in the community server, we
+                 link Discord too; otherwise they use Join Discord above. -->
+            <StackPanel x:Name="PatreonLinkRow" Orientation="Horizontal" Margin="0,0,0,12">
+                <Button x:Name="LinkPatreonBtn" Content="Link Patreon" Style="{StaticResource SupportButton}"
+                        Background="#FFF96854" Height="26" VerticalAlignment="Center"
+                        Click="LinkPatreon_Click"
+                        ToolTip="Unlock the supporter badge and cloud backup from your Patreon pledge. If your Patreon has Discord connected and you're already in the community server, it links Discord too."/>
+                <Button x:Name="UnlinkPatreonBtn" Content="Unlink"
+                        Margin="8,0,0,0" Padding="8,2,8,2" Height="24" VerticalAlignment="Center"
+                        Click="UnlinkPatreon_Click" Visibility="Collapsed"
+                        ToolTip="Remove the link between your TF4ALL account and your Patreon account."/>
+                <TextBlock x:Name="PatreonLinkStatusText" VerticalAlignment="Center" FontSize="12"
+                           Foreground="#FFC0C0C0" MaxWidth="320" TextWrapping="Wrap" Margin="12,0,0,0"
+                           Text="Sign in to link Patreon."/>
+            </StackPanel>
 
-                    <!-- Discord link (Phase 2, M5). Links your Discord so contribution
-                         achievements (shared presets, accurate car facts, ratings) grant
-                         roles in the community server. Sign-in required. -->
-                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,12,0,8">
-                        <TextBlock Text="Discord" Style="{StaticResource SectionHeaderText}"/>
-                    </Border>
-                    <StackPanel x:Name="DiscordLinkRow" Orientation="Horizontal" Margin="0,0,0,12">
-                        <Button x:Name="LinkDiscordBtn" Content="Join Discord" Style="{StaticResource DiscordButton}"
-                                Height="26" VerticalAlignment="Center"
-                                Click="LinkDiscord_Click"
-                                ToolTip="Opens Discord in your browser to link your account and add you to the Trueforce For All community server, where your contributions earn roles."/>
-                        <Button x:Name="UnlinkDiscordBtn" Content="Unlink"
-                                Margin="8,0,0,0" Padding="8,2,8,2" Height="24" VerticalAlignment="Center"
-                                Click="UnlinkDiscord_Click" Visibility="Collapsed"
-                                ToolTip="Remove the link between your TF4ALL account and your Discord account."/>
-                        <TextBlock x:Name="DiscordLinkStatusText" VerticalAlignment="Center" FontSize="12"
-                                   Foreground="#FFC0C0C0" MaxWidth="320" TextWrapping="Wrap" Margin="12,0,0,0"
-                                   Text="Sign in to join Discord."/>
-                    </StackPanel>
-
-                    <!-- Patreon link. An active pledge unlocks the supporter badge + cloud backup
-                         (Patreon proves it directly; no Discord needed for that). If the patron has
-                         Discord connected on Patreon AND is already in the community server, we link
-                         Discord too (a useful link, since roles can apply). If they aren't in the
-                         server we can't auto-join them (no guilds.join token), so they use the Link
-                         Discord button above. -->
-                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,12,0,8">
-                        <TextBlock Text="Patreon" Style="{StaticResource SectionHeaderText}"/>
-                    </Border>
-                    <StackPanel x:Name="PatreonLinkRow" Orientation="Horizontal" Margin="0,0,0,12">
-                        <Button x:Name="LinkPatreonBtn" Content="Link Patreon" Style="{StaticResource SupportButton}"
-                                Background="#FFF96854" Height="26" VerticalAlignment="Center"
-                                Click="LinkPatreon_Click"
-                                ToolTip="Unlock the supporter badge and cloud backup from your Patreon pledge. If your Patreon has Discord connected and you're already in the community server, it links Discord too."/>
-                        <Button x:Name="UnlinkPatreonBtn" Content="Unlink"
-                                Margin="8,0,0,0" Padding="8,2,8,2" Height="24" VerticalAlignment="Center"
-                                Click="UnlinkPatreon_Click" Visibility="Collapsed"
-                                ToolTip="Remove the link between your TF4ALL account and your Patreon account."/>
-                        <TextBlock x:Name="PatreonLinkStatusText" VerticalAlignment="Center" FontSize="12"
-                                   Foreground="#FFC0C0C0" MaxWidth="320" TextWrapping="Wrap" Margin="12,0,0,0"
-                                   Text="Sign in to link Patreon."/>
-                    </StackPanel>
-
-                    <!-- Stats. Only meaningful while signed in. Refreshes
-                         from get_account_stats on expander open. -->
+            <!-- Account details: the rarely-needed bits (your stats, active sessions, data
+                 export, delete), collapsed by default so they don't clutter the account view. -->
+            <Expander x:Name="AccountDetailsExpander" Header="Account details" IsExpanded="False" Margin="0,12,0,4">
+                <StackPanel Margin="0,8,0,0">
+                    <!-- Your stats. Refreshed from get_account_stats when the Account tab is shown. -->
+                    <TextBlock Text="Your stats" Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>
                     <Border x:Name="AccountStatsBox" Background="#22FFFFFF" CornerRadius="3"
-                            Padding="10,6,10,6" Margin="0,8,0,8" Visibility="Collapsed">
+                            Padding="10,6,10,6" Margin="0,0,0,12" Visibility="Collapsed">
                         <StackPanel>
-                            <TextBlock Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12"
-                                       Text="Your stats" Margin="0,0,0,4"/>
                             <TextBlock x:Name="AccountStatsCreated"   Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
                             <TextBlock x:Name="AccountStatsUploads"   Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
                             <TextBlock x:Name="AccountStatsDownloads" Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
                             <TextBlock x:Name="AccountStatsVotes"     Foreground="#FFC0C0C0" FontSize="11" Margin="0,1,0,0"/>
                         </StackPanel>
                     </Border>
-
-                    <!-- Active sessions. Lists every device signed in to this account
-                         via the get_my_sessions RPC (migration 0058). Each non-current
-                         row can be revoked individually, or use "Sign out everywhere
-                         else". Rows are built in code-behind (RefreshAccountSessions);
-                         this device is flagged and has no revoke button. -->
+                    <!-- Active sessions. Every device signed in (get_my_sessions, migration 0058);
+                         each non-current row revocable, or "Sign out everywhere else". Rows built in
+                         RefreshAccountSessions; this device is flagged with no revoke button. -->
                     <Border x:Name="AccountSessionsBox" Background="#22FFFFFF" CornerRadius="3"
                             Padding="10,6,10,6" Margin="0,0,0,12" Visibility="Collapsed">
                         <StackPanel>

@@ -73,11 +73,15 @@ namespace TrueforceForAll.Plugin
         public string FolderPath => Path.Combine(_rootFolderProvider() ?? "", CarsSubfolderName);
 
         // Strip Windows-invalid chars but keep readability (spaces, parens stay).
+        // A dot-only result ("." / "..") is a traversal token, not a name (a
+        // hostile carId/presetName from a downloaded pack could otherwise walk
+        // out of the library root), so map it back to the safe placeholder.
         private static string SafeFile(string s)
         {
             if (string.IsNullOrEmpty(s)) return "unknown";
             foreach (var c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
-            return s.Trim();
+            s = s.Trim();
+            return SafePath.IsTraversalSegment(s) ? "unknown" : s;
         }
 
         private static string NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
@@ -146,13 +150,13 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        _log?.Invoke($"[Trueforce] Skipping malformed car preset '{Path.GetFileName(path)}': {ex.Message}");
+                        _log?.Invoke($"[TF4ALL] Skipping malformed car preset '{Path.GetFileName(path)}': {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] LoadAll car presets failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] LoadAll car presets failed: {ex.Message}");
             }
             return result;
         }
@@ -178,7 +182,10 @@ namespace TrueforceForAll.Plugin
             string defaultAuthor = null)
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
-            if (ovr == null || ovr.IsEmpty)
+            // Delete only when there is genuinely nothing to persist. An override
+            // with no effect sections but live community lineage (HasCommunityTracking)
+            // is kept so the Share gate doesn't lose download/upload tracking.
+            if (ovr == null || (ovr.IsEmpty && !ovr.HasCommunityTracking))
             {
                 Delete(carId, presetName);
                 return;
@@ -230,7 +237,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Save car preset '{carId}/{presetName}' failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Save car preset '{carId}/{presetName}' failed: {ex.Message}");
             }
         }
 
@@ -258,7 +265,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Delete car preset '{carId}/{presetName}' failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Delete car preset '{carId}/{presetName}' failed: {ex.Message}");
             }
         }
 

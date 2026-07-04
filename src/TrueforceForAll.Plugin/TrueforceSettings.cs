@@ -53,6 +53,12 @@ namespace TrueforceForAll.Plugin
         // stays unlocked for that install.
         public bool RpmLedUnlocked { get; set; } = false;
 
+        // One-time latch for the iRacing "disable native Trueforce in app.ini"
+        // notice. Set only when the user dismisses it for good ("Got it, don't
+        // show again"). Machine-local in backup: the app.ini change is per-PC,
+        // so a restored backup on a new machine should show the notice again.
+        public bool IRacingTrueforceNoticeDismissed { get; set; } = false;
+
         // Per-game auto-remembered enable state. When the active game changes,
         // the plugin looks up this dict and applies the saved value (default
         // true for games never seen before). Independent of preset assignment.
@@ -176,15 +182,101 @@ namespace TrueforceForAll.Plugin
         // server-side via a per-IP rate limit. The anon API key shipped to
         // the backend is treated as PUBLIC by the schema design - the only
         // operations it can perform are: SELECT from car_fact_consensus,
-        // and CALL the two RPC functions submit_car_fact + vote_car_fact.
+        // and CALL submit_car_fact (car-fact consensus is confirm/correct
+        // based, not voted).
         //
         // Backend URL + anon key are blank by default. For release builds
         // they get baked in as CommunityClient constants and the toggle is
         // the only switch users see. For dev builds the user can override
         // via these fields to point at a staging project.
         public bool   CommunityEnabled         { get; set; } = false;
+
+        // Show the preset "Share" buttons on the active car/game header card (the
+        // Effects tab). Default on for discovery; a user who uses community data but
+        // never shares presets can turn this off to declutter. The Preset Manager
+        // stays the place to share regardless. Does not affect car-fact sharing.
+        public bool   ShowEffectsTabShareButtons { get; set; } = true;
+
         public string CommunityBackendUrl     { get; set; } = "";
         public string CommunityBackendAnonKey { get; set; } = "";
+
+        // Whether community CAR-FACT data (names, engine layouts, redlines) is
+        // APPLIED to the user's cars. Split out from CommunityEnabled (which is
+        // the networking master, also gating preset sharing) so a user can keep
+        // using already-fetched community car facts WITHOUT live networking:
+        //   CommunityEnabled off + UseCommunityCarFacts on = apply the local
+        //   cache only, never hit the server. Default on so existing community
+        //   users keep their car facts. Networking (fetch/submit) still requires
+        //   CommunityEnabled; this only governs whether the data is used.
+        public bool   UseCommunityCarFacts     { get; set; } = true;
+
+        // Local, persisted cache of the per-car community fetch (name + layout +
+        // redline consensus) keyed by "game/carId/variantSignature", with a
+        // fetch timestamp for TTL. Lets the plugin apply community car facts
+        // offline / between fetches and refresh only when stale (CommunityCacheTtl)
+        // or on a manual refresh, instead of pulling every car open. Re-fetchable,
+        // so it is MachineLocal (not backed up). Never null after first use.
+        public Dictionary<string, CommunityFactCacheEntry> CommunityFactCache { get; set; }
+            = new Dictionary<string, CommunityFactCacheEntry>();
+
+        // How long a cached community-fact entry is considered fresh before the
+        // next car-open triggers a background refresh (manual refresh ignores it).
+        // Kept as a constant (not user-facing) - the user-facing control is the
+        // refresh icon in the Car Facts panel.
+        [JsonIgnore]
+        public static readonly TimeSpan CommunityCacheTtl = TimeSpan.FromDays(7);
+
+        // ---- Message of the Day (MOTD) -------------------------------------
+        // How much of the MOTD feed the user wants on the top strip. PORTABLE
+        // (a genuine user choice). Selecting None warns in the UI that important
+        // messages may be missed; it is honored literally (no "None still shows
+        // critical" exception). See docs/motd-design.md.
+        [JsonConverter(typeof(StringEnumConverter))]
+        public MotdLevel MotdLevel { get; set; } = MotdLevel.All;
+
+        // Offline-first cache of the MOTD feed (~6h TTL via FetchedAtUtc).
+        // Re-fetchable, so EXCLUDED from backup. Never null after first use.
+        public MotdCacheData MotdCache { get; set; } = new MotdCacheData();
+
+        // IDs of scheduled/important messages the user dismissed permanently
+        // (seen-id model). Transient UI state, EXCLUDED from backup.
+        public List<string> MotdDismissedIds { get; set; } = new List<string>();
+
+        // Pool messages dismissed "for today": message id -> "yyyy-MM-dd" of the
+        // dismissal. A pool message reappears on a later day. EXCLUDED.
+        public Dictionary<string, string> MotdPoolDismissedOn { get; set; }
+            = new Dictionary<string, string>();
+
+        // Recurring messages dismissed for the CURRENT occurrence only (they
+        // return next year): message id -> occurrence-start-date token
+        // ("yyyy-MM-dd"). Transient UI state, EXCLUDED from backup.
+        public Dictionary<string, string> MotdRecurringDismissedOcc { get; set; }
+            = new Dictionary<string, string>();
+
+        // ---- MOTD audience / nag pacing (client-side personalization) -------
+        // Last time the user performed each contribution (UTC). Drives the
+        // recency-gated suppression of the matching community nudge: a `non_sharer`
+        // nudge is hidden only while LastSharedPresetOn is within MotdContributionRecency
+        // (60 days); after that the nudge returns so a lapsed contributor gets
+        // re-invited. null = never. EXCLUDED from backup (nag/learned state that
+        // re-learns harmlessly on a second PC).
+        public DateTime? LastSharedPresetOn  { get; set; }
+        public DateTime? LastVotedOn         { get; set; }
+        public DateTime? LastSubmittedFactOn { get; set; }
+
+        // Local date ("yyyy-MM-dd") a MOTD nag last appeared, for the few-day nag
+        // cooldown that keeps promo / call-to-action messages from running
+        // back-to-back. EXCLUDED from backup. null = none yet.
+        public string MotdLastNagOn { get; set; }
+
+        // How recent a contribution must be to suppress its community nudge.
+        [JsonIgnore]
+        public static readonly TimeSpan MotdContributionRecency = TimeSpan.FromDays(60);
+
+        // How long a cached MOTD feed is considered fresh before a background
+        // refresh. The dial between server load and important-message latency.
+        [JsonIgnore]
+        public static readonly TimeSpan MotdCacheTtl = TimeSpan.FromHours(6);
 
         // Opt-in auto-apply for community preset updates the user previously
         // downloaded. Default off. Only applies when the local body still
@@ -192,6 +284,23 @@ namespace TrueforceForAll.Plugin
         // any local edit makes the entry sticky and the user must accept the
         // update manually via PresetUpdatesAvailableWindow.
         public bool   AutoUpdateDownloadedPresets { get; set; } = false;
+
+        // How often, in hours, the plugin re-polls GitHub Releases for a newer
+        // Trueforce For All build during a running session. A check ALWAYS runs
+        // once at startup and on every manual "Check for updates" click,
+        // regardless of this value; this governs only the background re-check
+        // cadence so a long-running session still discovers a release that
+        // shipped after launch. 0 = "On startup only" (no background re-check).
+        // Surfaced as the Settings-tab "Updates" dropdown. Allowed: 0/1/2/6/24.
+        public int    UpdateCheckIntervalHours { get; set; } = 2;
+
+        // Opt-in standing consent: once on, the user's car-fact corrections
+        // (redline, engine layout, car name) are submitted to the community
+        // without the per-edit "share this?" prompt. Default off; the user
+        // turns it on by picking "Always submit" in that prompt, or via the
+        // Settings checkbox. Still gated by CommunityEnabled + sign-in exactly
+        // like the prompts, so it never sends anything the prompt wouldn't have.
+        public bool   AutoSubmitCarFacts { get; set; } = false;
 
         // Persist the Library|Community sub-pill selection per segment in
         // the Preset Manager. When the user toggles a segment to
@@ -285,17 +394,16 @@ namespace TrueforceForAll.Plugin
         public bool  FfbSpikeUseSlewLimiter   { get; set; } = true;
         public float FfbSpikeMaxLsbPerMs      { get; set; } = 2508.36f;
 
-        // Skip the captured-FFB → ep3 cur mirror. With this on, our active
-        // packets carry cur = 0x8000 (silence center). The wheel uses cur
-        // as motor torque and ignores ep0 whenever active packets are
-        // streaming, so this means zero motor force from our path
-        // appropriate ONLY for games that drive the wheel's motor through
-        // their own native ep3 path (AC Rally, iRacing). For games that rely
-        // on ep0 for FFB (vanilla AC, FH6, F1, PC2), enabling this kills FFB
-        // entirely. Note: with a native-ep3 game we do NOT coexist on ep3, we
-        // clash with its own stream, so this is only usable when that game's
-        // Trueforce output is fully disabled. Default off.
-        public bool  SkipFfbPassthrough       { get; set; } = false;
+        // Issue #13 test path (NOLOCK access code). When on, the plugin fully
+        // leaves Trueforce mode while the game is paused (SendStopCommand +
+        // Pause) so the wheel reverts to its native FFB, e.g. Forza's own
+        // auto-center, instead of us streaming a substitute force. This is the
+        // "behave like the plugin is disabled while paused" approach, which is
+        // the only thing confirmed to stop the G923/FH6 full-lock. Default off;
+        // the existing return-zero pause-release stays the default until this
+        // is validated on hardware, after which it can become the standard
+        // behaviour and this toggle removed.
+        public bool  StopStreamOnPause        { get; set; } = false;
 
         // Optional absolute path to USBPcapCMD.exe, set when the user picks a
         // custom USBPcap location via the "Browse..." action in the diagnostics
@@ -368,6 +476,7 @@ namespace TrueforceForAll.Plugin
         // traction loss) fire. Depth = max attenuation (0 = no duck, 1 = full
         // silence). Attack/Release in ms are the time constants for the
         // envelope's down/up directions.
+        public bool  DuckingEnabled { get; set; } = true;
         public float DuckDepth     { get; set; } = 0.60f;
         public float DuckAttackMs  { get; set; } = 5.0f;
         public float DuckReleaseMs { get; set; } = 80.0f;
@@ -496,6 +605,17 @@ namespace TrueforceForAll.Plugin
         // it's within the refresh window. The session unlocks edit/delete
         // on the user's own preset uploads.
         public CommunityAuthSession AuthSession { get; set; }
+
+        // "Remember my email" convenience for the sign-in modal. When on (the
+        // default), the email typed at the last code request is prefilled next
+        // time the sign-in window opens, so a returning user doesn't retype it.
+        // MACHINE-LOCAL: a per-PC login convenience tied to this install's usage
+        // (like LegacyDataOwnerEmail); it never travels in cloud backup.
+        // LastSignInEmail is stored DPAPI-encrypted at rest (SignInWindow
+        // StoreEmail/LoadEmail, "dpapi:" prefix); legacy plaintext values are
+        // read as-is and re-encrypted on the next send.
+        public bool RememberSignInEmail { get; set; } = true;
+        public string LastSignInEmail { get; set; } = "";
 
         // The last Trueforce wheel model detected on THIS PC, as a short chassis
         // label (e.g. "G PRO"). Shown in the Account "Active sessions" list so a
@@ -858,8 +978,10 @@ namespace TrueforceForAll.Plugin
     // ============================================================
 
     /// <summary>Where a CarFacts value came from. Drives the per-field source
-    /// line in the UI ("scanner detected" vs "community (N ✓)" vs "you
-    /// corrected"), and gates community-submission prompts.</summary>
+    /// line in the UI ("scanner detected" vs "community" vs "you corrected")
+    /// and gates community-submission prompts. (The community support count
+    /// shown alongside comes from the live consensus, not from this
+    /// enum.)</summary>
     public enum CarFactSource
     {
         /// <summary>Plugin's runtime scanner / heuristic. The starting point
@@ -939,6 +1061,43 @@ namespace TrueforceForAll.Plugin
         /// threshold.</summary>
         public int? RedlineRpm { get; set; }
 
+        /// <summary>The user's own saved redline for THIS variant (set via the
+        /// redline slider + "Save for this variant"). Wins over the community
+        /// consensus and the telemetry/percentage fallback for this variant
+        /// only. null = the user hasn't pinned one; follow the cascade
+        /// (community / telemetry / percentage / default).</summary>
+        public int? UserRedlineRpm { get; set; }
+
+        /// <summary>The community redline value the user explicitly declined to
+        /// adopt for this variant. Suppresses the "adopt community redline?"
+        /// prompt for this value; if the community consensus later shifts to a
+        /// different value the prompt can surface again. null = never
+        /// declined.</summary>
+        public int? DeclinedCommunityRedlineRpm { get; set; }
+
+        /// <summary>The community redline PROFILE (overall + per-gear) the user
+        /// declined to adopt for this variant, as a stable signature string
+        /// ("overall;gear:rpm;..."). Per-gear-aware successor to
+        /// <see cref="DeclinedCommunityRedlineRpm"/>: suppresses the adopt offer
+        /// for this exact profile, but a community shift in any gear produces a
+        /// new signature so the offer can surface again. null = never declined.</summary>
+        public string DeclinedCommunityRedlineSig { get; set; }
+
+        /// <summary>The community value the user ADOPTED for this variant (copied
+        /// into <see cref="RedlineRpm"/> so it survives offline / cache clears).
+        /// Tracked separately so that if the community consensus later moves away
+        /// from the adopted value, the "community changed - switch?" prompt can
+        /// surface again. null = the user hasn't adopted a community value.</summary>
+        public int? AdoptedCommunityRedlineRpm { get; set; }
+
+        /// <summary>Optional per-gear redline overrides for THIS variant (user-set).
+        /// When the current forward gear has an entry the rev limiter buzzes at
+        /// that RPM instead of the single redline; gears with no entry (and
+        /// reverse / neutral) fall back to the single value. null / empty = none.
+        /// User-set, so it overrides community + telemetry, same as the single
+        /// pinned redline.</summary>
+        public List<GearRedline> PerGearRedlines { get; set; }
+
         /// <summary>Optional engine rev ceiling (MaxRpm). Captured at the
         /// moment the variant was auto-created from telemetry. Discriminates
         /// engine swaps in games that report MaxRpm but not RedlineRpm
@@ -954,10 +1113,39 @@ namespace TrueforceForAll.Plugin
         [JsonConverter(typeof(StringEnumConverter))]
         public CarFactSource Source { get; set; } = CarFactSource.Scanner;
 
-        /// <summary>Community confidence: how many users have confirmed
-        /// this variant. Drives the "community (N ✓)" line and is used as
-        /// the tiebreaker when picking a default variant.</summary>
+        /// <summary>Community support count for this variant: a downstream copy
+        /// of the consensus supporting_submissions (distinct submitters of the
+        /// winning payload). Stamped only on the synthesized community variant
+        /// (TrueforcePlugin.TrySynthesizeCommunityVariant); locally created
+        /// variants stay 0. Read as a secondary tiebreaker after SourcePriority
+        /// when picking a default variant. It does NOT drive any UI text (the
+        /// "Community: X (N)" line reads the live consensus directly), and
+        /// writing it confirms nothing to the backend.</summary>
         public int Confirmations { get; set; }
+    }
+
+    /// <summary>One per-gear redline entry for a variant. Gear is the forward
+    /// gear number (1..N); the gear-0 / default redline is stored separately on
+    /// the variant (EngineVariant.UserRedlineRpm), and the two are presented as
+    /// one unified list in the UI (gear 0 = "Default (all gears)").</summary>
+    public sealed class GearRedline
+    {
+        public int Gear { get; set; }   // forward gear: 1..N
+        public int Rpm  { get; set; }
+    }
+
+    /// <summary>One cached community fetch for a (game, carId, variantSignature):
+    /// the name / engine-layout / redline consensus snapshots plus when they were
+    /// fetched (UTC, ISO-8601). Lets the plugin apply community car facts offline
+    /// and refresh only when stale (CommunityCacheTtl) or on a manual refresh,
+    /// instead of pulling on every car open. Any field may be null (no consensus
+    /// for that fact type). MachineLocal: re-fetchable, not backed up.</summary>
+    public sealed class CommunityFactCacheEntry
+    {
+        public string FetchedAtUtc { get; set; }
+        public RedlineConsensus      Redline { get; set; }
+        public EngineLayoutConsensus Layout  { get; set; }
+        public CarNameConsensus      Name    { get; set; }
     }
 
     /// <summary>Per-download bookkeeping for community presets the user
@@ -1030,7 +1218,10 @@ namespace TrueforceForAll.Plugin
         // Defaults mirror TrueforceSettings' top-level class defaults so a
         // GameSettingsSnapshot deserialized from JSON missing these fields
         // gets the same starting state as a fresh-install Settings object.
-        public float MasterGain                { get; set; } = 1.0f;
+        // NOTE: MasterGain is intentionally NOT here. Master gain is a global
+        // setting (top-level TrueforceSettings.MasterGain, auto-persisted),
+        // not preset-scoped. Old preset JSON may still carry a "MasterGain"
+        // key; it is ignored on load.
         public float FfbScale                  { get; set; } = 0.80f;
         public bool  FfbInvertSign             { get; set; } = true;
         public float FfbSmoothTimeConstantMs   { get; set; } = 0.0f;
@@ -1038,10 +1229,19 @@ namespace TrueforceForAll.Plugin
         public bool  FfbSpikeUseSlewLimiter    { get; set; } = true;
         public float FfbSpikeMaxLsbPerMs       { get; set; } = 2508.36f;
         public float FfbPeakSoftLimitLsb       { get; set; } = 2061.90f;
-        public bool  SkipFfbPassthrough        { get; set; } = false;
+        public bool  DuckingEnabled            { get; set; } = true;
         public float DuckDepth                 { get; set; } = 0.60f;
         public float DuckAttackMs              { get; set; } = 5.0f;
         public float DuckReleaseMs             { get; set; } = 80.0f;
+
+        // Stationary spring (parked-car centering). Per-game preset-scoped.
+        // Nullable: a preset saved before this lived in the snapshot carries
+        // null = "no opinion", and ApplyGamePreset leaves the user's current
+        // value untouched (same migration pattern as Airborne). Values, when
+        // written, mirror the top-level TrueforceSettings defaults.
+        public bool?   StationarySpringEnabled   { get; set; }
+        public double? StationarySpringStrength  { get; set; }
+        public double? StationarySpringCutoffKmh { get; set; }
 
         public AudioCaptureSettings AudioCapture { get; set; }
         public EnginePulseSettings  EnginePulse  { get; set; }
@@ -1696,6 +1896,19 @@ namespace TrueforceForAll.Plugin
             GearShift   == null && AbsClick  == null && AudioCapture == null &&
             PitLimiter  == null && Drs       == null && Collision    == null &&
             RevLimiter  == null && Airborne  == null;
+
+        /// <summary>True when this override carries community lineage (download/
+        /// upload tracking) even with no effect sections. Such an override must
+        /// NOT be deleted by the store just because IsEmpty is true, or the
+        /// Share gate loses the lineage. (IsEmpty stays effect-only so the
+        /// in-memory dict-removal semantics elsewhere are unchanged.)</summary>
+        public bool HasCommunityTracking =>
+            !string.IsNullOrEmpty(CommunitySourceId)
+            || !string.IsNullOrEmpty(CommunityUploadedById)
+            || !string.IsNullOrEmpty(CommunityUploadedByUserId)
+            || !string.IsNullOrEmpty(CommunityUploadedBodyHash)
+            || !string.IsNullOrEmpty(CommunityUploadedVersion)
+            || CommunityAllowInPacks.HasValue;
     }
 
     /// <summary>Per-local-user data partition. Holds the state that

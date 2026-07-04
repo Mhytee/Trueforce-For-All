@@ -79,6 +79,25 @@ namespace TrueforceForAll.Plugin
         // ranking + the "for <game>" / "Universal" / "Other games (N)"
         // tier badges. Populated by migration 0022's get_game_presets_by_ids.
         public string[] TargetGames  { get; set; } = new string[0];
+
+        /// <summary>Deep copy, including the mutable EffectTags / TargetGames
+        /// collections. Used at the browse-cache boundary so a cached summary and
+        /// the copy a caller renders / optimistically mutates are independent
+        /// objects (a UI vote/edit must not write through to the cache).</summary>
+        public PresetSummary Clone()
+        {
+            return new PresetSummary
+            {
+                Id = Id, Kind = Kind, Name = Name, Author = Author, Description = Description,
+                Game = Game, CarId = CarId,
+                EffectTags = EffectTags != null ? new List<string>(EffectTags) : null,
+                Upvotes = Upvotes, Downvotes = Downvotes, WilsonScore = WilsonScore, Downloads = Downloads,
+                CreatedAt = CreatedAt, MyVote = MyVote, OwnerUserId = OwnerUserId,
+                ContentVersion = ContentVersion, UpdatedAt = UpdatedAt, EntryCount = EntryCount,
+                AuthorVersion = AuthorVersion, AllowInPacks = AllowInPacks,
+                TargetGames = TargetGames != null ? (string[])TargetGames.Clone() : null,
+            };
+        }
     }
 
     /// <summary>Detail row: summary + full body. Returned by FetchPresetBody
@@ -104,6 +123,9 @@ namespace TrueforceForAll.Plugin
         ValidationFailed,
         ServerError,
         NetworkFailure,
+        // The account (or its device) is banned from uploading. Server raises
+        // 'submitter blocked'. Distinct so the UI can pop the appeal modal.
+        Blocked,
     }
 
     internal sealed class PresetSharingClient
@@ -207,7 +229,12 @@ namespace TrueforceForAll.Plugin
         private void StampUploadErrorFromStatus(System.Net.HttpStatusCode status, string detail)
         {
             int c = (int)status;
-            if (c == 401 || c == 403) LastUploadError = UploadError.NotAuthenticated;
+            // The ban gate raises 'submitter blocked' (P0001 -> 4xx). Detect the
+            // message so a banned upload reads as Blocked, not generic validation.
+            if (!string.IsNullOrEmpty(detail) &&
+                detail.IndexOf("submitter blocked", StringComparison.OrdinalIgnoreCase) >= 0)
+                LastUploadError = UploadError.Blocked;
+            else if (c == 401 || c == 403) LastUploadError = UploadError.NotAuthenticated;
             else if (c == 429)        LastUploadError = UploadError.RateLimited;
             else if (c >= 400 && c < 500) LastUploadError = UploadError.ValidationFailed;
             else if (c >= 500)        LastUploadError = UploadError.ServerError;
@@ -262,7 +289,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Preset upload serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Preset upload serialize failed: {ex.Message}");
                 StampUploadError(UploadError.ValidationFailed, ex.Message);
                 return null;
             }
@@ -272,7 +299,7 @@ namespace TrueforceForAll.Plugin
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Upload aborted: no auth bearer; refusing to upload as anonymous.");
+                _log?.Invoke("[TF4ALL] Upload aborted: no auth bearer; refusing to upload as anonymous.");
                 StampUploadError(UploadError.NotAuthenticated, "no bearer");
                 return null;
             }
@@ -295,7 +322,7 @@ namespace TrueforceForAll.Plugin
                             : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Preset upload failed: "
+                            _log?.Invoke($"[TF4ALL] Preset upload failed: "
                                 + $"{(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             StampUploadErrorFromStatus(resp.StatusCode, respBody);
                             return null;
@@ -308,7 +335,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Preset upload exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Preset upload exception: {ex.Message}");
                 StampUploadError(UploadError.NetworkFailure, ex.Message);
                 return null;
             }
@@ -343,7 +370,7 @@ namespace TrueforceForAll.Plugin
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Update preset attempted while signed out.");
+                _log?.Invoke("[TF4ALL] Update preset attempted while signed out.");
                 return null;
             }
 
@@ -364,7 +391,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Update preset serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Update preset serialize failed: {ex.Message}");
                 return null;
             }
 
@@ -386,7 +413,7 @@ namespace TrueforceForAll.Plugin
                             : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Update preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            _log?.Invoke($"[TF4ALL] Update preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             return null;
                         }
                         return ParseContentVersionOrZero(respBody);
@@ -395,7 +422,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Update preset exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Update preset exception: {ex.Message}");
                 return null;
             }
         }
@@ -420,28 +447,48 @@ namespace TrueforceForAll.Plugin
 
         // ---- Delete (auth-gated) -------------------------------------------
 
-        /// <summary>Soft-delete an owned preset. Server sets
+        /// <summary>Soft-delete an owned car preset. Server sets
         /// is_suppressed=true so vote history stays for moderation. Returns
         /// true on success, false on any failure.</summary>
-        public async Task<bool> DeletePresetAsync(string id, int timeoutMs = 10000)
+        public Task<bool> DeletePresetAsync(string id, int timeoutMs = 10000)
+            => DeleteViaRpcAsync("delete_preset", "p_preset_id", id, timeoutMs);
+
+        /// <summary>Soft-delete an owned game preset (see DeletePresetAsync).</summary>
+        public Task<bool> DeleteGamePresetAsync(string id, int timeoutMs = 10000)
+            => DeleteViaRpcAsync("delete_game_preset", "p_game_preset_id", id, timeoutMs);
+
+        /// <summary>Soft-delete an owned community pack (see DeletePresetAsync).</summary>
+        public Task<bool> DeletePackAsync(string id, int timeoutMs = 10000)
+            => DeleteViaRpcAsync("delete_pack", "p_pack_id", id, timeoutMs);
+
+        /// <summary>Soft-delete an owned custom engine (see DeletePresetAsync).</summary>
+        public Task<bool> DeleteCustomEngineAsync(string id, int timeoutMs = 10000)
+            => DeleteViaRpcAsync("delete_custom_engine", "p_custom_engine_id", id, timeoutMs);
+
+        // Shared owner-delete plumbing. Each kind has its own RPC + id param
+        // name (delete_preset/p_preset_id, delete_game_preset/p_game_preset_id,
+        // etc.) because the rows live in separate tables; the call shape is
+        // otherwise identical.
+        private async Task<bool> DeleteViaRpcAsync(string rpc, string paramName, string id, int timeoutMs)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return false;
             if (string.IsNullOrWhiteSpace(id)) return false;
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Delete preset attempted while signed out.");
+                _log?.Invoke($"[TF4ALL] {rpc} attempted while signed out.");
                 return false;
             }
 
             string requestBody;
             try
             {
-                requestBody = JsonConvert.SerializeObject(new { p_preset_id = id }, _jsonSettings);
+                var payload = new JObject { [paramName] = id };
+                requestBody = payload.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch { return false; }
 
-            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/delete_preset";
+            string fullUrl = url.TrimEnd('/') + "/rest/v1/rpc/" + rpc;
             try
             {
                 using (var cts = new CancellationTokenSource(timeoutMs))
@@ -458,14 +505,14 @@ namespace TrueforceForAll.Plugin
                         string detail = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                             : "";
-                        _log?.Invoke($"[Trueforce] Delete preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
+                        _log?.Invoke($"[TF4ALL] {rpc} failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
                         return false;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Delete preset exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] {rpc} exception: {ex.Message}");
                 return false;
             }
         }
@@ -531,7 +578,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] My-presets fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] My-presets fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -594,7 +641,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] My-votes fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] My-votes fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -662,7 +709,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] FetchPresetsByIds failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] FetchPresetsByIds failed: {ex.Message}");
                 return null;
             }
         }
@@ -697,7 +744,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Account stats fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Account stats fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -730,7 +777,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Data export failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Data export failed: {ex.Message}");
                 return null;
             }
         }
@@ -763,7 +810,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Delete account failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Delete account failed: {ex.Message}");
                 return false;
             }
         }
@@ -775,7 +822,7 @@ namespace TrueforceForAll.Plugin
         /// network/auth failure; empty list when no presets exist.</summary>
         public List<PresetSummary> FetchPresetsForCar(
             string game, string carId, string sort = "wilson",
-            int limit = 20, int timeoutMs = 5000)
+            int limit = 20, int offset = 0, int timeoutMs = 5000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId))
@@ -790,7 +837,8 @@ namespace TrueforceForAll.Plugin
                       + "&select=id,name,author,description,game,car_id,effect_tags,"
                       + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs"
                       + "&order=" + orderClause
-                      + "&limit=" + Math.Max(1, Math.Min(limit, 100));
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
             string fullUrl = url.TrimEnd('/') + PresetsPath + qs;
             return RunGetList(fullUrl, anonKey, "car", timeoutMs);
         }
@@ -799,7 +847,7 @@ namespace TrueforceForAll.Plugin
         /// dedicated game_presets table. Same sort vocab as car
         /// presets ("wilson" / "newest" / "downloads").</summary>
         public List<PresetSummary> FetchGamePresetsForGame(
-            string game, string sort = "wilson", int limit = 20, int timeoutMs = 5000)
+            string game, string sort = "wilson", int limit = 20, int offset = 0, int timeoutMs = 5000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             if (string.IsNullOrEmpty(game)) return new List<PresetSummary>();
@@ -810,7 +858,8 @@ namespace TrueforceForAll.Plugin
                       + "&select=id,name,author,description,game,effect_tags,"
                       + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs,target_games"
                       + "&order=" + orderClause
-                      + "&limit=" + Math.Max(1, Math.Min(limit, 100));
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
             string fullUrl = url.TrimEnd('/') + GamePresetsPath + qs;
             return RunGetList(fullUrl, anonKey, "game", timeoutMs);
         }
@@ -820,14 +869,15 @@ namespace TrueforceForAll.Plugin
         /// game/car is loaded yet. Pattern parallels
         /// FetchCommunityCustomEngines (which has always been global).</summary>
         public List<PresetSummary> FetchTrendingCarPresets(
-            string sort = "wilson", int limit = 50, int timeoutMs = 5000)
+            string sort = "wilson", int limit = 50, int offset = 0, int timeoutMs = 5000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             string orderClause = SortToOrderClause(sort);
             string qs = "?select=id,name,author,description,game,car_id,effect_tags,"
                       + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs"
                       + "&order=" + orderClause
-                      + "&limit=" + Math.Max(1, Math.Min(limit, 100));
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
             string fullUrl = url.TrimEnd('/') + PresetsPath + qs;
             return RunGetList(fullUrl, anonKey, "car", timeoutMs);
         }
@@ -835,26 +885,176 @@ namespace TrueforceForAll.Plugin
         /// <summary>Cross-game trending game presets: no game scoping,
         /// used as the for-car-mode fallback when no game is loaded.</summary>
         public List<PresetSummary> FetchTrendingGamePresets(
-            string sort = "wilson", int limit = 50, int timeoutMs = 5000)
+            string sort = "wilson", int limit = 50, int offset = 0, int timeoutMs = 5000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             string orderClause = SortToOrderClause(sort);
             string qs = "?select=id,name,author,description,game,effect_tags,"
                       + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs,target_games"
                       + "&order=" + orderClause
-                      + "&limit=" + Math.Max(1, Math.Min(limit, 100));
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
             string fullUrl = url.TrimEnd('/') + GamePresetsPath + qs;
             return RunGetList(fullUrl, anonKey, "game", timeoutMs);
         }
 
+        // ---- Search + cross-car browse -------------------------------------
+        // The browser's search box / game filter drop the active-CAR scope so
+        // the user can browse all cars across the selected game(s). Text match
+        // is case-insensitive substring (PostgREST ilike) on name + author;
+        // for car presets the caller also passes carIdMatches (car_ids whose
+        // HUMAN name matched, resolved from the local car-name tables) so a
+        // query like "mx5" finds presets even though rows store opaque ids.
+        // An empty query with a game filter is a valid browse (lists every
+        // matching car). games == null/empty means "all games".
+
+        /// <summary>Browse / search car presets across the selected games and
+        /// all cars. carIdMatches = car_ids resolved from a human-name query
+        /// (may be null). Returns null on network/auth failure.</summary>
+        public List<PresetSummary> SearchPresets(
+            string query, IList<string> carIdMatches, IList<string> games,
+            string sort = "wilson", int limit = 25, int offset = 0, int timeoutMs = 6000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            string qs = "?select=id,name,author,description,game,car_id,effect_tags,"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs"
+                      + BuildGamesInClause(games)
+                      + BuildSearchOrClause(query, carIdMatches)
+                      + "&order=" + SortToOrderClause(sort)
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
+            return RunGetList(url.TrimEnd('/') + PresetsPath + qs, anonKey, "car", timeoutMs);
+        }
+
+        /// <summary>Browse / search game presets across the selected games by
+        /// name / author. games == null/empty = all games.</summary>
+        public List<PresetSummary> SearchGamePresets(
+            string query, IList<string> games,
+            string sort = "wilson", int limit = 25, int offset = 0, int timeoutMs = 6000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            string qs = "?select=id,name,author,description,game,effect_tags,"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs,target_games"
+                      + BuildGamesInClause(games)
+                      + BuildSearchOrClause(query, null)
+                      + "&order=" + SortToOrderClause(sort)
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
+            return RunGetList(url.TrimEnd('/') + GamePresetsPath + qs, anonKey, "game", timeoutMs);
+        }
+
+        /// <summary>Search community custom engines by name / author (engines
+        /// are game-agnostic; no game filter). Empty query = no rows.</summary>
+        public List<PresetSummary> SearchCustomEngines(
+            string query, string sort = "wilson", int limit = 25, int offset = 0, int timeoutMs = 6000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            string orClause = BuildSearchOrClause(query, null);
+            if (string.IsNullOrEmpty(orClause)) return new List<PresetSummary>();
+            string qs = "?select=id,name,author,description,"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs"
+                      + orClause
+                      + "&order=" + SortToOrderClause(sort)
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
+            return RunGetList(url.TrimEnd('/') + CustomEnginesPath + qs, anonKey, "engine", timeoutMs);
+        }
+
+        /// <summary>Search community packs by name / author. Empty query = no rows.</summary>
+        public List<PresetSummary> SearchPacks(
+            string query, string sort = "wilson", int limit = 25, int offset = 0, int timeoutMs = 6000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            string orClause = BuildSearchOrClause(query, null);
+            if (string.IsNullOrEmpty(orClause)) return new List<PresetSummary>();
+            string qs = "?select=id,name,author,description,author_version,entry_count,"
+                      + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at"
+                      + orClause
+                      + "&order=" + SortToOrderClause(sort)
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
+            return RunGetList(url.TrimEnd('/') + PacksPath + qs, anonKey, "pack", timeoutMs);
+        }
+
+        // Build the "&game=in.(...)" filter for a multi-game browse. Values
+        // are double-quoted + URL-encoded so a game name with spaces (e.g.
+        // "Forza Horizon 6") survives the in-list grammar. Null/empty = no
+        // filter (all games).
+        private static string BuildGamesInClause(IList<string> games)
+        {
+            if (games == null || games.Count == 0) return "";
+            var quoted = new List<string>(games.Count);
+            foreach (var g in games)
+            {
+                if (string.IsNullOrWhiteSpace(g)) continue;
+                quoted.Add(Uri.EscapeDataString("\"" + g.Replace("\"", "") + "\""));
+            }
+            return quoted.Count == 0 ? "" : "&game=in.(" + string.Join(",", quoted) + ")";
+        }
+
+        // Build the "&or=(col.ilike.*term*,...)" fragment. The term is
+        // sanitized of PostgREST grammar characters (the or-list is comma /
+        // paren / dot delimited) then URL-encoded, so a stray comma or paren
+        // in the user's query can't break or inject into the filter. When
+        // carIdMatches is non-null the search also matches car_id text and an
+        // in-list of the resolved (human-name) car_ids. Returns "" when there
+        // is nothing to match (so an empty-query game browse stays unfiltered).
+        private static string BuildSearchOrClause(string query, IList<string> carIdMatches)
+        {
+            var conds = new List<string>();
+            string term = SanitizeSearchTerm(query);
+            if (!string.IsNullOrEmpty(term))
+            {
+                string enc = Uri.EscapeDataString("*" + term + "*");
+                conds.Add("name.ilike."   + enc);
+                conds.Add("author.ilike." + enc);
+                if (carIdMatches != null) conds.Add("car_id.ilike." + enc);
+            }
+            if (carIdMatches != null && carIdMatches.Count > 0)
+            {
+                var quoted = new List<string>(carIdMatches.Count);
+                foreach (var id in carIdMatches)
+                    if (!string.IsNullOrWhiteSpace(id))
+                        quoted.Add(Uri.EscapeDataString("\"" + id.Replace("\"", "") + "\""));
+                if (quoted.Count > 0)
+                    conds.Add("car_id.in.(" + string.Join(",", quoted) + ")");
+            }
+            return conds.Count == 0 ? "" : "&or=(" + string.Join(",", conds) + ")";
+        }
+
+        // Strip characters significant to the PostgREST filter grammar so the
+        // user's text stays a literal contains-match: , ( ) . delimit the
+        // filter, and % _ * \ are ilike / escape metacharacters. Interior
+        // whitespace maps to the ilike wildcard so multi-word queries match
+        // across gaps ("wet drift" -> *wet*drift*).
+        private static string SanitizeSearchTerm(string query)
+        {
+            if (string.IsNullOrWhiteSpace(query)) return "";
+            var sb = new System.Text.StringBuilder(query.Length);
+            foreach (char c in query.Trim())
+            {
+                if (c == ',' || c == '(' || c == ')' || c == '.'
+                    || c == '%' || c == '_' || c == '*' || c == '\\'
+                    || c == '"' || c == '\'')
+                    continue;
+                sb.Append(char.IsWhiteSpace(c) ? '*' : c);
+            }
+            return sb.ToString().Trim('*');
+        }
+
         private static string SortToOrderClause(string sort)
         {
+            // The id (uuid PK) tiebreaker makes the total order STABLE across
+            // separate LIMIT/OFFSET requests. Without it, ties on the primary key
+            // (very common: every 0-vote preset shares wilson_score 0, every
+            // 0-download preset shares downloads 0) let offset pagination duplicate
+            // or skip rows at page boundaries on "Show more".
             switch ((sort ?? "").ToLowerInvariant())
             {
-                case "newest":    return "created_at.desc";
-                case "downloads": return "downloads.desc";
+                case "newest":    return "created_at.desc,id.asc";
+                case "downloads": return "downloads.desc,id.asc";
                 case "wilson":
-                default:          return "wilson_score.desc";
+                default:          return "wilson_score.desc,id.asc";
             }
         }
 
@@ -900,7 +1100,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Preset list fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Preset list fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -947,7 +1147,7 @@ namespace TrueforceForAll.Plugin
                                 long contentLen = resp.Content?.Headers?.ContentLength ?? -1;
                                 if (contentLen > ChannelValidation.MaxPresetBodyBytes && contentLen > 0)
                                 {
-                                    _log?.Invoke($"[Trueforce] Preset body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
+                                    _log?.Invoke($"[TF4ALL] Preset body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
                                     return (PresetFull)null;
                                 }
                                 string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -956,7 +1156,7 @@ namespace TrueforceForAll.Plugin
                                 // the server lied or omitted Content-Length.
                                 if (System.Text.Encoding.UTF8.GetByteCount(body) > ChannelValidation.MaxPresetBodyBytes)
                                 {
-                                    _log?.Invoke($"[Trueforce] Preset body exceeds max size after read");
+                                    _log?.Invoke($"[TF4ALL] Preset body exceeds max size after read");
                                     return (PresetFull)null;
                                 }
                                 var arr = JArray.Parse(body);
@@ -976,7 +1176,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Preset body fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Preset body fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -1004,7 +1204,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Preset vote serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Preset vote serialize failed: {ex.Message}");
                 return;
             }
             // vote_preset is auth-gated now. Attach the bearer token if
@@ -1054,7 +1254,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Vote serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Vote serialize failed: {ex.Message}");
                 return false;
             }
 
@@ -1078,14 +1278,14 @@ namespace TrueforceForAll.Plugin
                         string detail = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                             : "";
-                        _log?.Invoke($"[Trueforce] Vote failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
+                        _log?.Invoke($"[TF4ALL] Vote failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
                         return false;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Vote exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Vote exception: {ex.Message}");
                 return false;
             }
         }
@@ -1108,7 +1308,7 @@ namespace TrueforceForAll.Plugin
                     p_preset_id = id,
                 }, _jsonSettings);
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Download/report serialize failed: {ex.Message}"); return; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Download/report serialize failed: {ex.Message}"); return; }
             // record_preset_download is auth-gated (migration 0017 added
             // per-user dedup). Attach the bearer if we have one; the
             // server returns 'sign-in required' for anonymous calls
@@ -1122,9 +1322,31 @@ namespace TrueforceForAll.Plugin
 
         // ---- Report --------------------------------------------------------
 
+        // Allowed report categories. Must match the CHECK constraint + RPC
+        // validation in migration 0080; anything else is coerced to "other"
+        // so a stale client can never trip the server-side raise.
+        private static readonly HashSet<string> _reportCategories = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase)
+        { "broken", "inappropriate", "spam", "wrong_data", "stolen", "other" };
+
+        private static string NormalizeReportCategory(string category)
+        {
+            var c = (category ?? "").Trim().ToLowerInvariant();
+            return _reportCategories.Contains(c) ? c : "other";
+        }
+
+        // null (not "") so PostgREST passes SQL NULL into the nullable p_note;
+        // server also trims + caps at 1000, this just avoids sending blanks.
+        private static string NormalizeReportNote(string note)
+        {
+            var n = (note ?? "").Trim();
+            if (n.Length == 0) return null;
+            return n.Length > 1000 ? n.Substring(0, 1000) : n;
+        }
+
         /// <summary>Flag a preset as reported. Requires sign-in. Server-side
         /// rate-limited to one report per user per target per 24 hours.</summary>
-        public void ReportPresetAsync(string id)
+        public void ReportPresetAsync(string id, string category = "other", string note = null)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrWhiteSpace(id)) return;
@@ -1135,9 +1357,11 @@ namespace TrueforceForAll.Plugin
                 body = JsonConvert.SerializeObject(new
                 {
                     p_preset_id = id,
+                    p_category  = NormalizeReportCategory(category),
+                    p_note      = NormalizeReportNote(note),
                 }, _jsonSettings);
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Report serialize failed: {ex.Message}"); return; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Report serialize failed: {ex.Message}"); return; }
             // Auth required: anonymous reports are rejected server-side.
             Task.Run(async () =>
             {
@@ -1151,6 +1375,21 @@ namespace TrueforceForAll.Plugin
         // Parallel suite for the dedicated game_presets table introduced
         // by 0012. Same shapes as the car-preset ops above; the only
         // schema difference is no car_id and a separate id space.
+
+        /// <summary>Build the "snapshot" token for a SHARED community body, with
+        /// the personal fields stripped. Master gain and FFB scale are kept in
+        /// the snapshot so a user's own presets remember them and they travel in
+        /// backup, but they are never part of the public shared payload (the
+        /// download side also ignores them via the CommunitySourceId gate in
+        /// ApplyGamePreset). Mirrors PresetBodyHasher's hash exclusion; keep the
+        /// two personal-field sets in sync.</summary>
+        internal static JObject BuildShareableSnapshotToken(GameSettingsSnapshot snap)
+        {
+            var tok = (JObject)JToken.FromObject(snap);
+            tok.Remove("MasterGain");
+            tok.Remove("FfbScale");
+            return tok;
+        }
 
         /// <summary>Upload a whole-game preset body. The server stamps
         /// author = profiles.username; the local 'author' arg is
@@ -1188,7 +1427,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Game preset upload serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Game preset upload serialize failed: {ex.Message}");
                 StampUploadError(UploadError.ValidationFailed, ex.Message);
                 return null;
             }
@@ -1198,7 +1437,7 @@ namespace TrueforceForAll.Plugin
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Game preset upload aborted: no auth bearer.");
+                _log?.Invoke("[TF4ALL] Game preset upload aborted: no auth bearer.");
                 StampUploadError(UploadError.NotAuthenticated, "no bearer");
                 return null;
             }
@@ -1220,7 +1459,7 @@ namespace TrueforceForAll.Plugin
                             : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Game preset upload failed: "
+                            _log?.Invoke($"[TF4ALL] Game preset upload failed: "
                                 + $"{(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             StampUploadErrorFromStatus(resp.StatusCode, respBody);
                             return null;
@@ -1233,7 +1472,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Game preset upload exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Game preset upload exception: {ex.Message}");
                 StampUploadError(UploadError.NetworkFailure, ex.Message);
                 return null;
             }
@@ -1263,7 +1502,7 @@ namespace TrueforceForAll.Plugin
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Update game preset attempted while signed out.");
+                _log?.Invoke("[TF4ALL] Update game preset attempted while signed out.");
                 return null;
             }
 
@@ -1287,7 +1526,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Update game preset serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Update game preset serialize failed: {ex.Message}");
                 return null;
             }
 
@@ -1309,7 +1548,7 @@ namespace TrueforceForAll.Plugin
                             : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Update game preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            _log?.Invoke($"[TF4ALL] Update game preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             return null;
                         }
                         return ParseContentVersionOrZero(respBody);
@@ -1318,7 +1557,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Update game preset exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Update game preset exception: {ex.Message}");
                 return null;
             }
         }
@@ -1342,7 +1581,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Game preset vote serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Game preset vote serialize failed: {ex.Message}");
                 return;
             }
             Task.Run(async () =>
@@ -1361,7 +1600,7 @@ namespace TrueforceForAll.Plugin
             {
                 body = JsonConvert.SerializeObject(new { p_game_preset_id = id }, _jsonSettings);
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Download/report serialize failed: {ex.Message}"); return; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Download/report serialize failed: {ex.Message}"); return; }
             // Auth-gated per migration 0017; attach bearer if present.
             Task.Run(async () =>
             {
@@ -1371,16 +1610,21 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Flag a game preset as reported. Requires sign-in.</summary>
-        public void ReportGamePresetAsync(string id)
+        public void ReportGamePresetAsync(string id, string category = "other", string note = null)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrWhiteSpace(id)) return;
             string body;
             try
             {
-                body = JsonConvert.SerializeObject(new { p_game_preset_id = id }, _jsonSettings);
+                body = JsonConvert.SerializeObject(new
+                {
+                    p_game_preset_id = id,
+                    p_category       = NormalizeReportCategory(category),
+                    p_note           = NormalizeReportNote(note),
+                }, _jsonSettings);
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Report serialize failed: {ex.Message}"); return; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Report serialize failed: {ex.Message}"); return; }
             // Auth required: anonymous reports are rejected server-side.
             Task.Run(async () =>
             {
@@ -1424,14 +1668,14 @@ namespace TrueforceForAll.Plugin
                                 long contentLen = resp.Content?.Headers?.ContentLength ?? -1;
                                 if (contentLen > ChannelValidation.MaxPresetBodyBytes && contentLen > 0)
                                 {
-                                    _log?.Invoke($"[Trueforce] Game preset body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
+                                    _log?.Invoke($"[TF4ALL] Game preset body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
                                     return (PresetFull)null;
                                 }
                                 string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                                 if (string.IsNullOrEmpty(body)) return (PresetFull)null;
                                 if (System.Text.Encoding.UTF8.GetByteCount(body) > ChannelValidation.MaxPresetBodyBytes)
                                 {
-                                    _log?.Invoke($"[Trueforce] Game preset body exceeds max size after read");
+                                    _log?.Invoke($"[TF4ALL] Game preset body exceeds max size after read");
                                     return (PresetFull)null;
                                 }
                                 var arr = JArray.Parse(body);
@@ -1453,7 +1697,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Game preset body fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Game preset body fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -1517,7 +1761,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] FetchGamePresetsByIds failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] FetchGamePresetsByIds failed: {ex.Message}");
                 return null;
             }
         }
@@ -1573,7 +1817,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] My-game-votes fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] My-game-votes fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -1609,7 +1853,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Engine upload serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Engine upload serialize failed: {ex.Message}");
                 StampUploadError(UploadError.ValidationFailed, ex.Message);
                 return null;
             }
@@ -1619,7 +1863,7 @@ namespace TrueforceForAll.Plugin
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Engine upload aborted: no auth bearer.");
+                _log?.Invoke("[TF4ALL] Engine upload aborted: no auth bearer.");
                 StampUploadError(UploadError.NotAuthenticated, "no bearer");
                 return null;
             }
@@ -1640,7 +1884,7 @@ namespace TrueforceForAll.Plugin
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Engine upload failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            _log?.Invoke($"[TF4ALL] Engine upload failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             StampUploadErrorFromStatus(resp.StatusCode, respBody);
                             return null;
                         }
@@ -1652,7 +1896,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Engine upload exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Engine upload exception: {ex.Message}");
                 StampUploadError(UploadError.NetworkFailure, ex.Message);
                 return null;
             }
@@ -1680,7 +1924,7 @@ namespace TrueforceForAll.Plugin
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Update engine attempted while signed out.");
+                _log?.Invoke("[TF4ALL] Update engine attempted while signed out.");
                 return null;
             }
 
@@ -1699,7 +1943,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Update engine serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Update engine serialize failed: {ex.Message}");
                 return null;
             }
 
@@ -1720,7 +1964,7 @@ namespace TrueforceForAll.Plugin
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Update engine failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            _log?.Invoke($"[TF4ALL] Update engine failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             return null;
                         }
                         return ParseContentVersionOrZero(respBody);
@@ -1729,7 +1973,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Update engine exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Update engine exception: {ex.Message}");
                 return null;
             }
         }
@@ -1751,7 +1995,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Engine vote serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Engine vote serialize failed: {ex.Message}");
                 return;
             }
             Task.Run(async () =>
@@ -1767,7 +2011,7 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrWhiteSpace(id)) return;
             string body;
             try { body = JsonConvert.SerializeObject(new { p_custom_engine_id = id }, _jsonSettings); }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Download/report serialize failed: {ex.Message}"); return; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Download/report serialize failed: {ex.Message}"); return; }
             // Auth-gated per migration 0017; attach bearer if present.
             Task.Run(async () =>
             {
@@ -1777,13 +2021,21 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Flag a custom engine as reported. Requires sign-in.</summary>
-        public void ReportCustomEngineAsync(string id)
+        public void ReportCustomEngineAsync(string id, string category = "other", string note = null)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrWhiteSpace(id)) return;
             string body;
-            try { body = JsonConvert.SerializeObject(new { p_custom_engine_id = id }, _jsonSettings); }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Report serialize failed: {ex.Message}"); return; }
+            try
+            {
+                body = JsonConvert.SerializeObject(new
+                {
+                    p_custom_engine_id = id,
+                    p_category         = NormalizeReportCategory(category),
+                    p_note             = NormalizeReportNote(note),
+                }, _jsonSettings);
+            }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Report serialize failed: {ex.Message}"); return; }
             // Auth required: anonymous reports are rejected server-side.
             Task.Run(async () =>
             {
@@ -1796,14 +2048,15 @@ namespace TrueforceForAll.Plugin
         /// <summary>List community custom engines, sorted. No game/car
         /// scoping (engines are game-agnostic).</summary>
         public List<PresetSummary> FetchCommunityCustomEngines(
-            string sort = "wilson", int limit = 20, int timeoutMs = 5000)
+            string sort = "wilson", int limit = 20, int offset = 0, int timeoutMs = 5000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             string orderClause = SortToOrderClause(sort);
             string qs = "?select=id,name,author,description,"
                       + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at,allow_in_packs"
                       + "&order=" + orderClause
-                      + "&limit=" + Math.Max(1, Math.Min(limit, 100));
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
             string fullUrl = url.TrimEnd('/') + CustomEnginesPath + qs;
             return RunGetList(fullUrl, anonKey, "engine", timeoutMs);
         }
@@ -1841,14 +2094,14 @@ namespace TrueforceForAll.Plugin
                                 long contentLen = resp.Content?.Headers?.ContentLength ?? -1;
                                 if (contentLen > ChannelValidation.MaxPresetBodyBytes && contentLen > 0)
                                 {
-                                    _log?.Invoke($"[Trueforce] Engine body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
+                                    _log?.Invoke($"[TF4ALL] Engine body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
                                     return (PresetFull)null;
                                 }
                                 string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                                 if (string.IsNullOrEmpty(body)) return (PresetFull)null;
                                 if (System.Text.Encoding.UTF8.GetByteCount(body) > ChannelValidation.MaxPresetBodyBytes)
                                 {
-                                    _log?.Invoke($"[Trueforce] Engine body exceeds max size after read");
+                                    _log?.Invoke($"[TF4ALL] Engine body exceeds max size after read");
                                     return (PresetFull)null;
                                 }
                                 var arr = JArray.Parse(body);
@@ -1870,7 +2123,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Engine body fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Engine body fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -1931,7 +2184,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] FetchCustomEnginesByIds failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] FetchCustomEnginesByIds failed: {ex.Message}");
                 return null;
             }
         }
@@ -1984,7 +2237,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] My-engine-votes fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] My-engine-votes fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -2020,7 +2273,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Pack upload serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Pack upload serialize failed: {ex.Message}");
                 StampUploadError(UploadError.ValidationFailed, ex.Message);
                 return null;
             }
@@ -2030,7 +2283,7 @@ namespace TrueforceForAll.Plugin
             string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
             if (string.IsNullOrEmpty(bearer))
             {
-                _log?.Invoke("[Trueforce] Pack upload aborted: no auth bearer.");
+                _log?.Invoke("[TF4ALL] Pack upload aborted: no auth bearer.");
                 StampUploadError(UploadError.NotAuthenticated, "no bearer");
                 return null;
             }
@@ -2051,7 +2304,7 @@ namespace TrueforceForAll.Plugin
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Pack upload failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            _log?.Invoke($"[TF4ALL] Pack upload failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
                             StampUploadErrorFromStatus(resp.StatusCode, respBody);
                             return null;
                         }
@@ -2063,7 +2316,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Pack upload exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Pack upload exception: {ex.Message}");
                 StampUploadError(UploadError.NetworkFailure, ex.Message);
                 return null;
             }
@@ -2085,7 +2338,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Pack vote serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Pack vote serialize failed: {ex.Message}");
                 return;
             }
             Task.Run(async () =>
@@ -2101,7 +2354,7 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrWhiteSpace(id)) return;
             string body;
             try { body = JsonConvert.SerializeObject(new { p_pack_id = id }, _jsonSettings); }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Download/report serialize failed: {ex.Message}"); return; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Download/report serialize failed: {ex.Message}"); return; }
             // Auth-gated per migration 0017; attach bearer if present.
             Task.Run(async () =>
             {
@@ -2111,13 +2364,21 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Flag a pack as reported. Requires sign-in.</summary>
-        public void ReportPackAsync(string id)
+        public void ReportPackAsync(string id, string category = "other", string note = null)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrWhiteSpace(id)) return;
             string body;
-            try { body = JsonConvert.SerializeObject(new { p_pack_id = id }, _jsonSettings); }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Report serialize failed: {ex.Message}"); return; }
+            try
+            {
+                body = JsonConvert.SerializeObject(new
+                {
+                    p_pack_id  = id,
+                    p_category = NormalizeReportCategory(category),
+                    p_note     = NormalizeReportNote(note),
+                }, _jsonSettings);
+            }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Report serialize failed: {ex.Message}"); return; }
             // Auth required: anonymous reports are rejected server-side.
             Task.Run(async () =>
             {
@@ -2130,14 +2391,15 @@ namespace TrueforceForAll.Plugin
         /// <summary>List community packs, sorted. No game/car scoping
         /// (a pack might cover any games / cars).</summary>
         public List<PresetSummary> FetchCommunityPacks(
-            string sort = "wilson", int limit = 20, int timeoutMs = 5000)
+            string sort = "wilson", int limit = 20, int offset = 0, int timeoutMs = 5000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             string orderClause = SortToOrderClause(sort);
             string qs = "?select=id,name,author,description,author_version,entry_count,"
                       + "upvotes,downvotes,wilson_score,downloads,created_at,owner_user_id,content_version,updated_at"
                       + "&order=" + orderClause
-                      + "&limit=" + Math.Max(1, Math.Min(limit, 100));
+                      + "&limit=" + Math.Max(1, Math.Min(limit, 100))
+                      + (offset > 0 ? "&offset=" + offset : "");
             string fullUrl = url.TrimEnd('/') + PacksPath + qs;
             return RunGetList(fullUrl, anonKey, "pack", timeoutMs);
         }
@@ -2174,14 +2436,14 @@ namespace TrueforceForAll.Plugin
                                 long contentLen = resp.Content?.Headers?.ContentLength ?? -1;
                                 if (contentLen > ChannelValidation.MaxPresetBodyBytes && contentLen > 0)
                                 {
-                                    _log?.Invoke($"[Trueforce] Pack body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
+                                    _log?.Invoke($"[TF4ALL] Pack body exceeds max size: {contentLen} > {ChannelValidation.MaxPresetBodyBytes}");
                                     return (PresetFull)null;
                                 }
                                 string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                                 if (string.IsNullOrEmpty(body)) return (PresetFull)null;
                                 if (System.Text.Encoding.UTF8.GetByteCount(body) > ChannelValidation.MaxPresetBodyBytes)
                                 {
-                                    _log?.Invoke($"[Trueforce] Pack body exceeds max size after read");
+                                    _log?.Invoke($"[TF4ALL] Pack body exceeds max size after read");
                                     return (PresetFull)null;
                                 }
                                 var arr = JArray.Parse(body);
@@ -2203,7 +2465,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Pack body fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Pack body fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -2262,7 +2524,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] FetchPacksByIds failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] FetchPacksByIds failed: {ex.Message}");
                 return null;
             }
         }
@@ -2371,7 +2633,7 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(anonKey)) return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Rejecting untrusted backend URL: {url}");
                 return false;
             }
             return true;
@@ -2406,14 +2668,14 @@ namespace TrueforceForAll.Plugin
                                     ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                                     : "";
                                 _log?.Invoke(
-                                    $"[Trueforce] Preset RPC failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
+                                    $"[TF4ALL] Preset RPC failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
                             }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log?.Invoke($"[Trueforce] Preset RPC exception: {ex.Message}");
+                    _log?.Invoke($"[TF4ALL] Preset RPC exception: {ex.Message}");
                 }
             });
         }

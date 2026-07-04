@@ -4,11 +4,17 @@
 // missing, so a release build that ships the constants in a downgraded
 // state still works fine for users who never opted in.
 //
-// Submission goes through SECURITY DEFINER RPC functions (submit_car_fact,
-// vote_car_fact) NOT direct table writes - the backend treats the anon key
-// as public and writes can't be authenticated, so identity (submitter_id /
-// voter_id) is derived server-side from the client IP. The plugin never
-// asserts or relies on a submitter_id of its own.
+// Submission goes through the submit_car_fact SECURITY DEFINER RPC, NOT
+// direct table writes - the backend treats the anon key as public and writes
+// can't be authenticated, so identity (submitter_id) is derived server-side
+// from the client IP. The plugin never asserts or relies on a submitter_id
+// of its own.
+//
+// Car-fact consensus is confirmation/correction based, not voted: every
+// driver submits what their car actually reads (confirm = re-submit the same
+// value, correct = submit a different one) and the winner is the payload
+// backed by the most distinct submitters. (Community PRESETS are voted, but
+// that is a separate system in PresetSharingClient.)
 //
 // Submission is fire-and-forget by design: a user just clicked Correct on
 // the plugin UI; their local CarFacts is already saved. The network call
@@ -42,18 +48,15 @@ namespace TrueforceForAll.Plugin
     /// to drive the share-prompt copy ("you're the first" / "confirming X
     /// drivers" / "alternative to current consensus"). All fields are
     /// optional; SupportingSubmissions counts distinct submitters of the
-    /// winning payload; Confirmations counts up-votes on that payload.</summary>
-    internal sealed class EngineLayoutConsensus
+    /// winning payload - the confirm/correct consensus signal (car facts are
+    /// not voted).</summary>
+    // Public (not internal) so a snapshot can be persisted in the local
+    // community-fact cache (TrueforceSettings.CommunityFactCache) for offline /
+    // TTL use. Plain DTO; no behaviour.
+    public sealed class EngineLayoutConsensus
     {
         public string Layout { get; set; }
-        public int    Confirmations { get; set; }
         public int    SupportingSubmissions { get; set; }
-        // sha256 of Postgres's canonical jsonb::text of the payload. The
-        // server populates this on every recompute; vote callers pass it
-        // back through vote_car_fact's p_expected_payload_hash CAS guard
-        // so a vote landing after a candidate flip raises instead of
-        // silently re-attributing.
-        public string PayloadHash { get; set; }
         // Set only when Layout == "CUSTOM". Carries the full custom
         // engine definition (name + firing pattern + electric flag) so
         // the receiver can play it without having the def in their
@@ -69,7 +72,7 @@ namespace TrueforceForAll.Plugin
     /// imported into the receiver's library - the plugin's apply path
     /// reads these fields directly when a community custom wins the
     /// resolver cascade for the active car.</summary>
-    internal sealed class CommunityCustomEngine
+    public sealed class CommunityCustomEngine
     {
         public string Name         { get; set; }
         public string Pattern      { get; set; }   // FiringPatternDb.ParseCustom format
@@ -78,16 +81,15 @@ namespace TrueforceForAll.Plugin
     }
 
     /// <summary>Snapshot of the community consensus for the car_name fact,
-    /// pulled per (game, carId). Variant-blind on purpose: a car's name is
-    /// chassis-level - the variant_signature column always carries '' for
-    /// car_name submissions so all engine swaps for one carId contribute
-    /// to the same name consensus.</summary>
-    internal sealed class CarNameConsensus
+    /// pulled per (game, carId). Engine-blind on purpose (a car's name is
+    /// chassis-level, so every engine swap for one carId shares it), but keyed
+    /// per LANGUAGE: car_name's variant_signature carries "lang=en" etc. so
+    /// each language has its own consensus and an English plurality can't bury
+    /// a correct non-English name.</summary>
+    public sealed class CarNameConsensus
     {
         public string Name { get; set; }
-        public int    Confirmations { get; set; }
         public int    SupportingSubmissions { get; set; }
-        public string PayloadHash { get; set; }
     }
 
     /// <summary>Snapshot of the community consensus for the redline fact,
@@ -95,12 +97,14 @@ namespace TrueforceForAll.Plugin
     /// engines on the same chassis (Forza swaps) have different redlines,
     /// so the consensus row keys on the same fingerprint as
     /// engine_layout.</summary>
-    internal sealed class RedlineConsensus
+    public sealed class RedlineConsensus
     {
         public int    Rpm { get; set; }
-        public int    Confirmations { get; set; }
         public int    SupportingSubmissions { get; set; }
-        public string PayloadHash { get; set; }
+        /// <summary>Optional per-gear overrides from the consensus payload (gear
+        /// 1..N -> rpm). Null/empty for the common single-redline case. Gear 0
+        /// (the overall value) is <see cref="Rpm"/>.</summary>
+        public System.Collections.Generic.Dictionary<int, int> Gears { get; set; }
     }
 
     internal sealed class CommunityClient
@@ -111,10 +115,10 @@ namespace TrueforceForAll.Plugin
         // derived server-side from the client IP, so submissions only need to
         // pass {p_game, p_car_id, p_fact_type, p_payload, p_plugin_version}.
         private const string SubmitRpcPath = "/rest/v1/rpc/submit_car_fact";
-        private const string VoteRpcPath   = "/rest/v1/rpc/vote_car_fact";
 
-        // car_fact_consensus IS anon-readable (the only table that is).
-        // The share-prompt fetches the current consensus row to render
+        // car_fact_consensus is authenticated-read only (migration 0027);
+        // reads send the signed-in user's bearer and bail when there isn't
+        // one. The share-prompt fetches the current consensus row to render
         // accurate "first / confirming / alternative" framing.
         private const string ConsensusPath = "/rest/v1/car_fact_consensus";
 
@@ -161,46 +165,6 @@ namespace TrueforceForAll.Plugin
             if (_accessTokenProvider == null) return null;
             try { return await _accessTokenProvider().ConfigureAwait(false); }
             catch { return null; }
-        }
-
-        /// <summary>Vote on the current community consensus for a car's
-        /// engine layout. direction = +1 (confirm) or -1 (refute). The
-        /// payload_hash from the consensus row is passed through as a
-        /// CAS guard so a vote landing after a candidate-flip raises
-        /// 'consensus changed, refetch' server-side instead of silently
-        /// re-attributing the user's intent.</summary>
-        public void VoteEngineLayoutAsync(string game, string carId,
-            int direction, string expectedPayloadHash,
-            string variantSignature = "")
-        {
-            if (!ShouldSubmit(out var url, out var anonKey)) return;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            if (direction != 1 && direction != -1) return;
-
-            // PostgREST RPC body keys match the SQL function arg names.
-            // p_variant_signature is optional server-side (defaults to '')
-            // but we always send it - "" is the explicit no-discriminator
-            // marker for non-Forza games where telemetry can't fingerprint.
-            string body;
-            try
-            {
-                body = JsonConvert.SerializeObject(new
-                {
-                    p_game                  = game,
-                    p_car_id                = carId,
-                    p_fact_type             = "engine_layout",
-                    p_direction             = direction,
-                    p_expected_payload_hash = expectedPayloadHash,
-                    p_variant_signature     = variantSignature ?? "",
-                }, _jsonSettings);
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[Trueforce] Community vote serialize failed: {ex.Message}");
-                return;
-            }
-
-            FireAndForgetRpc(url, anonKey, VoteRpcPath, body);
         }
 
         /// <summary>Submit a User-source engine-layout correction. No-op
@@ -270,9 +234,11 @@ namespace TrueforceForAll.Plugin
                 BuildSubmitBody(game, carId, "engine_layout", payload, variantSignature));
         }
 
-        /// <summary>Submit a User-source car-name fact. Stage 2.1 wires the
-        /// "Name this car" affordance to this method.</summary>
-        public void SubmitCarNameAsync(string game, string carId, string name)
+        /// <summary>Submit a User-source car-name fact. The official in-game
+        /// name, keyed per language so an English plurality can't bury the
+        /// correct name in another language.</summary>
+        public void SubmitCarNameAsync(string game, string carId, string name,
+            string variantSignature = "")
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
@@ -280,9 +246,13 @@ namespace TrueforceForAll.Plugin
             name = name.Trim();
             if (name.Length < 2 || name.Length > 96) return;
 
+            // variant_signature carries the submitter's LANGUAGE ("lang=en") so
+            // each language forms its own consensus row. Still chassis-level
+            // otherwise (no cyl/engine in the key): one name per language across
+            // every engine swap on the car.
             var payload = new { name };
             FireAndForgetRpc(url, anonKey, SubmitRpcPath,
-                BuildSubmitBody(game, carId, "car_name", payload));
+                BuildSubmitBody(game, carId, "car_name", payload, variantSignature));
         }
 
         /// <summary>Submit a User-source redline fact. Variant-aware
@@ -290,15 +260,32 @@ namespace TrueforceForAll.Plugin
         /// signature from the active EnginePulse observations and passes
         /// it through.</summary>
         public void SubmitRedlineAsync(string game, string carId, int rpm,
-            string variantSignature = "")
+            string variantSignature = "",
+            System.Collections.Generic.IReadOnlyList<GearRedline> perGear = null)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
             if (rpm < 500 || rpm > 25000) return;
 
-            var payload = new { rpm };
+            // Per-gear consensus, approach A: each gear is its OWN fact so the
+            // server agrees on each gear independently (and partial per-gear data
+            // is kept instead of fragmenting the whole profile). Gear 0 (overall)
+            // is the 'redline' fact with a BARE { rpm } payload; each forward gear
+            // 1..16 is a separate 'redline_gN' fact { rpm }. We deliberately do
+            // NOT embed a 'gears' array in the overall payload: that would cluster
+            // the gear-0 consensus separately from bare { rpm } and split its
+            // support count. Each is fire-and-forget; per-gear count is the user's
+            // override count (typically 0-4), well within the per-user submit cap.
             FireAndForgetRpc(url, anonKey, SubmitRpcPath,
-                BuildSubmitBody(game, carId, "redline", payload, variantSignature));
+                BuildSubmitBody(game, carId, "redline", new { rpm }, variantSignature));
+
+            if (perGear == null) return;
+            foreach (var g in perGear)
+            {
+                if (g == null || g.Gear < 1 || g.Gear > 16 || g.Rpm < 500 || g.Rpm > 25000) continue;
+                FireAndForgetRpc(url, anonKey, SubmitRpcPath,
+                    BuildSubmitBody(game, carId, "redline_g" + g.Gear, new { rpm = g.Rpm }, variantSignature));
+            }
         }
 
 
@@ -322,19 +309,27 @@ namespace TrueforceForAll.Plugin
         public RedlineConsensus FetchRedlineConsensus(
             string game, string carId,
             string variantSignature = "",
+            int minGearSupport = 2,
             int timeoutMs = 2000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
 
+            // One round trip for the overall 'redline' fact PLUS every per-gear
+            // fact ('redline_g1'..'redline_g16'). Each gear is its own consensus
+            // row with its own supporting_submissions, so we assemble them here
+            // and floor each gear independently (below). fact_type rides the
+            // select so we can map a row back to its gear.
             string qs = "?game=eq."  + Uri.EscapeDataString(game)
                       + "&car_id=eq." + Uri.EscapeDataString(carId)
-                      + "&fact_type=eq.redline"
+                      + "&fact_type=in.(" + RedlineFactTypeInList + ")"
                       + "&variant_signature=eq." + Uri.EscapeDataString(variantSignature ?? "")
-                      + "&select=payload,payload_hash,confirmations,supporting_submissions"
-                      + "&limit=1";
+                      + "&is_suppressed=eq.false"   // don't let a moderator-suppressed row drive the buzz
+                      + "&select=fact_type,payload,payload_hash,confirmations,supporting_submissions"
+                      + "&limit=18";
             string fullUrl = url.TrimEnd('/') + ConsensusPath + qs;
             string capturedKey = anonKey;
+            int gearFloor = minGearSupport;
 
             try
             {
@@ -360,15 +355,36 @@ namespace TrueforceForAll.Plugin
                                 if (string.IsNullOrEmpty(body)) return (RedlineConsensus)null;
                                 var arr = JArray.Parse(body);
                                 if (arr.Count == 0) return (RedlineConsensus)null;
-                                var row = arr[0];
-                                int rpm = row?["payload"]?["rpm"]?.ToObject<int>() ?? 0;
+
+                                JToken overall = null;
+                                System.Collections.Generic.Dictionary<int, int> gearMap = null;
+                                foreach (var row in arr)
+                                {
+                                    string ft = row?["fact_type"]?.ToString();
+                                    if (string.IsNullOrEmpty(ft)) continue;
+                                    if (ft == "redline") { overall = row; continue; }
+                                    if (!ft.StartsWith("redline_g")) continue;
+                                    if (!int.TryParse(ft.Substring("redline_g".Length), out int gear)
+                                        || gear < 1 || gear > 16) continue;
+                                    // Floor EACH gear independently: a lone (often
+                                    // self-) submission is not "the community".
+                                    int gsup = row["supporting_submissions"]?.ToObject<int>() ?? 0;
+                                    if (gsup < gearFloor) continue;
+                                    int gr = row?["payload"]?["rpm"]?.ToObject<int>() ?? 0;
+                                    if (gr < 500 || gr > 25000) continue;
+                                    (gearMap = gearMap ?? new System.Collections.Generic.Dictionary<int, int>())[gear] = gr;
+                                }
+
+                                if (overall == null) return (RedlineConsensus)null;
+                                int rpm = overall?["payload"]?["rpm"]?.ToObject<int>() ?? 0;
                                 if (rpm <= 0) return (RedlineConsensus)null;
                                 return new RedlineConsensus
                                 {
                                     Rpm                   = rpm,
-                                    Confirmations         = row["confirmations"]?.ToObject<int>() ?? 0,
-                                    SupportingSubmissions = row["supporting_submissions"]?.ToObject<int>() ?? 0,
-                                    PayloadHash           = row["payload_hash"]?.ToString(),
+                                    SupportingSubmissions = overall["supporting_submissions"]?.ToObject<int>() ?? 0,
+                                    // Already per-gear-floored, so downstream (adopt,
+                                    // banner, cascade) can trust every entry.
+                                    Gears                 = gearMap,
                                 };
                             }
                         }
@@ -379,29 +395,40 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Community redline fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Community redline fetch failed: {ex.Message}");
                 return null;
             }
         }
+
+        // Fixed PostgREST in.() list: the overall 'redline' fact plus every
+        // per-gear fact. Built once (do not assemble per call).
+        private const string RedlineFactTypeInList =
+            "redline,redline_g1,redline_g2,redline_g3,redline_g4,redline_g5,redline_g6,redline_g7,redline_g8,"
+            + "redline_g9,redline_g10,redline_g11,redline_g12,redline_g13,redline_g14,redline_g15,redline_g16";
 
         /// <summary>Variant-blind fetch of the consensus car_name for
         /// (game, carId). Mirrors <see cref="FetchEngineLayoutConsensus"/>'
         /// shape (sync wrapper + bounded timeout) so the SettingsControl
         /// car-change hook can ride on the same per-tick fetch loop.</summary>
         public CarNameConsensus FetchCarNameConsensus(
-            string game, string carId, int timeoutMs = 2000)
+            string game, string carId, string preferredVariantSignature = "",
+            int timeoutMs = 2000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
 
-            // car_name submissions always carry variant_signature='' so the
-            // consensus row is unique on (game, car_id, 'car_name', '').
+            // car_name is keyed per LANGUAGE in variant_signature ("lang=en").
+            // Pull every language's row for this car (a handful at most) and
+            // pick the user's own language if present, else the most-supported
+            // row of any language (English in practice; legacy unkeyed rows from
+            // before this split compete here on support too).
+            string prefSig = preferredVariantSignature ?? "";
             string qs = "?game=eq."  + Uri.EscapeDataString(game)
                       + "&car_id=eq." + Uri.EscapeDataString(carId)
                       + "&fact_type=eq.car_name"
-                      + "&variant_signature=eq."
-                      + "&select=payload,payload_hash,confirmations,supporting_submissions"
-                      + "&limit=1";
+                      + "&select=payload,supporting_submissions,variant_signature"
+                      + "&order=supporting_submissions.desc"
+                      + "&limit=24";
             string fullUrl = url.TrimEnd('/') + ConsensusPath + qs;
             string capturedKey = anonKey;
 
@@ -429,15 +456,25 @@ namespace TrueforceForAll.Plugin
                                 if (string.IsNullOrEmpty(body)) return (CarNameConsensus)null;
                                 var arr = JArray.Parse(body);
                                 if (arr.Count == 0) return (CarNameConsensus)null;
-                                var row = arr[0];
-                                string name = row?["payload"]?["name"]?.ToString();
+                                // Prefer the user's-language row; else the top
+                                // one (most-supported, since ordered desc).
+                                JToken chosen = null;
+                                foreach (var r in arr)
+                                {
+                                    string sig = r?["variant_signature"]?.ToString() ?? "";
+                                    if (string.Equals(sig, prefSig, StringComparison.Ordinal))
+                                    {
+                                        chosen = r;
+                                        break;
+                                    }
+                                }
+                                if (chosen == null) chosen = arr[0];
+                                string name = chosen?["payload"]?["name"]?.ToString();
                                 if (string.IsNullOrEmpty(name)) return (CarNameConsensus)null;
                                 return new CarNameConsensus
                                 {
                                     Name                  = name,
-                                    Confirmations         = row["confirmations"]?.ToObject<int>() ?? 0,
-                                    SupportingSubmissions = row["supporting_submissions"]?.ToObject<int>() ?? 0,
-                                    PayloadHash           = row["payload_hash"]?.ToString(),
+                                    SupportingSubmissions = chosen["supporting_submissions"]?.ToObject<int>() ?? 0,
                                 };
                             }
                         }
@@ -448,7 +485,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Community car_name fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Community car_name fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -523,9 +560,7 @@ namespace TrueforceForAll.Plugin
                                 return new EngineLayoutConsensus
                                 {
                                     Layout                = layout,
-                                    Confirmations         = row["confirmations"]?.ToObject<int>() ?? 0,
                                     SupportingSubmissions = row["supporting_submissions"]?.ToObject<int>() ?? 0,
-                                    PayloadHash           = row["payload_hash"]?.ToString(),
                                     Custom                = custom,
                                 };
                             }
@@ -537,7 +572,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Community consensus fetch failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Community consensus fetch failed: {ex.Message}");
                 return null;
             }
         }
@@ -556,10 +591,93 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(anonKey)) return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Rejecting untrusted backend URL: {url}");
                 return false;
             }
             return true;
+        }
+
+        // ---- Message of the Day ----------------------------------------------
+        // The motd table is anon-readable (its RLS policy returns only active,
+        // in-window rows), so unlike the car-fact reads this does NOT require a
+        // signed-in user: the anon key is the bearer. Gated only by
+        // CommunityEnabled + a trusted backend URL (ShouldSubmit covers both).
+        private const string MotdPath = "/rest/v1/motd";
+
+        /// <summary>Fetch the active MOTD feed. Returns null on any failure
+        /// (caller keeps its offline cache); an empty list is a valid "nothing
+        /// active right now" answer and SHOULD replace the cache.</summary>
+        public async Task<System.Collections.Generic.List<MotdItem>> FetchMotdAsync()
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            // Page through PostgREST (limit + offset) so the entire library is fetched
+            // no matter how large it grows. Recurring rows come back year-round (the
+            // client picks the day), so the active set is ~the whole library; a fixed
+            // cap would silently hide the oldest rows once the library outgrows it.
+            const int pageSize = 500;
+            string baseUrl = url.TrimEnd('/') + MotdPath
+                + "?select=id,kind,importance,category,body,link_url,link_label,"
+                + "recurrence,recur_month,recur_day,recur_window_days,anchor_year,action,audience"
+                + "&order=created_at.desc";
+            var list = new System.Collections.Generic.List<MotdItem>();
+            try
+            {
+                for (int offset = 0; offset <= 100000; offset += pageSize)
+                {
+                    string pageUrl = baseUrl + "&limit=" + pageSize + "&offset=" + offset;
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                    using (var req = new HttpRequestMessage(HttpMethod.Get, pageUrl))
+                    {
+                        req.Headers.Add("apikey", anonKey);
+                        req.Headers.Add("Authorization", "Bearer " + anonKey);
+                        using (var resp = await _http.SendAsync(req,
+                            HttpCompletionOption.ResponseContentRead, cts.Token).ConfigureAwait(false))
+                        {
+                            // A failed page aborts the whole fetch (return null keeps the
+                            // existing offline cache rather than caching a partial set).
+                            if (!resp.IsSuccessStatusCode) return null;
+                            string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            if (string.IsNullOrEmpty(body)) break;
+                            var arr = JArray.Parse(body);
+                            foreach (var t in arr)
+                            {
+                                string text = (t?["body"]?.ToString() ?? "").Trim();
+                                if (text.Length == 0) continue;
+                                // Defense in depth: the DB already enforces https-only,
+                                // but never hand a non-https link to the launcher.
+                                string link = t?["link_url"]?.ToString();
+                                if (!string.IsNullOrEmpty(link) &&
+                                    !link.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                                    link = null;
+                                list.Add(new MotdItem
+                                {
+                                    Id         = t?["id"]?.ToString(),
+                                    Kind       = t?["kind"]?.ToString(),
+                                    Importance = t?["importance"]?.ToString(),
+                                    Category   = t?["category"]?.ToString(),
+                                    Body       = text,
+                                    LinkUrl    = link,
+                                    LinkLabel  = t?["link_label"]?.ToString(),
+                                    Recurrence      = t?["recurrence"]?.ToString(),
+                                    RecurMonth      = t?["recur_month"]?.ToObject<int?>(),
+                                    RecurDay        = t?["recur_day"]?.ToObject<int?>(),
+                                    RecurWindowDays = t?["recur_window_days"]?.ToObject<int?>() ?? 1,
+                                    AnchorYear      = t?["anchor_year"]?.ToObject<int?>(),
+                                    Action          = t?["action"]?.ToString(),
+                                    Audience        = t?["audience"]?.ToString(),
+                                });
+                            }
+                            if (arr.Count < pageSize) break;   // last (short) page
+                        }
+                    }
+                }
+                return list;
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke("[TF4ALL] MOTD fetch failed: " + ex.Message);
+                return null;
+            }
         }
 
         // Build the JSON body for a submit_car_fact RPC call. PostgREST
@@ -583,7 +701,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Community submit serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Community submit serialize failed: {ex.Message}");
                 return null;
             }
         }
@@ -610,7 +728,7 @@ namespace TrueforceForAll.Plugin
                     string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
                     if (string.IsNullOrEmpty(bearer))
                     {
-                        _log?.Invoke("[Trueforce] Community submit skipped: sign-in required");
+                        _log?.Invoke("[TF4ALL] Community submit skipped: sign-in required");
                         return;
                     }
                     using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
@@ -632,14 +750,14 @@ namespace TrueforceForAll.Plugin
                                     ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                                     : "";
                                 _log?.Invoke(
-                                    $"[Trueforce] Community submit failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
+                                    $"[TF4ALL] Community submit failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
                             }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log?.Invoke($"[Trueforce] Community submit error: {ex.Message}");
+                    _log?.Invoke($"[TF4ALL] Community submit error: {ex.Message}");
                 }
             });
         }

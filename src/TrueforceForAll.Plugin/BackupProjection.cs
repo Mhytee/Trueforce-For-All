@@ -47,16 +47,18 @@ namespace TrueforceForAll.Plugin
             // Feature toggles the user opted into.
             "PluginEnabled", "MairaFfbPassthrough", "RpmLedsEnabled", "ShowFeedbackBox",
             "ShowAchievementCelebrations",
-            "CommunityEnabled", "AutoUpdateDownloadedPresets",
+            "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
+            "AutoSubmitCarFacts", "MotdLevel", "ShowEffectsTabShareButtons",
+            "UpdateCheckIntervalHours",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "DevModeUnlocked", "ImportPreviewBypass",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
-            "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "SkipFfbPassthrough",
+            "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb",
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
-            "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
+            "DuckingEnabled", "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
@@ -81,10 +83,15 @@ namespace TrueforceForAll.Plugin
             "Performance",
             // Identity / security: the auth session and the install-local slot keying.
             "AuthSession", "UserSlots", "ActiveSlotKey", "LegacyDataOwnerEmail",
+            // "Remember my email" prefill: a per-PC sign-in convenience, not a portable choice.
+            "RememberSignInEmail", "LastSignInEmail",
             // Last wheel detected on this PC (Account session list display); per-PC hardware.
             "LastUsedWheel",
             // Rebuildable local cache.
             "CarCylinderCache", "CarCylinderCacheVersion",
+            // Community-fact cache: re-fetchable from the backend; would only bloat
+            // the backup envelope and could ship one PC's stale snapshot to another.
+            "CommunityFactCache",
             // Cloud-backup sync bookkeeping (per-PC sync point; never itself backed up).
             "BackupLastSyncedRevision", "BackupLastSyncedEnvelopeJson",
             // Auto-sync opt-in is per-PC (a restored second PC must not auto-push unprompted).
@@ -106,14 +113,21 @@ namespace TrueforceForAll.Plugin
             "PresetsMigratedV2", "CarsMigratedV2", "LegacyBuiltinsCleanedV1",
             "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
             "RevLimiterThresholdDefaultMigrated",
+            "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
             // Backend config (release bakes constants; a dev override must not travel).
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "CarFactsDismissedSignatures", "CarFactsFirstObservedSignature",
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
+            "IRacingTrueforceNoticeDismissed",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed",
-            "ExperimentalSuccessReportDismissed", "LogUsbBytesEnabled",
+            // MOTD client state: re-fetchable cache + transient per-message dismiss bookkeeping.
+            "MotdCache", "MotdDismissedIds", "MotdPoolDismissedOn", "MotdRecurringDismissedOcc",
+            // MOTD audience / nag pacing: contribution-recency timestamps + nag cooldown.
+            // Nag/learned state; re-learns harmlessly on a second PC.
+            "LastSharedPresetOn", "LastVotedOn", "LastSubmittedFactOn", "MotdLastNagOn",
+            "ExperimentalSuccessReportDismissed", "LogUsbBytesEnabled", "StopStreamOnPause",
             // Per-account achievement-celebration baseline + notify-dot (re-seed on PC2).
             "AchievementBaseline", "AchievementUnseen",
             // Preset-manager UI layout.
@@ -197,16 +211,44 @@ namespace TrueforceForAll.Plugin
                 var filtered = new JObject();
                 foreach (var prop in env.Settings.Properties())
                     if (Portable.Contains(prop.Name)) filtered[prop.Name] = prop.Value;
-                using (var reader = filtered.CreateReader())
-                    CreateSerializer().Populate(reader, live);
+                // Atomicity: Populate writes property-by-property, so a malformed or
+                // cross-version leaf (a since-retyped field, or a tampered cloud blob)
+                // throws MID-stream and leaves `live` half-applied. Validate on a
+                // throwaway first; only touch live if the dry run succeeds, so a bad
+                // envelope abandons the settings restore cleanly instead of corrupting
+                // half of it. (Same defense the Forza block below already documents.)
+                bool valid;
+                try
+                {
+                    using (var probe = filtered.CreateReader())
+                        CreateSerializer().Populate(probe, new TrueforceSettings());
+                    valid = true;
+                }
+                catch
+                {
+                    valid = false;
+                }
+                if (valid)
+                    using (var reader = filtered.CreateReader())
+                        CreateSerializer().Populate(reader, live);
             }
 
             // Forza: merge only the two portable fields onto the existing instance so
             // PC2's bind/forward addresses survive.
             if (env.Forza != null && live.Forza != null)
             {
-                if (env.Forza["Enabled"] != null) live.Forza.Enabled = env.Forza["Enabled"].Value<bool>();
-                if (env.Forza["Port"] != null) live.Forza.Port = env.Forza["Port"].Value<int>();
+                // Guarded: a malformed/old envelope (e.g. these stored as strings)
+                // must not throw out of here. The settings Populate above has
+                // already run, so an uncaught cast would leave a half-applied
+                // restore. On failure, leave live.Forza at its current values.
+                try
+                {
+                    var en = env.Forza["Enabled"];
+                    if (en != null) live.Forza.Enabled = en.Value<bool>();
+                    var pt = env.Forza["Port"];
+                    if (pt != null) live.Forza.Port = pt.Value<int>();
+                }
+                catch { }
             }
         }
 

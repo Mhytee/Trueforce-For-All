@@ -232,6 +232,8 @@ namespace TrueforceForAll.Plugin
                     return "3-32 characters. Letters, numbers, or underscore only.";
                 case UsernameAvailability.Reserved:
                     return "That name is reserved. Pick another.";
+                case UsernameAvailability.Profanity:
+                    return "That name contains a blocked word. Pick another.";
                 case UsernameAvailability.Taken:
                     return "That name is taken. Try another.";
                 case UsernameAvailability.Network:
@@ -297,7 +299,7 @@ namespace TrueforceForAll.Plugin
             {
                 plugin.Settings.SharingAuthor = username;
                 try { plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 return;
             }
 
@@ -312,7 +314,7 @@ namespace TrueforceForAll.Plugin
             {
                 plugin.Settings.SharingAuthor = picker.ChosenUsername;
                 try { plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
             }
         }
     }

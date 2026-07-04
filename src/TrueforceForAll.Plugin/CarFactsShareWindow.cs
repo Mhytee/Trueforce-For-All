@@ -38,6 +38,11 @@ namespace TrueforceForAll.Plugin
 
         public enum ShareState { First, Confirming, Alternative }
 
+        /// <summary>True when the user clicked "Always share" rather than the
+        /// one-off affirmative. DialogResult is true either way (both submit);
+        /// the caller flips AutoSubmitCarFacts on when this is set.</summary>
+        public bool AlwaysChosen { get; private set; }
+
         /// <param name="carDisplayName">Human-readable car name. Falls back
         /// to carId when null.</param>
         /// <param name="carId">Identifier the plugin sees for this car.</param>
@@ -51,9 +56,16 @@ namespace TrueforceForAll.Plugin
         /// <param name="supportingSubmissions">Distinct submitter count
         /// backing the current consensus. Drives the "X drivers" line
         /// when non-zero.</param>
+        /// <param name="offerAlways">When false, the "Always share" button is
+        /// omitted so this fact can never be set to auto-submit. Car names use
+        /// this: a name is editorial, so every contribution is a deliberate
+        /// confirm/correct.</param>
+        /// <param name="valueLabel">Overrides the value-chip lead ("You're
+        /// marking this car as"). Names pass "You're naming this car".</param>
         public CarFactsShareWindow(
             string carDisplayName, string carId, string userLayoutDisplay,
-            ShareState state, string consensusLayoutDisplay, int supportingSubmissions)
+            ShareState state, string consensusLayoutDisplay, int supportingSubmissions,
+            bool offerAlways = true, string valueLabel = null)
         {
             Title         = "Help the community";
             Width         = 460;
@@ -121,7 +133,8 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 12),
                 Child = new StackPanel { Children = {
                     new TextBlock {
-                        Text = "You're marking this car as",
+                        Text = string.IsNullOrEmpty(valueLabel)
+                            ? "You're marking this car as" : valueLabel,
                         Foreground = MutedFg, FontSize = 11,
                         Margin = new Thickness(0, 0, 0, 2),
                     },
@@ -160,6 +173,24 @@ namespace TrueforceForAll.Plugin
             };
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);
+
+            // "Always share" sits between Not now and the one-off affirmative:
+            // submits this one AND turns on auto-submit so we stop asking.
+            // Omitted for facts that deliberately never auto-submit (car names
+            // are editorial, so every contribution stays a conscious choice).
+            if (offerAlways)
+            {
+                var alwaysBtn = new Button {
+                    Content = "Always share",
+                    Padding = new Thickness(12, 5, 12, 5),
+                    Margin = new Thickness(0, 0, 8, 0),
+                    Foreground = TextFg, Background = PanelBg,
+                    ToolTip = "Share corrections like this automatically from now on. "
+                            + "Turn off any time under Settings > community.",
+                };
+                alwaysBtn.Click += (s, e) => { AlwaysChosen = true; DialogResult = true; Close(); };
+                btnRow.Children.Add(alwaysBtn);
+            }
 
             string affirmText;
             switch (state)

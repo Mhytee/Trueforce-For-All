@@ -111,7 +111,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Error("[Trueforce] Failed to send PID to helper", ex);
+                SimHub.Logging.Current.Error("[TF4ALL] Failed to send PID to helper", ex);
             }
         }
 
@@ -140,9 +140,14 @@ namespace TrueforceForAll.Plugin
 
         private void StdoutPumpLoopCore()
         {
+            // Snapshot the process: Dispose() nulls _helper from another thread,
+            // so dereferencing the field mid-loop could NRE. Bound to the local,
+            // the loop sees a stable handle and exits via _shuttingDown / EOF.
+            var helper = _helper;
+            if (helper == null) return;
             try
             {
-                var stream = _helper.StandardOutput.BaseStream;
+                var stream = helper.StandardOutput.BaseStream;
                 // 1 KB chunks ≈ 2.7 ms of audio at 48 kHz × 2 ch × 4 bytes
                 // (= 384 bytes/ms). Each read fires one DataAvailable burst, and
                 // the downstream audio ring must hold a whole burst without
@@ -159,7 +164,7 @@ namespace TrueforceForAll.Plugin
                 const int bytesPerFrame = 8;  // float32 stereo
                 var buf = new byte[1024];
                 int leftover = 0;
-                while (!_shuttingDown && !_helper.HasExited)
+                while (!_shuttingDown && !helper.HasExited)
                 {
                     // Carry any sub-frame tail from the previous read forward
                     // pipe Reads can return non-frame-aligned counts, and dropping
@@ -178,16 +183,18 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (!_shuttingDown)
-                    SimHub.Logging.Current.Error("[Trueforce] Helper audio read error", ex);
+                    SimHub.Logging.Current.Error("[TF4ALL] Helper audio read error", ex);
             }
         }
 
         private void StderrLogLoop()
         {
+            var helper = _helper;
+            if (helper == null) return;
             try
             {
                 string line;
-                while ((line = _helper.StandardError.ReadLine()) != null)
+                while ((line = helper.StandardError.ReadLine()) != null)
                 {
                     SimHub.Logging.Current.Info($"[Trueforce-helper] {line}");
                 }

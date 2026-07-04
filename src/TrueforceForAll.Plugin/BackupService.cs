@@ -177,7 +177,48 @@ namespace TrueforceForAll.Plugin
                 }
                 return result;
             }
-            return local;   // leaf/array both changed differently -> this (active) device wins the tie
+            // Both changed and both are arrays (e.g. CustomEngines): union the
+            // elements so neither device's additions are silently dropped.
+            // Without this, returning `local` wholesale loses the other device's
+            // new entries permanently once the merge is stamped as the baseline.
+            if (local is JArray la && cloud is JArray ca)
+                return MergeArray(la, ca);
+            return local;   // leaf both changed differently -> this (active) device wins the tie
+        }
+
+        // Union two arrays, local first so it wins on a same-identity conflict.
+        // Object elements are keyed by their Id/id field when present (an edited
+        // entry replaces rather than duplicates); other elements dedup by value.
+        // Additive bias: a deleted-on-one-side element that still exists on the
+        // other is resurrected, which for additive lists (custom engines) is far
+        // less harmful than silently losing an addition.
+        private static JArray MergeArray(JArray local, JArray cloud)
+        {
+            var result = new JArray();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var el in local) AddUnioned(result, seen, el);
+            foreach (var el in cloud) AddUnioned(result, seen, el);
+            return result;
+        }
+
+        private static void AddUnioned(JArray result, HashSet<string> seen, JToken el)
+        {
+            string key = ElementKey(el) ?? ("val:" + (el?.ToString(Formatting.None) ?? "null"));
+            if (seen.Add(key)) result.Add(el);
+        }
+
+        private static string ElementKey(JToken el)
+        {
+            if (el is JObject o)
+            {
+                var id = o["Id"] ?? o["id"];
+                if (id != null && id.Type != JTokenType.Null)
+                {
+                    string s = id.ToString();
+                    if (!string.IsNullOrEmpty(s)) return "id:" + s;
+                }
+            }
+            return null;
         }
     }
 }

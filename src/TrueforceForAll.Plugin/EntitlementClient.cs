@@ -51,7 +51,7 @@ namespace TrueforceForAll.Plugin
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Entitlement read failed: {(int)resp.StatusCode} {Trunc(body)}");
+                            _log?.Invoke($"[TF4ALL] Entitlement read failed: {(int)resp.StatusCode} {Trunc(body)}");
                             return (false, null, null);
                         }
                         var arr = JArray.Parse(body);
@@ -72,7 +72,7 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Entitlement read exception: {ex.Message}"); return (false, null, null); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Entitlement read exception: {ex.Message}"); return (false, null, null); }
         }
 
         private async Task<string> GetBearerAsync()
@@ -94,7 +94,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Entitlement: rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Entitlement: rejecting untrusted backend URL: {url}");
                 return false;
             }
             baseUrl = url.TrimEnd('/');

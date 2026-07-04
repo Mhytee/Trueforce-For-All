@@ -79,5 +79,14 @@ namespace TrueforceForAll.Plugin.Effects
         {
             _airborne = false;
         }
+
+        // Game closed / telemetry froze while the car was off the ground. The
+        // _airborne latch is set only by OnTelemetry, so without this it would
+        // stay true and keep ducking the other voices after the feed stops.
+        // Drop it so the next real frame re-evaluates from grounded.
+        public override void OnTelemetryStall()
+        {
+            _airborne = false;
+        }
     }
 }

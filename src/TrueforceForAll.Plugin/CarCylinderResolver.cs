@@ -288,6 +288,9 @@ namespace TrueforceForAll.Plugin
         {
             string root = GetAcInstallRoot();
             if (string.IsNullOrEmpty(root)) return null;
+            // carId comes from telemetry; keep it a single folder segment so a
+            // crafted id ("..\..\...") can't read files outside the cars folder.
+            if (!SafePath.IsSafeSegment(carId)) return null;
 
             string uiPath = Path.Combine(root, "content", "cars", carId, "ui", "ui_car.json");
             if (!File.Exists(uiPath)) return null;
@@ -558,6 +561,7 @@ namespace TrueforceForAll.Plugin
             tags = null;
             string root = GetAcInstallRoot();
             if (string.IsNullOrEmpty(root)) return false;
+            if (!SafePath.IsSafeSegment(carId)) return false;
             string uiPath = Path.Combine(root, "content", "cars", carId, "ui", "ui_car.json");
             if (!File.Exists(uiPath)) return false;
             string raw;

@@ -88,7 +88,7 @@ namespace TrueforceForAll.Plugin
                 }
                 return list;
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Sessions parse error: {ex.Message}"); return null; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Sessions parse error: {ex.Message}"); return null; }
         }
 
         /// <summary>Revoke a single session by id. The RPC refuses to revoke the caller's
@@ -139,16 +139,22 @@ namespace TrueforceForAll.Plugin
         {
             // Client-side hygiene: strip control chars + cap length so an odd machine name
             // can't make an ugly/oversized row. The RPC also left()-truncates + CHECK-bounds.
-            // All three keys are always sent (explicit null when empty) so PostgREST routes to
-            // the 3-arg session_heartbeat overload and passes SQL NULL for the missing ones.
+            // All keys are always sent (explicit null when empty) so PostgREST routes to the
+            // 4-arg session_heartbeat (migration 0081) and passes SQL NULL for the missing ones.
             string dn = Sanitize(deviceName, 80);
             string wh = Sanitize(wheel, 60);
             string pv = Sanitize(version, 32);
+            // Stable hardware fingerprint (sha256 of MachineGuid + username) so a
+            // moderator ban can also block the machine (and catch fresh sock-puppet
+            // accounts created on it). Server-side only; never returned to clients.
+            // Empty on unusual setups -> SQL NULL, device banning just no-ops there.
+            string fp = DeviceFingerprint.Compute();
             var payload = new JObject
             {
                 ["p_device_name"]    = dn != null ? (JToken)new JValue(dn) : JValue.CreateNull(),
                 ["p_wheel"]          = wh != null ? (JToken)new JValue(wh) : JValue.CreateNull(),
                 ["p_plugin_version"] = pv != null ? (JToken)new JValue(pv) : JValue.CreateNull(),
+                ["p_device_fp"]      = !string.IsNullOrEmpty(fp) ? (JToken)new JValue(fp) : JValue.CreateNull(),
             };
             var (ok, body) = await PostAsync("/rest/v1/rpc/session_heartbeat",
                 payload.ToString(Newtonsoft.Json.Formatting.None), ct).ConfigureAwait(false);
@@ -204,12 +210,12 @@ namespace TrueforceForAll.Plugin
                     using (var resp = await _http.SendAsync(req, ct).ConfigureAwait(false))
                     {
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
-                        if (!resp.IsSuccessStatusCode) _log?.Invoke($"[Trueforce] {path} failed: {(int)resp.StatusCode} {Trunc(body)}");
+                        if (!resp.IsSuccessStatusCode) _log?.Invoke($"[TF4ALL] {path} failed: {(int)resp.StatusCode} {Trunc(body)}");
                         return (resp.IsSuccessStatusCode, body);
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] {path} exception: {ex.Message}"); return (false, null); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] {path} exception: {ex.Message}"); return (false, null); }
         }
 
         private async Task<string> GetBearerAsync()
@@ -231,7 +237,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Sessions: rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Sessions: rejecting untrusted backend URL: {url}");
                 return false;
             }
             baseUrl = url.TrimEnd('/');

@@ -47,6 +47,7 @@ namespace TrueforceForAll.Plugin
             public int    Cylinders    { get; set; }
             public string Redline      { get; set; }
             public bool   CanEdit      { get; set; }  // false on Baked / Scanner authoritative rows
+            public bool   CanDelete    { get; set; }  // CanEdit AND not the variant currently being driven
         }
 
         public CarFactsVariantsWindow(TrueforcePlugin plugin, string game, string carId, string carDisplayName)
@@ -195,15 +196,19 @@ namespace TrueforceForAll.Plugin
             });
             g.Columns.Add(new DataGridTextColumn
             {
-                Header = "Redline", Width = 80, IsReadOnly = true,
+                Header = "Redline", Width = 130, IsReadOnly = true,
                 Binding = new Binding("Redline"),
             });
 
-            // Delete button column. Disabled for non-editable rows.
+            // Delete button column. Disabled for built-in rows AND for the
+            // variant currently being driven (telemetry would just recreate it).
             var deleteTemplate = new DataTemplate();
             var btnFactory = new FrameworkElementFactory(typeof(Button));
             btnFactory.SetValue(Button.ContentProperty, "Delete");
-            btnFactory.SetBinding(Button.IsEnabledProperty, new Binding("CanEdit"));
+            btnFactory.SetBinding(Button.IsEnabledProperty, new Binding("CanDelete"));
+            btnFactory.SetValue(Button.ToolTipProperty,
+                "Delete a stale or misidentified variant. The one you're currently driving can't be deleted (it auto-detects from telemetry).");
+            btnFactory.SetValue(ToolTipService.ShowOnDisabledProperty, true);
             btnFactory.SetValue(Button.PaddingProperty, new Thickness(8, 2, 8, 2));
             btnFactory.SetValue(Button.MarginProperty, new Thickness(4, 2, 4, 2));
             btnFactory.AddHandler(Button.ClickEvent, new RoutedEventHandler(DeleteCell_Click));
@@ -222,19 +227,37 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) { Close(); return; }
             var variants = _plugin.GetActiveCarVariants();
+            // The variant currently being driven can't be deleted: telemetry
+            // would just recreate it, so the delete would appear not to work.
+            string activeId = null;
+            try { activeId = _plugin.GetActiveResolvedVariant()?.Id; } catch { }
             var rows = new System.Collections.Generic.List<Row>();
             if (variants != null)
             {
                 foreach (var v in variants)
                 {
                     if (v == null) continue;
+                    bool canEdit = v.Source != CarFactSource.Baked;
+                    // Show the redline this variant actually resolves to, mirroring
+                    // what the rev limiter uses now that "adopt" is retired: the
+                    // user's own pin, else the community consensus cached for this
+                    // variant's signature (when car facts are on), else a stored
+                    // absolute (telemetry-captured; Forza has none), else "auto"
+                    // (derived live). Community values are tagged so they read as
+                    // not-the-user's-own.
+                    int? redline = _plugin.ResolveVariantDisplayRedline(_game, _carId, v, out string redSrc);
+                    string redlineText =
+                        !redline.HasValue                 ? "auto" :
+                        redSrc == "community"             ? redline.Value + " (community)" :
+                        redSrc == "community_unconfirmed" ? redline.Value + " (unconfirmed)" :
+                                                            redline.Value.ToString();
                     rows.Add(new Row
                     {
                         Id          = v.Id,
                         Label       = string.IsNullOrEmpty(v.Label) ? "(unnamed)" : v.Label,
                         SourceLabel = v.Source.ToString(),
                         Cylinders   = v.Cylinders,
-                        Redline     = v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-",
+                        Redline     = redlineText,
                         // Built-in (Baked) baselines are synthesized at
                         // lookup time from the cylinder bake, not stored
                         // in the user's bundle, so rename / delete on them
@@ -242,7 +265,8 @@ namespace TrueforceForAll.Plugin
                         // the same row). Every other source IS persistent
                         // bundle state - rename to add a friendly label,
                         // delete to drop a misidentified row.
-                        CanEdit     = v.Source != CarFactSource.Baked,
+                        CanEdit     = canEdit,
+                        CanDelete   = canEdit && v.Id != activeId,
                     });
                 }
             }
@@ -280,7 +304,7 @@ namespace TrueforceForAll.Plugin
         {
             if (!(sender is Button b)) return;
             if (!(b.DataContext is Row row)) return;
-            if (!row.CanEdit) return;
+            if (!row.CanDelete) return;
             if (TrueforceDialog.Show(this,
                     "Delete variant?",
                     "Remove the variant \"" + row.Label + "\"? The resolver will fall back to the next-best source for this car.",

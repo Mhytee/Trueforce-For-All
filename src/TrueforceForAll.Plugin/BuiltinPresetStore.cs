@@ -82,7 +82,7 @@ namespace TrueforceForAll.Plugin
             {
                 if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Built-in preset folder not found: '{folder}'. No built-ins loaded (use Repair / set the folder).");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Built-in preset folder not found: '{folder}'. No built-ins loaded (use Repair / set the folder).");
                     return store;
                 }
 
@@ -91,11 +91,11 @@ namespace TrueforceForAll.Plugin
                 store.LoadCarPresets(folder);
                 store.LoadCarDefaults(folder);
 
-                SimHub.Logging.Current.Info($"[Trueforce] Loaded {store.PresetJsons.Count} game + {store.CarPresetJsons.Count} car built-in preset(s) from '{folder}'.");
+                SimHub.Logging.Current.Info($"[TF4ALL] Loaded {store.PresetJsons.Count} game + {store.CarPresetJsons.Count} car built-in preset(s) from '{folder}'.");
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Failed loading built-in presets from '{folder}': {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Failed loading built-in presets from '{folder}': {ex.Message}");
             }
             return store;
         }
@@ -112,7 +112,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Bad {GameDefaultsFileName}: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Bad {GameDefaultsFileName}: {ex.Message}");
             }
         }
 
@@ -170,7 +170,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Bad {CarDefaultsFileName}: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Bad {CarDefaultsFileName}: {ex.Message}");
             }
         }
 

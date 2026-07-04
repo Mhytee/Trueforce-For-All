@@ -26,6 +26,7 @@ namespace TrueforceForAll.Plugin
         // it untouched so callers can rely on Save returning true => mutated.
         private CustomEngineDef _target;
         private bool _suppress;   // skip event handlers during programmatic UI updates
+        private string _lastGeneratedPattern;   // last auto-generated pattern; lets us detect hand-edits
 
         public CustomEngineEditor()
         {
@@ -60,10 +61,20 @@ namespace TrueforceForAll.Plugin
                 // for new entries so the user has something concrete to edit
                 // rather than an empty textbox.
                 bool hasPattern = !string.IsNullOrWhiteSpace(_target.Pattern);
-                PatternTextBox.Text = hasPattern
+                string seeded = hasPattern
                     ? _target.Pattern
                     : FiringPatternDb.BuildPatternString(FiringPatternDb.CustomEngineShape.EvenFire, 4);
-                ShapeCombo.SelectedIndex = 0;   // Even-fire
+                PatternTextBox.Text = seeded;
+                // Track the last auto-generated value so we can tell whether the
+                // user has hand-edited the pattern. For an existing entry the saved
+                // pattern is treated as user-owned (null marker) so a stray shape /
+                // count change never silently overwrites it.
+                _lastGeneratedPattern = hasPattern ? null : seeded;
+                // Reflect the saved pattern's shape instead of always "Even-fire"
+                // (so the dropdown isn't misleading and an explicit Regenerate
+                // doesn't silently switch shape). Falls back to 0 for a
+                // hand-edited pattern that matches no generated shape.
+                ShapeCombo.SelectedIndex = hasPattern ? InferShapeIndex(seeded) : 0;
                 CountSlider.Value = InferPulseCount(PatternTextBox.Text, fallback: 4);
                 CountText.Text = ((int)CountSlider.Value).ToString();
                 ApplyShapeConstraints();
@@ -96,6 +107,50 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        private const int ShapeComboMaxIndex = 10;
+
+        // Inverse of SelectedShape: the combo index that selects a given shape.
+        private static FiringPatternDb.CustomEngineShape ShapeForIndex(int idx)
+        {
+            switch (idx)
+            {
+                case 1:  return FiringPatternDb.CustomEngineShape.V8CrossPlane;
+                case 2:  return FiringPatternDb.CustomEngineShape.V6OddFire;
+                case 3:  return FiringPatternDb.CustomEngineShape.VTwin90;
+                case 4:  return FiringPatternDb.CustomEngineShape.VTwin60;
+                case 5:  return FiringPatternDb.CustomEngineShape.VTwin45;
+                case 6:  return FiringPatternDb.CustomEngineShape.Inline4CrossPlane;
+                case 7:  return FiringPatternDb.CustomEngineShape.Rotary;
+                case 8:  return FiringPatternDb.CustomEngineShape.Twin180;
+                case 9:  return FiringPatternDb.CustomEngineShape.V4TwinPulse;
+                case 10: return FiringPatternDb.CustomEngineShape.Boxer4Rumble;
+                default: return FiringPatternDb.CustomEngineShape.EvenFire;
+            }
+        }
+
+        // Best-effort: figure out which shape generated a saved pattern so the
+        // dropdown reflects it instead of always showing "Even-fire". Matches the
+        // saved string against each shape's generated pattern (at its fixed count,
+        // or the saved count for variable shapes). Returns 0 (Even-fire) when
+        // nothing matches, i.e. a hand-edited pattern.
+        private static int InferShapeIndex(string pattern)
+        {
+            if (string.IsNullOrWhiteSpace(pattern)) return 0;
+            string target = pattern.Trim();
+            int count = InferPulseCount(pattern, 4);
+            for (int idx = 0; idx <= ShapeComboMaxIndex; idx++)
+            {
+                var shape = ShapeForIndex(idx);
+                int n = FiringPatternDb.FixedCountForShape(shape) ?? count;
+                string gen;
+                try { gen = FiringPatternDb.BuildPatternString(shape, n); }
+                catch { continue; }
+                if (string.Equals(gen?.Trim(), target, StringComparison.Ordinal))
+                    return idx;
+            }
+            return 0;
+        }
+
         // Pull a sensible starting count from the saved pattern: the number
         // of comma-separated positions. Used only to seed the slider when
         // opening an existing entry; the actual pattern stays in the textbox.
@@ -125,7 +180,7 @@ namespace TrueforceForAll.Plugin
             ShapeRow.Visibility            = isElectric ? Visibility.Collapsed : Visibility.Visible;
             CountRow.Visibility            = isElectric ? Visibility.Collapsed : Visibility.Visible;
             PatternRow.Visibility          = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            PatternHelp.Visibility         = isElectric ? Visibility.Collapsed : Visibility.Visible;
+            PatternHelpRow.Visibility      = isElectric ? Visibility.Collapsed : Visibility.Visible;
             ElectricBehaviorRow.Visibility = isElectric ? Visibility.Visible   : Visibility.Collapsed;
         }
 
@@ -186,15 +241,36 @@ namespace TrueforceForAll.Plugin
             RegeneratePattern();
         }
 
-        // Rewrite the pattern textbox from (shape, count). Suppresses the
-        // textbox change events so manual edits the user has made on top of
-        // a generated pattern survive across unrelated UI interactions.
-        private void RegeneratePattern()
+        // Rebuild the pattern textbox from (shape, count). By default this
+        // refuses to clobber a hand-edited pattern: it only overwrites when the
+        // box still holds the exact string we last generated (or is blank). The
+        // user's expert edits survive a stray shape / count change and are only
+        // replaced when they explicitly click "Regenerate" (force: true).
+        private void RegeneratePattern(bool force = false)
         {
+            if (!force && PatternIsUserEdited()) return;
             string s = FiringPatternDb.BuildPatternString(SelectedShape(), (int)Math.Round(CountSlider.Value));
             _suppress = true;
             try { PatternTextBox.Text = s; }
             finally { _suppress = false; }
+            _lastGeneratedPattern = s;
+        }
+
+        // True when the pattern box differs from the last value we generated,
+        // i.e. the user has typed their own pattern. A blank box counts as
+        // not-edited so clearing it re-enables auto-generation.
+        private bool PatternIsUserEdited()
+        {
+            string cur = (PatternTextBox.Text ?? "").Trim();
+            if (cur.Length == 0) return false;
+            return !string.Equals(cur, (_lastGeneratedPattern ?? "").Trim(), StringComparison.Ordinal);
+        }
+
+        // Expert escape hatch: rebuild the pattern from the current shape and
+        // count even when the box was hand-edited.
+        private void RegeneratePattern_Click(object sender, RoutedEventArgs e)
+        {
+            RegeneratePattern(force: true);
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -202,9 +278,8 @@ namespace TrueforceForAll.Plugin
             string name = (NameTextBox.Text ?? "").Trim();
             if (string.IsNullOrEmpty(name))
             {
-                MessageBox.Show(this,
-                    "Please enter a name for this engine.",
-                    "Custom engine", MessageBoxButton.OK, MessageBoxImage.Information);
+                TrueforceDialog.Show(this, "Custom engine",
+                    "Please enter a name for this engine.", DialogKind.Info);
                 NameTextBox.Focus();
                 return;
             }
@@ -219,10 +294,10 @@ namespace TrueforceForAll.Plugin
                 var parsed = FiringPatternDb.ParseCustom(pattern);
                 if (parsed == null || parsed.Pulses < 1)
                 {
-                    MessageBox.Show(this,
+                    TrueforceDialog.Show(this, "Custom engine",
                         "The firing pattern couldn't be parsed. Expected format: comma-separated numbers in [0, 1) "
                         + "with optional ':amplitude' per entry (e.g. 0, 0.25:1.0, 0.5, 0.75:0.85).",
-                        "Custom engine", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        DialogKind.Warning);
                     PatternTextBox.Focus();
                     return;
                 }

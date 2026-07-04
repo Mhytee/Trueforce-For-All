@@ -197,7 +197,7 @@ namespace TrueforceForAll.Plugin
                 if (_plugin?.Settings?.CommunityEnabled != true)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Turn on 'Use community car data' on the Account tab first.";
+                    statusText.Text = "Turn on 'Enable community features (online)' in Settings first.";
                     return;
                 }
                 if (!_plugin.AuthIsSignedIn)
@@ -231,7 +231,7 @@ namespace TrueforceForAll.Plugin
                         var je = new JObject
                         {
                             ["name"]     = ge.Name,
-                            ["snapshot"] = JToken.FromObject(snap),
+                            ["snapshot"] = PresetSharingClient.BuildShareableSnapshotToken(snap),
                         };
                         string sid = snap.CommunitySourceId;
                         if (!string.IsNullOrEmpty(sid))
@@ -329,6 +329,8 @@ namespace TrueforceForAll.Plugin
                     statusText.Foreground = ErrFg;
                     statusText.Text = _plugin.DescribeLastUploadError();
                     uploadBtn.IsEnabled = true; cancelBtn.IsEnabled = true;
+                    if (_plugin.LastUploadWasBlocked())
+                        await ModerationNoticesWindow.MaybeShowAsync(_plugin, this, force: true).ConfigureAwait(true);
                     return;
                 }
                 UploadedPackId = newId;

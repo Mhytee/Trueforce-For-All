@@ -65,6 +65,7 @@ namespace TrueforceForAll.Plugin
         Format,       // Failed [a-zA-Z0-9_]{3,32}
         Reserved,     // Hardcoded reserved name (admin/root/etc.)
         Taken,        // Someone else has it
+        Profanity,    // Contains a blocked word
         Network,
     }
 
@@ -107,6 +108,13 @@ namespace TrueforceForAll.Plugin
         private DateTime? _lastRefreshFailureAt;
         private static readonly TimeSpan RefreshCooldown = TimeSpan.FromSeconds(60);
 
+        // Set by the most recent SendOtpAsync: when the server rate-limits
+        // the request (HTTP 429), GoTrue's body carries the exact wait
+        // ("...you can only request this after N seconds"), which we parse
+        // so the sign-in modal can show an accurate resend countdown instead
+        // of a fixed guess. Null when the last send was not rate-limited.
+        public int? LastSendRetryAfterSeconds { get; private set; }
+
         public CommunityAuth(Func<TrueforceSettings> settingsProvider,
             Action persistSettings, Action<string> log)
         {
@@ -144,7 +152,7 @@ namespace TrueforceForAll.Plugin
             // re-encrypts in place. We pass the same instance, not a
             // copy: SaveSession mutates AccessToken/RefreshToken to the
             // "dpapi:" form and persists. Single Info-level log line.
-            _log?.Invoke("[Trueforce] Migration: encrypting legacy plaintext AuthSession");
+            _log?.Invoke("[TF4ALL] Migration: encrypting legacy plaintext AuthSession");
             SaveSession(s);
             return true;
         }
@@ -162,6 +170,7 @@ namespace TrueforceForAll.Plugin
         /// surface specific copy (rate limit / network / generic).</summary>
         public async Task<AuthCallResult> SendOtpAsync(string email)
         {
+            LastSendRetryAfterSeconds = null;
             if (!ShouldRun(out var url, out var anonKey)) return AuthCallResult.NetworkFailure;
             if (string.IsNullOrWhiteSpace(email)) return AuthCallResult.InvalidInput;
             email = email.Trim().ToLowerInvariant();
@@ -177,7 +186,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth send-otp serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth send-otp serialize failed: {ex.Message}");
                 return AuthCallResult.Generic;
             }
 
@@ -194,14 +203,18 @@ namespace TrueforceForAll.Plugin
                         string detail = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                             : "";
-                        _log?.Invoke($"[Trueforce] Auth send-otp failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
-                        return ClassifyAuthError((int)resp.StatusCode, detail);
+                        var classified = ClassifyAuthError((int)resp.StatusCode, detail);
+                        // F19: log the classified category, not the raw body, to avoid leaking PII / token fragments.
+                        _log?.Invoke($"[TF4ALL] Auth send-otp failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {classified}");
+                        if (classified == AuthCallResult.RateLimited)
+                            LastSendRetryAfterSeconds = ParseRetryAfterSeconds(resp, detail);
+                        return classified;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth send-otp exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth send-otp exception: {ex.Message}");
                 return AuthCallResult.NetworkFailure;
             }
         }
@@ -233,7 +246,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth verify-otp serialize failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth verify-otp serialize failed: {ex.Message}");
                 return AuthCallResult.Generic;
             }
 
@@ -256,7 +269,7 @@ namespace TrueforceForAll.Plugin
                         string machine = SanitizeUaToken(Environment.MachineName);
                         req.Headers.UserAgent.ParseAdd($"TrueforceForAll/{ver} ({machine}; Windows)");
                     }
-                    catch (Exception uaEx) { _log?.Invoke($"[Trueforce] Auth verify-otp UA skipped: {uaEx.Message}"); }
+                    catch (Exception uaEx) { _log?.Invoke($"[TF4ALL] Auth verify-otp UA skipped: {uaEx.Message}"); }
                     req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                     using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
                     {
@@ -265,8 +278,10 @@ namespace TrueforceForAll.Plugin
                             : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Auth verify-otp failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
-                            return ClassifyAuthError((int)resp.StatusCode, respBody);
+                            var classified = ClassifyAuthError((int)resp.StatusCode, respBody);
+                            // F19: log the classified category, not the raw body.
+                            _log?.Invoke($"[TF4ALL] Auth verify-otp failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {classified}");
+                            return classified;
                         }
                         var session = ParseSession(respBody, email);
                         if (session == null) return AuthCallResult.Generic;
@@ -303,9 +318,43 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth verify-otp exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth verify-otp exception: {ex.Message}");
                 return AuthCallResult.NetworkFailure;
             }
+        }
+
+        // Pull the retry-after seconds from a rate-limited (429) send-otp
+        // response so the modal can count down to the real moment the next
+        // request is allowed. Prefers the HTTP Retry-After header; falls
+        // back to GoTrue's message body ("...you can only request this
+        // after N seconds."). Returns null if neither is present or
+        // parseable, in which case the caller uses its own default.
+        private static int? ParseRetryAfterSeconds(HttpResponseMessage resp, string body)
+        {
+            try
+            {
+                var ra = resp?.Headers?.RetryAfter;
+                if (ra != null)
+                {
+                    if (ra.Delta.HasValue)
+                        return Math.Max(1, (int)Math.Ceiling(ra.Delta.Value.TotalSeconds));
+                    if (ra.Date.HasValue)
+                    {
+                        double secs = (ra.Date.Value - DateTimeOffset.UtcNow).TotalSeconds;
+                        if (secs >= 1) return (int)Math.Ceiling(secs);
+                    }
+                }
+            }
+            catch { }
+            try
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(
+                    body ?? "", @"after\s+(\d+)\s+second");
+                if (m.Success && int.TryParse(m.Groups[1].Value, out int n) && n > 0)
+                    return n;
+            }
+            catch { }
+            return null;
         }
 
         // Map Supabase auth error responses to our categorized result.
@@ -362,7 +411,7 @@ namespace TrueforceForAll.Plugin
                     decryptedAccessToken = DpapiCipher.Unprotect(s.AccessToken);
                     if (string.IsNullOrEmpty(decryptedAccessToken))
                     {
-                        _log?.Invoke("[Trueforce] Auth session decrypt failed; clearing session");
+                        _log?.Invoke("[TF4ALL] Auth session decrypt failed; clearing session");
                         SaveSession(null);
                         return null;
                     }
@@ -378,7 +427,7 @@ namespace TrueforceForAll.Plugin
                 if (s.LastUsedAt != DateTime.MinValue
                     && DateTime.UtcNow - s.LastUsedAt > TimeSpan.FromDays(30))
                 {
-                    _log?.Invoke("[Trueforce] Auth session idle expiry (30d); clearing session");
+                    _log?.Invoke("[TF4ALL] Auth session idle expiry (30d); clearing session");
                     SaveSession(null);
                     return null;
                 }
@@ -392,7 +441,7 @@ namespace TrueforceForAll.Plugin
                     if (!string.IsNullOrEmpty(currentDevice)
                         && !string.Equals(currentDevice, s.DeviceFingerprint, StringComparison.Ordinal))
                     {
-                        _log?.Invoke("[Trueforce] Auth device mismatch; clearing session");
+                        _log?.Invoke("[TF4ALL] Auth device mismatch; clearing session");
                         SaveSession(null);
                         return null;
                     }
@@ -410,7 +459,7 @@ namespace TrueforceForAll.Plugin
                     && !string.IsNullOrEmpty(s.Email)
                     && !string.Equals(jwtEmail, s.Email, StringComparison.OrdinalIgnoreCase))
                 {
-                    _log?.Invoke("[Trueforce] Auth email claim mismatch; clearing session");
+                    _log?.Invoke("[TF4ALL] Auth email claim mismatch; clearing session");
                     SaveSession(null);
                     return null;
                 }
@@ -442,7 +491,7 @@ namespace TrueforceForAll.Plugin
                     refreshTokenPlain = DpapiCipher.Unprotect(s.RefreshToken);
                     if (string.IsNullOrEmpty(refreshTokenPlain))
                     {
-                        _log?.Invoke("[Trueforce] Auth refresh-token decrypt failed; clearing session");
+                        _log?.Invoke("[TF4ALL] Auth refresh-token decrypt failed; clearing session");
                         SaveSession(null);
                         _lastRefreshFailureAt = DateTime.UtcNow;
                         return null;
@@ -495,7 +544,7 @@ namespace TrueforceForAll.Plugin
                                 // out on transient errors.
                                 // F19: log error category instead of raw response body to avoid leaking token fragments.
                                 string errorCategory = ClassifyAuthError((int)resp.StatusCode, respBody).ToString();
-                                _log?.Invoke($"[Trueforce] Auth refresh failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {errorCategory}");
+                                _log?.Invoke($"[TF4ALL] Auth refresh failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {errorCategory}");
                                 if (IsDefinitiveRefreshRejection(resp.StatusCode, respBody))
                                     SaveSession(null);
                                 _lastRefreshFailureAt = DateTime.UtcNow;
@@ -521,7 +570,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    _log?.Invoke($"[Trueforce] Auth refresh exception: {ex.Message}");
+                    _log?.Invoke($"[TF4ALL] Auth refresh exception: {ex.Message}");
                     _lastRefreshFailureAt = DateTime.UtcNow;
                     return null;
                 }
@@ -566,7 +615,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth get-my-profile exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth get-my-profile exception: {ex.Message}");
                 return (false, null, null);
             }
         }
@@ -611,17 +660,18 @@ namespace TrueforceForAll.Plugin
                                 : UsernameAvailability.Available;
                         switch ((reason ?? "").ToLowerInvariant())
                         {
-                            case "format":   return UsernameAvailability.Format;
-                            case "reserved": return UsernameAvailability.Reserved;
-                            case "taken":    return UsernameAvailability.Taken;
-                            default:         return UsernameAvailability.Format;
+                            case "format":    return UsernameAvailability.Format;
+                            case "reserved":  return UsernameAvailability.Reserved;
+                            case "taken":     return UsernameAvailability.Taken;
+                            case "profanity": return UsernameAvailability.Profanity;
+                            default:          return UsernameAvailability.Format;
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth check-username exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth check-username exception: {ex.Message}");
                 return UsernameAvailability.Network;
             }
         }
@@ -665,14 +715,14 @@ namespace TrueforceForAll.Plugin
                             return UsernameAvailability.Reserved;
                         if (respBody.IndexOf("format", StringComparison.OrdinalIgnoreCase) >= 0)
                             return UsernameAvailability.Format;
-                        _log?.Invoke($"[Trueforce] Auth set-username failed: {(int)resp.StatusCode} {respBody}");
+                        _log?.Invoke($"[TF4ALL] Auth set-username failed: {(int)resp.StatusCode} {respBody}");
                         return UsernameAvailability.Network;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth set-username exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth set-username exception: {ex.Message}");
                 return UsernameAvailability.Network;
             }
         }
@@ -722,14 +772,16 @@ namespace TrueforceForAll.Plugin
                         string detail = resp.Content != null
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false)
                             : "";
-                        _log?.Invoke($"[Trueforce] Auth update-email failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {detail}");
-                        return ClassifyAuthError((int)resp.StatusCode, detail);
+                        var classified = ClassifyAuthError((int)resp.StatusCode, detail);
+                        // F19: log the classified category, not the raw body.
+                        _log?.Invoke($"[TF4ALL] Auth update-email failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {classified}");
+                        return classified;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth update-email exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth update-email exception: {ex.Message}");
                 return AuthCallResult.NetworkFailure;
             }
         }
@@ -749,13 +801,13 @@ namespace TrueforceForAll.Plugin
                     using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
                     {
                         if (!resp.IsSuccessStatusCode)
-                            _log?.Invoke($"[Trueforce] Invalidate-other-sessions failed: {(int)resp.StatusCode}");
+                            _log?.Invoke($"[TF4ALL] Invalidate-other-sessions failed: {(int)resp.StatusCode}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Invalidate-other-sessions exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Invalidate-other-sessions exception: {ex.Message}");
             }
         }
 
@@ -778,14 +830,14 @@ namespace TrueforceForAll.Plugin
                     using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
                     {
                         if (!resp.IsSuccessStatusCode)
-                            _log?.Invoke($"[Trueforce] Sign-out-others failed: {(int)resp.StatusCode}");
+                            _log?.Invoke($"[TF4ALL] Sign-out-others failed: {(int)resp.StatusCode}");
                         return resp.IsSuccessStatusCode;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Sign-out-others exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Sign-out-others exception: {ex.Message}");
                 return false;
             }
         }
@@ -834,7 +886,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Session info decode failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Session info decode failed: {ex.Message}");
                 return (null, null, null);
             }
         }
@@ -890,11 +942,11 @@ namespace TrueforceForAll.Plugin
                         using (var resp = await _http.SendAsync(req).ConfigureAwait(false))
                         {
                             if (!resp.IsSuccessStatusCode)
-                                _log?.Invoke($"[Trueforce] Auth sign-out (server) failed: {(int)resp.StatusCode}");
+                                _log?.Invoke($"[TF4ALL] Auth sign-out (server) failed: {(int)resp.StatusCode}");
                         }
                     }
                 }
-                catch (Exception ex) { _log?.Invoke($"[Trueforce] Auth sign-out exception: {ex.Message}"); }
+                catch (Exception ex) { _log?.Invoke($"[TF4ALL] Auth sign-out exception: {ex.Message}"); }
             });
         }
 
@@ -952,7 +1004,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Auth session parse failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Auth session parse failed: {ex.Message}");
                 return null;
             }
         }
@@ -976,7 +1028,7 @@ namespace TrueforceForAll.Plugin
             }
             s.AuthSession = session;
             try { _persistSettings?.Invoke(); }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Auth session persist failed: {ex.Message}"); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Auth session persist failed: {ex.Message}"); }
         }
 
         // User-Agent comment tokens are strict about characters (no spaces/parens/etc.);
@@ -1003,7 +1055,7 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(anonKey)) return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Rejecting untrusted backend URL: {url}");
                 return false;
             }
             return true;
@@ -1016,7 +1068,7 @@ namespace TrueforceForAll.Plugin
         private void FireIdentityChanged(string newKey)
         {
             try { ActiveIdentityChanged?.Invoke(newKey ?? ""); }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] ActiveIdentityChanged subscriber threw: {ex.Message}"); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] ActiveIdentityChanged subscriber threw: {ex.Message}"); }
         }
     }
 }

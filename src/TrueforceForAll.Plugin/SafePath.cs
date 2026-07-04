@@ -24,10 +24,12 @@ namespace TrueforceForAll.Plugin
             if (entryNorm.StartsWith("/", StringComparison.Ordinal))
                 return false;
 
-            // Reject any '..' segment. net48 has no Contains(string, StringComparison)
-            // overload, so use IndexOf with the comparison instead.
-            if (entryNorm.IndexOf("..", StringComparison.Ordinal) >= 0)
-                return false;
+            // Reject any '..' path SEGMENT (real traversal) but allow '..' inside
+            // a filename, e.g. "my..preset.json" - the old blanket substring check
+            // silently dropped such legitimate entries on import/restore. The
+            // GetFullPath + containment check below is the authoritative guard.
+            foreach (var seg in entryNorm.Split('/'))
+                if (seg == "..") return false;
 
             try
             {
@@ -104,5 +106,22 @@ namespace TrueforceForAll.Plugin
 
             return result;
         }
+
+        // True iff a segment is a directory-traversal token: empty, or only
+        // dots (".", "..", "..."). '.' is a legal filename char so it survives
+        // a GetInvalidFileNameChars strip; callers must neutralize these so a
+        // hostile carId/presetName (e.g. from a downloaded pack) can't walk out
+        // of the target folder.
+        public static bool IsTraversalSegment(string seg)
+            => string.IsNullOrEmpty(seg) || seg.Trim().Trim('.').Length == 0;
+
+        // True iff s is safe to use AS-IS as a single path segment: non-empty,
+        // no invalid/separator chars (GetInvalidFileNameChars covers '/' and
+        // '\\' on Windows), and not a traversal token. Use to REJECT (not
+        // rewrite) an untrusted id that must match an existing folder verbatim.
+        public static bool IsSafeSegment(string s)
+            => !string.IsNullOrEmpty(s)
+               && s.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+               && !IsTraversalSegment(s);
     }
 }

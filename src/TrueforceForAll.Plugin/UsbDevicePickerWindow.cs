@@ -400,10 +400,12 @@ namespace TrueforceForAll.Plugin
             // any data and we'd just be wasting a USBPcap process.
             if (row.Candidate.Vid != 0 && row.Candidate.Vid != WheelDiscovery.LogitechVid)
             {
-                var result = MessageBox.Show(
+                var result = TrueforceDialog.Show(
+                    this,
+                    "Trueforce",
                     $"This device isn't a Logitech wheel ({row.VidPid}). The FFB tap won't get any data from it. Apply anyway?",
-                    "Trueforce", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-                if (result != MessageBoxResult.OK) return;
+                    DialogKind.Confirm, "Apply anyway", "Cancel");
+                if (result != true) return;
             }
 
             bool ok = _plugin.ApplyManualUsbPcapDevice(row.Interface, row.Address, row.Candidate.Vid, row.Candidate.Pid);

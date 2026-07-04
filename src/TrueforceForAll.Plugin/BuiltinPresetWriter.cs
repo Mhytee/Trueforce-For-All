@@ -15,13 +15,27 @@ namespace TrueforceForAll.Plugin
     internal static class BuiltinPresetWriter
     {
         // Strip characters Windows forbids in file names; keep the rest
-        // (spaces / parens stay, so names remain readable).
+        // (spaces / parens stay, so names remain readable). A dot-only result
+        // ("." / "..") is a traversal token, not a name, so neutralize it.
         private static string SafeFile(string s)
         {
             if (string.IsNullOrEmpty(s)) return "preset";
             foreach (var c in Path.GetInvalidFileNameChars())
                 s = s.Replace(c, '_');
-            return s.Trim();
+            s = s.Trim();
+            return SafePath.IsTraversalSegment(s) ? "preset" : s;
+        }
+
+        // Write through a temp file + rename so a crash mid-write doesn't leave
+        // a truncated/corrupt file (game-defaults.json, car-defaults.json, and
+        // preset files are all written here at runtime via Pack Manager). Same
+        // pattern as CarPresetStore / InstalledPacksStore.
+        private static void AtomicWriteAllText(string path, string content)
+        {
+            string tmp = path + ".tmp";
+            File.WriteAllText(tmp, content);
+            if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
+            else File.Move(tmp, path);
         }
 
         // Rename a file safely on a case-insensitive filesystem (Windows).
@@ -61,7 +75,7 @@ namespace TrueforceForAll.Plugin
         {
             Directory.CreateDirectory(Path.Combine(folder, "games"));
             string rel = "games/" + SafeFile(name) + ".json";
-            File.WriteAllText(Path.Combine(folder, rel), snapshotJson);
+            AtomicWriteAllText(Path.Combine(folder, rel), snapshotJson);
             return rel;
         }
 
@@ -74,7 +88,7 @@ namespace TrueforceForAll.Plugin
             string dir = Path.Combine(folder, "cars", g, SafeFile(carId));
             Directory.CreateDirectory(dir);
             string rel = "cars/" + g + "/" + SafeFile(carId) + "/" + SafeFile(presetName) + ".json";
-            File.WriteAllText(Path.Combine(folder, rel), carPresetJson);
+            AtomicWriteAllText(Path.Combine(folder, rel), carPresetJson);
             return rel;
         }
 
@@ -122,7 +136,7 @@ namespace TrueforceForAll.Plugin
                 if (o[carId] != null && (string)o[carId] == oldName)
                 {
                     o[carId] = newName;
-                    File.WriteAllText(dpath, o.ToString(Formatting.Indented));
+                    AtomicWriteAllText(dpath, o.ToString(Formatting.Indented));
                 }
             }
             catch { /* leave defaults as-is on parse trouble */ }
@@ -148,7 +162,7 @@ namespace TrueforceForAll.Plugin
                 bool changed = false;
                 foreach (var p in o.Properties())
                     if ((string)p.Value == oldName) { p.Value = newName; changed = true; }
-                if (changed) File.WriteAllText(dpath, o.ToString(Formatting.Indented));
+                if (changed) AtomicWriteAllText(dpath, o.ToString(Formatting.Indented));
             }
             catch { /* leave defaults as-is on parse trouble */ }
         }
@@ -164,7 +178,7 @@ namespace TrueforceForAll.Plugin
             try { o = File.Exists(path) ? JObject.Parse(File.ReadAllText(path)) : new JObject(); }
             catch { o = new JObject(); }
             o[gameName] = presetName;
-            File.WriteAllText(path, o.ToString(Formatting.Indented));
+            AtomicWriteAllText(path, o.ToString(Formatting.Indented));
         }
 
         /// <summary>Remove a game's binding from game-defaults.json. No-op-safe.</summary>
@@ -176,7 +190,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var o = JObject.Parse(File.ReadAllText(path));
-                if (o.Remove(gameName)) File.WriteAllText(path, o.ToString(Formatting.Indented));
+                if (o.Remove(gameName)) AtomicWriteAllText(path, o.ToString(Formatting.Indented));
             }
             catch { /* ignore */ }
         }
@@ -192,7 +206,7 @@ namespace TrueforceForAll.Plugin
             try { o = File.Exists(path) ? JObject.Parse(File.ReadAllText(path)) : new JObject(); }
             catch { o = new JObject(); }
             o[carId] = presetName;
-            File.WriteAllText(path, o.ToString(Formatting.Indented));
+            AtomicWriteAllText(path, o.ToString(Formatting.Indented));
         }
 
         /// <summary>Remove a car's binding from car-defaults.json. No-op-safe.</summary>
@@ -204,7 +218,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var o = JObject.Parse(File.ReadAllText(path));
-                if (o.Remove(carId)) File.WriteAllText(path, o.ToString(Formatting.Indented));
+                if (o.Remove(carId)) AtomicWriteAllText(path, o.ToString(Formatting.Indented));
             }
             catch { /* ignore */ }
         }

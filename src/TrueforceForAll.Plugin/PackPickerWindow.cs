@@ -148,8 +148,8 @@ namespace TrueforceForAll.Plugin
 
                 if (SelectedPresetNames.Count == 0 && SelectedCarPresets.Count == 0)
                 {
-                    MessageBox.Show(this, "Pick at least one preset or car preset to include.",
-                                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                    TrueforceDialog.Show(this, "Trueforce For All",
+                                    "Pick at least one preset or car preset to include.", DialogKind.Info);
                     return;
                 }
 

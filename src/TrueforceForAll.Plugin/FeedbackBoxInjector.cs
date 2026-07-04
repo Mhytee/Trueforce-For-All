@@ -17,8 +17,11 @@
 //     (FeedbackWidget recreates itself on reload), and keeps the slider values
 //     in sync with the settings panel and preset loads
 //
-// Gated off by default behind the HOMEBOX access code until proven on real
-// installs (see TrueforceSettings.ShowFeedbackBox).
+// Enabled by default (TrueforceSettings.ShowFeedbackBox = true); the HOMEBOX
+// access code is now just a live dev toggle, NOT the gate. Failure is cosmetic:
+// the tile simply doesn't appear and never throws into SimHub. Note FindFeedbackGrid
+// uses a "most SHSubTitledBox children" heuristic that could mis-target if a future
+// SimHub home layout nests more such tiles elsewhere (cosmetic risk only).
 
 using System;
 using System.Windows;
@@ -178,7 +181,7 @@ namespace TrueforceForAll.Plugin
 
             if (!_loggedInjected)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Home Feedback gain tile injected.");
+                SimHub.Logging.Current.Info("[TF4ALL] Home Feedback gain tile injected.");
                 _loggedInjected = true;
             }
         }
@@ -423,7 +426,7 @@ namespace TrueforceForAll.Plugin
                 return;
             _pendingPersist = false;
             try { _plugin.PersistSettings(); }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Persist settings failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
         }
 
         private void RemoveBox()
@@ -498,7 +501,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 SimHub.Logging.Current.Warn(
-                    "[Trueforce] Home Feedback tile injection failed; the tile won't appear. " +
+                    "[TF4ALL] Home Feedback tile injection failed; the tile won't appear. " +
                     "This is cosmetic and safe to ignore. " + ex.Message);
             }
             catch { }

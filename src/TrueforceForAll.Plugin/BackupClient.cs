@@ -86,7 +86,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Backup upload exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Backup upload exception: {ex.Message}");
                 return BackupTransfer.NetworkError;
             }
         }
@@ -122,7 +122,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Backup download exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Backup download exception: {ex.Message}");
                 return (BackupTransfer.NetworkError, null);
             }
         }
@@ -154,7 +154,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Backup delete exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Backup delete exception: {ex.Message}");
                 return BackupTransfer.NetworkError;
             }
         }
@@ -187,7 +187,7 @@ namespace TrueforceForAll.Plugin
                             ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         string rev = ExtractRevision(body);
                         if (rev == null)
-                            _log?.Invoke("[Trueforce] Backup info: no revision token in object metadata "
+                            _log?.Invoke("[TF4ALL] Backup info: no revision token in object metadata "
                                 + "(a false 'cloud changed' prompt may follow). Body: " + Trunc(body));
                         return (BackupTransfer.Success, rev);
                     }
@@ -195,7 +195,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Backup info exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Backup info exception: {ex.Message}");
                 return (BackupTransfer.NetworkError, null);
             }
         }
@@ -250,7 +250,7 @@ namespace TrueforceForAll.Plugin
             }
             catch { /* non-JSON body: keep the transport status code */ }
 
-            _log?.Invoke($"[Trueforce] Backup {op} failed: {code} {Trunc(body)}");
+            _log?.Invoke($"[TF4ALL] Backup {op} failed: {code} {Trunc(body)}");
             switch (code)
             {
                 case 401: return BackupTransfer.NotSignedIn;
@@ -287,7 +287,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Backup: rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Backup: rejecting untrusted backend URL: {url}");
                 return false;
             }
 

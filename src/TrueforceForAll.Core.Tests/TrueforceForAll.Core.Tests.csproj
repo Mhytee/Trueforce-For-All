@@ -16,10 +16,22 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- InstalledPacksStore (linked below) serializes with Newtonsoft. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TrueforceForAll.Core\TrueforceForAll.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Link-compile the self-contained pack registry from the (net48, SimHub-
+       coupled) plugin so its pure merge/dedup logic can be unit-tested here
+       without referencing the whole plugin assembly. The file has no WPF /
+       SimHub dependencies, only Newtonsoft.Json. -->
+  <ItemGroup>
+    <Compile Include="..\TrueforceForAll.Plugin\InstalledPacksStore.cs">
+      <Link>Linked\InstalledPacksStore.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

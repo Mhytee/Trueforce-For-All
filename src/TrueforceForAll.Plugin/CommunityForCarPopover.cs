@@ -305,7 +305,7 @@ namespace TrueforceForAll.Plugin
                     // only the "make it active" call failed. Tell the
                     // user instead of pretending it's set as active.
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Popover switch-to-existing failed: " + ex.Message);
+                        "[TF4ALL] Popover switch-to-existing failed: " + ex.Message);
                     statusText.Foreground = ErrFg;
                     statusText.Text =
                         $"Found '{existingName}' in your library but couldn't make it active. Set it in Presets > Car presets.";
@@ -348,7 +348,7 @@ namespace TrueforceForAll.Plugin
                 // The preset is in the user's library; they just need
                 // to set it active manually. Don't claim full success.
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Popover switch-after-save failed: " + ex.Message);
+                    "[TF4ALL] Popover switch-after-save failed: " + ex.Message);
                 statusText.Foreground = ErrFg;
                 statusText.Text =
                     $"Saved '{presetName}' to your library but couldn't make it active. Set it in Presets > Car presets.";

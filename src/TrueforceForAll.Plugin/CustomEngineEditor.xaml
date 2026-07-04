@@ -84,8 +84,15 @@
             <TextBox Grid.Column="1" x:Name="PatternTextBox" FontFamily="Consolas" Padding="4,2"/>
         </Grid>
 
-        <TextBlock Grid.Row="5" x:Name="PatternHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                   Text="Format: 0, 0.125, 0.25, ...  Optional weights: 0:1.0, 0.125:0.85, ..."/>
+        <Grid Grid.Row="5" x:Name="PatternHelpRow" Margin="140,0,0,8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" x:Name="PatternHelp" Style="{StaticResource HelpText}"
+                       Text="Format: 0, 0.125, 0.25, ...  Optional weights: 0:1.0, 0.125:0.85, ..."/>
+            <Button Grid.Column="1" x:Name="RegeneratePatternButton" Content="Regenerate"
+                    Padding="8,2" Margin="8,0,0,0" VerticalAlignment="Top"
+                    Click="RegeneratePattern_Click"
+                    ToolTip="Rebuild the pattern from the shape and cylinder count above. Replaces any manual edits."/>
+        </Grid>
 
         <!-- Electric: Behavior -->
         <Grid Grid.Row="6" x:Name="ElectricBehaviorRow" Margin="0,0,0,8" Visibility="Collapsed">

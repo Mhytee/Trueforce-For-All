@@ -77,6 +77,35 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Multi-select chip (CheckBox) for the community game filter. Same
+             pill look as the single-select ChipButton (RadioButton) but lets
+             several games be active at once. Checked = accent blue. -->
+        <Style x:Key="ToggleChipButton" TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,0,4,4"/>
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#CFCFCF"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Bd" Background="#3A3A3A" CornerRadius="3"
+                                SnapsToDevicePixels="True" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#474747"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A6BBE"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="RowButton" TargetType="Button">
             <Setter Property="Width" Value="92"/>
             <Setter Property="Height" Value="26"/>
@@ -107,9 +136,13 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Share is a CTA; this style is RowButton with a warm gold
-             fill so the action stands out from the grey neighbours.
-             Used on Car / Game / Custom-engine Share buttons. -->
+        <!-- Primary call-to-action button: RowButton with a warm gold fill
+             so the one action that matters most in a view stands out from
+             the grey neighbours. Used on the library's "Set as default"
+             (the day-to-day primary action), the community Download button
+             (the whole point of the browser), and the empty-state Share CTA.
+             Note: the library Share buttons are deliberately NOT gold; an
+             occasional upload shouldn't out-shout setting a default. -->
         <Style x:Key="SharePrimaryButton" TargetType="Button">
             <Setter Property="Width" Value="100"/>
             <Setter Property="Height" Value="26"/>
@@ -136,6 +169,44 @@
                                 <Setter TargetName="Bd" Property="Background" Value="#3F3727"/>
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="#3F3727"/>
                                 <Setter Property="Foreground" Value="#7A6D4D"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Destructive action button. RowButton sizing, but red-tinted so
+             Delete / Remove read as dangerous instead of looking identical
+             to Edit / Duplicate. Quiet by default (soft red text on a dim
+             red-grey fill), stronger red on hover so the consequence is
+             clear without shouting. -->
+        <Style x:Key="DangerButton" TargetType="Button">
+            <Setter Property="Width" Value="92"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="#7A3333" BorderBrush="#9E4444" BorderThickness="1"
+                                CornerRadius="3" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#9E4040"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#C05858"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#5E2727"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A2E2E"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3A2E2E"/>
+                                <Setter Property="Foreground" Value="#8A7373"/>
                                 <Setter Property="Cursor" Value="Arrow"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -177,17 +248,20 @@
                            TextWrapping="Wrap"
                            Text="Developer mode is active. Per-row Set as built-in buttons + the Developer toolbar at the bottom are unlocked. Type DEV again in Settings to turn it off."/>
             </Border>
-            <!-- Segmented selector in place of an inner tab strip. Refresh
-                 icon docked right reloads built-ins + user library from
-                 disk; useful for picking up files dropped into the library
-                 folders without restarting the plugin. -->
+            <!-- Segmented selector in place of an inner tab strip. The one
+                 refresh icon docked right is context-aware: in a Library
+                 view it reloads built-ins + user library from disk (handy
+                 for files dropped into the library folders); in a Community
+                 or My-uploads view it re-fetches the latest server list.
+                 This replaces the separate "Refresh" button that used to
+                 live inside the community panel. -->
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
                 <Button x:Name="RefreshLibraryBtn" DockPanel.Dock="Right"
                         Width="28" Height="28" Padding="0"
                         Background="#3A3A3A" BorderBrush="#3A3A3A" Foreground="#CFCFCF"
                         Cursor="Hand" Click="RefreshLibrary_Click"
                         Focusable="False" FocusVisualStyle="{x:Null}"
-                        ToolTip="Reload presets from disk. Use after dropping JSON files into the library folders to pick them up without restarting the plugin.">
+                        ToolTip="Refresh. In a Library view, reloads presets from disk (use after dropping JSON files into the library folders). When browsing Community or My uploads, re-fetches the latest list from the server.">
                     <TextBlock Text="&#x21BB;" FontSize="16" FontWeight="Bold"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Button>
@@ -209,63 +283,24 @@
                     <RadioButton x:Name="SegCar"       Content="Car presets"       GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
                     <RadioButton x:Name="SegCustom"    Content="Custom engines"    GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
                     <RadioButton x:Name="SegPacks"     Content="Packs"             GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
-                    <!-- Inline Library | Community sub-toggle. Visible only
-                         when SegCar is the active segment; switches CarPanel
-                         (local library) vs CommunityPanel (community-for-
-                         this-car) without nesting community under a
-                         separate top-tab. "Library" rather than "Mine"
-                         since downloaded community presets also become
-                         "yours" once saved locally. -->
-                    <Border x:Name="CarModeWrap" Visibility="Collapsed"
+                    <!-- ONE global view-mode strip: Library | Community | My
+                         uploads. It applies to whichever segment (kind) is
+                         active and PERSISTS across segment switches, so picking
+                         Community on Game presets keeps you on Community when
+                         you move to Car presets. (Was a separate strip per
+                         segment, which jumped you back to Library on a switch.)
+                         "Library" rather than "Mine" since downloaded community
+                         presets also become "yours" once saved locally. -->
+                    <Border x:Name="ModeWrap"
                             Margin="12,0,0,0" Padding="0"
                             BorderBrush="#3A3A3A" BorderThickness="1,0,0,0">
                         <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
-                            <RadioButton x:Name="CarModeMine"      Content="Library"   GroupName="CarMode" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="CarMode_Checked"
-                                         ToolTip="Car presets saved on this machine (yours plus anything downloaded from the community)."/>
-                            <RadioButton x:Name="CarModeCommunity" Content="Community" GroupName="CarMode" Style="{StaticResource SegmentButton}" Checked="CarMode_Checked"
-                                         ToolTip="Browse car presets shared by other drivers."/>
-                        </StackPanel>
-                    </Border>
-                    <!-- Same Library | Community pattern for the Games
-                         segment. Library = local game presets;
-                         Community = browse game presets others have
-                         shared for the active game. -->
-                    <Border x:Name="GameModeWrap" Visibility="Collapsed"
-                            Margin="12,0,0,0" Padding="0"
-                            BorderBrush="#3A3A3A" BorderThickness="1,0,0,0">
-                        <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
-                            <RadioButton x:Name="GameModeMine"      Content="Library"   GroupName="GameMode" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="GameMode_Checked"
-                                         ToolTip="Game presets saved on this machine."/>
-                            <RadioButton x:Name="GameModeCommunity" Content="Community" GroupName="GameMode" Style="{StaticResource SegmentButton}" Checked="GameMode_Checked"
-                                         ToolTip="Browse game presets shared by other drivers."/>
-                        </StackPanel>
-                    </Border>
-                    <!-- Library | Community for Custom engines. Engines
-                         are game-agnostic (a firing pattern works in
-                         any game) so Community here lists all
-                         community-shared engines, no scope filter. -->
-                    <Border x:Name="CustomModeWrap" Visibility="Collapsed"
-                            Margin="12,0,0,0" Padding="0"
-                            BorderBrush="#3A3A3A" BorderThickness="1,0,0,0">
-                        <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
-                            <RadioButton x:Name="CustomModeMine"      Content="Library"   GroupName="CustomMode" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="CustomMode_Checked"
-                                         ToolTip="Custom engines saved on this machine."/>
-                            <RadioButton x:Name="CustomModeCommunity" Content="Community" GroupName="CustomMode" Style="{StaticResource SegmentButton}" Checked="CustomMode_Checked"
-                                         ToolTip="Browse custom engines shared by other drivers."/>
-                        </StackPanel>
-                    </Border>
-                    <!-- Library | Community for Packs (bundles of
-                         presets across kinds). Community is browse-
-                         and-download; Library defers to the existing
-                         Installed packs... dialog. -->
-                    <Border x:Name="PacksModeWrap" Visibility="Collapsed"
-                            Margin="12,0,0,0" Padding="0"
-                            BorderBrush="#3A3A3A" BorderThickness="1,0,0,0">
-                        <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
-                            <RadioButton x:Name="PacksModeMine"      Content="Library"   GroupName="PacksMode" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="PacksMode_Checked"
-                                         ToolTip="Packs you've installed."/>
-                            <RadioButton x:Name="PacksModeCommunity" Content="Community" GroupName="PacksMode" Style="{StaticResource SegmentButton}" Checked="PacksMode_Checked"
-                                         ToolTip="Browse community packs (bundles of car presets, game presets, and custom engines)."/>
+                            <RadioButton x:Name="ModeLibrary"   Content="Library"    GroupName="ManagerMode" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Mode_Checked"
+                                         ToolTip="Presets saved on this machine (yours plus anything downloaded from the community)."/>
+                            <RadioButton x:Name="ModeCommunity" Content="Community"  GroupName="ManagerMode" Style="{StaticResource SegmentButton}" Checked="Mode_Checked"
+                                         ToolTip="Browse presets shared by other drivers."/>
+                            <RadioButton x:Name="ModeUploads"   Content="My uploads" GroupName="ManagerMode" Style="{StaticResource SegmentButton}" Checked="Mode_Checked"
+                                         ToolTip="Presets you've uploaded. Select a row to edit or delete your upload."/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -296,15 +331,16 @@
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <!-- Order mirrors the Car action bar: apply, edit,
                                  share, destructive last, DEV trailing. -->
-                            <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource RowButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
+                            <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource SharePrimaryButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
                                     ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding. Replaces the older Set / Clear pair."/>
                             <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
                                     ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Edit and save the usual way; Done returns you to your previously-active preset (saving over a built-in forks a copy)."/>
                             <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
                             <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
-                            <Button x:Name="GameShareBtn"      Content="★ Share"        Style="{StaticResource SharePrimaryButton}" Click="GameShare_Click"      IsEnabled="False"
-                                    ToolTip="Upload this game preset to the community so other drivers can find it. Needs 'Use community car data' on (Account tab)."/>
-                            <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource RowButton}" Click="GameDelete_Click"     IsEnabled="False"/>
+                            <Button x:Name="GameShareBtn"      Content="Share"          Style="{StaticResource RowButton}" Click="GameShare_Click"      IsEnabled="False"
+                                    ToolTipService.ShowOnDisabled="True"
+                                    ToolTip="Upload this game preset to the community so other drivers can find it."/>
+                            <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource DangerButton}" Click="GameDelete_Click"     IsEnabled="False"/>
                             <Button x:Name="GamePromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>
@@ -382,22 +418,23 @@
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <!-- Order: apply (Set as default, Edit) -> edit
-                                 (Duplicate, Rename, Rename car) -> share -> destructive
+                                 (Duplicate, Rename) -> share -> destructive
                                  (Delete) -> DEV. Groups read left-to-right by
                                  frequency / role; destructive last so a stray
-                                 click doesn't blow away work. -->
-                            <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource RowButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
+                                 click doesn't blow away work. Renaming the CAR
+                                 (vs the preset) lives on the header card during
+                                 Edit, so there's no second "name" button here. -->
+                            <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource SharePrimaryButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
                                     ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten. With multiple rows checked, sets each as its corresponding car's default (one default per car; the operation refuses if two rows target the same car)."/>
                             <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
-                                    ToolTip="Open this car preset for editing: loads it on the Effects tab with a Save / Save as new / Discard banner, and freezes this car so a live car change can't clobber the edit. Saving over a built-in forks a copy."/>
+                                    ToolTip="Open this car preset on the Effects tab to change its values. Saving over a built-in makes a copy."/>
                             <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
                             <Button x:Name="CarRenameBtn"    Content="Rename…"      Style="{StaticResource RowButton}" Click="CarRename_Click"    IsEnabled="False"
-                                    ToolTip="Rename this PRESET (e.g. 'Wet setup' to 'Endurance'). Doesn't change the car's name."/>
-                            <Button x:Name="CarRenameCarBtn" Content="Rename car…"  Style="{StaticResource RowButton}" Click="CarRenameCar_Click" IsEnabled="False"
-                                    ToolTip="Give this car a human-readable name (e.g. carId 'Car_242' becomes '1997 Mazda RX-7'). Saved locally and submitted to the community if 'Use community car data' is on."/>
-                            <Button x:Name="CarShareBtn"     Content="★ Share"      Style="{StaticResource SharePrimaryButton}" Click="CarShare_Click"     IsEnabled="False"
-                                    ToolTip="Upload this car preset to the community so other drivers can find it. Needs 'Use community car data' on (Account tab)."/>
-                            <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource RowButton}" Click="CarDelete_Click"    IsEnabled="False"/>
+                                    ToolTip="Rename this preset (e.g. 'Wet setup' to 'Endurance'). To rename the CAR instead, click Edit and use the Rename button on the header card."/>
+                            <Button x:Name="CarShareBtn"     Content="Share"        Style="{StaticResource RowButton}" Click="CarShare_Click"     IsEnabled="False"
+                                    ToolTipService.ShowOnDisabled="True"
+                                    ToolTip="Upload this car preset to the community so other drivers can find it."/>
+                            <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource DangerButton}" Click="CarDelete_Click"    IsEnabled="False"/>
                             <Button x:Name="CarPromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this car preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>
@@ -462,9 +499,10 @@
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="CustomEditBtn"   Content="Edit…"   Style="{StaticResource RowButton}" Click="CustomEdit_Click"   IsEnabled="False"/>
-                            <Button x:Name="CustomShareBtn"  Content="★ Share" Style="{StaticResource SharePrimaryButton}" Click="CustomShare_Click"  IsEnabled="False"
-                                    ToolTip="Upload this custom engine to the community so other drivers can find it. Requires sign-in."/>
-                            <Button x:Name="CustomDeleteBtn" Content="Delete"  Style="{StaticResource RowButton}" Click="CustomDelete_Click" IsEnabled="False"/>
+                            <Button x:Name="CustomShareBtn"  Content="Share"  Style="{StaticResource RowButton}" Click="CustomShare_Click"  IsEnabled="False"
+                                    ToolTipService.ShowOnDisabled="True"
+                                    ToolTip="Upload this custom engine to the community so other drivers can find it."/>
+                            <Button x:Name="CustomDeleteBtn" Content="Delete"  Style="{StaticResource DangerButton}" Click="CustomDelete_Click" IsEnabled="False"/>
                         </StackPanel>
                         <TextBlock x:Name="CustomCheckedLabel" VerticalAlignment="Center"
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
@@ -521,10 +559,10 @@
                 <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <Button x:Name="PacksCreateBtn"      Content="Create a pack…"   Style="{StaticResource RowButton}" Width="120" Click="CreatePack_Click"
-                                ToolTip="Bundle game presets, car presets, and custom engines from your library into a pack and upload it to the community. Requires sign-in."/>
-                        <Button x:Name="PacksSetDefaultsBtn" Content="Set as defaults"  Style="{StaticResource RowButton}" Width="120" Click="PacksSetDefaults_Click" IsEnabled="False"
+                                ToolTip="Bundle game presets, car presets, and custom engines from your library into a pack and upload it to the community."/>
+                        <Button x:Name="PacksSetDefaultsBtn" Content="Set as defaults"  Style="{StaticResource SharePrimaryButton}" Width="120" Click="PacksSetDefaults_Click" IsEnabled="False"
                                 ToolTip="Bind every preset this pack ships as the auto-load default for the games / cars it targets."/>
-                        <Button x:Name="PacksRemoveBtn"      Content="Remove pack"      Style="{StaticResource RowButton}" Click="PacksRemove_Click" IsEnabled="False"
+                        <Button x:Name="PacksRemoveBtn"      Content="Remove pack"      Style="{StaticResource DangerButton}" Width="100" Click="PacksRemove_Click" IsEnabled="False"
                                 ToolTip="Delete every preset this pack installed that you haven't edited. User-edited entries are preserved."/>
                     </StackPanel>
                 </DockPanel>
@@ -549,26 +587,53 @@
             </DockPanel>
 
             <!-- ===================== Community Browser ===================== -->
+            <!-- Shared by all four segments' Community + My-uploads sub-tabs.
+                 Which scope (for-car browse vs your own uploads) is driven by
+                 the segment strip above, not by an in-panel switch. -->
             <DockPanel x:Name="CommunityPanel" Visibility="Collapsed">
                 <TextBlock x:Name="CommunityHelpText" DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="Browse + download community presets for the car you're driving, or switch to your own uploads to manage them. Pick a row and Download to import; you'll get a section picker so you can take just the parts you want."/>
-                <!-- Mode switch: per-car browse vs your own uploads -->
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                    <RadioButton x:Name="CommunityModeForCar" GroupName="CommunityMode"
-                                 IsChecked="True" Margin="0,0,12,0"
-                                 Content="For this car" Checked="CommunityMode_Changed"
-                                 Foreground="#FFE0E0E0"/>
-                    <RadioButton x:Name="CommunityModeMine" GroupName="CommunityMode"
-                                 Content="My uploads" Checked="CommunityMode_Changed"
-                                 Foreground="#FFE0E0E0"
-                                 ToolTip="Show only presets you uploaded (across every game and car)."/>
+                           Text="Browse + download community presets for the car you're driving. Pick a row and Download to import; you'll get a section picker so you can take just the parts you want."/>
+                <!-- Gated empty-state. Community presets need online features turned
+                     on AND an account (browse is account-required). When either is
+                     missing, ApplyCommunityGate shows this in place of the browser
+                     and the button clears the missing gate (enable, then sign in). -->
+                <StackPanel x:Name="CommunityGatePanel" DockPanel.Dock="Top" Visibility="Collapsed"
+                            HorizontalAlignment="Center" MaxWidth="380" Margin="0,40,0,0">
+                    <TextBlock x:Name="CommunityGateTitle" FontSize="14" FontWeight="SemiBold"
+                               Foreground="#FFE0E0E0" TextWrapping="Wrap" TextAlignment="Center"
+                               Margin="0,0,0,6" Text=""/>
+                    <TextBlock x:Name="CommunityGateBody" FontSize="12" Foreground="#FFB0B0B0"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,14" Text=""/>
+                    <!-- Explicit Width: SharePrimaryButton hard-sets Width=100 and
+                         its template ignores Padding, so without this the longer
+                         "Enable community features" label clips. 220 fits both labels. -->
+                    <Button x:Name="CommunityGateBtn" Style="{StaticResource SharePrimaryButton}"
+                            HorizontalAlignment="Center" Width="220" Height="32"
+                            Click="CommunityGate_Click" Content="Enable community features"/>
                 </StackPanel>
-                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <!-- Search row. Typing broadens past the active-car default to
+                     all cars across the selected games, matching preset name,
+                     author, or car name. The ✕ clears back to the active car. -->
+                <DockPanel x:Name="CommunitySearchRow" DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Foreground="#FFB0B0B0" FontSize="11" Text="Search:"/>
+                    <Button x:Name="CommunitySearchClearBtn" DockPanel.Dock="Right" Width="26" Height="26"
+                            Margin="6,0,0,0" Content="&#x2715;"
+                            Background="#3A3A3A" BorderBrush="#3A3A3A" Foreground="#CFCFCF"
+                            Cursor="Hand" Click="CommunitySearchClear_Click"
+                            Focusable="False" FocusVisualStyle="{x:Null}"
+                            ToolTip="Clear the search and go back to the car you're driving."/>
+                    <TextBox x:Name="CommunitySearchBox" Height="26" Padding="6,2"
+                             TextChanged="CommunitySearchBox_TextChanged"
+                             ToolTip="Find presets by name, author, or car name (e.g. type 'mx5') across the games selected below. Clear to go back to the car you're driving."/>
+                </DockPanel>
+                <!-- Multi-select game filter (built in code-behind). Lets the
+                     user widen the browse to several games at once. Visible
+                     only for car / game presets. -->
+                <WrapPanel x:Name="CommunityGameChips" DockPanel.Dock="Top" Margin="0,0,0,8"/>
+                <DockPanel x:Name="CommunityScopeRow" DockPanel.Dock="Top" Margin="0,0,0,8">
                     <TextBlock x:Name="CommunityScopeLabel" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
                                Foreground="#FFB0B0B0" FontSize="11" Text="Active car:"/>
-                    <Button x:Name="CommunityRefreshBtn" DockPanel.Dock="Right" Width="80" Height="26"
-                            Content="Refresh" Click="CommunityRefresh_Click" Margin="8,0,0,0"
-                            ToolTip="Re-fetch the community list."/>
                     <ComboBox x:Name="CommunitySortCombo" DockPanel.Dock="Right" Width="120" Height="26"
                               SelectionChanged="CommunitySort_Changed"
                               ToolTip="How to order the list.">
@@ -579,18 +644,18 @@
                     <TextBlock x:Name="CommunityCarLabel" VerticalAlignment="Center"
                                Foreground="#FFE0E0E0" FontSize="12" Text="(none)"/>
                 </DockPanel>
-                <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
+                <DockPanel x:Name="CommunityActionsRow" DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button x:Name="CommunityFixAppealBtn" Content="Fix / appeal" Style="{StaticResource SharePrimaryButton}" Click="CommunityFixAppeal_Click" IsEnabled="False" Visibility="Collapsed"
+                                ToolTip="This upload was removed or suspended. Fix it and request a moderator review."/>
                         <Button x:Name="CommunityReportBtn"   Content="Report"   Style="{StaticResource RowButton}" Click="CommunityReport_Click"   IsEnabled="False"
                                 ToolTip="Flag inappropriate content for moderator review."/>
-                        <Button x:Name="CommunityPreviewBtn"  Content="Preview…" Style="{StaticResource RowButton}" Click="CommunityPreview_Click"  IsEnabled="False"
-                                ToolTip="See the preset's section breakdown + key values before downloading."/>
                         <Button x:Name="CommunityEditBtn"     Content="Edit…"    Style="{StaticResource RowButton}" Click="CommunityEdit_Click"     IsEnabled="False" Visibility="Collapsed"
                                 ToolTip="Edit one of your own uploads (name, description, body). Visible only on rows you uploaded while signed in."/>
-                        <Button x:Name="CommunityDeleteBtn"   Content="Delete"   Style="{StaticResource RowButton}" Click="CommunityDelete_Click"   IsEnabled="False" Visibility="Collapsed"
+                        <Button x:Name="CommunityDeleteBtn"   Content="Delete"   Style="{StaticResource DangerButton}" Click="CommunityDelete_Click"   IsEnabled="False" Visibility="Collapsed"
                                 ToolTip="Soft-delete one of your own uploads. Visible only on rows you uploaded while signed in."/>
-                        <Button x:Name="CommunityDownloadBtn" Content="Download" Style="{StaticResource RowButton}" Click="CommunityDownload_Click" IsEnabled="False"
-                                ToolTip="Pick which sections to apply, then import into your library."/>
+                        <Button x:Name="CommunityDownloadBtn" Content="Download…" Style="{StaticResource SharePrimaryButton}" Click="CommunityDownload_Click" IsEnabled="False"
+                                ToolTip="Opens a preview of what's inside; pick which parts to import, then confirm."/>
                     </StackPanel>
                     <TextBlock x:Name="CommunityStatusLabel" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0" FontSize="11" Margin="0,0,8,0" Text=""/>
@@ -608,10 +673,16 @@
                             VerticalAlignment="Center"
                             ToolTip="Share your local preset so other drivers can find it for this scope."/>
                 </DockPanel>
-                <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <DockPanel x:Name="CommunityDescriptionRow" DockPanel.Dock="Bottom" Margin="0,8,0,0">
                     <TextBlock x:Name="CommunityDescriptionText" Style="{StaticResource HelpText}"
                                TextWrapping="Wrap" Text=""/>
                 </DockPanel>
+                <!-- Paginate: pull the next page on demand instead of all at once.
+                     Cached, so a return visit shows everything already loaded. -->
+                <Button x:Name="CommunityShowMoreBtn" DockPanel.Dock="Bottom" Content="Show more"
+                        Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,8,0,0"
+                        Padding="16,4" Click="CommunityShowMore_Click"
+                        ToolTip="Load the next page of community results."/>
                 <DataGrid x:Name="CommunityList"
                           AutoGenerateColumns="False" CanUserAddRows="False"
                           CanUserDeleteRows="False" CanUserResizeRows="False"
@@ -621,7 +692,14 @@
                           IsReadOnly="True" RowHeaderWidth="0"
                           HorizontalScrollBarVisibility="Auto"
                           SelectionChanged="CommunityList_SelectionChanged"
+                          LoadingRow="CommunityList_LoadingRow"
                           MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
+                    <!-- Moderated (removed/suspended/under-review) own-upload rows are
+                         greyed by dimming the realized row container in CommunityList_LoadingRow,
+                         NOT via a DataGridRow style. Any RowStyle here (even BasedOn the
+                         theme's) dropped the theme's hover / selection accent (the orange
+                         highlight) that the Library lists get for free, so the dimming is
+                         applied imperatively to leave the row style untouched. -->
                     <DataGrid.Columns>
                         <!-- Reddit-style vote column: up + score + down. Click
                              on the same arrow you previously voted toggles it
@@ -648,13 +726,21 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="Name"      Width="*"   MinWidth="160" Binding="{Binding Name}"/>
+                        <!-- Moderation state of your own uploads (Removed / Suspended / Under review).
+                             Toggled visible only in "My uploads" mode; blank otherwise. -->
+                        <DataGridTextColumn x:Name="CommunityStateCol" Header="Status" Width="110" MinWidth="90" Binding="{Binding StateLabel}" Visibility="Collapsed"/>
                         <DataGridTextColumn Header="Shared by"    Width="120" MinWidth="80"  Binding="{Binding Author}"/>
-                        <DataGridTextColumn Header="Game"      Width="100" MinWidth="70"  Binding="{Binding Game}"/>
+                        <!-- Pack-only: how many items (presets + custom engines) the
+                             bundle ships, so a small pack is distinguishable from a big
+                             one without opening Preview. Toggled visible for the pack
+                             kind in RelabelCommunityScopeRadio. -->
+                        <DataGridTextColumn x:Name="CommunityItemCountCol" Header="Items" Width="80" MinWidth="60" Binding="{Binding PackItemCount}"/>
+                        <DataGridTextColumn x:Name="CommunityGameCol" Header="Game"      Width="100" MinWidth="70"  Binding="{Binding Game}"/>
                         <!-- Game-preset only: per-row tier badge from target_games. Blank for car-preset rows. -->
-                        <DataGridTextColumn Header="Scope"     Width="120" MinWidth="80"  Binding="{Binding TierBadge}"/>
+                        <DataGridTextColumn x:Name="CommunityScopeCol" Header="Scope"     Width="120" MinWidth="80"  Binding="{Binding TierBadge}"/>
                         <DataGridTextColumn x:Name="CommunityCarIdCol" Header="Car ID"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
                         <DataGridTextColumn Header="Downloads" Width="80"  MinWidth="60"  Binding="{Binding Downloads}"/>
-                        <DataGridTextColumn Header="Sections"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
+                        <DataGridTextColumn x:Name="CommunitySectionsCol" Header="Sections"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

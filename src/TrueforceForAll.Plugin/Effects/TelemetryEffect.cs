@@ -31,6 +31,17 @@ namespace TrueforceForAll.Plugin.Effects
         // (gear tracking, ABS rising-edge) override.
         public virtual void Reset() { }
 
+        // The telemetry feed went stale: the active source stopped emitting
+        // frames entirely (game closed mid-session, crashed, or its shared-
+        // memory page froze). Effects that hold a SUSTAINED amplitude set by
+        // the last frame (engine pulse, rev/pit limiter, DRS hum, traction
+        // buzz) would otherwise keep that amplitude forever, so the wheel
+        // replays the last sensation until the user switches games. Override
+        // to drop that held amplitude to silence. Default is no-op; transient
+        // effects decay on their own and need nothing here. The plugin's stall
+        // watchdog calls this once per stall episode.
+        public virtual void OnTelemetryStall() { }
+
         // Test mode, used by the settings UI's "Test" button to play the effect
         // at representative max parameters for a short duration without needing
         // the game to drive it via telemetry. Subclasses set their internal

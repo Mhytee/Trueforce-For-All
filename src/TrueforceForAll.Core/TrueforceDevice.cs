@@ -499,38 +499,92 @@ namespace TrueforceForAll.Core
         {
             // Bump the system timer to 1 ms granularity for the duration of the loop.
             TimeBeginPeriod(1);
-            // Register the pump thread with MMCSS "Pro Audio". This lifts it into
-            // the multimedia real-time scheduling band (above what
-            // ThreadPriority.Highest reaches in a normal-class process), the same
-            // mechanism the Windows audio engine uses to keep its own callbacks on
-            // time. It protects the 1 kHz packet cadence from game spikes, GC
-            // pauses, and background apps, which is what otherwise shows up as
-            // audible clicks and pushes the auto-ratchet (and thus latency) up.
-            // Best-effort: if the task profile is missing the call returns null and
-            // we simply run at the priority we set on the thread.
-            uint mmcssTaskIndex = 0;
-            IntPtr mmcss = AvSetMmThreadCharacteristics("Pro Audio", ref mmcssTaskIndex);
-            if (mmcss != IntPtr.Zero) AvSetMmThreadPriority(mmcss, AVRT_PRIORITY_HIGH);
+
+            // How the 1 kHz pump waits for each beat. The choice is load-bearing
+            // for ALL system audio, not just ours:
+            //
+            //   Primary (Win10 1803+): a high-resolution waitable timer. The thread
+            //   SLEEPS to each beat, yielding its core, and we lift it into the
+            //   MMCSS "Pro Audio" band so it still wakes promptly at real-time
+            //   priority under load. This matches the synthesis / capture / stdout
+            //   threads, which already sleep in Pro Audio without trouble.
+            //
+            //   Fallback (older Windows, or if the timer misbehaves): the legacy
+            //   coarse-sleep-then-busy-spin at ThreadPriority.Highest, WITHOUT Pro
+            //   Audio. A thread that busy-spins while in the Pro Audio band pins a
+            //   core at the audio engine's own priority and starves audiodg, which
+            //   stutters every app's audio (e.g. YouTube). So spin and Pro Audio
+            //   must never combine: Pro Audio is only ever entered on the sleeping
+            //   path below.
+            IntPtr timer = CreateWaitableTimerEx(IntPtr.Zero, null,
+                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+            // Reject a timer that returns instantly (a wrong due-time sign/width
+            // would degenerate the sleep into a hot loop that still pins the core).
+            bool useTimer = timer != IntPtr.Zero && WaitableTimerBlocks(timer);
+
+            IntPtr mmcss = IntPtr.Zero;
+            if (useTimer)
+            {
+                uint mmcssTaskIndex = 0;
+                mmcss = AvSetMmThreadCharacteristics("Pro Audio", ref mmcssTaskIndex);
+                if (mmcss != IntPtr.Zero) AvSetMmThreadPriority(mmcss, AVRT_PRIORITY_HIGH);
+            }
+
             try
             {
                 var sw = Stopwatch.StartNew();
                 long periodTicks = Stopwatch.Frequency / PacketHz; // ticks per packet
+                long oneMsTicks  = Stopwatch.Frequency / 1000;
                 long nextTick = sw.ElapsedTicks + periodTicks;
 
                 while (!_shuttingDown)
                 {
                     StreamTick();
 
-                    long now = sw.ElapsedTicks;
-                    long remaining = nextTick - now;
+                    long remaining = nextTick - sw.ElapsedTicks;
                     if (remaining > 0)
                     {
-                        // Coarse sleep down to ~1 ms remaining, then spin.
-                        long oneMsTicks = Stopwatch.Frequency / 1000;
-                        while (!_shuttingDown && (nextTick - sw.ElapsedTicks) > oneMsTicks)
-                            Thread.Sleep(1);
-                        while (!_shuttingDown && sw.ElapsedTicks < nextTick)
-                            Thread.SpinWait(64);
+                        if (useTimer)
+                        {
+                            // Sleep to the deadline. Due time is in 100 ns units;
+                            // NEGATIVE means a relative delay. Convert the remaining
+                            // Stopwatch ticks to 100 ns units.
+                            long due = -(remaining * 10_000_000L / Stopwatch.Frequency);
+                            if (due == 0)
+                            {
+                                // Sub-100 ns sliver; just spin it out to the deadline.
+                                while (!_shuttingDown && sw.ElapsedTicks < nextTick)
+                                    Thread.SpinWait(64);
+                            }
+                            else if (SetWaitableTimer(timer, ref due, 0, IntPtr.Zero, IntPtr.Zero, false)
+                                     && WaitForSingleObject(timer, 100) != WAIT_FAILED)
+                            {
+                                // Woke at (or, under load, a little after) the beat.
+                            }
+                            else
+                            {
+                                // Real timer failure: latch to the spin path for the
+                                // rest of the loop so we never block on a dead timer,
+                                // and leave Pro Audio so we never spin inside it.
+                                useTimer = false;
+                                if (mmcss != IntPtr.Zero)
+                                {
+                                    AvRevertMmThreadCharacteristics(mmcss);
+                                    mmcss = IntPtr.Zero;
+                                }
+                                while (!_shuttingDown && sw.ElapsedTicks < nextTick)
+                                    Thread.SpinWait(64);
+                            }
+                        }
+                        else
+                        {
+                            // Legacy precise wait at ThreadPriority.Highest (NOT Pro
+                            // Audio): coarse sleep to ~1 ms out, then spin the rest.
+                            while (!_shuttingDown && (nextTick - sw.ElapsedTicks) > oneMsTicks)
+                                Thread.Sleep(1);
+                            while (!_shuttingDown && sw.ElapsedTicks < nextTick)
+                                Thread.SpinWait(64);
+                        }
                     }
                     nextTick += periodTicks;
 
@@ -543,6 +597,7 @@ namespace TrueforceForAll.Core
             finally
             {
                 if (mmcss != IntPtr.Zero) AvRevertMmThreadCharacteristics(mmcss);
+                if (timer != IntPtr.Zero) CloseHandle(timer);
                 TimeEndPeriod(1);
             }
         }
@@ -629,10 +684,14 @@ namespace TrueforceForAll.Core
                 if (allCenter) hasAudio = false;
             }
 
-            if (_paused) return;
+            // An explicit test (ForceActiveFor) overrides the pause gate so the
+            // Test buttons play even when something has paused the device (e.g.
+            // the StopStreamOnPause gate left Trueforce mode). A normal pause
+            // with no test still emits nothing.
+            bool forceActive = Stopwatch.GetTimestamp() < System.Threading.Interlocked.Read(ref _forceActiveUntilTicks);
+            if (_paused && !forceActive) return;
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
-            bool forceActive = Stopwatch.GetTimestamp() < System.Threading.Interlocked.Read(ref _forceActiveUntilTicks);
             bool sendActive = ffbTargetMaybe.HasValue || forceActive;
 
             if (sendActive)
@@ -884,5 +943,52 @@ namespace TrueforceForAll.Core
         [DllImport("avrt.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool AvRevertMmThreadCharacteristics(IntPtr avrtHandle);
+
+        // High-resolution waitable timer (kernel32). The HIGH_RESOLUTION flag needs
+        // Windows 10 1803+; on older systems CreateWaitableTimerEx returns null and
+        // the pump falls back to the busy-spin wait. Letting the 1 kHz pump sleep to
+        // each beat instead of spinning a core is what keeps the Pro Audio thread
+        // from starving the Windows audio mixer.
+        private const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002;
+        private const uint TIMER_ALL_ACCESS = 0x1F0003;
+        private const uint WAIT_FAILED = 0xFFFFFFFF;
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr CreateWaitableTimerEx(IntPtr lpTimerAttributes, string lpTimerName, uint dwFlags, uint dwDesiredAccess);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWaitableTimer(IntPtr hTimer, ref long pDueTime, int lPeriod, IntPtr pfnCompletionRoutine, IntPtr lpArgToCompletionRoutine, [MarshalAs(UnmanagedType.Bool)] bool fResume);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        // One-time sanity check that a high-resolution waitable timer actually
+        // sleeps rather than returning instantly. A wrong due-time sign/width would
+        // make SetWaitableTimer fire immediately, degenerating the intended sleep
+        // into a busy loop that still pins the core (the very thing we are removing).
+        // Arm it for ~1 ms once and confirm the wait really blocked before trusting
+        // it for the stream loop.
+        private static bool WaitableTimerBlocks(IntPtr timer)
+        {
+            try
+            {
+                long due = -10_000L; // 1 ms in 100 ns units (negative = relative)
+                if (!SetWaitableTimer(timer, ref due, 0, IntPtr.Zero, IntPtr.Zero, false))
+                    return false;
+                var sw = Stopwatch.StartNew();
+                if (WaitForSingleObject(timer, 100) == WAIT_FAILED)
+                    return false;
+                return sw.Elapsed.TotalMilliseconds >= 0.3;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

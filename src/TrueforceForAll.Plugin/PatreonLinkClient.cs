@@ -58,7 +58,7 @@ namespace TrueforceForAll.Plugin
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
                         {
-                            _log?.Invoke($"[Trueforce] Patreon config failed: {(int)resp.StatusCode} {Trunc(body)}");
+                            _log?.Invoke($"[TF4ALL] Patreon config failed: {(int)resp.StatusCode} {Trunc(body)}");
                             return (null, "Patreon linking isn't set up yet.");
                         }
                         var o = JObject.Parse(body);
@@ -82,7 +82,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Patreon config exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Patreon config exception: {ex.Message}");
                 return (null, "Network error reaching Patreon linking. Try again.");
             }
         }
@@ -132,7 +132,7 @@ namespace TrueforceForAll.Plugin
                         }
                         string err = null;
                         try { err = (string)JObject.Parse(body)["error"]; } catch { }
-                        _log?.Invoke($"[Trueforce] Patreon exchange failed: {(int)resp.StatusCode} {Trunc(body)}");
+                        _log?.Invoke($"[TF4ALL] Patreon exchange failed: {(int)resp.StatusCode} {Trunc(body)}");
                         string shown = ((int)resp.StatusCode == 409 && !string.IsNullOrEmpty(err))
                             ? Trunc(err) : "Couldn't link Patreon. Try again.";
                         return (false, shown, null);
@@ -141,7 +141,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Patreon exchange exception: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Patreon exchange exception: {ex.Message}");
                 return (false, "Network error linking Patreon.", null);
             }
         }
@@ -187,12 +187,12 @@ namespace TrueforceForAll.Plugin
                     {
                         string body = resp.Content != null ? await resp.Content.ReadAsStringAsync().ConfigureAwait(false) : "";
                         if (!resp.IsSuccessStatusCode)
-                            _log?.Invoke($"[Trueforce] Patreon {fn} failed: {(int)resp.StatusCode} {Trunc(body)}");
+                            _log?.Invoke($"[TF4ALL] Patreon {fn} failed: {(int)resp.StatusCode} {Trunc(body)}");
                         return (resp.IsSuccessStatusCode, body);
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[Trueforce] Patreon {fn} exception: {ex.Message}"); return (false, null); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Patreon {fn} exception: {ex.Message}"); return (false, null); }
         }
 
         private async Task<string> GetBearerAsync()
@@ -214,7 +214,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             if (!ChannelValidation.IsTrustedSupabaseUrl(url))
             {
-                _log?.Invoke($"[Trueforce] Patreon link: rejecting untrusted backend URL: {url}");
+                _log?.Invoke($"[TF4ALL] Patreon link: rejecting untrusted backend URL: {url}");
                 return false;
             }
             baseUrl = url.TrimEnd('/');

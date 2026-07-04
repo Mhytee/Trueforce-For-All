@@ -172,8 +172,8 @@ namespace TrueforceForAll.Plugin
                 string n = (nameInput.Text ?? "").Trim();
                 if (n.Length < 2 || n.Length > 96)
                 {
-                    MessageBox.Show(this, "Name must be 2-96 characters.",
-                        "Edit preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    TrueforceDialog.Show(this, "Edit preset", "Name must be 2-96 characters.",
+                        DialogKind.Warning);
                     return;
                 }
                 NewName = n;
@@ -453,8 +453,8 @@ namespace TrueforceForAll.Plugin
                 string n = (nameInput.Text ?? "").Trim();
                 if (n.Length < 2 || n.Length > 96)
                 {
-                    MessageBox.Show(this, "Name must be 2 to 96 characters.",
-                        "Edit preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    TrueforceDialog.Show(this, "Edit preset", "Name must be 2 to 96 characters.",
+                        DialogKind.Warning);
                     return;
                 }
                 NewName = n;

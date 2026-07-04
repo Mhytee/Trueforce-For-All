@@ -137,7 +137,11 @@ namespace TrueforceForAll.Core
         // Status surfaced to the UI / logs. Populated by the reader thread.
         public string Status { get; private set; } = "Stopped";
         public bool IsRunning => _proc != null && !_proc.HasExited;
-        public long PacketsParsed { get; private set; }
+        // Backed by an explicit field with Interlocked so the liveness watchdog
+        // (a different thread) can't read a torn 64-bit value on the 32-bit host
+        // and mis-fire the capture-kill. Incremented once per parsed packet.
+        private long _packetsParsed;
+        public long PacketsParsed => Interlocked.Read(ref _packetsParsed);
         public long FfbSamplesCaptured { get; private set; }
 
         // Diagnostic counters. Written only by the parser thread; read by any
@@ -632,6 +636,7 @@ namespace TrueforceForAll.Core
             try { _livenessThread?.Join(1500); } catch { }
             _readerThread = null;
             _livenessThread = null;
+            try { _proc?.Dispose(); } catch { }   // Kill() doesn't release the managed handles
             _proc = null;
             Status = "Stopped";
         }
@@ -654,6 +659,14 @@ namespace TrueforceForAll.Core
 
             return value;
         }
+
+        /// <summary>Drop the last captured FFB target so TryGetFreshFfbTarget
+        /// returns null until a genuinely fresh game packet is captured. The
+        /// plugin calls this while it holds the stream stopped for a pause, so a
+        /// stream restart mid-transition (FH6 quick travel / teleport) can't
+        /// replay a stale pre-pause force and slam the wheel to lock (issue #13).
+        /// The reader thread repopulates this the instant real FFB flows again.</summary>
+        public void ClearLastFfbTarget() => System.Threading.Interlocked.Exchange(ref _packed, 0);
 
         // ---------- reader thread ----------
 
@@ -911,6 +924,7 @@ namespace TrueforceForAll.Core
                     Status = "USBPcap needs administrator rights. Run SimHub as administrator to enable FFB pass-through.";
                     Log($"UsbPcapFfbTap: USBPcapCMD requires elevation (Win32 {w32.NativeErrorCode}); backing off {ElevationBackoffMs / 1000}s.");
                     try { _proc?.Kill(); } catch { }
+                    try { _proc?.Dispose(); } catch { }
                     _proc = null;
                     if (SleepInterruptible(ElevationBackoffMs)) break;
                     continue;
@@ -923,6 +937,7 @@ namespace TrueforceForAll.Core
                 finally
                 {
                     try { _proc?.Kill(); } catch { }
+                    try { _proc?.Dispose(); } catch { }   // dispose every restart, not just GC-finalize
                     _proc = null;
                 }
 
@@ -1023,12 +1038,18 @@ namespace TrueforceForAll.Core
             Log($"UsbPcapFfbTap started: {_usbPcapInterface} dev {_deviceAddress}{(_useBroadCapture ? " (whole-bus capture)" : "")}");
 
             // Drain stderr so it doesn't fill its pipe buffer and stall the child.
+            // Snapshot the process into a local: _proc gets reassigned by a later
+            // capture restart, and closing over the field would make this thread
+            // read the restarted process's stderr (or NRE on the disposed old one)
+            // and leak, blocked in ReadLine, one thread per restart. Bound to this
+            // process, the thread exits cleanly when this capture is killed.
+            var stderrProc = _proc;
             new Thread(() =>
             {
                 try
                 {
                     string line;
-                    while ((line = _proc.StandardError.ReadLine()) != null)
+                    while ((line = stderrProc.StandardError.ReadLine()) != null)
                         Log($"[USBPcapCMD] {line}");
                 }
                 catch { }
@@ -1063,7 +1084,7 @@ namespace TrueforceForAll.Core
                     throw new InvalidDataException($"caplen={caplen}");
                 if (payload.Length < caplen) payload = new byte[caplen];
                 ReadExactInto(s, payload, 0, caplen);
-                PacketsParsed++;
+                Interlocked.Increment(ref _packetsParsed);
 
                 // ---- USBPcap pseudo-header ----
                 if (caplen < 27) continue;

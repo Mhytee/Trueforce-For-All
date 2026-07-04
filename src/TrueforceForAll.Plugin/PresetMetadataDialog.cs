@@ -102,8 +102,8 @@ namespace TrueforceForAll.Plugin
                     var name = (tbPackName?.Text ?? "").Trim();
                     if (string.IsNullOrEmpty(name))
                     {
-                        MessageBox.Show(this, "Pack name is required when bundling as a pack.",
-                            "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                        TrueforceDialog.Show(this, "Trueforce For All",
+                            "Pack name is required when bundling as a pack.", DialogKind.Info);
                         tbPackName?.Focus();
                         return;
                     }

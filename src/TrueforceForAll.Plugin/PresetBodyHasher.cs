@@ -120,6 +120,15 @@ namespace TrueforceForAll.Plugin
                 // share-button gate flicker every time the author flipped
                 // the checkbox without changing the actual tune.
                 "CommunityAllowInPacks",
+                // Personal fields: stored in the snapshot (so your own presets
+                // remember them and they travel in backup), but NOT part of the
+                // preset's shareable identity. Excluding them means changing
+                // master gain / FFB scale never counts as a "user edit", so it
+                // can't trip the don't-delete-edited-pack-presets gate or the
+                // share-disabled-when-unchanged gate. They're also not applied
+                // from a downloaded preset (see ApplyGamePreset).
+                "MasterGain",
+                "FfbScale",
             };
 
         private sealed class OrderedContractResolver : DefaultContractResolver

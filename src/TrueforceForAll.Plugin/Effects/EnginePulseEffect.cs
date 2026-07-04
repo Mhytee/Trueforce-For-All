@@ -282,7 +282,9 @@ namespace TrueforceForAll.Plugin.Effects
             if (!playPulse && !playLoad) return;
 
             double phaseStep = _cyclesPerSec * WavetableSize / _osc.SampleRate;
-            if (phaseStep <= 0) return;
+            // Bail on non-positive, NaN (!(>0) catches both) AND +Inf, any of
+            // which would corrupt the _wtPhase accumulator and crash the wt index.
+            if (!(phaseStep > 0) || double.IsInfinity(phaseStep)) return;
 
             bool needLp = LowpassHz > 0 && LowpassHz < 2000;
             float alpha = needLp
@@ -503,7 +505,19 @@ namespace TrueforceForAll.Plugin.Effects
             }
 
             double rpm = f.Rpms;
-            if (rpm < 100) { _wavetableAmp = 0; _loadLayerAmp = 0; return; }   // engine off
+            // Reject non-finite readings (a corrupt Forza UDP float can be NaN or
+            // +/-Inf). A plain `rpm < 100` lets BOTH NaN and +Inf through; +Inf
+            // then makes _cyclesPerSec/phaseStep +Inf, latches _wtPhase = +Inf,
+            // and the render loop's wt[(int)+Inf] == wt[int.MinValue] throws
+            // IndexOutOfRange (a hard crash, not just silence). net48 has no
+            // double.IsFinite, hence the explicit NaN/Infinity checks. The >60000
+            // upper bound also rejects a garbage-but-finite RPM that would drive
+            // phaseStep past WavetableSize and overflow the wavetable index (no
+            // real engine exceeds it; it keeps the single-subtraction wrap valid).
+            if (double.IsNaN(rpm) || double.IsInfinity(rpm) || rpm < 100 || rpm > 60000)
+            {
+                _wavetableAmp = 0; _loadLayerAmp = 0; return;   // engine off / bad reading
+            }
 
             _cyclesPerSec = rpm / 120.0 * PitchMultiplier;
 
@@ -531,6 +545,16 @@ namespace TrueforceForAll.Plugin.Effects
             _loadLayerAmp = LoadLayerEnabled
                 ? baseAmp * LoadLayerGain * Gain * AutoGainScale
                 : 0.0;
+        }
+
+        // Telemetry stopped (game closed / crashed / page froze). The pulse is
+        // continuous and runs straight off these amplitudes, so without this it
+        // keeps humming the last frame forever. Drop both voices to silence;
+        // the next real frame's OnTelemetry sets them again.
+        public override void OnTelemetryStall()
+        {
+            _wavetableAmp = 0;
+            _loadLayerAmp = 0;
         }
     }
 }

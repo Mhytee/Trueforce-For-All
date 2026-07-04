@@ -55,7 +55,7 @@ namespace TrueforceForAll.Plugin
                     // marker in place so a later launch can retry rather than
                     // dropping it on the floor.
                     SimHub.Logging.Current.Warn(
-                        "[Trueforce] StartMinimized restore deferred: no WPF application available yet.");
+                        "[TF4ALL] StartMinimized restore deferred: no WPF application available yet.");
                     return;
                 }
 
@@ -64,13 +64,13 @@ namespace TrueforceForAll.Plugin
                 try { File.Delete(markerPath); } catch { }
 
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Opened SimHub visibly after install/update; restoring your 'Start minimized' preference.");
+                    "[TF4ALL] Opened SimHub visibly after install/update; restoring your 'Start minimized' preference.");
 
                 ScheduleInMemoryRestore(app);
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn("[Trueforce] StartMinimized restore skipped: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] StartMinimized restore skipped: " + ex.Message);
             }
         }
 
@@ -97,7 +97,7 @@ namespace TrueforceForAll.Plugin
                     if (mainWin == null)
                     {
                         SimHub.Logging.Current.Warn(
-                            "[Trueforce] StartMinimized restore: SimHub main window not found.");
+                            "[TF4ALL] StartMinimized restore: SimHub main window not found.");
                         return;
                     }
 
@@ -105,7 +105,7 @@ namespace TrueforceForAll.Plugin
                     if (model == null)
                     {
                         SimHub.Logging.Current.Warn(
-                            "[Trueforce] StartMinimized restore: SimHub model not reachable.");
+                            "[TF4ALL] StartMinimized restore: SimHub model not reachable.");
                         return;
                     }
 
@@ -114,18 +114,18 @@ namespace TrueforceForAll.Plugin
                     if (prop == null || !prop.CanWrite)
                     {
                         SimHub.Logging.Current.Warn(
-                            "[Trueforce] StartMinimized restore: StartMinimized not settable on this SimHub build.");
+                            "[TF4ALL] StartMinimized restore: StartMinimized not settable on this SimHub build.");
                         return;
                     }
 
                     prop.SetValue(model, true, null);
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] 'Start minimized' preference restored; SimHub will keep it on exit.");
+                        "[TF4ALL] 'Start minimized' preference restored; SimHub will keep it on exit.");
                 }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Warn(
-                        "[Trueforce] StartMinimized restore (deferred) failed: " + ex.Message);
+                        "[TF4ALL] StartMinimized restore (deferred) failed: " + ex.Message);
                 }
             }), DispatcherPriority.ApplicationIdle);
         }

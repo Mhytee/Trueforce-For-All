@@ -487,9 +487,9 @@ namespace TrueforceForAll.Plugin
             }
             var cancelBtn = new Button {
                 Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
-                Margin = new Thickness(0, 0, 8, 0),
-                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+                Margin = new Thickness(0, 0, 8, 0), IsCancel = true,
             };
+            ModalButtonTheme.Secondary(cancelBtn);
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);
 
@@ -501,9 +501,10 @@ namespace TrueforceForAll.Plugin
             bool hasSections = isEngine || _effectTags.Count > 0;
             var uploadBtn = new Button {
                 Content = "Upload", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                IsDefault = true,
                 IsEnabled = signedIn && hasSections,
             };
+            ModalButtonTheme.Primary(uploadBtn);
             // Tooltip explains the disabled state when no sections
             // are picked. ShowOnDisabled=true so the user actually
             // sees it; WPF hides tooltips on disabled controls by
@@ -666,6 +667,10 @@ namespace TrueforceForAll.Plugin
                         : _plugin.DescribeLastUploadError();
                     uploadBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
+                    // Banned account/device: pop the appeal modal right here so the
+                    // user can dismiss or appeal without hunting for it.
+                    if (_plugin.LastUploadWasBlocked())
+                        await ModerationNoticesWindow.MaybeShowAsync(_plugin, this, force: true).ConfigureAwait(true);
                     return;
                 }
                 UploadedPresetId = newId;

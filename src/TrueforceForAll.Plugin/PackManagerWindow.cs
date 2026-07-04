@@ -390,17 +390,16 @@ namespace TrueforceForAll.Plugin
             int gameCount = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindGame) ?? 0;
             int carCount  = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindCar)  ?? 0;
             string packLabel = string.IsNullOrEmpty(p.PackName) ? "this pack" : $"'{p.PackName}'";
-            var result = MessageBox.Show(
+            if (TrueforceDialog.Show(
                 this,
+                "Remove pack",
                 $"Remove {packLabel} and delete every preset it installed " +
                 $"({gameCount} game, {carCount} car)?\n\n" +
                 $"Entries you have edited since import will be kept.\n\n" +
                 $"This cannot be undone.",
-                "Remove pack",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Warning,
-                MessageBoxResult.Cancel);
-            if (result != MessageBoxResult.OK) return;
+                DialogKind.Destructive,
+                okLabel: "Remove",
+                cancelLabel: "Cancel") != true) return;
 
             try
             {

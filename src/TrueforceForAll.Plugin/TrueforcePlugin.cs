@@ -73,6 +73,9 @@ namespace TrueforceForAll.Plugin
         // file + class so per-car fact ops and whole-preset upload/browse
         // stay readable. Same gating contract via Settings.CommunityEnabled.
         private PresetSharingClient _presetSharing;
+        // Offline-first cache of community BROWSE lists (per active local-user slot,
+        // so cached MyVote/ownership never leaks across accounts). Constructed in Init.
+        private CommunityBrowseCacheStore _browseCache;
 
         // Email-OTP auth client. Owns the Supabase Auth session lifecycle
         // (send_otp -> verify_otp -> refresh -> sign_out). PresetSharingClient
@@ -134,11 +137,23 @@ namespace TrueforceForAll.Plugin
         // customized the name; user-renamed presets are left alone.
         private readonly HashSet<string> _displayNameBackfillDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // (Removed _carFactsLock: existed to serialize first-sig writes
-        // against the prompt path. With the prompt path gone and silent
-        // auto-create running only on the SimHub data thread inside
-        // ResolveAndApplyCarFactsForActiveCar, the UI thread no longer
-        // mutates Settings.CarFacts*; the lock became dead weight.)
+        // Serializes access to Settings.CarFacts / EngineVariants. Reinstated
+        // because the per-variant-redline UI (Save / Adopt / Decline / Delete /
+        // Rename) mutates CarFacts from the WPF UI thread while the SimHub data
+        // thread adds/upgrades variants and the off-thread flush serializes the
+        // same lists. Without it, a UI foreach throws "Collection was modified"
+        // mid-enumeration and a serialize can collide with an Add. Held only
+        // around list enumeration/mutation + the flush serialize (never across a
+        // re-resolve), and is re-entrant (Monitor) so nested calls are safe.
+        private readonly object _carFactsLock = new object();
+
+        // Last engine-variant Id resolved for a (game/carId) while a real
+        // telemetry discriminator was present. Used as the "last used variant"
+        // fallback when editing during the empty-signature window (engine off /
+        // pre-telemetry) so a save targets the variant the user was last on
+        // instead of an arbitrary first row.
+        private readonly Dictionary<string, string> _lastActiveVariantIdByCar =
+            new Dictionary<string, string>(StringComparer.Ordinal);
 
         private TrueforceDevice _device;
         private AudioCaptureSource _audio;
@@ -293,6 +308,21 @@ namespace TrueforceForAll.Plugin
         private long _lastSteerTicks;
         private static readonly long SteerMaxAgeTicks = Stopwatch.Frequency / 2; // 500 ms
 
+        // Telemetry-freshness stamp for the stall watchdog. Set (Stopwatch
+        // ticks) every time DispatchFrame receives a real frame; read from the
+        // continuous DataUpdate tick. When the active source stops emitting
+        // (game closed, crashed, paused with the physics page frozen, alt-tab),
+        // sustained effects keep playing their last amplitude because they only
+        // settle on a received frame. The watchdog notices the gap and tells
+        // those effects to fall silent. 0 = no frame seen yet (nothing to age).
+        private long _lastFrameTicks;
+        // Latch so we settle the effects once per stall episode instead of
+        // every DataUpdate tick. Cleared the moment a real frame arrives again.
+        // volatile: written false by DispatchFrame on the source's polling thread,
+        // read/written on the DataUpdate thread (matches its volatile neighbours).
+        private volatile bool _telemetryStalled;
+        private static readonly long FrameStallTicks = Stopwatch.Frequency / 2; // 500 ms
+
         // Smoothed steering used by the spring. Eased toward _lastSteerNorm on
         // each provider call (~250 Hz) so a low-resolution source (Forza's
         // 8-bit Steer, ~254 steps lock-to-lock) doesn't translate its quantized
@@ -348,7 +378,11 @@ namespace TrueforceForAll.Plugin
         // bring-up on a thread-pool thread so it never stalls SimHub's tick.
         // _recoveryInProgress is the single-flight guard and also drives the
         // StreamStatus "Reconnecting..." text.
-        private volatile bool _recoveryInProgress;
+        // 0 = idle, 1 = a recovery/bring-up is running. Int (not bool) so the
+        // two trigger paths (the data-tick watchdog MaybeRecoverDevice and the
+        // UI-thread RunActiveDeviceProbe) can claim it atomically with
+        // Interlocked.CompareExchange and never both bring the device up at once.
+        private int _recoveryInProgress;
         private long _lastRecoveryAttemptTicks;
         private static readonly long RecoveryIntervalTicks = Stopwatch.Frequency * 3; // 3 s
         // Throttle for the verbose "wheel not found" discovery diagnostic: the
@@ -500,6 +534,14 @@ namespace TrueforceForAll.Plugin
         private string _activeCarId;
         public string ActiveCarId => _activeCarId;
 
+        /// <summary>True when a car is actually being driven right now (live
+        /// telemetry / on track), as opposed to merely having a game profile
+        /// selected at a menu or while paused. Backed by the telemetry source's
+        /// IsSessionActive, which Forza reports authoritatively. Lets the car
+        /// picker distinguish a real in-car pin (keep it) from a parked manual
+        /// pin (releasable when the user picks "None").</summary>
+        public bool IsLiveCarPresent => _telemetrySource?.IsSessionActive ?? false;
+
         // Human-readable name of the active car (e.g. "2017 Acura NSX"), set
         // by the car-change handler from CarCylinderResolver.Result.DisplayName
         // when a catalog hit provides one. Cleared on car change. Used to
@@ -526,7 +568,6 @@ namespace TrueforceForAll.Plugin
         private string _activePresetName;
         public string ActiveGame        => _activeGame;
         public string ActivePresetName  => _activePresetName;
-        public bool   ActiveGameIsNativeTrueforce => IsNativeTrueforceGame(_activeGame);
 
         // Cached variant signature from the last CarFacts apply. Compared
         // against the live signature inside DispatchFrame so a mid-session
@@ -567,6 +608,7 @@ namespace TrueforceForAll.Plugin
         private GameSettingsSnapshot _preEditCarSnapshot;
         private string _preEditCarActiveId;
         private string _preEditCarActivePresetName;
+        private string _preEditCarActiveGame;
 
         public bool   IsOfflineEditingCar        => !string.IsNullOrEmpty(_offlineEditCarId);
         public string OfflineEditingCarId        => _offlineEditCarId;
@@ -623,7 +665,7 @@ namespace TrueforceForAll.Plugin
         {
             get
             {
-                if (_recoveryInProgress) return "Reconnecting to wheel...";
+                if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return "Reconnecting to wheel...";
                 var d = _device;
                 if (d != null && d.StreamFaulted)
                     return "Stream lost, auto-reconnecting (replug the wheel, or close G HUB, if this persists)";
@@ -893,7 +935,7 @@ namespace TrueforceForAll.Plugin
                 //    near to silence). Detects misconfigured ducker depth
                 //    that swallows everything.
                 if (EnginePulse != null && EnginePulse.DuckMultiplier < 0.05f
-                    && Settings.DuckDepth > 0.95f)
+                    && Settings.DuckingEnabled && Settings.DuckDepth > 0.95f)
                 {
                     return "Sidechain ducker is muting nearly all output. Try lowering Depth in the Sidechain ducking section.";
                 }
@@ -956,7 +998,7 @@ namespace TrueforceForAll.Plugin
             // silent no-op when next==cur was indistinguishable from
             // "the binding never reached us."
             SimHub.Logging.Current.Info(
-                $"[Trueforce] NudgeMasterGain delta={delta:+0.00;-0.00;0.00} "
+                $"[TF4ALL] NudgeMasterGain delta={delta:+0.00;-0.00;0.00} "
                 + $"cur={cur:F2} -> next={next:F2}"
                 + (Math.Abs(next - cur) < 0.0001f ? " (no-op, already at limit)" : ""));
             if (Math.Abs(next - cur) < 0.0001f) return;
@@ -1027,7 +1069,7 @@ namespace TrueforceForAll.Plugin
             if (persistForActiveGame && !string.IsNullOrEmpty(_activeGame))
             {
                 Settings.GameEnabled[_activeGame] = enabled;
-                this.SaveCommonSettings("GeneralSettings", Settings);
+                PersistSettingsCore();
             }
 
             if (wasEnabled == enabled) return;
@@ -1036,14 +1078,14 @@ namespace TrueforceForAll.Plugin
                 _device?.SendStopCommand();
                 _device?.Pause();
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Plugin disabled{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
+                    $"[TF4ALL] Plugin disabled{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
             }
             else
             {
                 _device?.Resume();
                 _device?.SendStartCommand();
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Plugin enabled{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
+                    $"[TF4ALL] Plugin enabled{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
             }
         }
 
@@ -1089,23 +1131,31 @@ namespace TrueforceForAll.Plugin
             if (Settings != null) Settings.FfbSpikeUseSlewLimiter = v;
         }
 
-        public void SetSkipFfbPassthrough(bool v)
-        {
-            // Stored on Settings only; the FfbTargetProvider lambda reads it
-            // each tick so the change takes effect immediately without
-            // touching the device.
-            if (Settings != null) Settings.SkipFfbPassthrough = v;
-        }
-
-        // Stationary-spring setters. Settings-only, like SkipFfbPassthrough:
-        // the FfbTargetProvider lambda reads them every tick so changes apply
-        // live. The UI persists via PersistSettings() after calling these.
+        // Stationary-spring setters. Settings-only: the FfbTargetProvider
+        // lambda reads them every tick so changes apply live. The UI persists
+        // via PersistSettings() after calling these.
         public void SetStationarySpringEnabled(bool v)
         { if (Settings != null) Settings.StationarySpringEnabled = v; }
         public void SetStationarySpringStrength(double v)
         { if (Settings != null) Settings.StationarySpringStrength = v; }
         public void SetStationarySpringCutoffKmh(double v)
         { if (Settings != null) Settings.StationarySpringCutoffKmh = v; }
+
+        /// <summary>Clear the "shown once / dismissed forever" latches so the
+        /// one-time notices can appear again (networked welcome, what's new,
+        /// iRacing Trueforce, share CTA, experimental-success report). Persists.</summary>
+        public void ResetOneTimeNotices()
+        {
+            if (Settings == null) return;
+            Settings.HasSeenNetworkedWelcome = false;
+            Settings.WelcomeDeclineCount = 0;
+            Settings.WelcomeNextShowAt = null;
+            Settings.IRacingTrueforceNoticeDismissed = false;
+            Settings.ExperimentalSuccessReportDismissed = false;
+            Settings.ShareCtaDismissed = false;
+            Settings.LastSeenVersion = null;
+            PersistSettings();
+        }
 
         // Fast gate on the baseline FFB path: when the spring is off AND no
         // desk self-test is armed, return the game's FFB target untouched
@@ -1310,7 +1360,7 @@ namespace TrueforceForAll.Plugin
             else
                 Settings.AudioCaptureExeOverrides[game] = trimmed;
 
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
 
             // Force a re-scan: drop the cached process so the next CaptureTick
             // doesn't fast-path the alive-check on the wrong process.
@@ -1343,16 +1393,16 @@ namespace TrueforceForAll.Plugin
         {
             if (effect == null)
             {
-                SimHub.Logging.Current.Info("[Trueforce] TestEffect: effect was null");
+                SimHub.Logging.Current.Info("[TF4ALL] TestEffect: effect was null");
                 return;
             }
             if (_device == null)
             {
-                SimHub.Logging.Current.Info($"[Trueforce] TestEffect '{effect.Name}': device not initialized");
+                SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}': device not initialized");
                 return;
             }
             int durationMs = effect.TestPlay();
-            SimHub.Logging.Current.Info($"[Trueforce] TestEffect '{effect.Name}' duration={durationMs} ms");
+            SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}' duration={durationMs} ms");
             if (durationMs <= 0) return;
 
             _device.ForceActiveFor(durationMs + 200);
@@ -1472,9 +1522,15 @@ namespace TrueforceForAll.Plugin
             // guaranteed set for code that reads it (e.g. SettingsControl's
             // licence check for the nag-strip clearance).
             PluginManager = pluginManager;
-            SimHub.Logging.Current.Info("[Trueforce] Init: loading settings...");
+            // Ensure TLS 1.2 is enabled process-wide before any network client
+            // (auth / community / backup) is used. net48 on older Windows can
+            // default to a protocol Supabase rejects, and otherwise this only
+            // gets set as a side effect of the update check running first.
+            // No-op if already enabled.
+            try { System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12; } catch { }
+            SimHub.Logging.Current.Info("[TF4ALL] Init: loading settings...");
             SimHub.Logging.Current.Info(
-                "[Trueforce] Logitech processes at startup: " + SnapshotLogitechProcesses());
+                "[TF4ALL] Logitech processes at startup: " + SnapshotLogitechProcesses());
             // If the installer just opened SimHub visibly after an install/update,
             // it flipped SimHub's "Start minimized" off for that one launch. Put
             // the user's real preference back in SimHub's in-memory model so it
@@ -1514,19 +1570,19 @@ namespace TrueforceForAll.Plugin
                     var backupUnclassified = BackupProjection.FindUnclassifiedFields();
                     var backupDoubled      = BackupProjection.FindDoubleClassifiedFields();
                     if (backupUnclassified.Count > 0)
-                        SimHub.Logging.Current.Warn("[Trueforce][DEV] Backup: " + backupUnclassified.Count
+                        SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: " + backupUnclassified.Count
                             + " unclassified TrueforceSettings field(s); add each to a BackupProjection bucket "
                             + "(Portable / MachineLocal / Excluded): " + string.Join(", ", backupUnclassified));
                     if (backupDoubled.Count > 0)
-                        SimHub.Logging.Current.Warn("[Trueforce][DEV] Backup: field(s) classified in more than "
+                        SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: field(s) classified in more than "
                             + "one BackupProjection bucket: " + string.Join(", ", backupDoubled));
                     if (backupUnclassified.Count == 0 && backupDoubled.Count == 0)
-                        SimHub.Logging.Current.Info("[Trueforce][DEV] Backup classification OK: all "
+                        SimHub.Logging.Current.Info("[TF4ALL][DEV] Backup classification OK: all "
                             + "TrueforceSettings fields are classified for backup/sync.");
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn("[Trueforce][DEV] Backup classification audit failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup classification audit failed: " + ex.Message);
                 }
             }
             // One-time folder restructure: move the three legacy sibling
@@ -1542,7 +1598,7 @@ namespace TrueforceForAll.Plugin
                 // SaveCommonSettings at the "fresh install" gate doesn't
                 // fire on routine upgrades, so without this the
                 // restructure would re-run every startup.
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
             // Load the file-based built-in presets (folder override -> shipped
             // default) before anything seeds or queries them below.
@@ -1572,7 +1628,7 @@ namespace TrueforceForAll.Plugin
             {
                 MigrateLegacyUserPresetsToFolder();
                 Settings.PresetsMigratedV2 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
             // One-time car migration: legacy TrueforceCars/*.tfcar.json ->
             // user library cars/ tree + Settings.CarDefaults -> car-defaults.json.
@@ -1582,7 +1638,7 @@ namespace TrueforceForAll.Plugin
             {
                 MigrateLegacyUserCarsToFolder();
                 Settings.CarsMigratedV2 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
             // Housekeeping: an earlier build of the car migration named its
             // backup folder "TrueforceCars.bak-...". Rename any leftover to the
@@ -1613,7 +1669,7 @@ namespace TrueforceForAll.Plugin
             {
                 Settings.GamesWithRedline.Clear();
                 Settings.GamesWithRedlineRevalidated = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
 
             // One-time: the home-screen gain tile is now on by default. Flip it
@@ -1624,7 +1680,7 @@ namespace TrueforceForAll.Plugin
             {
                 Settings.ShowFeedbackBox = true;
                 Settings.FeedbackBoxDefaultedOn = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
 
             // One-shot v0.1.21 -> v0.1.22 migration: clear any saved manual
@@ -1644,7 +1700,7 @@ namespace TrueforceForAll.Plugin
                 if (hadOverride)
                 {
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Migration: cleared saved manual USBPcap override " +
+                        "[TF4ALL] Migration: cleared saved manual USBPcap override " +
                         $"({Settings.ManualUsbPcapInterface} dev {Settings.ManualUsbPcapDeviceAddress}); " +
                         "auto-discovery now picks the wheel. Re-enable manual pinning with the MANUALPIN access code if needed.");
                     Settings.ManualUsbPcapInterface = "";
@@ -1653,7 +1709,7 @@ namespace TrueforceForAll.Plugin
                     Settings.ManualUsbPcapPid = 0;
                 }
                 Settings.ManualOverrideClearedV0_1_22 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
 
             // Fresh install (factory ran) or first run on a settings file
@@ -1671,7 +1727,7 @@ namespace TrueforceForAll.Plugin
                     if (!Settings.SeenEffects.Contains(id)) Settings.SeenEffects.Add(id);
                 }
                 Settings.LastSeenVersion = CurrentVersionString();
-                this.SaveCommonSettings("GeneralSettings", Settings);
+                PersistSettingsCore();
             }
 
             // Hand the resolver a reference to the persisted cache. New heuristic
@@ -1688,7 +1744,7 @@ namespace TrueforceForAll.Plugin
             {
                 MigrateCarCylinderCacheToCarFacts();
                 Settings.CarFactsMigratedV1 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
             // Note: the ordinal-name rename migration used to run here but
             // tripped its `_carStore == null` guard because _carStore is
@@ -1730,10 +1786,10 @@ namespace TrueforceForAll.Plugin
                 try { DevNormalizeForzaCarIds(out _); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Forza car-id normalization failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Forza car-id normalization failed: {ex.Message}");
                 }
                 Settings.ForzaCarIdsNormalizedV1 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
 
             // Rename Car_NNN-style car-preset names to their human-readable
@@ -1747,7 +1803,7 @@ namespace TrueforceForAll.Plugin
                 MigrateCarPresetOrdinalNames();
                 Settings.CarPresetOrdinalNamesMigratedV1 = true;   // keep V1 set too
                 Settings.CarPresetOrdinalNamesMigratedV2 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
 
             // Community backend HTTP client. Inert until
@@ -1757,7 +1813,7 @@ namespace TrueforceForAll.Plugin
             // so the plugin holds no persistent submitter id.
             _auth = new CommunityAuth(
                 () => Settings,
-                () => this.SaveCommonSettings("GeneralSettings", Settings),
+                () => PersistSettingsCore(),
                 msg => SimHub.Logging.Current.Info(msg));
             _community = new CommunityClient(
                 () => Settings,
@@ -1784,6 +1840,11 @@ namespace TrueforceForAll.Plugin
                 msg => SimHub.Logging.Current.Info(msg),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
                 async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+            // Browse-result cache, scoped to the active local-user slot (it reloads
+            // the right slot's file transparently on an identity switch).
+            _browseCache = new CommunityBrowseCacheStore(
+                () => Settings?.ActiveSlotKey ?? "",
+                msg => SimHub.Logging.Current.Info(msg));
 
             // Cloud backup/sync transport (Phase 2). Same auth wiring as the other
             // clients; gated by a signed-in session (and later supporter status).
@@ -1831,6 +1892,13 @@ namespace TrueforceForAll.Plugin
                 msg => SimHub.Logging.Current.Info(msg),
                 async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
 
+            // Moderation notices (warn/removal/ban) + appeal, surfaced when the
+            // user opens "My uploads". Same auth plumbing as the session client.
+            _moderationClient = new ModerationClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg),
+                async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
             // Fire-and-forget plugin-load account sync. If a session was
             // restored from Settings.AuthSession, refresh the profile so
             // SharingAuthor matches whatever the server says
@@ -1849,14 +1917,14 @@ namespace TrueforceForAll.Plugin
                                               StringComparison.Ordinal))
                         {
                             Settings.SharingAuthor = profile.Username;
-                            try { this.SaveCommonSettings("GeneralSettings", Settings); }
+                            try { PersistSettingsCore(); }
                             catch { }
                         }
                     }
                     catch (Exception ex)
                     {
                         SimHub.Logging.Current.Info(
-                            "[Trueforce] Plugin-load profile sync failed: " + ex.Message);
+                            "[TF4ALL] Plugin-load profile sync failed: " + ex.Message);
                     }
                 });
             }
@@ -1879,7 +1947,7 @@ namespace TrueforceForAll.Plugin
             {
                 CleanupLegacyBuiltinsInUserLibrary();
                 Settings.LegacyBuiltinsCleanedV1 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
                 // Re-run the car cache rebuild so Settings.CarDefaults
                 // reflects the post-cleanup state (factory seed for
                 // bindings whose user-side entry just got dropped).
@@ -1894,7 +1962,7 @@ namespace TrueforceForAll.Plugin
             {
                 MigrateRevLimiterThresholdDefault();
                 Settings.RevLimiterThresholdDefaultMigrated = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
 
             // Make sure all three folders exist with their READMEs, then auto-
@@ -1926,16 +1994,27 @@ namespace TrueforceForAll.Plugin
             _updateCheckerCts = new System.Threading.CancellationTokenSource();
             _updateChecker = new UpdateChecker
             {
-                Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
             };
             System.Threading.Tasks.Task.Run(async () =>
             {
                 try { await _updateChecker.CheckAsync(_updateCheckerCts.Token); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info($"[Trueforce] Update check task crashed: {ex.Message}");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Update check task crashed: {ex.Message}");
                 }
             });
+            // Arm the background re-check. The startup poll above is one-shot;
+            // this re-runs CheckAsync on the user-configured cadence
+            // (Settings.UpdateCheckIntervalHours) so a session left running for
+            // hours still discovers a release that shipped after launch. Lives
+            // on the plugin (always running) rather than the settings panel
+            // timer (which only ticks while the panel is open). The wakeup is a
+            // fixed cheap cadence; the tick itself decides whether enough time
+            // has elapsed, so a runtime cadence change needs no re-arm.
+            MarkUpdateChecked();
+            _updateCheckTimer = new System.Threading.Timer(
+                UpdateCheckTimerTick, null, UpdateCheckPollMs, UpdateCheckPollMs);
 
             // Bring up the wheel (discover -> open -> init -> FFB tap ->
             // stream). Extracted so the recovery watchdog (MaybeRecoverDevice)
@@ -1946,16 +2025,21 @@ namespace TrueforceForAll.Plugin
             // the device, not reconstruct the whole pipeline.
             if (!TryBringUpDevice())
                 SimHub.Logging.Current.Warn(
-                    "[Trueforce] Wheel not ready at startup; the plugin will "
+                    "[TF4ALL] Wheel not ready at startup; the plugin will "
                     + "keep retrying automatically (replug the wheel / close G HUB).");
 
             InitPipeline();
 
-            // Start the cloud auto-pull poll if we're already signed in with auto-sync on at
-            // startup (sign-in/out transitions and the auto-sync toggle also call this).
+            // Arm the cloud auto-pull timer (it self-gates on active + a peer being online, so a solo
+            // or idle user makes no calls). Sign-in/out transitions and the auto-sync toggle re-call it.
             UpdateAutoPullTimer();
-            // Start the session-revoke heartbeat if already signed in (runs for any signed-in user).
+            // The revoke heartbeat starts only once a second session is detected; nothing to do here
+            // until presence is probed. (Kept for the signed-out -> stop path and idempotency.)
             UpdateSessionHeartbeatTimer();
+            // One-shot startup reconcile: probe presence, run the drift backstop, and catch up if a
+            // peer is online. ignoreActivity so an auto-started-minimized PC still pulls the latest
+            // without first requiring an interaction; the peer gate still spares solo users.
+            ReconcileSyncState(ignoreActivity: true);
 
             // Bindable input mappings for SimHub's Controls system.
             // IMPORTANT: AddInputMapping (NOT AddAction). AddAction
@@ -1984,7 +2068,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[Trueforce] AddInputMapping (master gain) failed: {ex.Message}");
+                SimHub.Logging.Current.Info($"[TF4ALL] AddInputMapping (master gain) failed: {ex.Message}");
             }
         }
 
@@ -1998,13 +2082,13 @@ namespace TrueforceForAll.Plugin
         {
             if (_shuttingDown) return false;
 
-            SimHub.Logging.Current.Info("[Trueforce] Discovering wheel...");
+            SimHub.Logging.Current.Info("[TF4ALL] Discovering wheel...");
             var matches = WheelDiscovery.FindAll();
             if (matches.Count == 0)
             {
                 WheelStatus = "Not detected (open/close G HUB once, then restart SimHub)";
                 SimHub.Logging.Current.Warn(
-                    "[Trueforce] No supported wheel found. Make sure a supported wheel " +
+                    "[TF4ALL] No supported wheel found. Make sure a supported wheel " +
                     "(G PRO / RS50 / G923) is plugged in. If it is, open G HUB once and let it " +
                     "finish detecting the wheel, then close G HUB (it must stay closed while this " +
                     "plugin runs) and restart SimHub.");
@@ -2017,7 +2101,7 @@ namespace TrueforceForAll.Plugin
             _hidWheelPid = match.Pid;
             WheelStatus = $"{match.Model}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
                         + (match.Unverified ? "  [unconfirmed model]" : "");
-            SimHub.Logging.Current.Info($"[Trueforce] Found {WheelStatus}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Found {WheelStatus}.");
 
             // Remember the last wheel used on this PC for the Account "Active sessions"
             // list. Machine-local + persisted so it survives unplugs and restarts; only
@@ -2030,7 +2114,7 @@ namespace TrueforceForAll.Plugin
                     && !string.Equals(Settings.LastUsedWheel, shortModel, StringComparison.Ordinal))
                 {
                     Settings.LastUsedWheel = shortModel;
-                    try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                    try { PersistSettingsCore(); } catch { }
                 }
             }
             catch { /* wheel-label persistence is best-effort, never block bring-up */ }
@@ -2048,7 +2132,7 @@ namespace TrueforceForAll.Plugin
                     $"{match.Model} is supported by inference but not hardware-tested. " +
                     "If the plugin's effects work but your game's force feedback is silent, " +
                     "please report it (Feedback > Report an issue, attach Export logs).";
-                SimHub.Logging.Current.Warn($"[Trueforce] {_unverifiedWheelNotice}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] {_unverifiedWheelNotice}");
             }
             else
             {
@@ -2064,7 +2148,7 @@ namespace TrueforceForAll.Plugin
                 // wheel in slower-default-rate mode and Trueforce response is
                 // noticeably delayed (~game tick of latency). It does NOT cause
                 // the FFB-suppression problem either way, diagnosed 2026-05-03.
-                SimHub.Logging.Current.Info("[Trueforce] Sending init sequence (68 packets x 2)...");
+                SimHub.Logging.Current.Info("[TF4ALL] Sending init sequence (68 packets x 2)...");
                 _device.RunInitSequence();
 
                 // Spawn the USBPcap FFB tap. Reads AC's outgoing HID++ FFB target
@@ -2090,13 +2174,13 @@ namespace TrueforceForAll.Plugin
                     // normal SimHub telemetry path (DispatchFrame ->
                     // RpmLedController), the accurate per-car implementation;
                     // no PID on the HID++ pipe in this mode so it's safe.
-                    _mairaIpc = new MairaIpcSource(msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"));
+                    _mairaIpc = new MairaIpcSource(msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"));
                 }
 
                 var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
                 _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
                 {
-                    Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                    Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                     HostElevated = IsRunningElevated,
                 };
                 _ffbTap.SetHidDiscoveredWheel(match.Vid, match.Pid);
@@ -2110,13 +2194,13 @@ namespace TrueforceForAll.Plugin
                 {
                     _steeringReader = new WheelSteeringReader(match.Vid, match.Pid)
                     {
-                        Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                        Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                     };
                     _steeringReader.Start();
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Steering reader failed to start: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Steering reader failed to start: {ex.Message}");
                     _steeringReader = null;
                 }
                 _device.FfbTargetProvider = () =>
@@ -2177,19 +2261,6 @@ namespace TrueforceForAll.Plugin
                         return (short?)0;
                     }
 
-                    // SkipFfbPassthrough: return Some(0) so the device sends
-                    // active packets (audio plays) with cur = 0x8000. The
-                    // wheel uses cur as motor torque and IGNORES ep0 once
-                    // active packets are streaming, so this means zero motor
-                    // force from the FFB-target path. Only for games that
-                    // drive the wheel's motor through their own native ep3
-                    // path (AC Rally, iRacing); for games that rely on ep0
-                    // (vanilla AC, FH6, F1, PC2), this kills FFB. Note: on a
-                    // native-ep3 game we do NOT coexist on ep3, we clash with
-                    // its own stream, so this only works when that game's
-                    // Trueforce output is fully disabled.
-                    if (Settings != null && Settings.SkipFfbPassthrough)
-                        return ApplyStationarySpringIfActive((short?)0);
                     return ApplyStationarySpringIfActive(_ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs));
                 };
                 _device.FfbScale                 = Settings.FfbScale;
@@ -2230,12 +2301,12 @@ namespace TrueforceForAll.Plugin
                 }
 
                 _streamStatus = "Streaming (1 kHz, 250 packets/s)";
-                SimHub.Logging.Current.Info("[Trueforce] Stream started.");
+                SimHub.Logging.Current.Info("[TF4ALL] Stream started.");
             }
             catch (Exception ex)
             {
                 _streamStatus = $"Init failed: {ex.Message}";
-                SimHub.Logging.Current.Error("[Trueforce] Init failed", ex);
+                SimHub.Logging.Current.Error("[TF4ALL] Init failed", ex);
                 CleanupDevice();
                 return false;
             }
@@ -2279,14 +2350,14 @@ namespace TrueforceForAll.Plugin
                 try { noTfIface = WheelDiscovery.FindSupportedWithoutTrueforceInterface().Count; } catch { }
 
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Discovery diagnostic (wheel not found): "
+                    "[TF4ALL] Discovery diagnostic (wheel not found): "
                     + $"Logitech HID = {hids}; supported-wheel-without-MI_02 = {noTfIface}; "
                     + $"wheel-like-unsupported-PID (console mode?) = {consoleMode}; "
                     + $"G HUB UI running = {_isGHubRunning}.");
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[Trueforce] Discovery diagnostic failed: {ex.GetType().Name}: {ex.Message}");
+                SimHub.Logging.Current.Info($"[TF4ALL] Discovery diagnostic failed: {ex.GetType().Name}: {ex.Message}");
             }
         }
 
@@ -2308,11 +2379,11 @@ namespace TrueforceForAll.Plugin
                 string helperExe = System.IO.Path.Combine(pluginDir, "TrueforceForAll.LoopbackHelper.exe");
                 _helperHost = new HelperHost(helperExe);
                 _helperHost.Spawn();
-                SimHub.Logging.Current.Info($"[Trueforce] Loopback helper spawned ({helperExe}).");
+                SimHub.Logging.Current.Info($"[TF4ALL] Loopback helper spawned ({helperExe}).");
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Error("[Trueforce] Failed to spawn loopback helper", ex);
+                SimHub.Logging.Current.Error("[TF4ALL] Failed to spawn loopback helper", ex);
                 _helperHost = null;
             }
 
@@ -2343,13 +2414,6 @@ namespace TrueforceForAll.Plugin
             Drs          = new DrsEffect();
             Collision    = new CollisionEffect();
             RevLimiter   = new RevLimiterEffect();
-            // Lazy migration: when the effect fires the
-            // ThresholdMigratedToRedline event (legacy preset's
-            // Threshold * observed MaxRpm got converted to an
-            // absolute RedlineRpm at runtime), promote the value
-            // onto the live source preset on disk + submit to the
-            // community DB so the migrated truth seeds consensus.
-            RevLimiter.ThresholdMigratedToRedline += OnRevLimiterLazyMigrated;
             Airborne     = new AirborneEffect();
             // Airborne is last: it's a coordinator, not a voice, but it still
             // needs OnTelemetry (to read frame.Airborne) and Reset, both of
@@ -2369,7 +2433,7 @@ namespace TrueforceForAll.Plugin
             _simHubSource = new SimHubTelemetrySource { OnFrame = DispatchFrame };
             _simHubSource.Start();
             _telemetrySource = _simHubSource;
-            SimHub.Logging.Current.Info($"[Trueforce] Telemetry source: {_telemetrySource.Name}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Telemetry source: {_telemetrySource.Name}.");
 
             _capturePollThread = new Thread(CapturePollLoop)
             {
@@ -2377,17 +2441,123 @@ namespace TrueforceForAll.Plugin
                 Name = "TrueforceCapturePoll",
             };
             _capturePollThread.Start();
-            SimHub.Logging.Current.Info("[Trueforce] Audio capture armed; waiting for a supported game to start.");
+            SimHub.Logging.Current.Info("[TF4ALL] Audio capture armed; waiting for a supported game to start.");
 
-            // Optional, default-off: splice a Trueforce gain tile into SimHub's
-            // home "Feedback" section. Self-retrying + defensive; if the home tab
-            // isn't realized yet (or the layout differs), it just won't appear.
+            // Default-on (Settings.ShowFeedbackBox): splice a Trueforce gain tile
+            // into SimHub's home "Feedback" section. Self-retrying + defensive; if
+            // the home tab isn't realized yet (or the layout differs), it just
+            // won't appear (cosmetic, never throws).
             _feedbackInjector = new FeedbackBoxInjector(this);
             _feedbackInjector.Start();
         }
         private System.Threading.CancellationTokenSource _updateCheckerCts;
         public System.Threading.CancellationToken UpdateCheckerToken
             => _updateCheckerCts?.Token ?? System.Threading.CancellationToken.None;
+
+        // ---- Background "check for updates" re-poll ----
+        // Periodic GitHub-release re-check on the user-configured cadence. The
+        // timer wakes on a fixed cheap interval and each tick decides whether
+        // Settings.UpdateCheckIntervalHours has elapsed since the last check, so
+        // changing the cadence at runtime needs no re-arm. 0 hours = "On startup
+        // only" -> the tick no-ops. _lastUpdateCheckTicks is a monotonic
+        // Stopwatch stamp; the manual "Check for updates" link refreshes it via
+        // MarkUpdateChecked() so an auto-check doesn't fire moments after one.
+        private System.Threading.Timer _updateCheckTimer;
+        private long _lastUpdateCheckTicks;
+        private const int UpdateCheckPollMs = 10 * 60 * 1000; // wake every 10 min
+
+        // Debug-only (UPDATEPOLL test code): when > 0, the background re-check
+        // uses this many SECONDS as its cadence instead of the configured
+        // UpdateCheckIntervalHours (and ignores the "On startup only" floor),
+        // and the wakeup timer is sped up to match. Lets a tester watch the
+        // periodic re-check fire on its own within seconds rather than hours.
+        private int _updateCheckDebugSeconds;
+
+        /// <summary>Stamp "an update check just happened (or is starting) now."
+        /// Called after the startup check, by the background re-poll before it
+        /// awaits, and by the manual "Check for updates" link so the next
+        /// background check is measured from the most recent check of any kind.</summary>
+        public void MarkUpdateChecked()
+            => System.Threading.Interlocked.Exchange(
+                   ref _lastUpdateCheckTicks, Stopwatch.GetTimestamp());
+
+        private void UpdateCheckTimerTick(object _)
+        {
+            try
+            {
+                if (_shuttingDown || _updateChecker == null) return;
+
+                // Debug fast cadence (UPDATEPOLL) overrides the configured hours
+                // and the "On startup only" floor; otherwise honor the setting.
+                long intervalTicks;
+                int debugSeconds = _updateCheckDebugSeconds;
+                if (debugSeconds > 0)
+                {
+                    intervalTicks = Stopwatch.Frequency * debugSeconds;
+                }
+                else
+                {
+                    int hours = Settings?.UpdateCheckIntervalHours ?? 2;
+                    if (hours <= 0) return;   // "On startup only": no background re-check.
+                    intervalTicks = Stopwatch.Frequency * 3600L * hours;
+                }
+
+                long last = System.Threading.Interlocked.Read(ref _lastUpdateCheckTicks);
+                if (Stopwatch.GetTimestamp() - last < intervalTicks) return;
+
+                // Stamp BEFORE the async check so a slow/queued GitHub call can't
+                // let the next 10-min wakeup fire a second overlapping check.
+                MarkUpdateChecked();
+                var token = _updateCheckerCts?.Token ?? System.Threading.CancellationToken.None;
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try { await _updateChecker.CheckAsync(token); }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info($"[TF4ALL] Periodic update check crashed: {ex.Message}");
+                    }
+                });
+            }
+            catch { }
+        }
+
+        /// <summary>Debug (UPDATEPOLL test code): toggle a fast background
+        /// update re-check. When on, the periodic timer fires every
+        /// <paramref name="seconds"/> and re-runs CheckAsync regardless of
+        /// UpdateCheckIntervalHours, so a tester can watch the re-check fire
+        /// (SimHub log shows a repeated "Update check OK" line) within seconds
+        /// instead of hours. Returns the active cadence in seconds, or 0 when
+        /// it toggled OFF (back to the normal 10-min wakeup + configured hours).</summary>
+        public int DebugToggleFastUpdatePolling(int seconds)
+        {
+            if (_updateCheckDebugSeconds > 0)
+            {
+                _updateCheckDebugSeconds = 0;
+                try { _updateCheckTimer?.Change(UpdateCheckPollMs, UpdateCheckPollMs); } catch { }
+                // Drop the simulated release (hides the banner now) and re-poll
+                // GitHub in the background to restore the real up-to-date state.
+                _updateChecker?.DebugClearForcedUpdate();
+                var token = _updateCheckerCts?.Token ?? System.Threading.CancellationToken.None;
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try { await _updateChecker.CheckAsync(token); } catch { }
+                });
+                SimHub.Logging.Current.Info("[TF4ALL] Debug update polling OFF (normal cadence; simulated release cleared).");
+                return 0;
+            }
+            _updateCheckDebugSeconds = Math.Max(1, seconds);
+            // Arm the simulated newer release. It does NOT take effect now: only
+            // the next background CheckAsync applies it (see UpdateChecker), so
+            // the banner is absent until a re-check discovers it on its own.
+            if (_updateChecker != null) _updateChecker.DebugForceUpdateAvailable = true;
+            int periodMs = Math.Max(1000, _updateCheckDebugSeconds * 1000);
+            // Measure the first debug re-check from now so it visibly fires one
+            // interval later (not instantly off the older startup stamp).
+            MarkUpdateChecked();
+            try { _updateCheckTimer?.Change(periodMs, periodMs); } catch { }
+            SimHub.Logging.Current.Info($"[TF4ALL] Debug update polling ON: every {_updateCheckDebugSeconds}s (will surface a simulated newer release).");
+            return _updateCheckDebugSeconds;
+        }
 
         // ---- "NEW" badges + changelog banner ----
 
@@ -2420,7 +2590,7 @@ namespace TrueforceForAll.Plugin
             if (Settings.SeenEffects == null) Settings.SeenEffects = new List<string>();
             if (Settings.SeenEffects.Contains(effectId)) return;
             Settings.SeenEffects.Add(effectId);
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
         }
 
         /// <summary>Returns every changelog version strictly newer than the
@@ -2501,7 +2671,7 @@ namespace TrueforceForAll.Plugin
             string current = CurrentVersionString();
             if (Settings.LastSeenVersion == current) return;
             Settings.LastSeenVersion = current;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
         }
 
         // ---- Word-of-mouth prompt ----------------------------------------
@@ -2539,7 +2709,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null || Settings.ShareCtaDismissed) return;
             Settings.ShareCtaDismissed = true;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
         }
 
         // Called once per producer iteration. Adds wall time to the odometer
@@ -2570,22 +2740,59 @@ namespace TrueforceForAll.Plugin
             // enough to underrun the device ring (audible glitch + ratchet UP).
             // The odometer is already updated in memory above, so the disk flush
             // is not time-sensitive and can run on the thread pool.
-            ScheduleStreamingTimeFlush();
+            ScheduleSettingsFlush();
         }
 
-        // Single-flight background flush of Settings for the streaming odometer.
-        // Skips if a flush is already queued/running (the in-memory
-        // ActiveStreamingSeconds is authoritative; the next interval persists it).
-        private int _streamingFlushInFlight;
-        private void ScheduleStreamingTimeFlush()
+        // Single-flight background flush of Settings. Used by callers on
+        // latency-sensitive threads (streaming odometer on the producer thread,
+        // ring-size auto-ratchet on the audio thread) where the in-memory state
+        // is already updated and the disk write is not time-sensitive. Skips if
+        // a flush is already queued/running; the next flush persists the latest
+        // in-memory state anyway.
+        private int _settingsFlushInFlight;
+        private void ScheduleSettingsFlush()
         {
-            if (System.Threading.Interlocked.Exchange(ref _streamingFlushInFlight, 1) == 1)
+            if (System.Threading.Interlocked.Exchange(ref _settingsFlushInFlight, 1) == 1)
                 return;
             System.Threading.Tasks.Task.Run(() =>
             {
-                try { this.SaveCommonSettings("GeneralSettings", Settings); }
+                try { PersistSettingsCore(); }
                 catch { }
-                finally { System.Threading.Interlocked.Exchange(ref _streamingFlushInFlight, 0); }
+                finally { System.Threading.Interlocked.Exchange(ref _settingsFlushInFlight, 0); }
+            });
+        }
+
+        // Persist CarFacts changes OFF the telemetry/data thread, the same reason
+        // ScheduleSettingsFlush exists: SaveCommonSettings does a full
+        // serialize + backup rotation + synchronous disk write, which must not
+        // run inline on the producer thread. The serialize-vs-mutation exclusion
+        // now lives inside PersistSettingsCore (which takes _carFactsLock), so
+        // this loop no longer needs its own lock. A "dirty" flag is re-checked
+        // after each pass so the latest mutation is always persisted even if it
+        // lands while a flush is in flight.
+        private int _carFactsFlushRunning;
+        private int _carFactsDirty;
+        private void ScheduleCarFactsFlush()
+        {
+            System.Threading.Interlocked.Exchange(ref _carFactsDirty, 1);
+            if (System.Threading.Interlocked.Exchange(ref _carFactsFlushRunning, 1) == 1) return;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    while (System.Threading.Interlocked.Exchange(ref _carFactsDirty, 0) == 1)
+                    {
+                        try { PersistSettingsCore(); } catch { }
+                    }
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref _carFactsFlushRunning, 0);
+                    // A mutation that arrived during the final drain would have
+                    // set dirty after our last check; re-arm so it isn't lost.
+                    if (System.Threading.Volatile.Read(ref _carFactsDirty) == 1)
+                        ScheduleCarFactsFlush();
+                }
             });
         }
 
@@ -2606,7 +2813,7 @@ namespace TrueforceForAll.Plugin
             {
                 _gcPrevLatencyMode = System.Runtime.GCSettings.LatencyMode;
                 System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
-                SimHub.Logging.Current.Info("[Trueforce] GC latency mode -> SustainedLowLatency (streaming).");
+                SimHub.Logging.Current.Info("[TF4ALL] GC latency mode -> SustainedLowLatency (streaming).");
             }
             catch { System.Threading.Interlocked.Exchange(ref _gcLowLatencyActive, 0); }
         }
@@ -2617,7 +2824,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 System.Runtime.GCSettings.LatencyMode = _gcPrevLatencyMode;
-                SimHub.Logging.Current.Info("[Trueforce] GC latency mode restored.");
+                SimHub.Logging.Current.Info("[TF4ALL] GC latency mode restored.");
             }
             catch { }
         }
@@ -2642,6 +2849,11 @@ namespace TrueforceForAll.Plugin
             try { _feedbackInjector?.Stop(); } catch { }
             _feedbackInjector = null;
 
+            // Stop the background update re-poll so it can't fire into a dead
+            // instance after teardown.
+            try { _updateCheckTimer?.Dispose(); } catch { }
+            _updateCheckTimer = null;
+
             // Cancel any in-flight update check / installer download so they
             // don't outlive the plugin and write to a dead instance.
             try { _updateCheckerCts?.Cancel(); } catch { }
@@ -2659,7 +2871,7 @@ namespace TrueforceForAll.Plugin
             // can't resurrect a device after we've torn one down. It already
             // checks _shuttingDown after CleanupDevice, so it bails fast; the
             // bound just prevents a hang if a bring-up is mid-init-sequence.
-            System.Threading.SpinWait.SpinUntil(() => !_recoveryInProgress, 1000);
+            System.Threading.SpinWait.SpinUntil(() => System.Threading.Volatile.Read(ref _recoveryInProgress) == 0, 1000);
 
             try { _capturePollThread?.Join(2000); } catch { }
             _capturePollThread = null;
@@ -2687,7 +2899,11 @@ namespace TrueforceForAll.Plugin
             }
 
             // UI changes are written through to Settings on the fly, so just save.
-            if (Settings != null) this.SaveCommonSettings("GeneralSettings", Settings);
+            // Guarded like the ~60 other SaveCommonSettings call sites: a throw here
+            // (disk full / settings file locked) must not skip the remaining disposes
+            // below (helper-process kill, device cleanup), which on a plugin-disable
+            // (no host exit) would orphan the LoopbackHelper child process.
+            try { if (Settings != null) PersistSettingsCore(); } catch { }
 
             try { _rpmLeds?.Dispose(); } catch { }
             _rpmLeds = null;
@@ -2713,14 +2929,14 @@ namespace TrueforceForAll.Plugin
 
             try { _producerThread?.Join(2000); } catch { }
             if (_producerThread != null && _producerThread.IsAlive)
-                SimHub.Logging.Current.Warn("[Trueforce] Producer thread did not exit cleanly.");
+                SimHub.Logging.Current.Warn("[TF4ALL] Producer thread did not exit cleanly.");
             _producerThread = null;
 
             try { _device?.ClearStream(); } catch { }
             // Brief pause so the centre-wheel samples drain to the device.
             Thread.Sleep(60);
             CleanupDevice();
-            SimHub.Logging.Current.Info("[Trueforce] Plugin stopped.");
+            SimHub.Logging.Current.Info("[TF4ALL] Plugin stopped.");
         }
 
         public void DataUpdate(PluginManager pluginManager, ref GameData data)
@@ -2739,6 +2955,28 @@ namespace TrueforceForAll.Plugin
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
             }
+
+            // Continuous (telemetry-independent) tick: settle sustained effects
+            // when the telemetry feed goes stale. Effects like the engine pulse,
+            // rev/pit limiter, DRS hum, and traction-loss buzz hold a steady
+            // amplitude set by the last frame; they only drop to silence on a
+            // received frame (e.g. engine-off). When the source stops emitting
+            // entirely (the game closed mid-session, crashed, or its shared-
+            // memory page froze), no such frame ever arrives and the wheel keeps
+            // playing the last sensation forever. Switching games and back used
+            // to be the only way out. Detect the gap here, on a tick that keeps
+            // running after frames stop, and tell those effects to fall silent.
+            long stamp = System.Threading.Interlocked.Read(ref _lastFrameTicks);
+            if (stamp != 0 && !_telemetryStalled
+                && Stopwatch.GetTimestamp() - stamp > FrameStallTicks)
+            {
+                _telemetryStalled = true;
+                SettleEffectsOnStall();
+            }
+
+            // Issue #13 test path: when StopStreamOnPause is on, hand the wheel
+            // fully back to the game while paused (see UpdateStopStreamOnPauseGate).
+            UpdateStopStreamOnPauseGate();
 
             // First time we see telemetry for a real game in a session
             // (game != null), nudge the networked-welcome modal so users
@@ -2765,7 +3003,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Init-side welcome dispatch failed: " + ex.Message);
+                        "[TF4ALL] Init-side welcome dispatch failed: " + ex.Message);
                 }
             }
 
@@ -2778,7 +3016,12 @@ namespace TrueforceForAll.Plugin
             // (IsKnownGameProcessRunning) has a target to fuzzy-match against
             // after a pause nulls _activeGame.
             if (!string.IsNullOrEmpty(gameName)) _lastNamedGame = gameName;
-            if (gameName != _activeGame)
+            // While offline-editing a CAR, _activeGame is pinned to that car's game
+            // (EnterOfflineEditCar) so the Car-facts panel keys against the right
+            // (game, carId). IsOfflineEditing is keyed on the PRESET-edit flag, so it
+            // doesn't cover a car edit; without !IsOfflineEditingCar here the block
+            // would stomp the pin AND fire ApplyGamePreset over the edit baseline.
+            if (gameName != _activeGame && !IsOfflineEditingCar)
             {
                 _activeGame = gameName;
                 SwapTelemetrySource(gameName);
@@ -2795,7 +3038,7 @@ namespace TrueforceForAll.Plugin
                 {
                     ApplyGamePreset(snap);
                     _activePresetName = presetName;
-                    SimHub.Logging.Current.Info($"[Trueforce] Loaded preset '{presetName}' as default for '{gameName}'.");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Loaded preset '{presetName}' as default for '{gameName}'.");
                 }
                 else if (!IsOfflineEditing
                     && !string.IsNullOrEmpty(gameName)
@@ -2834,9 +3077,9 @@ namespace TrueforceForAll.Plugin
                         if (Settings.GameEnabled == null)
                             Settings.GameEnabled = new Dictionary<string, bool>();
                         Settings.GameEnabled[gameName] = false;
-                        try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                        try { PersistSettingsCore(); } catch { }
                         SimHub.Logging.Current.Info(
-                            $"[Trueforce] Auto-disabling for '{gameName}' (ships native Trueforce). Re-enable manually if you prefer our stream.");
+                            $"[TF4ALL] Auto-disabling for '{gameName}' (ships native Trueforce). Re-enable manually if you prefer our stream.");
                     }
                     else { wantEnabled = true; }
                     if (Settings.PluginEnabled != wantEnabled)
@@ -3010,10 +3253,11 @@ namespace TrueforceForAll.Plugin
                         // then stayed "not detected" until SimHub restarted (which
                         // re-runs the ungated startup bring-up). The agent does not
                         // hold the wheel's MI_02 Trueforce interface.
-                        if (System.Diagnostics.Process.GetProcessesByName(GHubProcessName).Length > 0)
-                        {
-                            running = true;
-                        }
+                        var ghubProcs = System.Diagnostics.Process.GetProcessesByName(GHubProcessName);
+                        if (ghubProcs.Length > 0) running = true;
+                        // Dispose the snapshot Process objects so their handles aren't
+                        // left to the finalizer on every 5s check while G HUB is open.
+                        foreach (var gp in ghubProcs) { try { gp.Dispose(); } catch { } }
                     }
                     catch { /* process enumeration can fail under some sandbox conditions; treat as not-running */ }
                     if (running != _gHubLastLoggedState)
@@ -3021,10 +3265,10 @@ namespace TrueforceForAll.Plugin
                         _gHubLastLoggedState = running;
                         SimHub.Logging.Current.Info(
                             running
-                                ? "[Trueforce] Logitech G HUB detected. It claims the wheel's HID interface and blocks Trueforce. Close G HUB and restart SimHub."
-                                : "[Trueforce] Logitech G HUB no longer detected. Wheel access should be available again.");
+                                ? "[TF4ALL] Logitech G HUB detected. It claims the wheel's HID interface and blocks Trueforce. Close G HUB and restart SimHub."
+                                : "[TF4ALL] Logitech G HUB no longer detected. Wheel access should be available again.");
                         SimHub.Logging.Current.Info(
-                            "[Trueforce] Logitech processes running: " + SnapshotLogitechProcesses());
+                            "[TF4ALL] Logitech processes running: " + SnapshotLogitechProcesses());
                     }
                     _isGHubRunning = running;
                 }
@@ -3112,8 +3356,13 @@ namespace TrueforceForAll.Plugin
                 double r = _lastSimHubRedlineRpm, m = _lastSimHubMaxRpm;
                 if (r > 100.0 && (m <= 100.0 || (r <= m * 1.02 && r >= m * 0.5)))
                 {
-                    Settings.GamesWithRedline.Add(_activeGame);
-                    PersistSettings();
+                    // Structural mutation on the data thread: hold _carFactsLock so a
+                    // concurrent settings serialize can't enumerate the set mid-Add.
+                    lock (_carFactsLock) { Settings.GamesWithRedline.Add(_activeGame); }
+                    // Flush off-thread (this runs on the data tick; the disk write is
+                    // not time-sensitive). GamesWithRedline is backup-Excluded, so
+                    // skipping PersistSettings' auto-backup arm is correct here.
+                    ScheduleSettingsFlush();
                 }
             }
         }
@@ -3126,6 +3375,11 @@ namespace TrueforceForAll.Plugin
         /// break the rest of the haptic pipeline.</summary>
         private void DispatchFrame(TelemetryFrame frame)
         {
+            // Freshness stamp for the stall watchdog in DataUpdate. A real frame
+            // just arrived, so clear the stall latch and re-arm the timer.
+            System.Threading.Interlocked.Exchange(ref _lastFrameTicks, Stopwatch.GetTimestamp());
+            _telemetryStalled = false;
+
             // Enhanced sources (AC MMF, etc.) deliberately skip slow-rate
             // fields whose physics-rate fidelity wouldn't be perceptible.
             // Overlay them from the cached SimHub reading so effects see a
@@ -3204,7 +3458,7 @@ namespace TrueforceForAll.Plugin
                     try { _effects[i].OnTelemetry(frame); }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Error($"[Trueforce] {_effects[i].Name} telemetry error", ex);
+                        SimHub.Logging.Current.Error($"[TF4ALL] {_effects[i].Name} telemetry error", ex);
                     }
                 }
             }
@@ -3218,12 +3472,29 @@ namespace TrueforceForAll.Plugin
             // known value with a noise dip. Cyl, MaxRpm, and RedlineRpm
             // are tracked independently because games surface different
             // subsets - signature reflects what THIS game gives us.
-            if (EnginePulse != null)
+            //
+            // Gated on the session being LIVE: when the game pauses (Forza
+            // alt-tab / menu) it can keep streaming with stock specs, which
+            // would clobber the on-track tuned MaxRpm and flip the variant
+            // signature back to a stale tune. Holding the last live values
+            // through a pause keeps editing (e.g. setting a redline while
+            // alt-tabbed) pinned to the variant the user was actually driving.
+            bool sessionLive = _telemetrySource?.IsSessionActive ?? true;
+            // ...and never while offline-editing a car: _activeCarId is frozen to
+            // the edit car, but live frames are for the car actually running, so
+            // stamping Observed*/signature here would write the running car's
+            // telemetry into the frozen edit car's CarFacts. The car-change block
+            // already freezes on IsOfflineEditingCar; mirror that here.
+            if (EnginePulse != null && sessionLive && !IsOfflineEditingCar)
             {
                 if (frame.NumCylinders is int liveCyl && liveCyl >= 1 && liveCyl <= 16)
                     EnginePulse.ObservedCyl = liveCyl;
                 if (frame.MaxRpm > 100)     EnginePulse.ObservedMaxRpm     = frame.MaxRpm;
-                if (frame.RedlineRpm > 100) EnginePulse.ObservedRedlineRpm = frame.RedlineRpm;
+                // Per-gear redline is excluded from the variant signature (it
+                // changes every shift; including it spawns a junk variant per
+                // gear). The buzz still uses frame.RedlineRpm directly.
+                if (frame.RedlineRpm > 100 && !frame.RedlineRpmPerGear)
+                    EnginePulse.ObservedRedlineRpm = frame.RedlineRpm;
 
                 // Mid-session variant-change detection: when the live
                 // signature differs from what we last applied for this
@@ -3239,6 +3510,9 @@ namespace TrueforceForAll.Plugin
                     string liveSig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
                     if (!string.Equals(liveSig, _lastAppliedVariantSignature, StringComparison.Ordinal))
                     {
+                        // Switching variants (tunes) discards an unsaved redline
+                        // draft: it belonged to the previous variant.
+                        if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
                         ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
                     }
                 }
@@ -3267,9 +3541,31 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Error("[Trueforce] RPM-LED telemetry error", ex);
+                    SimHub.Logging.Current.Error("[TF4ALL] RPM-LED telemetry error", ex);
                 }
             }
+        }
+
+        /// <summary>Telemetry feed went stale (the active source stopped
+        /// emitting: game closed, crashed, or its physics page froze). Ask each
+        /// effect that holds a sustained amplitude to fall silent so the wheel
+        /// stops replaying the last frame. Transient effects keep the base
+        /// no-op (they decay on their own). Runs on the DataUpdate tick, which
+        /// keeps firing after frames stop; the source thread is idle in a stall
+        /// so there's no concurrent OnTelemetry to race.</summary>
+        private void SettleEffectsOnStall()
+        {
+            var fx = _effects;
+            if (fx == null) return;
+            for (int i = 0; i < fx.Length; i++)
+            {
+                try { fx[i].OnTelemetryStall(); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error($"[TF4ALL] {fx[i].Name} stall-settle error", ex);
+                }
+            }
+            SimHub.Logging.Current.Info("[TF4ALL] Telemetry stalled; silenced sustained effects.");
         }
 
         /// <summary>Run the simulated rev/shift sweep on the rim LEDs (settings
@@ -3414,7 +3710,7 @@ namespace TrueforceForAll.Plugin
                 if (newCap > TrueforceDevice.MaxRingSize) newCap = TrueforceDevice.MaxRingSize;
                 ApplyTfRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet UP: Trueforce ring {oldCap} → {newCap} after {tfDelta} dropout-events/s (~{tfDelta * 20} ms cumulative, sustained 2 windows).");
+                    $"[TF4ALL] Auto-ratchet UP: Trueforce ring {oldCap} → {newCap} after {tfDelta} dropout-events/s (~{tfDelta * 20} ms cumulative, sustained 2 windows).");
                 _tfLastRatchetActionTicks = now;
                 _tfLastActionWasDown = false;
                 _prevTfOverThreshold = false;   // re-arm the 2-window requirement
@@ -3428,7 +3724,7 @@ namespace TrueforceForAll.Plugin
                 if (newCap > AudioCaptureSource.MaxRingSamples) newCap = AudioCaptureSource.MaxRingSamples;
                 ApplyAudioRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet UP: audio ring {oldCap} → {newCap} after {audioDelta} dropout-events/s (~{audioDelta * 20} ms cumulative or laps, sustained 2 windows).");
+                    $"[TF4ALL] Auto-ratchet UP: audio ring {oldCap} → {newCap} after {audioDelta} dropout-events/s (~{audioDelta * 20} ms cumulative or laps, sustained 2 windows).");
                 _audioLastRatchetActionTicks = now;
                 _audioLastActionWasDown = false;
                 _prevAudioOverThreshold = false;   // re-arm the 2-window requirement
@@ -3462,7 +3758,7 @@ namespace TrueforceForAll.Plugin
                 if (newCap < TrueforceDevice.MinRingSize) newCap = TrueforceDevice.MinRingSize;
                 ApplyTfRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet DOWN: Trueforce ring {oldCap} → {newCap} after {RatchetDownQuietMs / 1000} s of quiet.");
+                    $"[TF4ALL] Auto-ratchet DOWN: Trueforce ring {oldCap} → {newCap} after {RatchetDownQuietMs / 1000} s of quiet.");
                 _tfLastRatchetActionTicks = now;
                 _tfLastActionWasDown = true;
                 // Fire the event on DOWN too so the UI banner stays
@@ -3483,7 +3779,7 @@ namespace TrueforceForAll.Plugin
                 if (newCap < AudioCaptureSource.MinRingSamples) newCap = AudioCaptureSource.MinRingSamples;
                 ApplyAudioRingSize(newCap);
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Auto-ratchet DOWN: audio ring {oldCap} → {newCap} after {RatchetDownQuietMs / 1000} s of quiet.");
+                    $"[TF4ALL] Auto-ratchet DOWN: audio ring {oldCap} → {newCap} after {RatchetDownQuietMs / 1000} s of quiet.");
                 _audioLastRatchetActionTicks = now;
                 _audioLastActionWasDown = true;
                 FireRatchetEvent(false, oldCap, newCap);
@@ -3510,7 +3806,12 @@ namespace TrueforceForAll.Plugin
                                     TrueforceDevice.DefaultRingSize);
             Settings.Performance.TfRingSize = sane;
             _device.SetRingCapacity(sane);
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            // Persist OFF this thread. The auto-ratchet calls this from the
+            // realtime producer thread; a synchronous serialize + disk write
+            // here stalls the ring at exactly the moment the system is already
+            // struggling (which is what triggered the ratchet). The live ring
+            // capacity is applied above; the disk flush is not time-sensitive.
+            ScheduleSettingsFlush();
         }
 
         /// <summary>Apply a new audio ring size to the live capture source and persist.</summary>
@@ -3521,7 +3822,9 @@ namespace TrueforceForAll.Plugin
                                     AudioCaptureSource.MaxRingSamples, AudioCaptureSource.DefaultRingSamples);
             Settings.Performance.AudioRingSize = sane;
             _audio.SetRingCapacity(sane);
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            // Same as ApplyTfRingSize: never write the settings file from the
+            // realtime producer thread.
+            ScheduleSettingsFlush();
         }
 
         /// <summary>Reset both rings to the smallest configured value. Auto mode
@@ -3537,7 +3840,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings?.Performance == null) return;
             Settings.Performance.Mode = mode;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
         }
 
         /// <summary>Clamp <paramref name="value"/> to [min, max] and round down
@@ -3579,10 +3882,39 @@ namespace TrueforceForAll.Plugin
 
         // Save without arming auto-sync. Used by the post-upload revision stamp so the
         // stamp's persist doesn't re-trigger another auto-backup cycle.
+        //
+        // THE settings-serialize choke point: every SaveCommonSettings in the plugin
+        // routes through here (do not call SaveCommonSettings("GeneralSettings", ...)
+        // directly). SaveCommonSettings walks the ENTIRE Settings graph with
+        // Newtonsoft; a structural mutation of any collection in that graph
+        // (EngineVariants, GamesWithRedline, CarOverrides, CommunityFactCache, ...)
+        // on another thread mid-walk throws "Collection was modified" or corrupts
+        // the write. The serialize and those mutations all hold _carFactsLock, so
+        // they can never overlap. Monitor is reentrant, so callers already inside
+        // _carFactsLock (ScheduleCarFactsFlush's drain loop) are fine.
         private void PersistSettingsCore()
         {
             if (Settings == null) return;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            lock (_carFactsLock)
+            {
+                this.SaveCommonSettings("GeneralSettings", Settings);
+            }
+        }
+
+        // Build the backup envelope under _carFactsLock: BuildEnvelope walks the
+        // whole Settings graph (JObject.FromObject), which must not overlap a
+        // structural collection mutation on another thread (same rule as
+        // PersistSettingsCore). The library file reads happen inside the lock
+        // too, which lengthens the hold, but every caller runs on the thread
+        // pool at backup/sync cadence, so a save that lands mid-build just
+        // waits briefly instead of crashing.
+        private BackupEnvelope BuildEnvelopeLocked()
+        {
+            lock (_carFactsLock)
+            {
+                return BackupService.BuildEnvelope(Settings, UserLibraryFolderForBackup(),
+                    Environment.MachineName, DateTime.UtcNow);
+            }
         }
 
         /// <summary>True when the Forza UDP section should be visible in the
@@ -3735,7 +4067,7 @@ namespace TrueforceForAll.Plugin
             {
                 var ac = new AcSharedMemoryTelemetrySource
                 {
-                    Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                    Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                 };
                 try
                 {
@@ -3748,7 +4080,7 @@ namespace TrueforceForAll.Plugin
                     if (!silent)
                     {
                         SimHub.Logging.Current.Info(
-                            $"[Trueforce] AC enhanced source unavailable ({ex.GetType().Name}): {ex.Message}; falling back to SimHub.");
+                            $"[TF4ALL] AC enhanced source unavailable ({ex.GetType().Name}): {ex.Message}; falling back to SimHub.");
                     }
                 }
             }
@@ -3770,7 +4102,7 @@ namespace TrueforceForAll.Plugin
                         var forwardTo = BuildForzaForwardEndpoint(Settings.Forza);
                         var fz = new ForzaUdpTelemetrySource(Settings.Forza.Port, bindIp, forwardTo)
                         {
-                            Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                            Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                         };
                         fz.Start();
                         _forzaUdp = fz;
@@ -3780,7 +4112,7 @@ namespace TrueforceForAll.Plugin
                         if (!silent)
                         {
                             SimHub.Logging.Current.Info(
-                                $"[Trueforce] Forza UDP source unavailable on port {Settings.Forza.Port} " +
+                                $"[TF4ALL] Forza UDP source unavailable on port {Settings.Forza.Port} " +
                                 $"({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
                                 "If another listener (SimHub itself, Sim Racing Studio) holds the port, change Trueforce's port to a free one and re-point Forza's Data Out to it.");
                         }
@@ -3821,7 +4153,7 @@ namespace TrueforceForAll.Plugin
                 }
 
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Telemetry source: {newSource.Name} (enhanced={newSource.IsEnhanced}).");
+                    $"[TF4ALL] Telemetry source: {newSource.Name} (enhanced={newSource.IsEnhanced}).");
             }
 
             // Leaving Forza: tear down the keep-alive UDP listener now that the
@@ -3859,7 +4191,7 @@ namespace TrueforceForAll.Plugin
                     _discoveryNextAttemptTicks   = 0;
                     _discoverySourceKey = fz;
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Forza telemetry now reaching the plugin; using the enhanced Forza (UDP) source.");
+                        "[TF4ALL] Forza telemetry now reaching the plugin; using the enhanced Forza (UDP) source.");
                 }
                 _forzaOnSimHubFallback = false;
                 return;
@@ -3877,7 +4209,7 @@ namespace TrueforceForAll.Plugin
                     _simHubSource.OnFrame = DispatchFrame;
                     _telemetrySource = _simHubSource;
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Forza telemetry is reaching SimHub but not the plugin; using the SimHub fallback. " +
+                        "[TF4ALL] Forza telemetry is reaching SimHub but not the plugin; using the SimHub fallback. " +
                         "Point Forza's Data Out at the plugin (and forward to SimHub) for more detailed road/airborne feel.");
                 }
                 _forzaOnSimHubFallback = true;
@@ -3960,7 +4292,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info($"[Trueforce] Port discovery error: {ex.GetType().Name}: {ex.Message}");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Port discovery error: {ex.GetType().Name}: {ex.Message}");
                 }
                 finally
                 {
@@ -3980,7 +4312,7 @@ namespace TrueforceForAll.Plugin
                 {
                     System.Threading.Volatile.Write(ref _discoveredAlternatePort, hit);
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] Detected {kind} packets on alternate port {hit}.");
+                        $"[TF4ALL] Detected {kind} packets on alternate port {hit}.");
                     try { AlternatePortDiscovered?.Invoke(kind, hit); } catch { }
                 }
             });
@@ -4056,7 +4388,7 @@ namespace TrueforceForAll.Plugin
         public void ApplyForzaSettings()
         {
             if (Settings?.Forza == null) return;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
 
             // Test against the keep-alive listener, not the active source: while
             // on the SimHub fallback _telemetrySource is SimHub even though a
@@ -4151,15 +4483,22 @@ namespace TrueforceForAll.Plugin
 
         // Discard a car's UNSAVED draft (on car change): restore its in-memory
         // override from the persisted baseline, or drop it if nothing was saved.
+        // Runs on the data thread's car-change path, so the structural mutation
+        // of CarOverrides holds _carFactsLock: a concurrent settings serialize
+        // (UI save, background flush) enumerating the dictionary mid-add/remove
+        // would throw "Collection was modified".
         private void DiscardUnsavedCarDraft(string carId)
         {
             if (string.IsNullOrEmpty(carId) || Settings?.CarOverrides == null) return;
-            if (_lastPersistedCarOverrides != null
-                && _lastPersistedCarOverrides.TryGetValue(carId, out var saved)
-                && saved != null && !saved.IsEmpty)
-                Settings.CarOverrides[carId] = CloneCarOverride(saved);
-            else
-                Settings.CarOverrides.Remove(carId);
+            lock (_carFactsLock)
+            {
+                if (_lastPersistedCarOverrides != null
+                    && _lastPersistedCarOverrides.TryGetValue(carId, out var saved)
+                    && saved != null && !saved.IsEmpty)
+                    Settings.CarOverrides[carId] = CloneCarOverride(saved);
+                else
+                    Settings.CarOverrides.Remove(carId);
+            }
         }
 
         // Revert THIS section's draft to the car's saved state (persisted
@@ -4236,7 +4575,7 @@ namespace TrueforceForAll.Plugin
                 else
                     _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
             }
-            SimHub.Logging.Current.Info($"[Trueforce] Cleared {kind} override for '{_activeCarId}' (follows game default).");
+            SimHub.Logging.Current.Info($"[TF4ALL] Cleared {kind} override for '{_activeCarId}' (follows game default).");
             return true;
         }
 
@@ -4347,36 +4686,6 @@ namespace TrueforceForAll.Plugin
         public bool IsRevLimiterOverridden => GetActiveCarOverride()?.RevLimiter   != null;
         public bool IsAudioOverridden      => GetActiveCarOverride()?.AudioCapture != null;
 
-        // ----- per-section: toggle override on/off (snapshots globals when on) -----
-        public void SetEngineOverride(bool on)     => ToggleSectionOverride(on, get: o => o.EnginePulse,  set: (o, v) => o.EnginePulse  = v, snapshot: () => Clone(Settings.EnginePulse));
-        public void SetBumpsOverride(bool on)      => ToggleSectionOverride(on, get: o => o.RoadBumps,    set: (o, v) => o.RoadBumps    = v, snapshot: () => Clone(Settings.RoadBumps));
-        public void SetTractionOverride(bool on)   => ToggleSectionOverride(on, get: o => o.TractionLoss, set: (o, v) => o.TractionLoss = v, snapshot: () => Clone(Settings.TractionLoss));
-        public void SetShiftOverride(bool on)      => ToggleSectionOverride(on, get: o => o.GearShift,    set: (o, v) => o.GearShift    = v, snapshot: () => Clone(Settings.GearShift));
-        public void SetAbsOverride(bool on)        => ToggleSectionOverride(on, get: o => o.AbsClick,     set: (o, v) => o.AbsClick     = v, snapshot: () => Clone(Settings.AbsClick));
-        public void SetPitLimiterOverride(bool on) => ToggleSectionOverride(on, get: o => o.PitLimiter,   set: (o, v) => o.PitLimiter   = v, snapshot: () => Clone(Settings.PitLimiter));
-        public void SetDrsOverride(bool on)        => ToggleSectionOverride(on, get: o => o.Drs,          set: (o, v) => o.Drs          = v, snapshot: () => Clone(Settings.Drs));
-        public void SetCollisionOverride(bool on)  => ToggleSectionOverride(on, get: o => o.Collision,    set: (o, v) => o.Collision    = v, snapshot: () => Clone(Settings.Collision));
-        public void SetRevLimiterOverride(bool on) => ToggleSectionOverride(on, get: o => o.RevLimiter,   set: (o, v) => o.RevLimiter   = v, snapshot: () => Clone(Settings.RevLimiter));
-        public void SetAudioOverride(bool on)      => ToggleSectionOverride(on, get: o => o.AudioCapture, set: (o, v) => o.AudioCapture = v, snapshot: () => CloneOrNull(Settings.AudioCapture));
-
-        private void ToggleSectionOverride<T>(bool on,
-            Func<CarOverride, T> get,
-            Action<CarOverride, T> set,
-            Func<T> snapshot) where T : class
-        {
-            if (string.IsNullOrEmpty(_activeCarId) || Settings == null) return;
-            if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr))
-            {
-                if (!on) return;     // toggling off when none exists is a no-op
-                ovr = new CarOverride();
-                Settings.CarOverrides[_activeCarId] = ovr;
-            }
-            set(ovr, on ? snapshot() : null);
-            if (ovr.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
-            PersistActiveCarOverride();
-            ApplyActiveCarOverride();
-        }
-
         // ----- write helpers used by the UI sliders -----
         // Each routes to the per-car section if it's overridden, else to the global section.
         public EnginePulseSettings  ActiveEngine   => GetActiveCarOverride()?.EnginePulse  ?? Settings.EnginePulse;
@@ -4449,9 +4758,7 @@ namespace TrueforceForAll.Plugin
 
             // Custom-engine resolution. When Layout == Custom, look up the
             // referenced entry in the global library and write its pattern /
-            // electric flag into the runtime effect. Missing entries fall
-            // back to silence (CustomPattern=null) and a logged warning so
-            // the user notices and can repick.
+            // electric flag into the runtime effect.
             CustomEngineDef activeCustom = null;
             if (s.Layout == Effects.EngineLayout.Custom
                 && !string.IsNullOrEmpty(s.CustomEngineId)
@@ -4465,18 +4772,26 @@ namespace TrueforceForAll.Plugin
                         break;
                     }
                 }
-                if (activeCustom == null)
-                {
-                    SimHub.Logging.Current.Info(
-                        $"[Trueforce] Preset references custom engine Id '{s.CustomEngineId}' "
-                        + "that's no longer in the library, falling back to silence.");
-                }
             }
             EnginePulse.ActiveCustomIsElectric = activeCustom != null && activeCustom.IsElectric;
             EnginePulse.CustomPattern = activeCustom != null && !activeCustom.IsElectric
                                         && !string.IsNullOrWhiteSpace(activeCustom.Pattern)
                 ? Effects.FiringPatternDb.ParseCustom(activeCustom.Pattern)
                 : null;
+
+            // Runtime safety net: a Custom layout we couldn't resolve to a real
+            // engine (deleted out from under the preset, dangling after a sync
+            // restore, or never picked) plays as Auto instead of going silent,
+            // so the wheel keeps a sensible resolver/telemetry-driven engine feel
+            // until the user repicks. Deleting an engine also eagerly rewrites
+            // stored presets to Auto; this covers anything that path missed.
+            if (s.Layout == Effects.EngineLayout.Custom && activeCustom == null)
+            {
+                EnginePulse.Layout = Effects.EngineLayout.Auto;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Custom engine Id '{s.CustomEngineId}' is not in the library; "
+                    + "falling back to Auto engine layout.");
+            }
 
             // ElectricMode cascade: if the active custom is electric, its mode
             // wins (a per-custom override of the per-preset default). Else
@@ -4572,97 +4887,6 @@ namespace TrueforceForAll.Plugin
             Collision.RefractoryMs       = SafeMath.SafeInt(s.RefractoryMs, 0, 5000, 100);
             Collision.Waveform           = s.Waveform;
         }
-        // Lazy-migration callback: the effect just computed an
-        // absolute redline from the legacy Threshold-percent and the
-        // observed MaxRpm. Updates the live RevLimiter source (per-car
-        // override beats global), persists the named preset on disk so
-        // the migration survives a re-apply of the same preset name,
-        // and submits the implied redline to the community. Built-in
-        // presets skip the on-disk write (we don't rewrite shipped
-        // factory files outside DevMode); the in-memory live state
-        // still gets the migrated value, so the running session is
-        // correct and a future session re-runs the migration off the
-        // factory Threshold idempotently.
-        private void OnRevLimiterLazyMigrated(int migratedRpm)
-        {
-            if (Settings == null) return;
-            // Source-of-truth = whatever ApplyRevLimiterSettings most
-            // recently read from. ApplyActiveCarOverride determines
-            // that on every car-change.
-            bool fromCar = GetActiveCarOverride()?.RevLimiter != null;
-            var src = fromCar ? GetActiveCarOverride().RevLimiter : Settings.RevLimiter;
-            if (src == null) return;
-            if (src.RedlineRpm.HasValue) return;  // already migrated; defensive
-            src.RedlineRpm = migratedRpm;
-            // Reset Threshold to default so a second pass doesn't
-            // re-migrate using stale percent + (possibly) different
-            // MaxRpm. The slider's default 0.85 is the documented
-            // fallback the effect's resolver also assumes.
-            src.Threshold = 0.85f;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
-
-            // Surgical on-disk persist so the migration sticks across
-            // sessions without forcing the user to press Save. Only
-            // touches the RevLimiter section of the named preset, so
-            // any unrelated in-flight tuning in the live state stays
-            // unsaved (the user controls when that gets committed).
-            try
-            {
-                if (fromCar && _carStore != null && !string.IsNullOrEmpty(_activeCarId))
-                {
-                    string presetName = GetActiveCarPresetName(_activeCarId);
-                    if (!string.IsNullOrEmpty(presetName)
-                        && !(IsCarPresetBuiltin(_activeCarId, presetName) && !DevMode))
-                    {
-                        var loaded = _carStore.LoadAll();
-                        if (loaded != null
-                            && loaded.TryGetValue(_activeCarId, out var perCar)
-                            && perCar != null
-                            && perCar.TryGetValue(presetName, out var entry)
-                            && entry != null && entry.Override != null
-                            && !entry.IsBuiltin)
-                        {
-                            entry.Override.RevLimiter = Clone(src);
-                            _carStore.Save(_activeCarId, presetName,
-                                entry.GameName ?? _activeGame ?? "",
-                                entry.Override, isBuiltin: false,
-                                packName: entry.PackName, author: entry.Author,
-                                description: entry.Description, authorVersion: entry.AuthorVersion);
-                            _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(entry.Override);
-                        }
-                    }
-                }
-                // !fromCar = the migration ran off the GAME preset's
-                // shared RevLimiter, not a per-car override. We must
-                // NOT bake this car's migrated RedlineRpm into the
-                // preset file: any other car sharing the same preset
-                // would inherit Car A's redline (a 7500-RPM 4-cyl
-                // value applied to a 12000-RPM V12). The live in-memory
-                // value is correct for this session via SaveCommonSettings
-                // above; each car-change rebuilds Settings.RevLimiter
-                // from the preset on the next ApplyActiveCarOverride
-                // pass, so the legacy Threshold re-migrates per-car
-                // each session. To stop the re-migration permanently,
-                // the user can save a per-car override on the Effects
-                // tab once telemetry has fed CarFactsRedline through.
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Warn("[Trueforce] Lazy RevLimiter persist failed: " + ex.Message);
-            }
-
-            // Submit to community: a successful migration encoded a
-            // real fact about a real car the user has tuned. The
-            // submission is variant-aware (uses active sig) and
-            // gated by CommunityEnabled in the SubmitX wrappers.
-            if (!string.IsNullOrEmpty(_activeGame) && !string.IsNullOrEmpty(_activeCarId)
-                && migratedRpm >= 500 && migratedRpm <= 25000)
-                SubmitRedlineToCommunity(_activeGame, _activeCarId, migratedRpm);
-            SimHub.Logging.Current.Info(
-                $"[Trueforce] Migrated legacy RevLimiter Threshold -> RedlineRpm={migratedRpm} for "
-                + (_activeCarId ?? "(no car)") + " in " + (_activeGame ?? "(no game)") + ".");
-        }
-
         private void ApplyRevLimiterSettings(RevLimiterSettings s)
         {
             if (RevLimiter == null || s == null) return;
@@ -4673,8 +4897,8 @@ namespace TrueforceForAll.Plugin
             RevLimiter.DutyCycle = SafeMath.SafeFloat(s.DutyCycle, 0.0f, 1.0f, 0.5f);
             RevLimiter.ActiveAmp = SafeMath.SafeFloat(s.ActiveAmp, 0.0f, 10.0f, 1.0f);
             // Threshold is a fraction of MaxRpm (0..1), not absolute RPM.
-            // Kept on the effect as a legacy fallback the unified
-            // resolver can lazy-migrate to RedlineRpm.
+            // It's the Auto-mode source of truth: the resolver derives the
+            // buzz point from Threshold * live MaxRpm so it follows tunes.
             RevLimiter.Threshold = SafeMath.SafeFloat(s.Threshold, 0.0f, 1.0f, 0.85f);
             RevLimiter.RedlineRpm = s.RedlineRpm;
             RevLimiter.RedlineOffsetRpm = s.RedlineOffsetRpm;
@@ -4795,7 +5019,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to load user preset '{kv.Key}': {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Failed to load user preset '{kv.Key}': {ex.Message}");
                 }
             }
             foreach (var kv in UserPresets.GameDefaults)
@@ -4814,7 +5038,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to load built-in preset '{kv.Key}': {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Failed to load built-in preset '{kv.Key}': {ex.Message}");
                 }
             }
             // Self-heal stale or case-drifted user game-default bindings.
@@ -4844,12 +5068,12 @@ namespace TrueforceForAll.Plugin
                 }
                 foreach (var p in rekey)
                 {
-                    SimHub.Logging.Current.Info($"[Trueforce] Game default for '{p.Key}' normalized: '{Settings.GameDefaults[p.Key]}' -> '{p.Value}'.");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Game default for '{p.Key}' normalized: '{Settings.GameDefaults[p.Key]}' -> '{p.Value}'.");
                     Settings.GameDefaults[p.Key] = p.Value;
                 }
                 foreach (var k in stale)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Game default for '{k}' dropped: target '{Settings.GameDefaults[k]}' no longer exists (its preset was renamed or removed).");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Game default for '{k}' dropped: target '{Settings.GameDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.GameDefaults.Remove(k);
                 }
             }
@@ -4870,7 +5094,7 @@ namespace TrueforceForAll.Plugin
             foreach (var reserved in BuiltinPresetStore.ReservedPresetNames)
             {
                 if (Settings.Presets.Remove(reserved))
-                    SimHub.Logging.Current.Info($"[Trueforce] Removed stray reserved preset '{reserved}' from the cache.");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Removed stray reserved preset '{reserved}' from the cache.");
                 var orphans = new List<string>();
                 foreach (var kv in Settings.GameDefaults)
                     if (kv.Value == reserved) orphans.Add(kv.Key);
@@ -4907,7 +5131,7 @@ namespace TrueforceForAll.Plugin
             int defaultsCount = Settings.GameDefaults?.Count ?? 0;
             if (presetsCount == 0 && defaultsCount == 0)
             {
-                SimHub.Logging.Current.Info("[Trueforce] User-preset migration: nothing in the legacy dicts to move.");
+                SimHub.Logging.Current.Info("[TF4ALL] User-preset migration: nothing in the legacy dicts to move.");
                 return;
             }
 
@@ -4935,7 +5159,7 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate user preset '{kv.Key}': {ex.Message}");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Failed to migrate user preset '{kv.Key}': {ex.Message}");
                         failedPresets++;
                     }
                 }
@@ -4966,7 +5190,7 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate game default for '{kv.Key}': {ex.Message}");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Failed to migrate game default for '{kv.Key}': {ex.Message}");
                     }
                 }
             }
@@ -4981,7 +5205,7 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} factory built-in name(s) + {skippedFactoryDefaults} factory-bound default(s); {failedPresets} failed).");
+                $"[TF4ALL] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} factory built-in name(s) + {skippedFactoryDefaults} factory-bound default(s); {failedPresets} failed).");
         }
 
         /// <summary>Rename any leftover bare-"Trueforce" car backup folders to
@@ -5010,17 +5234,17 @@ namespace TrueforceForAll.Plugin
                         string dst = Path.Combine(parent, newName);
                         if (Directory.Exists(dst)) continue; // collision: leave the old one alone
                         Directory.Move(path, dst);
-                        SimHub.Logging.Current.Info($"[Trueforce] Renamed legacy backup '{name}' -> '{newName}' (on-brand).");
+                        SimHub.Logging.Current.Info($"[TF4ALL] Renamed legacy backup '{name}' -> '{newName}' (on-brand).");
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Couldn't rename legacy backup '{Path.GetFileName(path)}': {ex.Message}");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Couldn't rename legacy backup '{Path.GetFileName(path)}': {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] RebrandLegacyCarsBackup failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] RebrandLegacyCarsBackup failed: {ex.Message}");
             }
         }
 
@@ -5053,7 +5277,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Folder restructure failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Folder restructure failed: {ex.Message}");
             }
         }
 
@@ -5078,17 +5302,17 @@ namespace TrueforceForAll.Plugin
                     string parked = from + $".legacy-{ts}";
                     Directory.Move(from, parked);
                     SimHub.Logging.Current.Warn(
-                        $"[Trueforce] Folder restructure ({role}): destination already present at '{to}', parked the legacy source as '{Path.GetFileName(parked)}'. Its presets are preserved on disk but not loaded; merge them manually if needed.");
+                        $"[TF4ALL] Folder restructure ({role}): destination already present at '{to}', parked the legacy source as '{Path.GetFileName(parked)}'. Its presets are preserved on disk but not loaded; merge them manually if needed.");
                     return;
                 }
                 string parent = Path.GetDirectoryName(to);
                 if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
                 Directory.Move(from, to);
-                SimHub.Logging.Current.Info($"[Trueforce] Folder restructure ({role}): moved '{from}' -> '{to}'.");
+                SimHub.Logging.Current.Info($"[TF4ALL] Folder restructure ({role}): moved '{from}' -> '{to}'.");
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Folder restructure ({role}) failed for '{from}': {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Folder restructure ({role}) failed for '{from}': {ex.Message}");
             }
         }
 
@@ -5136,7 +5360,7 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate car file '{Path.GetFileName(path)}': {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Failed to migrate car file '{Path.GetFileName(path)}': {ex.Message}");
                             failedCars++;
                         }
                     }
@@ -5153,13 +5377,13 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Couldn't rename legacy TrueforceCars folder: {ex.Message}");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Couldn't rename legacy TrueforceCars folder: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Car-file migration failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Car-file migration failed: {ex.Message}");
             }
 
             // Car defaults: carry over only user-pointing entries. A binding
@@ -5170,7 +5394,12 @@ namespace TrueforceForAll.Plugin
             int skippedFactoryCarDefaults = 0;
             if (Settings.CarDefaults != null)
             {
-                foreach (var kv in Settings.CarDefaults)
+                // Enumerate a snapshot: the data-tick thread can structurally add to
+                // Settings.CarDefaults (car-change -> ReloadActiveCarOverrideFromStore)
+                // while this migration runs, which would throw "Collection was
+                // modified". Per-iteration work here is heavy (file writes), so the
+                // copy shrinks the race window to the copy itself. (Mirrors line ~6321.)
+                foreach (var kv in new Dictionary<string, string>(Settings.CarDefaults))
                 {
                     if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
                     // Built-in car preset key in BuiltinPresets.CarPresetJsons is
@@ -5189,7 +5418,7 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Failed to migrate car-default for '{kv.Key}': {ex.Message}");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Failed to migrate car-default for '{kv.Key}': {ex.Message}");
                     }
                 }
                 Settings.CarDefaults.Clear();
@@ -5198,7 +5427,7 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car file(s) + {skippedFactoryCarDefaults} factory-bound default(s); {failedCars} failed).");
+                $"[TF4ALL] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car file(s) + {skippedFactoryCarDefaults} factory-bound default(s); {failedCars} failed).");
         }
 
         // Rewrite legacy "Forza_<n>" identifiers to today's "Car_<n>" form.
@@ -5251,7 +5480,7 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't archive '{path}': {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Legacy-builtin cleanup: couldn't archive '{path}': {ex.Message}");
                         }
                     }
 
@@ -5279,7 +5508,7 @@ namespace TrueforceForAll.Plugin
                             }
                             catch (Exception ex)
                             {
-                                SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't rewrite user game-defaults: {ex.Message}");
+                                SimHub.Logging.Current.Warn($"[TF4ALL] Legacy-builtin cleanup: couldn't rewrite user game-defaults: {ex.Message}");
                             }
                         }
                     }
@@ -5287,7 +5516,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup (games) failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Legacy-builtin cleanup (games) failed: {ex.Message}");
             }
 
             // ---- Cars ----
@@ -5414,7 +5643,7 @@ namespace TrueforceForAll.Plugin
                                         }
                                         catch (Exception ex)
                                         {
-                                            SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't backfill GameName for '{path}': {ex.Message}");
+                                            SimHub.Logging.Current.Warn($"[TF4ALL] Legacy-builtin cleanup: couldn't backfill GameName for '{path}': {ex.Message}");
                                         }
                                     }
                                     continue;
@@ -5434,7 +5663,7 @@ namespace TrueforceForAll.Plugin
                                 }
                                 catch (Exception ex)
                                 {
-                                    SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't archive car '{path}': {ex.Message}");
+                                    SimHub.Logging.Current.Warn($"[TF4ALL] Legacy-builtin cleanup: couldn't archive car '{path}': {ex.Message}");
                                 }
                             }
                         }
@@ -5485,21 +5714,21 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup: couldn't rewrite user car-defaults: {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Legacy-builtin cleanup: couldn't rewrite user car-defaults: {ex.Message}");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Legacy-builtin cleanup (cars) failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Legacy-builtin cleanup (cars) failed: {ex.Message}");
             }
 
             // Force the in-memory user stores to reflect what's on disk now.
             try { UserPresets.Reload(); } catch { }
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Legacy-builtin cleanup: archived {archivedGames} game file(s) + {archivedCars} car file(s); dropped {droppedGameDefaults.Count} game-default binding(s) ({string.Join(",", droppedGameDefaults)}) + {droppedCarDefaults.Count} car-default binding(s) ({string.Join(",", droppedCarDefaults)}); backfilled GameName on {rewroteCarGameNames} retained user car file(s).");
+                $"[TF4ALL] Legacy-builtin cleanup: archived {archivedGames} game file(s) + {archivedCars} car file(s); dropped {droppedGameDefaults.Count} game-default binding(s) ({string.Join(",", droppedGameDefaults)}) + {droppedCarDefaults.Count} car-default binding(s) ({string.Join(",", droppedCarDefaults)}); backfilled GameName on {rewroteCarGameNames} retained user car file(s).");
         }
 
         // Game-preset names we have shipped as factory built-ins in the past
@@ -5601,11 +5830,11 @@ namespace TrueforceForAll.Plugin
                 string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 string dst = src + $".bak-{tag}-{ts}";
                 File.Copy(src, dst, overwrite: false);
-                SimHub.Logging.Current.Info($"[Trueforce] Backed up settings to '{Path.GetFileName(dst)}'.");
+                SimHub.Logging.Current.Info($"[TF4ALL] Backed up settings to '{Path.GetFileName(dst)}'.");
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Settings backup ({tag}) failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Settings backup ({tag}) failed: {ex.Message}");
             }
         }
 
@@ -5769,13 +5998,13 @@ namespace TrueforceForAll.Plugin
                     }
                     else
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Skipping unknown file in imports folder: {Path.GetFileName(path)} (Type='{type}').");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Skipping unknown file in imports folder: {Path.GetFileName(path)} (Type='{type}').");
                         failed++;
                     }
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to import '{Path.GetFileName(path)}': {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Failed to import '{Path.GetFileName(path)}': {ex.Message}");
                     failed++;
                 }
             }
@@ -5798,7 +6027,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Failed to import pack '{Path.GetFileName(path)}': {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Failed to import pack '{Path.GetFileName(path)}': {ex.Message}");
                     failed++;
                 }
             }
@@ -5813,10 +6042,10 @@ namespace TrueforceForAll.Plugin
                     foreach (var p in imported)
                     {
                         try { File.Move(p, Path.Combine(archive, Path.GetFileName(p))); }
-                        catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] Couldn't archive imported file '{p}': {ex.Message}"); }
+                        catch (Exception ex) { SimHub.Logging.Current.Warn($"[TF4ALL] Couldn't archive imported file '{p}': {ex.Message}"); }
                     }
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] Couldn't create imports archive: {ex.Message}"); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[TF4ALL] Couldn't create imports archive: {ex.Message}"); }
             }
 
             int total = gameOk + carOk + packGameOk + packCarOk;
@@ -5825,7 +6054,7 @@ namespace TrueforceForAll.Plugin
             if (packGameOk + packCarOk > 0) msg += $", pack ({packGameOk} game + {packCarOk} car)";
             if (failed > 0) msg += $", {failed} skipped/failed";
             msg += ".";
-            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
             return msg;
         }
 
@@ -5865,20 +6094,20 @@ namespace TrueforceForAll.Plugin
                 {
                     BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
                     BuiltinPresets.Reload();
-                    SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote '{presetName}' to the built-in folder.");
+                    SimHub.Logging.Current.Info($"[TF4ALL] DEV: wrote '{presetName}' to the built-in folder.");
                 }
                 else
                 {
                     BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, presetName, json);
                     UserPresets.Reload();
-                    SimHub.Logging.Current.Info($"[Trueforce] Wrote user preset '{presetName}' to the library folder.");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Wrote user preset '{presetName}' to the library folder.");
                 }
                 RebuildPresetCacheFromFolders();
                 return true;
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Persist '{presetName}' failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Persist '{presetName}' failed: {ex.Message}");
                 return false;
             }
         }
@@ -5897,7 +6126,7 @@ namespace TrueforceForAll.Plugin
                     snap, Newtonsoft.Json.Formatting.Indented);
                 string rel = BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
                 BuiltinPresets.Reload();
-                SimHub.Logging.Current.Info($"[Trueforce] Exported game preset '{presetName}' -> built-in '{rel}'.");
+                SimHub.Logging.Current.Info($"[TF4ALL] Exported game preset '{presetName}' -> built-in '{rel}'.");
                 return true;
             }
             catch (Exception ex) { error = ex.Message; return false; }
@@ -5937,7 +6166,7 @@ namespace TrueforceForAll.Plugin
                 if (!BuiltinPresets.CarDefaultBindings.ContainsKey(carId))
                     BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, diskName);
                 BuiltinPresets.Reload();
-                SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{diskName}' -> built-in '{rel}'.");
+                SimHub.Logging.Current.Info($"[TF4ALL] Exported car preset '{carId}/{diskName}' -> built-in '{rel}'.");
                 return true;
             }
             catch (Exception ex) { error = ex.Message; return false; }
@@ -5954,7 +6183,7 @@ namespace TrueforceForAll.Plugin
             InstallBuiltinPresetsIfMissing();
             LoadAndMigrateCarPresets();
             string msg = $"Imported from folder: {BuiltinPresets.BuiltinPresetJsons.Count} game + {BuiltinPresets.CarPresetJsons.Count} car built-in(s).";
-            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
             return msg;
         }
 
@@ -5985,9 +6214,9 @@ namespace TrueforceForAll.Plugin
                     }
             InstallBuiltinPresetsIfMissing();
             LoadAndMigrateCarPresets();
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             string msg = $"Reseeded from folder: {newSet.Count} game built-in(s) (removed {removed} stale), {BuiltinPresets.CarPresetJsons.Count} car built-in(s).";
-            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
             return msg;
         }
 
@@ -6032,8 +6261,8 @@ namespace TrueforceForAll.Plugin
                 BuiltinPresets.Reload();
                 UserPresets.Reload();
                 LoadAndMigrateCarPresets();
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: normalized {renamed} carId rename(s), {deduped} dedup(s), {dictHits} settings entries.");
+                PersistSettingsCore();
+                SimHub.Logging.Current.Info($"[TF4ALL] DEV: normalized {renamed} carId rename(s), {deduped} dedup(s), {dictHits} settings entries.");
             }
             summary = total == 0
                 ? "No Forza_xxx car ids found. (Already normalized.)"
@@ -6095,7 +6324,7 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] NormalizeForza: failed to rewrite '{path}': {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] NormalizeForza: failed to rewrite '{path}': {ex.Message}");
                         }
                     }
                     // Drop the now-stale Forza_<n> directory (its presets are
@@ -6228,7 +6457,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] NormalizeForza car-defaults '{path}': {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] NormalizeForza car-defaults '{path}': {ex.Message}");
             }
         }
 
@@ -6244,14 +6473,14 @@ namespace TrueforceForAll.Plugin
             // picks up newly-dropped presets/packs (not just at plugin startup).
             string importMsg = null;
             try { importMsg = ImportFromUserImportsFolder(); }
-            catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] Import-folder scan on refresh failed: {ex.Message}"); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn($"[TF4ALL] Import-folder scan on refresh failed: {ex.Message}"); }
             BuiltinPresets.Reload();
             UserPresets.Reload();
             RebuildPresetCacheFromFolders();
             LoadAndMigrateCarPresets();
             string msg = $"Reloaded library from folders: {BuiltinPresets.BuiltinPresetJsons.Count} game + {BuiltinPresets.CarPresetJsons.Count} car built-in(s), {UserPresets.PresetJsons.Count} user game preset(s), {UserPresets.CarPresetJsons.Count} user car preset(s).";
             if (!string.IsNullOrEmpty(importMsg)) msg = importMsg + " " + msg;
-            SimHub.Logging.Current.Info($"[Trueforce] {msg}");
+            SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
             return msg;
         }
 
@@ -6336,8 +6565,8 @@ namespace TrueforceForAll.Plugin
                 BuiltinPresets.Reload();
                 UserPresets.Reload();
                 LoadAndMigrateCarPresets();
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: consolidated {promoted} car default(s) into factory built-ins.");
+                PersistSettingsCore();
+                SimHub.Logging.Current.Info($"[TF4ALL] DEV: consolidated {promoted} car default(s) into factory built-ins.");
             }
 
             summary = promoted == 0
@@ -6386,7 +6615,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Seeded preset write for '{presetName}' failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Seeded preset write for '{presetName}' failed: {ex.Message}");
                 }
             }
 
@@ -6396,7 +6625,7 @@ namespace TrueforceForAll.Plugin
                 ApplyGamePreset(applied);
             _activePresetName = presetName;
             SimHub.Logging.Current.Info(
-                $"[Trueforce] No default for '{gameName}'; created preset '{presetName}' seeded from the Assetto Corsa baseline.");
+                $"[TF4ALL] No default for '{gameName}'; created preset '{presetName}' seeded from the Assetto Corsa baseline.");
         }
 
         // Deep-clone a snapshot via JSON round-trip so the new game's preset
@@ -6555,7 +6784,10 @@ namespace TrueforceForAll.Plugin
             {
                 var rekey = new List<KeyValuePair<string, string>>();
                 var stale = new List<string>();
-                foreach (var kv in Settings.CarDefaults)
+                // Snapshot: this runs on the library-reload/import path which can
+                // overlap a data-tick car-change writing Settings.CarDefaults; the
+                // copy avoids a "Collection was modified" throw during enumeration.
+                foreach (var kv in new Dictionary<string, string>(Settings.CarDefaults))
                 {
                     if (string.IsNullOrEmpty(kv.Value)) continue;
                     if (!loaded.TryGetValue(kv.Key, out var perCar)) { stale.Add(kv.Key); continue; }
@@ -6571,12 +6803,12 @@ namespace TrueforceForAll.Plugin
                 }
                 foreach (var p in rekey)
                 {
-                    SimHub.Logging.Current.Info($"[Trueforce] Car default for '{p.Key}' normalized: '{Settings.CarDefaults[p.Key]}' -> '{p.Value}'.");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Car default for '{p.Key}' normalized: '{Settings.CarDefaults[p.Key]}' -> '{p.Value}'.");
                     Settings.CarDefaults[p.Key] = p.Value;
                 }
                 foreach (var k in stale)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Car default for '{k}' dropped: target '{Settings.CarDefaults[k]}' no longer exists (its preset was renamed or removed).");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Car default for '{k}' dropped: target '{Settings.CarDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.CarDefaults.Remove(k);
                 }
             }
@@ -6615,7 +6847,7 @@ namespace TrueforceForAll.Plugin
 
             if (migrated > 0)
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Car presets: migrated {migrated} legacy entries.");
+                    $"[TF4ALL] Car presets: migrated {migrated} legacy entries.");
         }
 
         // Add the built-in car presets (loaded from the built-in folder via
@@ -6658,7 +6890,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Skipping malformed built-in car preset '{kv.Key}': {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Skipping malformed built-in car preset '{kv.Key}': {ex.Message}");
                 }
             }
         }
@@ -6685,12 +6917,12 @@ namespace TrueforceForAll.Plugin
                 }
                 if (rewritten > 0)
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] Backfilled GameName='{_activeGame}' on {rewritten} preset(s) for car '{_activeCarId}'.");
+                        $"[TF4ALL] Backfilled GameName='{_activeGame}' on {rewritten} preset(s) for car '{_activeCarId}'.");
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] BackfillGameNameForActiveCar('{_activeCarId}', '{_activeGame}') failed: {ex.Message}");
+                    $"[TF4ALL] BackfillGameNameForActiveCar('{_activeCarId}', '{_activeGame}') failed: {ex.Message}");
             }
         }
 
@@ -6742,15 +6974,15 @@ namespace TrueforceForAll.Plugin
                 }
                 if (rewritten > 0)
                 {
-                    this.SaveCommonSettings("GeneralSettings", Settings);
+                    PersistSettingsCore();
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] Renamed {rewritten} preset(s) for car '{carId}' to '{displayName}'.");
+                        $"[TF4ALL] Renamed {rewritten} preset(s) for car '{carId}' to '{displayName}'.");
                 }
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] BackfillDisplayNameForActiveCar('{_activeCarId}') failed: {ex.Message}");
+                    $"[TF4ALL] BackfillDisplayNameForActiveCar('{_activeCarId}') failed: {ex.Message}");
             }
         }
 
@@ -6789,6 +7021,17 @@ namespace TrueforceForAll.Plugin
                 RevLimiter   = o.RevLimiter   == null ? null : Clone(o.RevLimiter),
                 AudioCapture = CloneOrNull(o.AudioCapture),
                 Airborne     = o.Airborne     == null ? null : Clone(o.Airborne),
+                // Community lineage is identity, not tuning. A single section
+                // edit + Save goes through here (SaveSectionToActiveCarOverride),
+                // so dropping these would wipe the downloaded/uploaded lineage on
+                // the next save (Share gate then treats it as locally authored
+                // and re-uploads as a new row instead of an update).
+                CommunitySourceId         = o.CommunitySourceId,
+                CommunityUploadedById     = o.CommunityUploadedById,
+                CommunityUploadedByUserId = o.CommunityUploadedByUserId,
+                CommunityUploadedBodyHash = o.CommunityUploadedBodyHash,
+                CommunityUploadedVersion  = o.CommunityUploadedVersion,
+                CommunityAllowInPacks     = o.CommunityAllowInPacks,
             };
         }
 
@@ -6882,9 +7125,9 @@ namespace TrueforceForAll.Plugin
                         BuiltinPresetWriter.RemoveCarDefault(BuiltinPresets.CurrentFolder, carId);
                     BuiltinPresets.Reload();
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV delete car folder file failed: {ex.Message}"); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[TF4ALL] DEV delete car folder file failed: {ex.Message}"); }
             }
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             RequestAutoBackup();   // car preset file deleted: persist the default change + arm auto-sync
             return true;
         }
@@ -6901,7 +7144,7 @@ namespace TrueforceForAll.Plugin
             bool wasBuiltin = IsCarPresetBuiltin(carId, oldName);
             if (wasBuiltin && !DevMode)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Refusing to rename built-in car preset '{carId}/{oldName}'.");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to rename built-in car preset '{carId}/{oldName}'.");
                 return false;
             }
             // The names from UI may carry the " (Built-In)" suffix (factory
@@ -6935,11 +7178,11 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV rename PresetName rewrite failed: {ex.Message}"); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[TF4ALL] DEV rename PresetName rewrite failed: {ex.Message}"); }
                 BuiltinPresets.Reload();
                 LoadAndMigrateCarPresets();
                 if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: renamed built-in car preset '{carId}/{oldDisk}' to '{newDisk}'.");
+                SimHub.Logging.Current.Info($"[TF4ALL] DEV: renamed built-in car preset '{carId}/{oldDisk}' to '{newDisk}'.");
                 return true;
             }
 
@@ -6957,11 +7200,11 @@ namespace TrueforceForAll.Plugin
                 && string.Equals(active, oldName, StringComparison.Ordinal))
             {
                 Settings.CarDefaults[carId] = newDisk;
-                this.SaveCommonSettings("GeneralSettings", Settings);
+                PersistSettingsCore();
             }
             if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
             RequestAutoBackup();   // car preset file renamed: arm auto-sync
-            SimHub.Logging.Current.Info($"[Trueforce] Renamed car preset '{carId}/{oldName}' to '{newName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Renamed car preset '{carId}/{oldName}' to '{newName}'.");
             return true;
         }
 
@@ -6999,7 +7242,7 @@ namespace TrueforceForAll.Plugin
                 authorVersion: entry.AuthorVersion,
                 defaultAuthor: CurrentAuthorForStamp());
             RequestAutoBackup();   // new car preset file: arm auto-sync so the duplicate propagates
-            SimHub.Logging.Current.Info($"[Trueforce] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
             return true;
         }
 
@@ -7062,7 +7305,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Persist car-default for '{carId}' failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Persist car-default for '{carId}' failed: {ex.Message}");
                 }
             }
             else
@@ -7073,11 +7316,11 @@ namespace TrueforceForAll.Plugin
                     if (slot.OverrideCarDefaults == null)
                         slot.OverrideCarDefaults = new Dictionary<string, string>();
                     slot.OverrideCarDefaults[carId] = presetName;
-                    try { this.SaveCommonSettings("GeneralSettings", Settings); }
+                    try { PersistSettingsCore(); }
                     catch (Exception ex)
                     {
                         SimHub.Logging.Current.Warn(
-                            $"[Trueforce] Persist user car-default override for '{carId}' failed: {ex.Message}");
+                            $"[TF4ALL] Persist user car-default override for '{carId}' failed: {ex.Message}");
                     }
                 }
             }
@@ -7104,7 +7347,7 @@ namespace TrueforceForAll.Plugin
                 // the display suffix before writing or future loads of the file
                 // would point at "<name> (Built-In)" which doesn't exist on disk.
                 try { BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, ToDiskName(presetName)); BuiltinPresets.Reload(); }
-                catch (Exception ex) { SimHub.Logging.Current.Warn($"[Trueforce] DEV write car-default failed: {ex.Message}"); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[TF4ALL] DEV write car-default failed: {ex.Message}"); }
             }
             return true;
         }
@@ -7159,7 +7402,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Warn(
-                        $"[Trueforce] Clear car default for '{carId}' failed: {ex.Message}");
+                        $"[TF4ALL] Clear car default for '{carId}' failed: {ex.Message}");
                 }
             }
             Settings.CarDefaults?.Remove(carId);
@@ -7181,6 +7424,13 @@ namespace TrueforceForAll.Plugin
             try { LoadAndMigrateCarPresets(); } catch { }
             ApplyActiveCarOverride();   // override or globals, whichever wins now
             PersistSettings();
+            // If this car was only pinned by a manual UI pick (we're parked, not
+            // actually driving it), releasing its preset should also release the
+            // active car so the picker un-filters back to the full per-game list
+            // and Car Facts hides. While actually driving, the next telemetry
+            // frame re-asserts the real car, so we must NOT unpin then.
+            if (!IsLiveCarPresent && string.Equals(_activeCarId, carId, StringComparison.Ordinal))
+                _activeCarId = null;
             return true;
         }
 
@@ -7332,14 +7582,14 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Backfill: couldn't update '{path}': {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Backfill: couldn't update '{path}': {ex.Message}");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Backfill (games) failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Backfill (games) failed: {ex.Message}");
             }
 
             // ---- Car presets ----
@@ -7367,14 +7617,14 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Backfill: couldn't update '{path}': {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Backfill: couldn't update '{path}': {ex.Message}");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Backfill (cars) failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Backfill (cars) failed: {ex.Message}");
             }
 
             // Reload + rebuild so the in-memory cache reflects the new
@@ -7386,10 +7636,10 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Backfill reload failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Backfill reload failed: {ex.Message}");
             }
 
-            SimHub.Logging.Current.Info($"[Trueforce] Author backfill: stamped '{author}' on {touched} local preset file(s).");
+            SimHub.Logging.Current.Info($"[TF4ALL] Author backfill: stamped '{author}' on {touched} local preset file(s).");
             return touched;
         }
 
@@ -7564,8 +7814,8 @@ namespace TrueforceForAll.Plugin
             Settings.GamePresets.Clear();
             if (moved > 0)
             {
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info($"[Trueforce] Migrated {moved} legacy game-preset(s) to named library.");
+                PersistSettingsCore();
+                SimHub.Logging.Current.Info($"[TF4ALL] Migrated {moved} legacy game-preset(s) to named library.");
             }
         }
 
@@ -7623,7 +7873,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn(
-                    $"[Trueforce] Ordinal-name migration: LoadAll failed: {ex.Message}");
+                    $"[TF4ALL] Ordinal-name migration: LoadAll failed: {ex.Message}");
                 return;
             }
             if (loaded == null || loaded.Count == 0) return;
@@ -7709,14 +7959,14 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Warn(
-                        $"[Trueforce] Ordinal-name migration: rename '{carId}/{oldName}' -> "
+                        $"[TF4ALL] Ordinal-name migration: rename '{carId}/{oldName}' -> "
                         + $"'{humanName}' failed: {ex.Message}");
                 }
             }
 
             if (renamed > 0 || collisions > 0 || lookupMisses > 0 || builtinsIncluded > 0)
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Ordinal car-preset name migration: renamed={renamed}, "
+                    $"[TF4ALL] Ordinal car-preset name migration: renamed={renamed}, "
                     + $"collisions={collisions}, lookup_misses={lookupMisses}"
                     + (DevMode ? $", builtins_walked={builtinsIncluded}" : ""));
         }
@@ -7782,7 +8032,7 @@ namespace TrueforceForAll.Plugin
 
             if (seeded > 0)
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Seeded {seeded} car-fact variant(s) from the cylinder cache.");
+                    $"[TF4ALL] Seeded {seeded} car-fact variant(s) from the cylinder cache.");
         }
 
         // CarFacts lookup at apply time. Resolution order:
@@ -7896,32 +8146,43 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings?.CarFacts == null) return null;
             string key = game + "/" + carId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return null;
-            var variants = bundle.EngineVariants;
-            if (variants == null || variants.Count == 0) return null;
 
-            // User-source variants are no longer part of the auto-detect
-            // cascade. A Share submission goes to the community DB; the
-            // local CarFact is no longer written. Existing User-source
-            // variants from prior versions are ignored here so they don't
-            // silently override the new Community / Baked / Scanner order
-            // ("auto means auto"). Per-car explicit picks live in the
-            // dropdown / car preset, not in CarFacts.
-            // Use a fresh filtered list so any single-variant fast-path
-            // below sees the right element.
-            var pool = new List<EngineVariant>(variants.Count);
-            for (int i = 0; i < variants.Count; i++)
+            // Snapshot under _carFactsLock: the variant writers add CarFacts keys
+            // and append to EngineVariants under this lock on other threads (car
+            // load auto-create, community fetch), while this resolver runs on the
+            // source, DataUpdate, and UI threads. An unlocked enumeration here can
+            // throw or read a corrupt dictionary mid-rehash. Everything past the
+            // lock works on the `pool` snapshot, so the hold time stays tiny.
+            var pool = new List<EngineVariant>();
+            string chosenId = null;
+            lock (_carFactsLock)
             {
-                var cand = variants[i];
-                if (cand != null && cand.Source != CarFactSource.User)
-                    pool.Add(cand);
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle == null) return null;
+                var variants = bundle.EngineVariants;
+                if (variants == null || variants.Count == 0) return null;
+
+                // User-source variants are no longer part of the auto-detect
+                // cascade. A Share submission goes to the community DB; the
+                // local CarFact is no longer written. Existing User-source
+                // variants from prior versions are ignored here so they don't
+                // silently override the new Community / Baked / Scanner order
+                // ("auto means auto"). Per-car explicit picks live in the
+                // dropdown / car preset, not in CarFacts.
+                // Use a fresh filtered list so any single-variant fast-path
+                // below sees the right element.
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    var cand = variants[i];
+                    if (cand != null && cand.Source != CarFactSource.User)
+                        pool.Add(cand);
+                }
+                if (Settings.CarFactsSelection != null)
+                    Settings.CarFactsSelection.TryGetValue(key, out chosenId);
             }
             if (pool.Count == 0) return null;
             if (pool.Count == 1) return pool[0];
 
-            if (Settings.CarFactsSelection != null
-                && Settings.CarFactsSelection.TryGetValue(key, out var chosenId)
-                && !string.IsNullOrEmpty(chosenId))
+            if (!string.IsNullOrEmpty(chosenId))
             {
                 for (int i = 0; i < pool.Count; i++)
                     if (pool[i].Id == chosenId)
@@ -7943,7 +8204,7 @@ namespace TrueforceForAll.Plugin
             // fallback). Priority + Confirmations rank within the
             // matching subset.
             int? telCyl = ActiveCarEffectiveCyl();
-            int telMaxBand = BandRpm(EnginePulse?.ObservedMaxRpm ?? 0);
+            int telMaxBand = BandMaxRpm(EnginePulse?.ObservedMaxRpm ?? 0);
             int telRedBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
             if (telCyl.HasValue || telMaxBand > 0 || telRedBand > 0)
             {
@@ -7957,7 +8218,7 @@ namespace TrueforceForAll.Plugin
                         && cand.Cylinders != telCyl.Value) continue;
                     if (cand.MaxRpm.HasValue
                         && telMaxBand > 0
-                        && BandRpm(cand.MaxRpm.Value) != telMaxBand)
+                        && BandMaxRpm(cand.MaxRpm.Value) != telMaxBand)
                         continue;
                     if (cand.RedlineRpm.HasValue
                         && telRedBand > 0
@@ -8044,12 +8305,9 @@ namespace TrueforceForAll.Plugin
             // writer: "game/carId/<sig>". Earlier versions read this
             // without the sig suffix, which never matched, so the
             // synthesized variant's RedlineRpm was always null.
-            int? communityRedline = null;
-            if (_activeCarCommunityRedlineConsensus != null
-                && _activeCarCommunityRedlineKey == game + "/" + carId + "/" + (currentSig ?? "")
-                && _activeCarCommunityRedlineConsensus.Rpm >= 500
-                && _activeCarCommunityRedlineConsensus.Rpm <= 25000)
-                communityRedline = _activeCarCommunityRedlineConsensus.Rpm;
+            int? communityRedline =
+                CommunityRedlineConsensusReady(game + "/" + carId + "/" + (currentSig ?? ""))
+                    ? (int?)_activeCarCommunityRedlineConsensus.Rpm : null;
 
             variant = new EngineVariant
             {
@@ -8080,6 +8338,7 @@ namespace TrueforceForAll.Plugin
             // resolver only honors this consensus while telemetry is
             // still on the variant the fetch targeted.
             if (game != _activeGame || carId != _activeCarId) return;
+            if (Settings?.UseCommunityCarFacts != true) return;   // car facts off -> don't apply community data
             _activeCarCommunityKey = game + "/" + carId + "/" + (variantSignature ?? "");
             _activeCarCommunityConsensus = consensus;
             ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
@@ -8096,6 +8355,7 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
             if (game != _activeGame || carId != _activeCarId) return;
+            if (Settings?.UseCommunityCarFacts != true) return;   // car facts off -> don't apply community data
             _activeCarCommunityNameKey = game + "/" + carId;
             _activeCarCommunityNameConsensus = consensus;
             ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
@@ -8106,9 +8366,23 @@ namespace TrueforceForAll.Plugin
         /// (game, carId). Public passthrough so SettingsControl can hit
         /// this without exposing CommunityClient. Mirrors <see
         /// cref="FetchEngineLayoutConsensus"/>.</summary>
+        // Language tag carried in car_name's variant_signature so each language
+        // forms its own consensus (an English plurality can't bury a correct
+        // name in another language). Derived from the OS UI language for now;
+        // when the plugin UI itself is localized this can switch to the chosen
+        // UI language. Two-letter ISO so en-US / en-GB share one "en" bucket.
+        internal static string CommunityNameLocaleSig()
+        {
+            string lang = null;
+            try { lang = System.Globalization.CultureInfo.CurrentUICulture?.TwoLetterISOLanguageName; }
+            catch { /* fall through to the default below */ }
+            if (string.IsNullOrEmpty(lang) || lang == "iv") lang = "en";
+            return "lang=" + lang.ToLowerInvariant();
+        }
+
         internal CarNameConsensus FetchCarNameConsensus(string game, string carId)
         {
-            return _community?.FetchCarNameConsensus(game, carId);
+            return _community?.FetchCarNameConsensus(game, carId, CommunityNameLocaleSig());
         }
 
         /// <summary>Variant-aware fetch of the community redline consensus
@@ -8118,7 +8392,51 @@ namespace TrueforceForAll.Plugin
         internal RedlineConsensus FetchRedlineConsensus(string game, string carId)
         {
             return _community?.FetchRedlineConsensus(game, carId,
-                ComputeActiveCarVariantSignature(game, carId));
+                ComputeActiveCarVariantSignature(game, carId), CommunityRedlineMinSupport);
+        }
+
+        /// <summary>Fetch the active message-of-the-day feed. Anon-read, so it
+        /// only needs CommunityEnabled + a trusted backend URL, not sign-in.
+        /// Returns null on failure (the strip keeps its offline cache).</summary>
+        internal async System.Threading.Tasks.Task<System.Collections.Generic.List<MotdItem>> FetchMotdAsync()
+        {
+            return _community != null ? await _community.FetchMotdAsync() : null;
+        }
+
+        /// <summary>Persist the MOTD level radio choice.</summary>
+        internal void SetMotdLevel(MotdLevel level)
+        {
+            if (Settings == null) return;
+            Settings.MotdLevel = level;
+            PersistSettingsCore();
+        }
+
+        /// <summary>Persist MOTD client state (cache refresh + dismiss bookkeeping).</summary>
+        internal void SaveMotdState()
+        {
+            if (Settings == null) return;
+            PersistSettingsCore();
+        }
+
+        /// <summary>Dev: drop the entire community preset browse cache.</summary>
+        internal void ClearBrowseCache() => _browseCache?.Clear();
+
+        /// <summary>Mark every re-fetchable network cache stale (null their fetch
+        /// timestamps) WITHOUT wiping them, so the next access refetches fresh while
+        /// the offline copies still apply. Covers the MOTD feed, the community
+        /// car-fact cache, and the preset browse cache.</summary>
+        internal void MarkAllNetworkCachesStale()
+        {
+            if (Settings != null)
+            {
+                if (Settings.MotdCache != null) Settings.MotdCache.FetchedAtUtc = null;
+                var fc = Settings.CommunityFactCache;
+                if (fc != null)
+                    foreach (var e in fc.Values)
+                        if (e != null) e.FetchedAtUtc = null;
+                PersistSettingsCore();
+            }
+            _browseCache?.MarkAllStale();
         }
 
         /// <summary>Sibling of <see cref="NotifyCommunityConsensus"/> for the
@@ -8131,20 +8449,131 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
             if (game != _activeGame || carId != _activeCarId) return;
+            if (Settings?.UseCommunityCarFacts != true) return;   // car facts off -> don't apply community data
             _activeCarCommunityRedlineKey = game + "/" + carId + "/" + (variantSignature ?? "");
             _activeCarCommunityRedlineConsensus = consensus;
             ResolveAndApplyCarFactsForActiveCar(carId, logResolution: false);
             ApplyActiveCarOverride();
         }
 
+        // ===================================================================
+        // Community-fact cache (offline + TTL). See
+        // TrueforceSettings.CommunityFactCache / UseCommunityCarFacts. The cache
+        // is the local-first source: replayed on car change so community car
+        // facts apply instantly and offline, and refreshed over the network only
+        // when stale (CommunityCacheTtl) or on a manual refresh.
+        // ===================================================================
+
+        private static string CommunityCacheKey(string game, string carId, string sig)
+            => (game ?? "") + "/" + (carId ?? "") + "/" + (sig ?? "");
+
+        /// <summary>True when a cached entry exists for (game, carId, sig) and was
+        /// fetched within the TTL (so no background refresh is due on car open).
+        /// A malformed / missing timestamp counts as stale.</summary>
+        internal bool IsCommunityCacheFresh(string game, string carId, string sig)
+        {
+            var e = GetCommunityCacheEntry(game, carId, sig);
+            if (e == null || string.IsNullOrEmpty(e.FetchedAtUtc)) return false;
+            if (!DateTime.TryParse(e.FetchedAtUtc,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var when))
+                return false;
+            return (DateTime.UtcNow - when.ToUniversalTime()) < TrueforceSettings.CommunityCacheTtl;
+        }
+
+        private CommunityFactCacheEntry GetCommunityCacheEntry(string game, string carId, string sig)
+        {
+            if (Settings?.CommunityFactCache == null) return null;
+            // Locked: WriteCommunityFactCache inserts/rehashes from the fetch
+            // callback thread while this read can run on the data/UI threads.
+            lock (_carFactsLock)
+            {
+                return Settings.CommunityFactCache.TryGetValue(CommunityCacheKey(game, carId, sig), out var e) ? e : null;
+            }
+        }
+
+        /// <summary>Persist the latest community fetch for (game, carId, sig) so it
+        /// applies offline and refreshes only when stale. Any consensus may be
+        /// null (no data for that fact type). Infrequent (TTL-gated), so a direct
+        /// save is fine.</summary>
+        internal void WriteCommunityFactCache(string game, string carId, string sig,
+            CarNameConsensus name, EngineLayoutConsensus layout, RedlineConsensus redline)
+        {
+            if (Settings == null || string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            // Structural mutations (create/remove/insert/prune) hold _carFactsLock
+            // so a concurrent settings serialize on another thread can't enumerate
+            // the dictionary mid-change.
+            lock (_carFactsLock)
+            {
+                if (Settings.CommunityFactCache == null)
+                    Settings.CommunityFactCache = new Dictionary<string, CommunityFactCacheEntry>();
+                // Don't store a fully-empty entry (it would just suppress refresh of a
+                // car the community has nothing for); only cache when something landed.
+                if (name == null && layout == null && redline == null)
+                {
+                    Settings.CommunityFactCache.Remove(CommunityCacheKey(game, carId, sig));
+                }
+                else
+                {
+                    Settings.CommunityFactCache[CommunityCacheKey(game, carId, sig)] = new CommunityFactCacheEntry
+                    {
+                        FetchedAtUtc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+                        Name = name, Layout = layout, Redline = redline,
+                    };
+                    PruneCommunityFactCache();
+                }
+            }
+            try { PersistSettingsCore(); } catch { }
+        }
+
+        // Bound the cache so it can't grow without limit over a long-lived install
+        // (the banded variant signature mints a key per car per tune band). Evict
+        // the oldest entries by FetchedAtUtc when over the cap. Entries are tiny
+        // (a few small consensus snapshots) and a dedicated multi-game driver can
+        // legitimately touch a lot of cars, so the cap is generous; eviction is
+        // only a backstop against pathological growth. Cheap re-fetch on next
+        // visit, so eviction is harmless.
+        private const int CommunityFactCacheMax = 2000;
+        private void PruneCommunityFactCache()
+        {
+            var cache = Settings?.CommunityFactCache;
+            if (cache == null || cache.Count <= CommunityFactCacheMax) return;
+            var oldestFirst = new List<KeyValuePair<string, CommunityFactCacheEntry>>(cache);
+            oldestFirst.Sort((a, b) => string.CompareOrdinal(
+                a.Value?.FetchedAtUtc ?? "", b.Value?.FetchedAtUtc ?? ""));   // ISO-8601 sorts chronologically
+            int toRemove = cache.Count - CommunityFactCacheMax;
+            for (int i = 0; i < toRemove && i < oldestFirst.Count; i++)
+                cache.Remove(oldestFirst[i].Key);
+        }
+
+        /// <summary>Apply a cached community fetch for the active car (game, carId,
+        /// sig) into the in-memory consensus, exactly as a live fetch would. Lets
+        /// community car facts apply instantly and offline. No-op when the user has
+        /// turned car facts off, or when no entry exists. Returns the replayed
+        /// cache entry, or null when car facts are off or no entry exists.</summary>
+        internal CommunityFactCacheEntry ReplayCommunityCache(string game, string carId, string sig)
+        {
+            if (Settings?.UseCommunityCarFacts != true) return null;
+            var e = GetCommunityCacheEntry(game, carId, sig);
+            if (e == null) return null;
+            // Push the cached snapshots through the same Notify path a fetch uses.
+            NotifyCarNameConsensus(game, carId, e.Name);
+            NotifyCommunityConsensus(game, carId, sig, e.Layout);
+            NotifyRedlineConsensus(game, carId, sig, e.Redline);
+            return e;
+        }
+
         /// <summary>Fire-and-forget submission of a redline correction.
         /// Mirrors <see cref="SubmitEngineLayoutToCommunity"/>: gated by
         /// CommunityEnabled, plumbs the active car's variant signature
         /// through so Forza swaps don't all share one redline row.</summary>
-        public void SubmitRedlineToCommunity(string game, string carId, int rpm)
+        public void SubmitRedlineToCommunity(string game, string carId, int rpm,
+            IReadOnlyList<GearRedline> perGear = null)
         {
             _community?.SubmitRedlineAsync(game, carId, rpm,
-                ComputeActiveCarVariantSignature(game, carId));
+                ComputeActiveCarVariantSignature(game, carId), perGear);
+            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+                NoteMotdContribution(MotdContribution.CarFact);
         }
 
 
@@ -8226,11 +8655,17 @@ namespace TrueforceForAll.Plugin
             string ck = _activeGame + "/" + carId;
             _activeCarCommunityDisplayName = null;
             string localName = null;
-            if (Settings?.CarFacts != null
-                && Settings.CarFacts.TryGetValue(ck, out var bundle)
-                && bundle != null
-                && !string.IsNullOrEmpty(bundle.CarName))
-                localName = bundle.CarName;
+            // Locked: variant auto-create adds CarFacts keys (dictionary rehash)
+            // under _carFactsLock on other threads while this runs on the
+            // data/UI threads; an unlocked TryGetValue can misread mid-rehash.
+            lock (_carFactsLock)
+            {
+                if (Settings?.CarFacts != null
+                    && Settings.CarFacts.TryGetValue(ck, out var bundle)
+                    && bundle != null
+                    && !string.IsNullOrEmpty(bundle.CarName))
+                    localName = bundle.CarName;
+            }
             string communityName = (_activeCarCommunityNameConsensus != null
                 && _activeCarCommunityNameKey == ck
                 && !string.IsNullOrEmpty(_activeCarCommunityNameConsensus.Name))
@@ -8258,27 +8693,47 @@ namespace TrueforceForAll.Plugin
                 && BuiltinCarCylinders.TryGetDisplayName(_activeGame, carId, out var catalogName))
                 _activeCarDisplayName = catalogName;
 
-            // RedlineRpm rides any usable variant, even one with Cylinders=0
-            // (the "unknown / use heuristic" sentinel).
-            if (haveVariant && RevLimiter != null
-                && v.RedlineRpm.HasValue && v.RedlineRpm.Value > 0)
-                RevLimiter.CarFactsRedline = v.RedlineRpm.Value;
-
-
-            // Community-only redline path: covers the case where the user
-            // (or community) has confirmed a redline but NOT a layout for
-            // this car. TrySynthesizeCommunityVariant only fires when
-            // layout consensus exists, so a redline-only consensus would
-            // otherwise never reach RevLimiter. Override what the resolved
-            // variant gave us when the community has a higher-priority
-            // redline for the current variant signature.
+            // Per-variant redline resolution:
+            //   - The user's OWN values (default gear-0 + per-gear overrides) go
+            //     into the effect's per-gear map; they win over everything below.
+            //   - The live community consensus (matching the current signature)
+            //     is handed over as CarFactsRedline; the effect uses it only when
+            //     the user pinned nothing AND the game reports no telemetry
+            //     redline (the cascade order is set in ResolveEffectiveRedline).
+            // The stored variant's own RedlineRpm is NOT used as the buzz point:
+            // the effect reads the LIVE telemetry redline directly, so a captured
+            // snapshot can't outrank the current value.
             string currentSigForRedline = ComputeActiveCarVariantSignature(_activeGame, carId);
-            if (_activeCarCommunityRedlineConsensus != null
-                && _activeCarCommunityRedlineKey == ck + "/" + (currentSigForRedline ?? "")
-                && _activeCarCommunityRedlineConsensus.Rpm >= 500
-                && _activeCarCommunityRedlineConsensus.Rpm <= 25000
-                && RevLimiter != null)
-                RevLimiter.CarFactsRedline = _activeCarCommunityRedlineConsensus.Rpm;
+            var activeStoredForRedline = FindActiveStoredVariant();
+            // Build the map under the lock: this runs on the data thread, while
+            // the UI thread structurally mutates the same PerGearRedlines list.
+            Dictionary<int, int> userGearMap;
+            lock (_carFactsLock) { userGearMap = BuildUserGearRedlineMap(activeStoredForRedline); }
+            string redlineKey = ck + "/" + (currentSigForRedline ?? "");
+            bool liveCommunityMatches = CommunityRedlineConsensusReady(redlineKey);
+            // Per-gear gears are each independently support-floored by the fetch
+            // assembler, and they only exist when an overall 'redline' consensus
+            // row anchors the variant. So a gear can be solidly agreed even when
+            // the OVERALL value is still below the support floor (drivers agree on
+            // a specific gear's measured limit while their overall defaults
+            // diverge). Gate the per-gear map only on the cached consensus
+            // matching the live variant, NOT on the overall floor, so an accurate
+            // gear still reaches the buzz. The overall value (CarFactsRedline)
+            // stays gated on the overall floor.
+            bool communityKeyMatches = _activeCarCommunityRedlineConsensus != null
+                && _activeCarCommunityRedlineKey == redlineKey;
+            if (RevLimiter != null)
+            {
+                RevLimiter.UserGearRedlines  = userGearMap;
+                RevLimiter.CarFactsRedline   = liveCommunityMatches
+                    ? (int?)_activeCarCommunityRedlineConsensus.Rpm : null;
+                var commGears = communityKeyMatches ? _activeCarCommunityRedlineConsensus.Gears : null;
+                RevLimiter.CommunityGearRedlines = (commGears != null && commGears.Count > 0) ? commGears : null;
+                // EV awareness: the limiter stays silent on EVs unless the user
+                // explicitly opted in (any user gear redline, a Manual value, or
+                // a live slider draft).
+                RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
+            }
 
             // Community Custom: special apply path. The synthesized
             // variant carries cyl=0 + EngineConfig.Custom; the firing
@@ -8313,7 +8768,7 @@ namespace TrueforceForAll.Plugin
                     EnginePulse.ElectricMode = ElectricCarMode.MutedHum;
                 if (logResolution)
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] Car '{carId}' resolved to community custom "
+                        $"[TF4ALL] Car '{carId}' resolved to community custom "
                         + $"'{def.Name}' (electric={def.IsElectric})");
                 return;
             }
@@ -8332,7 +8787,7 @@ namespace TrueforceForAll.Plugin
                     _activeCarDisplayName = ds.DisplayName;
                 if (logResolution)
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] Car '{carId}' resolved from CarFacts: "
+                        $"[TF4ALL] Car '{carId}' resolved from CarFacts: "
                         + $"variant='{v.Label}', cyl={v.Cylinders}, config={v.EngineConfig}, "
                         + $"redline={(v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-")}, "
                         + $"source={v.Source} -> layout={EnginePulse.AutoLayout}");
@@ -8347,7 +8802,7 @@ namespace TrueforceForAll.Plugin
                     _activeCarDisplayName = carSpec.DisplayName;
                 if (logResolution)
                     SimHub.Logging.Current.Info(
-                        $"[Trueforce] Car '{carId}' resolved: cyl={carSpec.Cylinders}, "
+                        $"[TF4ALL] Car '{carId}' resolved: cyl={carSpec.Cylinders}, "
                         + $"electric={carSpec.IsElectric}, source={carSpec.Source}, "
                         + $"engineConfig={carSpec.EngineConfig} ({carSpec.EngineConfigSource ?? "auto"}), "
                         + $"name={carSpec.DisplayName ?? "(none)"}"
@@ -8365,7 +8820,7 @@ namespace TrueforceForAll.Plugin
             else if (logResolution)
             {
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Car '{carId}' not auto-resolved, user can set engine layout manually.");
+                    $"[TF4ALL] Car '{carId}' not auto-resolved, user can set engine layout manually.");
             }
 
             // Preview the non-community auto value when community is the
@@ -8432,22 +8887,56 @@ namespace TrueforceForAll.Plugin
         public void EnsureVariantForLiveSignature()
         {
             if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return;
+            bool changed;
+            lock (_carFactsLock) { EnsureVariantForLiveSignatureCore_Locked(out changed); }
+            if (!changed) return;
+            // Persist OFF this (telemetry/data) thread; the flush serializes
+            // under _carFactsLock so it can't collide with a concurrent Add.
+            ScheduleCarFactsFlush();
+            // Re-resolve so the just-created / upgraded variant flows
+            // through PickStoredVariant and RevLimiter.CarFactsRedline.
+            // Logging stays off here - it's automatic plumbing, not a
+            // user action worth a line in the log.
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+        }
 
-            int telMaxBand = BandRpm(EnginePulse?.ObservedMaxRpm ?? 0);
+        /// <summary>The find-or-create body of <see cref="EnsureVariantForLiveSignature"/>.
+        /// ASSUMES <c>_carFactsLock</c> is already held. Returns the stored variant
+        /// to operate on (matched, upgraded, or freshly created) and sets
+        /// <paramref name="changed"/> when the CarFacts list was actually mutated.
+        /// Does NOT schedule a flush or re-resolve - the caller does that once,
+        /// after its own mutation, OUTSIDE the lock.
+        ///
+        /// Pulled out so the redline / per-gear CRUD can do find-or-create AND
+        /// their own write under a SINGLE lock acquisition. The old pattern
+        /// (FindActiveStoredVariant, then EnsureVariantForLiveSignature, then
+        /// FindActiveStoredVariant again, then mutate) spanned three separate lock
+        /// windows, so a concurrent telemetry-thread upgrade could land between the
+        /// create and the re-find and the user's write could target a stale row or
+        /// be lost. Atomic now.</summary>
+        private EngineVariant EnsureVariantForLiveSignatureCore_Locked(out bool changed)
+        {
+            changed = false;
+            if (Settings == null) return null;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return null;
+
+            int telMaxBand = BandMaxRpm(EnginePulse?.ObservedMaxRpm ?? 0);
             int telRedBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
-            // Need at least MaxRpm OR RedlineRpm before persisting; without
-            // either we have no discriminator and the row would be useless.
-            // (SimHub-fallback games almost always provide MaxRpm.)
-            if (telMaxBand <= 0 && telRedBand <= 0) return;
-
             // Cyl: telemetry-direct first, then resolver/bake fallback.
             // Forza UDP populates ObservedCyl; SimHub-fallback games leave
             // it null but the resolver fills CatalogCyl from the bake.
-            // When neither is available (no bake, no telemetry) we proceed
-            // with cyl=null and the row stores a maxrpm-only signature.
             int? telCyl = ActiveCarEffectiveCyl();
 
-            if (Settings == null) return;
+            // No rev-range discriminator yet (engine off / pre-telemetry). We
+            // can't safely create a new row, but an existing variant may still be
+            // the one we're on (single variant, pinned selection, or last-used).
+            // Defer to the read-only finder so an edit targets that row rather
+            // than failing. changed stays false -> no spurious create/flush.
+            // (FindActiveStoredVariant re-enters _carFactsLock, which Monitor
+            // allows recursively on the same thread.)
+            if (telMaxBand <= 0 && telRedBand <= 0)
+                return FindActiveStoredVariant();
+
             string key = _activeGame + "/" + _activeCarId;
 
             // Telemetry source-of-truth at observation time. These are
@@ -8481,14 +8970,13 @@ namespace TrueforceForAll.Plugin
                 if (v.Cylinders >= 1 && telCyl.HasValue
                     && v.Cylinders != telCyl.Value) continue;
                 if (v.MaxRpm.HasValue && telMaxBand > 0
-                    && BandRpm(v.MaxRpm.Value) != telMaxBand) continue;
+                    && BandMaxRpm(v.MaxRpm.Value) != telMaxBand) continue;
                 if (v.RedlineRpm.HasValue && telRedBand > 0
                     && BandRpm(v.RedlineRpm.Value) != telRedBand) continue;
                 match = v;
                 break;
             }
 
-            bool changed = false;
             if (match != null)
             {
                 // Upgrade in place when telemetry brings new info that
@@ -8520,40 +9008,481 @@ namespace TrueforceForAll.Plugin
                                                             match.MaxRpm,
                                                             match.RedlineRpm);
                 }
-            }
-            else
-            {
-                // No compatible variant: create one. Source = Scanner
-                // (auto-observed, not user-confirmed). EngineConfig
-                // stays Auto: the EnginePulse "Layout" picker is the
-                // user-facing surface for layout overrides, separate
-                // from variant identity. Cylinders = 0 (unknown) when
-                // neither telemetry nor bake gave us a count - the
-                // signature still discriminates via MaxRpm/RedlineRpm.
-                var fresh = new EngineVariant
-                {
-                    Id            = Guid.NewGuid().ToString("N"),
-                    Cylinders     = telCyl ?? 0,
-                    MaxRpm        = telMaxBand > 0 ? (int?)telMaxRpm : null,
-                    RedlineRpm    = telRedBand > 0 ? (int?)telRedRpm : null,
-                    EngineConfig  = EngineConfig.Auto,
-                    Source        = CarFactSource.Scanner,
-                    Confirmations = 0,
-                };
-                fresh.Label = BuildAutoVariantLabel(fresh.Cylinders,
-                                                   fresh.MaxRpm,
-                                                   fresh.RedlineRpm);
-                bundle.EngineVariants.Add(fresh);
-                changed = true;
+                return match;
             }
 
-            if (!changed) return;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
-            // Re-resolve so the just-created / upgraded variant flows
-            // through PickStoredVariant and RevLimiter.CarFactsRedline.
-            // Logging stays off here - it's automatic plumbing, not a
-            // user action worth a line in the log.
+            // No compatible variant: create one. Source = Scanner
+            // (auto-observed, not user-confirmed). EngineConfig
+            // stays Auto: the EnginePulse "Layout" picker is the
+            // user-facing surface for layout overrides, separate
+            // from variant identity. Cylinders = 0 (unknown) when
+            // neither telemetry nor bake gave us a count - the
+            // signature still discriminates via MaxRpm/RedlineRpm.
+            var fresh = new EngineVariant
+            {
+                Id            = Guid.NewGuid().ToString("N"),
+                Cylinders     = telCyl ?? 0,
+                MaxRpm        = telMaxBand > 0 ? (int?)telMaxRpm : null,
+                RedlineRpm    = telRedBand > 0 ? (int?)telRedRpm : null,
+                EngineConfig  = EngineConfig.Auto,
+                Source        = CarFactSource.Scanner,
+                Confirmations = 0,
+            };
+            fresh.Label = BuildAutoVariantLabel(fresh.Cylinders,
+                                               fresh.MaxRpm,
+                                               fresh.RedlineRpm);
+            bundle.EngineVariants.Add(fresh);
+            changed = true;
+            return fresh;
+        }
+
+        // =====================================================================
+        // Per-variant user redline (Auto-mode redline overrides).
+        // The redline lives in the CarFacts layer, on the EngineVariant row
+        // matching the live signature, so it travels per variant (a tune that
+        // changes MaxRpm is a different variant) and wins over the community
+        // consensus for that variant only.
+        // =====================================================================
+
+        // The stored variant row matching the live signature, or null. Mirrors
+        // EnsureVariantForLiveSignature's match criteria (cyl + maxrpm + redline
+        // bands, absent fields acting as wildcards). Read-only: never creates.
+        private EngineVariant FindActiveStoredVariant()
+        {
+            if (Settings?.CarFacts == null
+                || string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId))
+                return null;
+            string key = _activeGame + "/" + _activeCarId;
+            lock (_carFactsLock)
+            {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle)
+                    || bundle?.EngineVariants == null || bundle.EngineVariants.Count == 0) return null;
+                int telMaxBand = BandMaxRpm(EnginePulse?.ObservedMaxRpm ?? 0);
+                int telRedBand = BandRpm(EnginePulse?.ObservedRedlineRpm ?? 0);
+                int? telCyl = ActiveCarEffectiveCyl();
+                bool haveDiscriminator = telCyl.HasValue || telMaxBand > 0 || telRedBand > 0;
+
+                if (!haveDiscriminator)
+                {
+                    // Empty-signature window (engine off / pre-telemetry). Don't
+                    // pin to an arbitrary first row (PickStoredVariant gates the
+                    // same way). One variant is unambiguous; otherwise fall back
+                    // to the user's pinned selection, then the LAST variant we
+                    // were actually on, then give up so the caller refuses to
+                    // edit until telemetry (or a selection) disambiguates.
+                    if (bundle.EngineVariants.Count == 1) return bundle.EngineVariants[0];
+                    string wantId = null;
+                    if (Settings.CarFactsSelection != null
+                        && Settings.CarFactsSelection.TryGetValue(key, out var selId)
+                        && !string.IsNullOrEmpty(selId))
+                        wantId = selId;
+                    else if (_lastActiveVariantIdByCar.TryGetValue(key, out var lastId))
+                        wantId = lastId;
+                    if (!string.IsNullOrEmpty(wantId))
+                        for (int i = 0; i < bundle.EngineVariants.Count; i++)
+                            if (bundle.EngineVariants[i]?.Id == wantId) return bundle.EngineVariants[i];
+                    return null;
+                }
+
+                for (int i = 0; i < bundle.EngineVariants.Count; i++)
+                {
+                    var v = bundle.EngineVariants[i];
+                    if (v == null) continue;
+                    if (v.Cylinders >= 1 && telCyl.HasValue && v.Cylinders != telCyl.Value) continue;
+                    if (v.MaxRpm.HasValue && telMaxBand > 0 && BandMaxRpm(v.MaxRpm.Value) != telMaxBand) continue;
+                    if (v.RedlineRpm.HasValue && telRedBand > 0 && BandRpm(v.RedlineRpm.Value) != telRedBand) continue;
+                    _lastActiveVariantIdByCar[key] = v.Id;   // remember "last used" for the empty-signature fallback
+                    return v;
+                }
+                return null;
+            }
+        }
+
+        /// <summary>The user's saved per-variant redline for the active variant,
+        /// or null when they haven't pinned one.</summary>
+        public int? GetActiveVariantUserRedline() => FindActiveStoredVariant()?.UserRedlineRpm;
+
+        /// <summary>The community redline consensus for the active variant
+        /// signature, or null when none / out of range.</summary>
+        public int? GetActiveVariantCommunityRedline()
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return null;
+            string sig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
+            string key = _activeGame + "/" + _activeCarId + "/" + (sig ?? "");
+            return CommunityRedlineConsensusReady(key) ? (int?)_activeCarCommunityRedlineConsensus.Rpm : null;
+        }
+
+        /// <summary>True when the active variant's community redline is CONFIRMED
+        /// (backed by enough distinct drivers), not just usable. Single source of
+        /// truth for the confirmed-vs-unconfirmed boundary so the UI never restates
+        /// the threshold.</summary>
+        internal bool IsActiveCommunityRedlineConfirmed()
+        {
+            var c = GetActiveVariantCommunityConsensus();
+            return c != null && c.SupportingSubmissions >= CommunityRedlineConfirmedSupport;
+        }
+
+        /// <summary>The active variant's community redline ONLY when it is confirmed
+        /// (>= the confirmed support floor); null for a lone/unconfirmed value. Use
+        /// this where we tell the user "the community says X" so a single (often
+        /// self-) submission is never attributed to the community.</summary>
+        internal int? GetActiveVariantConfirmedCommunityRedline()
+        {
+            var c = GetActiveVariantCommunityConsensus();
+            if (c == null || c.SupportingSubmissions < CommunityRedlineConfirmedSupport) return null;
+            return (c.Rpm >= 500 && c.Rpm <= 25000) ? (int?)c.Rpm : null;
+        }
+
+        // Two tiers of community-redline support:
+        //   USABLE (>= 1): a single submission is a usable fact - better than the
+        //     0.85 guess - so the cascade applies it ("first submission = fact").
+        //   CONFIRMED (>= 2): enough distinct drivers agree that we present it AS
+        //     "the community" (vs "unconfirmed") and stop nudging for confirmation.
+        // A lone submission is still USED, just labelled "unconfirmed" rather than
+        // claimed as established consensus (which would mislabel one driver's guess
+        // - the original concern). The user can always set their own over it.
+        private const int CommunityRedlineMinSupport = 1;       // value usable in the cascade
+        private const int CommunityRedlineConfirmedSupport = 2; // counts as confirmed "community" consensus
+
+        // True when the cached community redline matches the given cache key, is in
+        // range, AND is at least USABLE (>= 1 supporter) - i.e. fit to drive the
+        // cascade. (Confirmed-vs-unconfirmed labelling uses the count directly.)
+        private bool CommunityRedlineConsensusReady(string expectedKey)
+        {
+            var c = _activeCarCommunityRedlineConsensus;
+            return c != null
+                && _activeCarCommunityRedlineKey == expectedKey
+                && c.Rpm >= 500 && c.Rpm <= 25000
+                && c.SupportingSubmissions >= CommunityRedlineMinSupport;
+        }
+
+        /// <summary>The community value the user already declined to adopt for
+        /// the active variant (so the UI can suppress a repeat prompt).</summary>
+        public int? GetActiveVariantDeclinedCommunityRedline()
+            => FindActiveStoredVariant()?.DeclinedCommunityRedlineRpm;
+
+        /// <summary>True when a live, unsaved redline draft is in flight.</summary>
+        public bool HasRedlinePreview => RevLimiter?.PreviewRedlineRpm != null;
+
+        /// <summary>The live, unsaved redline draft value (null when none).</summary>
+        public int? RedlinePreviewRpm => RevLimiter?.PreviewRedlineRpm;
+
+        /// <summary>Set the live (unsaved) redline preview the slider drives in
+        /// Auto mode. Passing a sub-500 value clears it. A value equal to the
+        /// redline the variant ALREADY resolves to (the saved pin, else the live
+        /// effective redline) is NOT a change, so it clears the preview too, that
+        /// keeps the "Save for this variant" control from showing when the slider
+        /// just sits on (or is re-synced to) the current value.</summary>
+        public void SetRedlinePreview(int? rpm)
+        {
+            if (RevLimiter == null) return;
+            if (!rpm.HasValue || rpm.Value < 500)
+            {
+                RevLimiter.PreviewRedlineRpm = null;
+                return;
+            }
+            int? baseline = GetActiveVariantUserRedline() ?? RevLimiter.EffectiveRedlineRpm;
+            RevLimiter.PreviewRedlineRpm =
+                (baseline.HasValue && baseline.Value == rpm.Value) ? (int?)null : rpm;
+        }
+
+        /// <summary>Discard the unsaved redline draft.</summary>
+        public void ClearRedlinePreview()
+        {
+            if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
+        }
+
+        /// <summary>Commit the given value as THIS variant's user redline. Ensures
+        /// a stored variant row exists for the live signature, stamps it,
+        /// persists, clears the draft, and re-resolves. Returns the saved value,
+        /// or null when no variant signature is available yet (no telemetry).</summary>
+        public int? SaveActiveVariantUserRedline(int rpm)
+        {
+            if (Settings == null || rpm < 500 || rpm > 25000) return null;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return null;
+            // Find-or-create AND write under one lock so a concurrent telemetry
+            // upgrade can't slip in between and lose the pin.
+            lock (_carFactsLock)
+            {
+                var variant = EnsureVariantForLiveSignatureCore_Locked(out _);
+                if (variant == null) return null;  // no discriminator observed yet
+                variant.UserRedlineRpm = rpm;
+                variant.AdoptedCommunityRedlineRpm = null;   // a deliberate pin supersedes any adopted community value
+            }
+            if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
+            ScheduleCarFactsFlush();
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return rpm;
+        }
+
+        // NOTE: "adopt community redline" was retired. In Auto the cascade already
+        // applies the community value directly (so copying it into a local pin was
+        // ceremony), and the useful community action is now Confirm (re-submit the
+        // value so it reaches confirmed consensus), handled in the UI via
+        // SubmitRedlineToCommunity. The dismissed-profile plumbing below is reused
+        // to suppress a repeat Confirm prompt for a value the user dismissed.
+
+        /// <summary>The community redline PROFILE signature the user declined for
+        /// the active variant (per-gear-aware), or null. The UI compares it to the
+        /// live community profile so a repeat offer is suppressed only while the
+        /// community profile is unchanged.</summary>
+        public string GetActiveVariantDeclinedCommunityProfileSig()
+            => FindActiveStoredVariant()?.DeclinedCommunityRedlineSig;
+
+        /// <summary>Record that the user dismissed the community redline PROFILE
+        /// (overall + per-gear) for the active variant, keyed by its signature so
+        /// a later community shift in any gear re-surfaces the offer.</summary>
+        public void DeclineCommunityRedlineProfileForActiveVariant(string profileSig)
+        {
+            if (Settings == null || string.IsNullOrEmpty(profileSig)) return;
+            lock (_carFactsLock)
+            {
+                var variant = FindActiveStoredVariant();
+                if (variant == null) return;
+                variant.DeclinedCommunityRedlineSig = profileSig;
+            }
+            ScheduleCarFactsFlush();
+        }
+
+        /// <summary>The value currently pinned for the active variant: the user's
+        /// own redline, else a previously-adopted community value. Drives the
+        /// "community changed - switch?" prompt (it fires when live community
+        /// differs from this).</summary>
+        public int? GetActiveVariantPinnedRedline()
+        {
+            var v = FindActiveStoredVariant();
+            return v?.UserRedlineRpm ?? v?.AdoptedCommunityRedlineRpm;
+        }
+
+        // Combine the variant's default (gear 0 = UserRedlineRpm, or a back-compat
+        // adopted value) and per-gear overrides (1..N) into one gear->rpm map for
+        // the rev-limiter effect. null when the user has set nothing.
+        private static Dictionary<int, int> BuildUserGearRedlineMap(EngineVariant v)
+        {
+            if (v == null) return null;
+            Dictionary<int, int> map = null;
+            int? gear0 = v.UserRedlineRpm ?? v.AdoptedCommunityRedlineRpm;
+            if (gear0.HasValue && gear0.Value >= 500 && gear0.Value <= 25000)
+                (map = map ?? new Dictionary<int, int>())[0] = gear0.Value;
+            if (v.PerGearRedlines != null)
+                for (int i = 0; i < v.PerGearRedlines.Count; i++)
+                {
+                    var gr = v.PerGearRedlines[i];
+                    if (gr != null && gr.Gear >= 1 && gr.Gear <= 16 && gr.Rpm >= 500 && gr.Rpm <= 25000)
+                        (map = map ?? new Dictionary<int, int>())[gr.Gear] = gr.Rpm;
+                }
+            return map;
+        }
+
+        /// <summary>The active variant's per-gear redline overrides (gears 1..N),
+        /// sorted ascending. The default (gear 0) is the single UserRedlineRpm and
+        /// is edited via the existing redline control, not this list.</summary>
+        public IReadOnlyList<GearRedline> GetActiveVariantPerGearRedlines()
+        {
+            var outList = new List<GearRedline>();
+            var v = FindActiveStoredVariant();
+            lock (_carFactsLock)
+            {
+                if (v?.PerGearRedlines != null)
+                    for (int i = 0; i < v.PerGearRedlines.Count; i++)
+                    {
+                        var gr = v.PerGearRedlines[i];
+                        if (gr != null && gr.Gear >= 1) outList.Add(new GearRedline { Gear = gr.Gear, Rpm = gr.Rpm });
+                    }
+            }
+            outList.Sort((a, b) => a.Gear.CompareTo(b.Gear));
+            return outList;
+        }
+
+        /// <summary>Set (or update) a per-gear redline override (gear 1..N).</summary>
+        public bool SetActiveVariantPerGearRedline(int gear, int rpm)
+        {
+            if (gear < 1 || gear > 16 || rpm < 500 || rpm > 25000) return false;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            // Find-or-create AND write under one lock (see SaveActiveVariantUserRedline).
+            lock (_carFactsLock)
+            {
+                var variant = EnsureVariantForLiveSignatureCore_Locked(out _);
+                if (variant == null) return false;
+                if (variant.PerGearRedlines == null) variant.PerGearRedlines = new List<GearRedline>();
+                var existing = variant.PerGearRedlines.Find(g => g != null && g.Gear == gear);
+                if (existing != null) existing.Rpm = rpm;
+                else variant.PerGearRedlines.Add(new GearRedline { Gear = gear, Rpm = rpm });
+            }
+            ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return true;
+        }
+
+        /// <summary>Remove a per-gear redline override (gear falls back to the default).</summary>
+        public bool RemoveActiveVariantPerGearRedline(int gear)
+        {
+            bool removed;
+            lock (_carFactsLock)
+            {
+                var variant = FindActiveStoredVariant();   // reentrant lock; find + remove are atomic together
+                if (variant?.PerGearRedlines == null) return false;
+                removed = variant.PerGearRedlines.RemoveAll(g => g != null && g.Gear == gear) > 0;
+            }
+            if (!removed) return false;
+            ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return true;
+        }
+
+        /// <summary>Append the next per-gear override row, seeded from the current
+        /// effective redline. Returns the new gear number, or 0 if none could be
+        /// added (no variant yet, or already at 16 gears).</summary>
+        public int AddActiveVariantGear()
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return 0;
+            // Snapshot the cross-thread effective-redline once for the seed.
+            int? seedSrc = RevLimiter?.EffectiveRedlineRpm;
+            int nextGear;
+            // Find-or-create AND append under one lock (see SaveActiveVariantUserRedline).
+            lock (_carFactsLock)
+            {
+                var variant = EnsureVariantForLiveSignatureCore_Locked(out _);
+                if (variant == null) return 0;
+                if (variant.PerGearRedlines == null) variant.PerGearRedlines = new List<GearRedline>();
+                nextGear = 1;
+                for (int i = 0; i < variant.PerGearRedlines.Count; i++)
+                    if (variant.PerGearRedlines[i] != null && variant.PerGearRedlines[i].Gear >= nextGear)
+                        nextGear = variant.PerGearRedlines[i].Gear + 1;
+                if (nextGear > 16) return 0;
+                int seed = variant.UserRedlineRpm ?? seedSrc ?? 7000;
+                if (seed < 500 || seed > 25000) seed = 7000;
+                variant.PerGearRedlines.Add(new GearRedline { Gear = nextGear, Rpm = seed });
+            }
+            ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return nextGear;
+        }
+
+        /// <summary>The full community redline consensus for the active variant
+        /// (overall + per-gear), or null. Used by adopt to copy the whole profile.</summary>
+        internal RedlineConsensus GetActiveVariantCommunityConsensus()
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return null;
+            string sig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
+            string key = _activeGame + "/" + _activeCarId + "/" + (sig ?? "");
+            // Gate on the support floor so adopt copies a real consensus, never a
+            // single (often self-) submission reflected back by the server.
+            return CommunityRedlineConsensusReady(key) ? _activeCarCommunityRedlineConsensus : null;
+        }
+
+        /// <summary>The variant we're effectively on: the stored row matching the
+        /// live signature, else the resolver's pick (community-synth / baked).</summary>
+        public EngineVariant GetActiveResolvedVariant()
+        {
+            var stored = FindActiveStoredVariant();
+            if (stored != null) return stored;
+            if (!string.IsNullOrEmpty(_activeGame) && !string.IsNullOrEmpty(_activeCarId)
+                && TryResolveActiveVariant(_activeGame, _activeCarId, out var v))
+                return v;
+            return null;
+        }
+
+        /// <summary>At-a-glance facts for the active car, for the Car Facts
+        /// summary panel. Read-only snapshot; the panel formats it.</summary>
+        public sealed class CarFactsSummary
+        {
+            public bool HasCar;
+            public string CarName;
+            public string CommunityCarName;     // non-null only when it differs from CarName
+            public bool HasVariant;
+            public int Cylinders;               // 0 = unknown
+            public string EngineTypeDisplay;    // resolved layout: "V8" / "Inline 6" / "Rotary"; null if unknown
+            public bool EngineTypeIsUserOverride; // the user picked a layout (combo != Auto)
+            public string EngineTypeProvenance;   // "user" | "community" | "game" | "auto"
+            public int? MaxRpm;                 // the rev ceiling that defines this variant / tune
+            public string VariantLabel;
+            public CarFactSource VariantSource;
+            public int? EffectiveRedline;       // the value the buzz fires at
+            public string RedlineSource;        // "user" | "community" | "game" | "estimated" | "derived" | "none"
+            public bool HasUserRedline;         // the user pinned one for this variant
+            public int? UserRedline;            // the exact pinned value (shown precisely, not the stale resolved one)
+            public int? CommunityRedline;       // consensus for this variant (for "use community")
+        }
+
+        public CarFactsSummary GetActiveCarFactsSummary()
+        {
+            var s = new CarFactsSummary();
+            if (string.IsNullOrEmpty(_activeCarId)) return s;   // HasCar stays false
+            s.HasCar = true;
+            // Resolve the name from the stored facts / catalog for this
+            // (game, carId) rather than the live-telemetry display-name cache,
+            // so it's populated even for a car entered via offline edit (which
+            // never went through the live car-load resolver).
+            s.CarName = ResolveCarHumanName(_activeGame, _activeCarId)
+                        ?? ActiveCarDisplayName ?? "";
+            s.CommunityCarName = ActiveCarCommunityDisplayName;
+
+            var v = GetActiveResolvedVariant();
+            if (v != null)
+            {
+                s.HasVariant = true;
+                s.VariantLabel = string.IsNullOrEmpty(v.Label) ? "(unnamed)" : v.Label;
+                s.VariantSource = v.Source;
+                s.Cylinders = v.Cylinders;
+            }
+            if (s.Cylinders < 1)
+            {
+                int? c = ActiveCarEffectiveCyl();
+                if (c.HasValue && c.Value >= 1) s.Cylinders = c.Value;
+            }
+
+            // Engine TYPE = the resolved firing layout (V8 / Inline 6 / Rotary),
+            // not the variant's auto-label. This is what auto-detection actually
+            // landed on even when the picker shows "Auto", so the user can see
+            // it and tell whether it's wrong.
+            var layout = EnginePulse != null ? EnginePulse.EffectiveLayout : Effects.EngineLayout.Auto;
+            if (layout != Effects.EngineLayout.Auto)
+                s.EngineTypeDisplay = Effects.FiringPatternDb.LayoutDisplayName(layout);
+
+            var esForType = ActiveEngine;
+            s.EngineTypeIsUserOverride = esForType != null && esForType.Layout != Effects.EngineLayout.Auto;
+            if (s.EngineTypeIsUserOverride) s.EngineTypeProvenance = "user";
+            else
+            {
+                string als = EnginePulse?.AutoLayoutSource;   // "community"/"telemetry"/"baked"/"cache"/...
+                if (string.Equals(als, "community", StringComparison.OrdinalIgnoreCase)) s.EngineTypeProvenance = "community";
+                else if (string.Equals(als, "telemetry", StringComparison.OrdinalIgnoreCase)) s.EngineTypeProvenance = "game";
+                else s.EngineTypeProvenance = "auto";
+            }
+
+            // Prefer the LIVE rev ceiling so a tune change shows immediately and
+            // the user can tell what the plugin is currently tracking; fall back
+            // to the variant's captured value only when telemetry isn't live.
+            double liveMax = EnginePulse?.ObservedMaxRpm ?? 0;
+            if (liveMax >= 500) s.MaxRpm = (int)Math.Round(liveMax);
+            else if (v != null && v.MaxRpm.HasValue && v.MaxRpm.Value > 0) s.MaxRpm = v.MaxRpm.Value;
+
+            s.EffectiveRedline  = RevLimiter?.EffectiveRedlineRpm;
+            var storedForRedline = FindActiveStoredVariant();
+            // Treat a legacy adopted value (written by the retired adopt flow, now
+            // never set) as the user's own pin - the buzz already does, via
+            // BuildUserGearRedlineMap, so the label / Share must agree.
+            int? userRl    = storedForRedline?.UserRedlineRpm ?? storedForRedline?.AdoptedCommunityRedlineRpm;
+            s.UserRedline       = userRl;
+            // "HasUserRedline" = something genuinely THEIRS to share: an own pinned
+            // default or any per-gear override.
+            int perGearCount    = storedForRedline?.PerGearRedlines?.Count ?? 0;
+            s.HasUserRedline    = userRl.HasValue || perGearCount > 0;
+            s.CommunityRedline  = GetActiveVariantCommunityRedline();
+            // A community value is USED from the first submission, but only
+            // CLAIMED as "the community" once a second driver agrees; a lone
+            // submission is labelled "unconfirmed" instead. (Single source of
+            // truth for the threshold via IsActiveCommunityRedlineConfirmed.)
+            bool commConfirmed = IsActiveCommunityRedlineConfirmed();
+            if (userRl.HasValue) s.RedlineSource = "user";
+            else if (s.CommunityRedline.HasValue && RevLimiter?.CarFactsRedline == s.CommunityRedline.Value)
+                s.RedlineSource = commConfirmed ? "community" : "community_unconfirmed";
+            else if ((EnginePulse?.ObservedRedlineRpm ?? 0) >= 500) s.RedlineSource = "game";
+            else if (RevLimiter?.IsRedlineGuessed == true) s.RedlineSource = "estimated";
+            else if (s.EffectiveRedline.HasValue) s.RedlineSource = "derived";
+            else s.RedlineSource = "none";
+            return s;
         }
 
         // Auto-generated variant labels follow "N cyl, M RPM" with an
@@ -8605,13 +9534,75 @@ namespace TrueforceForAll.Plugin
                 return Array.Empty<EngineVariant>();
             if (Settings?.CarFacts == null) return Array.Empty<EngineVariant>();
             string key = _activeGame + "/" + _activeCarId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null)
-                return Array.Empty<EngineVariant>();
-            var pool = new List<EngineVariant>(bundle.EngineVariants.Count);
-            foreach (var v in bundle.EngineVariants)
-                if (v != null && v.Source != CarFactSource.User)
-                    pool.Add(v);
-            return pool;
+            // Snapshot under the lock: the SimHub data thread can Add to this
+            // list concurrently (EnsureVariantForLiveSignature), which would make
+            // a bare foreach here throw "Collection was modified".
+            lock (_carFactsLock)
+            {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null)
+                    return Array.Empty<EngineVariant>();
+                var pool = new List<EngineVariant>(bundle.EngineVariants.Count);
+                foreach (var v in bundle.EngineVariants)
+                    if (v != null && v.Source != CarFactSource.User)
+                        pool.Add(v);
+                return pool;
+            }
+        }
+
+        /// <summary>Resolve the redline to DISPLAY for one stored variant in the
+        /// manage-variants list, mirroring what the rev limiter actually uses now
+        /// that "adopt" is retired: the user's own pin wins (a legacy adopted value
+        /// counts as the user's, same as the resolver), else the community consensus
+        /// cached for this variant's signature (only when car facts are on, so what
+        /// we show matches what the wheel uses), else a stored absolute redline
+        /// (telemetry-captured; Forza never has one). Returns null with source
+        /// "none" when nothing is stored and the wheel derives it live. <paramref
+        /// name="source"/> is "user" / "community" / "community_unconfirmed" /
+        /// "stored" / "none" so the UI can tag community-derived values.</summary>
+        public int? ResolveVariantDisplayRedline(string game, string carId, EngineVariant v, out string source)
+        {
+            source = "none";
+            if (v == null) return null;
+            // 1) The user's own pin (legacy adopted value folded in, matching the
+            //    resolver at GetActiveVariantPinnedRedline / the buzz cascade).
+            int? pin = v.UserRedlineRpm ?? v.AdoptedCommunityRedlineRpm;
+            if (pin.HasValue) { source = "user"; return pin; }
+            // 2) Community consensus cached for this exact variant signature. Gated
+            //    on UseCommunityCarFacts so a row never shows a value the wheel
+            //    isn't applying. Usable at >= 1 supporter (matches the cascade);
+            //    only >= 2 is labelled "community" rather than "unconfirmed".
+            if (Settings?.UseCommunityCarFacts == true
+                && !string.IsNullOrEmpty(game) && !string.IsNullOrEmpty(carId))
+            {
+                var r = GetCommunityCacheEntry(game, carId, ComputeStoredVariantSignature(v))?.Redline;
+                if (r != null && r.Rpm >= 500 && r.Rpm <= 25000
+                    && r.SupportingSubmissions >= CommunityRedlineMinSupport)
+                {
+                    source = r.SupportingSubmissions >= CommunityRedlineConfirmedSupport
+                        ? "community" : "community_unconfirmed";
+                    return r.Rpm;
+                }
+            }
+            // 3) A stored absolute redline (telemetry-captured; non-Forza).
+            if (v.RedlineRpm.HasValue) { source = "stored"; return v.RedlineRpm; }
+            return null;
+        }
+
+        // Rebuild a stored variant's banded signature from its captured fields,
+        // matching the live ComputeActiveCarVariantSignature format
+        // ("cyl=..;maxrpm=..;redline=..") so it keys into the same
+        // CommunityFactCache entries. Bands are idempotent on the stored
+        // (already-rounded) values, so this reproduces the key written at fetch.
+        private static string ComputeStoredVariantSignature(EngineVariant v)
+        {
+            if (v == null) return string.Empty;
+            var parts = new List<string>(3);
+            if (v.Cylinders >= 1 && v.Cylinders <= 16) parts.Add("cyl=" + v.Cylinders);
+            int maxBand = v.MaxRpm.HasValue ? BandMaxRpm(v.MaxRpm.Value) : 0;
+            if (maxBand > 0) parts.Add("maxrpm=" + maxBand);
+            int redBand = v.RedlineRpm.HasValue ? BandRpm(v.RedlineRpm.Value) : 0;
+            if (redBand > 0) parts.Add("redline=" + redBand);
+            return parts.Count == 0 ? string.Empty : string.Join(";", parts);
         }
 
         /// <summary>Pin a specific variant as the active car's default
@@ -8630,7 +9621,7 @@ namespace TrueforceForAll.Plugin
                 Settings.CarFactsSelection.Remove(key);
             else
                 Settings.CarFactsSelection[key] = variantId;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
             ApplyActiveCarOverride();
             return true;
@@ -8650,16 +9641,22 @@ namespace TrueforceForAll.Plugin
             string label = (newLabel ?? "").Trim();
             if (label.Length == 0) return false;
             if (label.Length > 64) label = label.Substring(0, 64);
-            foreach (var v in bundle.EngineVariants)
+            bool renamed = false;
+            lock (_carFactsLock)
             {
-                if (v == null || v.Id != variantId) continue;
-                if (string.Equals(v.Label, label, StringComparison.Ordinal)) return false;
-                v.Label = label;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
-                RequestAutoBackup();   // engine-variant rename is settings-only (not a library file): the drift backstop won't catch it
-                return true;
+                foreach (var v in bundle.EngineVariants)
+                {
+                    if (v == null || v.Id != variantId) continue;
+                    if (string.Equals(v.Label, label, StringComparison.Ordinal)) return false;
+                    v.Label = label;
+                    renamed = true;
+                    break;
+                }
             }
-            return false;
+            if (!renamed) return false;
+            ScheduleCarFactsFlush();
+            RequestAutoBackup();   // engine-variant rename is settings-only (not a library file): the drift backstop won't catch it
+            return true;
         }
 
         /// <summary>Remove a stored EngineVariant from the active car's
@@ -8673,14 +9670,22 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(variantId)) return false;
             if (Settings?.CarFacts == null) return false;
             string key = _activeGame + "/" + _activeCarId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
-            int removed = bundle.EngineVariants.RemoveAll(v => v != null && v.Id == variantId);
-            if (removed == 0) return false;
-            if (Settings.CarFactsSelection != null
-                && Settings.CarFactsSelection.TryGetValue(key, out var sel)
-                && string.Equals(sel, variantId, StringComparison.Ordinal))
-                Settings.CarFactsSelection.Remove(key);
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            // Deleting the ACTIVE variant is blocked at the UI (telemetry would
+            // just recreate it), so delete is only ever a stale/inactive row -
+            // no redline carry-over needed.
+            bool removed = false;
+            lock (_carFactsLock)
+            {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
+                if (bundle.EngineVariants.RemoveAll(v => v != null && v.Id == variantId) == 0) return false;
+                removed = true;
+                if (Settings.CarFactsSelection != null
+                    && Settings.CarFactsSelection.TryGetValue(key, out var sel)
+                    && string.Equals(sel, variantId, StringComparison.Ordinal))
+                    Settings.CarFactsSelection.Remove(key);
+            }
+            if (!removed) return false;
+            ScheduleCarFactsFlush();
             RequestAutoBackup();   // car-facts variant deleted: arm auto-sync (CarFacts is portable)
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
             ApplyActiveCarOverride();
@@ -8745,11 +9750,51 @@ namespace TrueforceForAll.Plugin
         /// consensus pull is skipped. SimHub's autosave catches this on
         /// plugin teardown, but writing through here makes the change
         /// immediately durable so it survives a SimHub crash.</summary>
+        /// <summary>Raised after CommunityEnabled is toggled, from either the
+        /// Settings checkbox or the share funnel. UI panels subscribe so the same
+        /// follow-up (account row, MOTD, cache-stale, checkbox sync) runs no matter
+        /// which surface flipped it.</summary>
+        public event Action<bool> CommunityEnabledChanged;
+
         public void SetCommunityEnabled(bool on)
         {
             if (Settings == null) return;
             Settings.CommunityEnabled = on;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
+            try { CommunityEnabledChanged?.Invoke(on); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] CommunityEnabledChanged subscriber threw: " + ex.Message);
+            }
+        }
+
+        /// <summary>Persist the "apply community car facts" toggle and make the
+        /// change take effect on the active car immediately. Off clears the
+        /// in-memory community consensus so names / layouts / redlines stop being
+        /// applied at once; On re-applies from the local cache (no network needed)
+        /// and re-resolves. Independent of CommunityEnabled (the networking master),
+        /// so On + CommunityEnabled off = cache-only / offline use.</summary>
+        public void SetUseCommunityCarFacts(bool on)
+        {
+            if (Settings == null) return;
+            Settings.UseCommunityCarFacts = on;
+            PersistSettingsCore();
+            if (!on)
+            {
+                // Stop applying community car facts right now.
+                _activeCarCommunityKey = null;        _activeCarCommunityConsensus = null;
+                _activeCarCommunityNameKey = null;     _activeCarCommunityNameConsensus = null;
+                _activeCarCommunityRedlineKey = null;  _activeCarCommunityRedlineConsensus = null;
+            }
+            else if (!string.IsNullOrEmpty(_activeGame) && !string.IsNullOrEmpty(_activeCarId))
+            {
+                // Re-apply from cache instantly (the UI separately decides whether
+                // a network refresh is also due).
+                ReplayCommunityCache(_activeGame, _activeCarId,
+                    ComputeActiveCarVariantSignature(_activeGame, _activeCarId));
+            }
+            if (!string.IsNullOrEmpty(_activeCarId))
+                ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
         }
 
         /// <summary>Fire-and-forget submission of an engine-layout
@@ -8762,6 +9807,8 @@ namespace TrueforceForAll.Plugin
         {
             _community?.SubmitEngineLayoutAsync(game, carId, layout,
                 ComputeActiveCarVariantSignature(game, carId));
+            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+                NoteMotdContribution(MotdContribution.CarFact);
         }
 
         /// <summary>Submit a custom-engine assignment to the community.
@@ -8776,6 +9823,8 @@ namespace TrueforceForAll.Plugin
             _community?.SubmitCustomEngineAsync(game, carId,
                 name, pattern, isElectric, electricMode,
                 ComputeActiveCarVariantSignature(game, carId));
+            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+                NoteMotdContribution(MotdContribution.CarFact);
         }
 
         // ---- Preset sharing passthroughs (PresetSharingClient is internal
@@ -8791,6 +9840,8 @@ namespace TrueforceForAll.Plugin
             string prefix;
             switch (_presetSharing.LastUploadError)
             {
+                case UploadError.Blocked:
+                    prefix = "Your account is restricted from uploading."; break;
                 case UploadError.NotAuthenticated:
                     prefix = "Sign-in expired. Sign in again and retry."; break;
                 case UploadError.RateLimited:
@@ -8808,21 +9859,179 @@ namespace TrueforceForAll.Plugin
             string Trim(string s) => s.Length > 120 ? s.Substring(0, 120) + "..." : s;
         }
 
+        // True when the last upload was rejected because the account/device is
+        // banned. Share dialogs use this to pop the appeal modal in place.
+        internal bool LastUploadWasBlocked()
+            => _presetSharing != null && _presetSharing.LastUploadError == UploadError.Blocked;
+
         internal async Task<string> UploadCarPresetToCommunityAsync(
             string name, string game, string carId, JObject body,
             string author, string description, List<string> effectTags,
             int bodyVersion = 1, bool allowInPacks = false)
         {
             if (_presetSharing == null) return null;
-            return await _presetSharing.UploadCarPresetAsync(
+            var id = await _presetSharing.UploadCarPresetAsync(
                 name, game, carId, body, author, description, effectTags,
                 bodyVersion, allowInPacks: allowInPacks);
+            if (!string.IsNullOrEmpty(id))
+            {
+                InvalidateBrowseCacheForKind("car", game, carId);
+                NoteMotdContribution(MotdContribution.Share);
+            }
+            return id;
+        }
+
+        // ---- Community-BROWSE cache (offline-first lists; see CommunityBrowseCacheStore) ----
+        // Read-through cache wrapping the six browse fetches below. Lazy per entry
+        // (one key per opened view), 72h TTL, force on manual refresh, invalidate
+        // on the user's own upload/delete/vote. Never mass-refreshed.
+
+        private static string BrowseKey(string type, string game, string carId, string sort, int limit)
+            => string.Join("/", type, game ?? "", carId ?? "", sort ?? "", limit.ToString());
+
+        private List<PresetSummary> BrowseCacheReadThrough(string key, int offset, bool force, Func<List<PresetSummary>> fetch)
+        {
+            if (_browseCache == null) return fetch();
+            if (offset > 0)
+            {
+                // "Load more" (Show more): fetch the next page and GROW the cached
+                // accumulated list for this view, so a return visit shows everything
+                // the user had loaded. Returns just the new page (the UI appends).
+                var more = fetch();
+                if (more != null && more.Count > 0) _browseCache.Append(key, more);
+                return more;
+            }
+            if (!force)
+            {
+                var cached = _browseCache.TryGet(key, out bool fresh);
+                if (fresh && cached != null) return cached;
+            }
+            var result = fetch();
+            if (result != null) { _browseCache.Put(key, result); return result; }
+            // Fetch failed (offline / signed out): serve the stale cache rather than
+            // nothing, and never overwrite a good entry with a null.
+            return _browseCache.TryGet(key, out _);
+        }
+
+        /// <summary>Drop the cached browse lists a user's own action made stale.
+        /// kind: "car"|"game"|"engine"|"pack".</summary>
+        public void InvalidateBrowseCacheForKind(string kind, string game, string carId)
+        {
+            if (_browseCache == null) return;
+            switch (kind)
+            {
+                case "game":   _browseCache.InvalidatePrefix("game/" + (game ?? "") + "/");
+                               _browseCache.InvalidatePrefix("trendingGame/"); break;
+                case "engine": _browseCache.InvalidatePrefix("engine/"); break;
+                case "pack":   _browseCache.InvalidatePrefix("pack/"); break;
+                default:       _browseCache.InvalidatePrefix("car/" + (game ?? "") + "/" + (carId ?? "") + "/");
+                               _browseCache.InvalidatePrefix("trendingCar/"); break;
+            }
         }
 
         internal List<PresetSummary> FetchCommunityPresetsForCar(
-            string game, string carId, string sort = "wilson", int limit = 20)
+            string game, string carId, string sort = "wilson", int limit = 20, bool force = false, int offset = 0)
+            => BrowseCacheReadThrough(BrowseKey("car", game, carId, sort, limit), offset, force,
+                () => _presetSharing?.FetchPresetsForCar(game, carId, sort, limit, offset));
+
+        /// <summary>Cross-car browse / search for the community browser, once
+        /// the user broadens past the active-car default (a search term and/or
+        /// a multi-game filter). Live (not cached): results are query-specific
+        /// and transient, and skipping the browse cache avoids polluting it
+        /// with per-keystroke keys. kind: car|game|engine|pack; games == null/
+        /// empty = all games (engines/packs ignore games entirely).</summary>
+        internal List<PresetSummary> BrowseOrSearchCommunity(
+            string kind, string query, IList<string> games,
+            string sort = "wilson", int limit = 25, int offset = 0)
         {
-            return _presetSharing?.FetchPresetsForCar(game, carId, sort, limit);
+            if (_presetSharing == null) return null;
+            switch (kind)
+            {
+                case "game":   return _presetSharing.SearchGamePresets(query, games, sort, limit, offset);
+                case "engine": return _presetSharing.SearchCustomEngines(query, sort, limit, offset);
+                case "pack":   return _presetSharing.SearchPacks(query, sort, limit, offset);
+                default:
+                    var carIds = string.IsNullOrWhiteSpace(query)
+                        ? null
+                        : ResolveCarIdsByName(games, query);
+                    return _presetSharing.SearchPresets(query, carIds, games, sort, limit, offset);
+            }
+        }
+
+        // Resolve a human car-name query (e.g. "mx5") to the opaque car_ids
+        // the preset rows store, so the community search can surface a car by
+        // its real name. Merges the built-in name tables with local CarFacts
+        // names (user renames / cached community names). Scoped to the given
+        // games when provided; scans all games when null/empty.
+        private List<string> ResolveCarIdsByName(IList<string> games, string query)
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            if (string.IsNullOrWhiteSpace(query)) return new List<string>();
+            string q = query.Trim();
+            var scopeGames = (games != null && games.Count > 0) ? games : null;
+
+            // Built-in catalogs (Forza ordinal names, FH5 curated names, AC
+            // descriptive ids).
+            if (scopeGames == null)
+            {
+                foreach (var id in BuiltinCarCylinders.FindCarIdsByDisplayName(null, q, 200))
+                    set.Add(id);
+            }
+            else
+            {
+                foreach (var g in scopeGames)
+                    foreach (var id in BuiltinCarCylinders.FindCarIdsByDisplayName(g, q, 200))
+                        set.Add(id);
+            }
+
+            // Local CarFacts names (key = "<game>/<carId>").
+            try
+            {
+                var cf = Settings?.CarFacts;
+                if (cf != null)
+                {
+                    foreach (var kv in cf)
+                    {
+                        if (set.Count >= 300) break;
+                        var bundle = kv.Value;
+                        if (bundle == null || string.IsNullOrEmpty(bundle.CarName)) continue;
+                        if (bundle.CarName.IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        string key = kv.Key ?? "";
+                        int slash = key.IndexOf('/');
+                        if (slash <= 0 || slash >= key.Length - 1) continue;
+                        string g  = key.Substring(0, slash);
+                        string id = key.Substring(slash + 1);
+                        if (scopeGames != null
+                            && !scopeGames.Any(x => string.Equals(x, g, StringComparison.OrdinalIgnoreCase)))
+                            continue;
+                        set.Add(id);
+                    }
+                }
+            }
+            catch { /* name resolution is best-effort; fall back to text match */ }
+
+            return new List<string>(set);
+        }
+
+        /// <summary>Candidate games for the community browser's game filter:
+        /// the active game, games the user has local presets for, and every
+        /// game with a built-in car catalog. Sorted, de-duplicated.</summary>
+        internal List<string> GetCommunityFilterGames()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(ActiveGame)) set.Add(ActiveGame);
+            if (Settings?.GameDefaults != null)
+                foreach (var k in Settings.GameDefaults.Keys)
+                    if (!string.IsNullOrEmpty(k)) set.Add(k);
+            try
+            {
+                foreach (var kv in GetAllCarPresets())
+                    foreach (var p in kv.Value.Values)
+                        if (!string.IsNullOrEmpty(p?.GameName)) set.Add(p.GameName);
+            }
+            catch { }
+            foreach (var g in BuiltinCarCylinders.CatalogGames()) set.Add(g);
+            return set.OrderBy(g => g, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         internal PresetFull FetchCommunityPresetBody(string id)
@@ -8839,25 +10048,34 @@ namespace TrueforceForAll.Plugin
         // optimistic UI on false so a rate-limit / blocked-user / no-
         // auth rejection doesn't leave the row visually voted forever.
         internal Task<bool> TryVoteCommunityPresetAsync(string id, int value)
-            => _presetSharing?.TryVotePresetAsync(id, value) ?? Task.FromResult(false);
+            => VoteThenNoteAsync(_presetSharing?.TryVotePresetAsync(id, value), value);
 
         internal Task<bool> TryVoteCommunityGamePresetAsync(string id, int value)
-            => _presetSharing?.TryVoteGamePresetAsync(id, value) ?? Task.FromResult(false);
+            => VoteThenNoteAsync(_presetSharing?.TryVoteGamePresetAsync(id, value), value);
 
         internal Task<bool> TryVoteCommunityCustomEngineAsync(string id, int value)
-            => _presetSharing?.TryVoteCustomEngineAsync(id, value) ?? Task.FromResult(false);
+            => VoteThenNoteAsync(_presetSharing?.TryVoteCustomEngineAsync(id, value), value);
 
         internal Task<bool> TryVoteCommunityPackAsync(string id, int value)
-            => _presetSharing?.TryVotePackAsync(id, value) ?? Task.FromResult(false);
+            => VoteThenNoteAsync(_presetSharing?.TryVotePackAsync(id, value), value);
+
+        // Awaits a vote and, on a real (non-retraction) success, stamps voter
+        // recency so the "go vote" community nudge stays hidden for a while.
+        private async Task<bool> VoteThenNoteAsync(Task<bool> voteTask, int value)
+        {
+            bool ok = await (voteTask ?? Task.FromResult(false)).ConfigureAwait(false);
+            if (ok && value != 0) NoteMotdContribution(MotdContribution.Vote);
+            return ok;
+        }
 
         public void RecordCommunityPresetDownload(string id)
         {
             _presetSharing?.RecordPresetDownloadAsync(id);
         }
 
-        public void ReportCommunityPreset(string id)
+        public void ReportCommunityPreset(string id, string category = "other", string note = null)
         {
-            _presetSharing?.ReportPresetAsync(id);
+            _presetSharing?.ReportPresetAsync(id, category, note);
         }
 
         internal async Task<bool> UpdateCommunityPresetAsync(string id,
@@ -8882,10 +10100,20 @@ namespace TrueforceForAll.Plugin
                 bodyVersion, allowInPacks: allowInPacks);
         }
 
-        internal async Task<bool> DeleteCommunityPresetAsync(string id)
+        // Owner-delete an upload of any kind. Each kind lives in its own table
+        // with its own RPC; route by the row's kind ("game"/"pack"/"engine",
+        // else car). Was car-only (delete_preset), so deleting a game-preset /
+        // pack / custom-engine upload hit the wrong table and silently failed.
+        internal async Task<bool> DeleteCommunityItemAsync(string kind, string id)
         {
             if (_presetSharing == null) return false;
-            return await _presetSharing.DeletePresetAsync(id);
+            switch ((kind ?? "car").ToLowerInvariant())
+            {
+                case "game":   return await _presetSharing.DeleteGamePresetAsync(id);
+                case "pack":   return await _presetSharing.DeletePackAsync(id);
+                case "engine": return await _presetSharing.DeleteCustomEngineAsync(id);
+                default:       return await _presetSharing.DeletePresetAsync(id);
+            }
         }
 
         // ---- Game preset passthroughs (parallel to car suite above) ------
@@ -8897,15 +10125,22 @@ namespace TrueforceForAll.Plugin
             string[] targetGames = null)
         {
             if (_presetSharing == null) return null;
-            return await _presetSharing.UploadGamePresetAsync(
+            var id = await _presetSharing.UploadGamePresetAsync(
                 name, game, body, description, effectTags, bodyVersion,
                 allowInPacks: allowInPacks,
                 targetGames: targetGames);
+            if (!string.IsNullOrEmpty(id))
+            {
+                InvalidateBrowseCacheForKind("game", game, null);
+                NoteMotdContribution(MotdContribution.Share);
+            }
+            return id;
         }
 
         internal List<PresetSummary> FetchCommunityGamePresetsForGame(
-            string game, string sort = "wilson", int limit = 20)
-            => _presetSharing?.FetchGamePresetsForGame(game, sort, limit);
+            string game, string sort = "wilson", int limit = 20, bool force = false, int offset = 0)
+            => BrowseCacheReadThrough(BrowseKey("game", game, "", sort, limit), offset, force,
+                () => _presetSharing?.FetchGamePresetsForGame(game, sort, limit, offset));
 
         internal PresetFull FetchCommunityGamePresetBody(string id)
             => _presetSharing?.FetchGamePresetBody(id);
@@ -8916,8 +10151,8 @@ namespace TrueforceForAll.Plugin
         public void RecordCommunityGamePresetDownload(string id)
             => _presetSharing?.RecordGamePresetDownloadAsync(id);
 
-        public void ReportCommunityGamePreset(string id)
-            => _presetSharing?.ReportGamePresetAsync(id);
+        public void ReportCommunityGamePreset(string id, string category = "other", string note = null)
+            => _presetSharing?.ReportGamePresetAsync(id, category, note);
 
         internal async Task<bool> UpdateCommunityGamePresetAsync(string id,
             string name, string description, JObject body,
@@ -8958,25 +10193,34 @@ namespace TrueforceForAll.Plugin
             bool allowInPacks = false)
         {
             if (_presetSharing == null) return null;
-            return await _presetSharing.UploadCustomEngineAsync(
+            var id = await _presetSharing.UploadCustomEngineAsync(
                 name, body, description, bodyVersion, allowInPacks: allowInPacks);
+            if (!string.IsNullOrEmpty(id))
+            {
+                InvalidateBrowseCacheForKind("engine", null, null);
+                NoteMotdContribution(MotdContribution.Share);
+            }
+            return id;
         }
 
         internal List<PresetSummary> FetchCommunityCustomEngines(
-            string sort = "wilson", int limit = 50)
-            => _presetSharing?.FetchCommunityCustomEngines(sort, limit);
+            string sort = "wilson", int limit = 50, bool force = false, int offset = 0)
+            => BrowseCacheReadThrough(BrowseKey("engine", "", "", sort, limit), offset, force,
+                () => _presetSharing?.FetchCommunityCustomEngines(sort, limit, offset));
 
         /// <summary>Cross-game trending car presets. Fallback for the
         /// for-car community panel when no game/car is loaded yet.</summary>
         internal List<PresetSummary> FetchCommunityTrendingCarPresets(
-            string sort = "wilson", int limit = 50)
-            => _presetSharing?.FetchTrendingCarPresets(sort, limit);
+            string sort = "wilson", int limit = 50, bool force = false, int offset = 0)
+            => BrowseCacheReadThrough(BrowseKey("trendingCar", "", "", sort, limit), offset, force,
+                () => _presetSharing?.FetchTrendingCarPresets(sort, limit, offset));
 
         /// <summary>Cross-game trending game presets. Fallback for the
         /// for-car community panel when no game is loaded yet.</summary>
         internal List<PresetSummary> FetchCommunityTrendingGamePresets(
-            string sort = "wilson", int limit = 50)
-            => _presetSharing?.FetchTrendingGamePresets(sort, limit);
+            string sort = "wilson", int limit = 50, bool force = false, int offset = 0)
+            => BrowseCacheReadThrough(BrowseKey("trendingGame", "", "", sort, limit), offset, force,
+                () => _presetSharing?.FetchTrendingGamePresets(sort, limit, offset));
 
         internal PresetFull FetchCommunityCustomEngineBody(string id)
             => _presetSharing?.FetchCommunityCustomEngineBody(id);
@@ -8987,8 +10231,8 @@ namespace TrueforceForAll.Plugin
         public void RecordCommunityCustomEngineDownload(string id)
             => _presetSharing?.RecordCustomEngineDownloadAsync(id);
 
-        public void ReportCommunityCustomEngine(string id)
-            => _presetSharing?.ReportCustomEngineAsync(id);
+        public void ReportCommunityCustomEngine(string id, string category = "other", string note = null)
+            => _presetSharing?.ReportCustomEngineAsync(id, category, note);
 
         internal async Task<bool> UpdateCommunityCustomEngineAsync(string id,
             string name, string description, JObject body, int? bodyVersion = null,
@@ -9040,7 +10284,7 @@ namespace TrueforceForAll.Plugin
             // onto the snapshot so a downstream export/import preserves
             // the local author's intent.
             if (allowInPacks.HasValue) snap.CommunityAllowInPacks = allowInPacks;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
         }
 
         /// <summary>Persist the four CommunityUploaded* fields onto the
@@ -9102,7 +10346,7 @@ namespace TrueforceForAll.Plugin
             def.CommunityUploadedBodyHash = bodyHash;
             def.CommunityUploadedVersion  = "v" + contentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (allowInPacks.HasValue) def.CommunityAllowInPacks = allowInPacks;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
         }
 
         /// <summary>Save a freshly-downloaded community custom engine
@@ -9137,13 +10381,20 @@ namespace TrueforceForAll.Plugin
             int entryCount, int bodyVersion = 1)
         {
             if (_presetSharing == null) return null;
-            return await _presetSharing.UploadPackAsync(
+            var id = await _presetSharing.UploadPackAsync(
                 name, body, description, authorVersion, entryCount, bodyVersion);
+            if (!string.IsNullOrEmpty(id))
+            {
+                InvalidateBrowseCacheForKind("pack", null, null);
+                NoteMotdContribution(MotdContribution.Share);
+            }
+            return id;
         }
 
         internal List<PresetSummary> FetchCommunityPacks(
-            string sort = "wilson", int limit = 50)
-            => _presetSharing?.FetchCommunityPacks(sort, limit);
+            string sort = "wilson", int limit = 50, bool force = false, int offset = 0)
+            => BrowseCacheReadThrough(BrowseKey("pack", "", "", sort, limit), offset, force,
+                () => _presetSharing?.FetchCommunityPacks(sort, limit, offset));
 
         internal PresetFull FetchCommunityPackBody(string id)
             => _presetSharing?.FetchCommunityPackBody(id);
@@ -9154,8 +10405,37 @@ namespace TrueforceForAll.Plugin
         public void RecordCommunityPackDownload(string id)
             => _presetSharing?.RecordPackDownloadAsync(id);
 
-        public void ReportCommunityPack(string id)
-            => _presetSharing?.ReportPackAsync(id);
+        public void ReportCommunityPack(string id, string category = "other", string note = null)
+            => _presetSharing?.ReportPackAsync(id, category, note);
+
+        // ---- Moderation notices (warn/removal/ban) + appeal ----------------
+        // internal: they surface the internal ModerationClient.NoticeRow type.
+        internal System.Threading.Tasks.Task<System.Collections.Generic.List<ModerationClient.NoticeRow>>
+            GetMyModerationNoticesAsync(System.Threading.CancellationToken ct = default(System.Threading.CancellationToken))
+            => _moderationClient != null
+                ? _moderationClient.GetMyNoticesAsync(ct)
+                : System.Threading.Tasks.Task.FromResult<System.Collections.Generic.List<ModerationClient.NoticeRow>>(null);
+
+        internal System.Threading.Tasks.Task<bool> AcknowledgeModerationNoticeAsync(
+            string id, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken))
+            => _moderationClient != null
+                ? _moderationClient.AcknowledgeAsync(id, ct)
+                : System.Threading.Tasks.Task.FromResult(false);
+
+        internal System.Threading.Tasks.Task<bool> RequestModerationReviewAsync(
+            string id, string note, string proposedName, string proposedDescription,
+            System.Threading.CancellationToken ct = default(System.Threading.CancellationToken))
+            => _moderationClient != null
+                ? _moderationClient.RequestReviewAsync(id, note, proposedName, proposedDescription, ct)
+                : System.Threading.Tasks.Task.FromResult(false);
+
+        // The signed-in user's own uploads incl. suppressed ones (state-tagged),
+        // for the greyed "removed/suspended/under review" rows in My uploads.
+        internal System.Threading.Tasks.Task<System.Collections.Generic.List<ModerationClient.MyUpload>>
+            GetMyUploadsAsync(System.Threading.CancellationToken ct = default(System.Threading.CancellationToken))
+            => _moderationClient != null
+                ? _moderationClient.GetMyUploadsAsync(ct)
+                : System.Threading.Tasks.Task.FromResult<System.Collections.Generic.List<ModerationClient.MyUpload>>(null);
 
         internal List<PresetSummary> FetchPacksByIds(IList<string> ids)
             => _presetSharing?.FetchPacksByIds(ids);
@@ -9213,7 +10493,7 @@ namespace TrueforceForAll.Plugin
                 OriginalBodyHash    = originalBodyHash,
                 OwnerUserId         = ownerUserId,
             };
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
         }
 
         /// <summary>Run the update-check: ask the server for the current
@@ -9301,11 +10581,11 @@ namespace TrueforceForAll.Plugin
                 // SimHub log. The local preset file is preserved; only
                 // the update-tracker entry is being cleared.
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] {orphaned.Count} community update tracker(s) removed (server row deleted). " +
+                    $"[TF4ALL] {orphaned.Count} community update tracker(s) removed (server row deleted). " +
                     "Local presets preserved.");
                 foreach (var id in orphaned)
                     Settings.DownloadedCommunityPresets.Remove(id);
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
             return found;
         }
@@ -9319,7 +10599,7 @@ namespace TrueforceForAll.Plugin
             if (Settings.DownloadedCommunityPresets.TryGetValue(presetId, out var rec))
             {
                 rec.SeenContentVersion = contentVersion;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
         }
 
@@ -9378,7 +10658,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Auto-update failed for " + server.Id + ": " + ex.Message);
+                        "[TF4ALL] Auto-update failed for " + server.Id + ": " + ex.Message);
                 }
                 if (!applied) residual.Add(pair);
             }
@@ -9429,7 +10709,7 @@ namespace TrueforceForAll.Plugin
                 string newHash = PresetBodyHasher.ComputeCarOverrideHash(newOvr);
                 StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Auto-updated community car preset '" + local.LocalPresetName
+                    "[TF4ALL] Auto-updated community car preset '" + local.LocalPresetName
                     + "' (v" + local.SeenContentVersion + " -> v" + server.ContentVersion + ").");
                 return true;
             }
@@ -9467,7 +10747,7 @@ namespace TrueforceForAll.Plugin
                 string newHash = PresetBodyHasher.ComputeGameSnapshotBodyHash(newSnap);
                 StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Auto-updated community game preset '" + local.LocalPresetName
+                    "[TF4ALL] Auto-updated community game preset '" + local.LocalPresetName
                     + "' (v" + local.SeenContentVersion + " -> v" + server.ContentVersion + ").");
                 return true;
             }
@@ -9501,7 +10781,7 @@ namespace TrueforceForAll.Plugin
                 string newHash = PresetBodyHasher.ComputeCustomEngineHash(newDef);
                 StampAutoUpdatedDownloadRecord(server.Id, server.ContentVersion, newHash);
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Auto-updated community custom engine '" + (newDef.Name ?? local.LocalPresetName)
+                    "[TF4ALL] Auto-updated community custom engine '" + (newDef.Name ?? local.LocalPresetName)
                     + "' (v" + local.SeenContentVersion + " -> v" + server.ContentVersion + ").");
                 return true;
             }
@@ -9518,7 +10798,7 @@ namespace TrueforceForAll.Plugin
             if (!Settings.DownloadedCommunityPresets.TryGetValue(presetId, out var rec)) return;
             rec.SeenContentVersion = newContentVersion;
             rec.OriginalBodyHash   = newBodyHash;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
         }
 
         // ===================== Community voting UX =====================
@@ -9569,7 +10849,7 @@ namespace TrueforceForAll.Plugin
                 && rec != null)
             {
                 rec.MyVote = value;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
         }
 
@@ -9585,7 +10865,7 @@ namespace TrueforceForAll.Plugin
             {
                 rec.PromptedForVote = true;
                 Settings.LastVoteNudgeUtc = DateTime.UtcNow;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
         }
 
@@ -9596,7 +10876,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null) return;
             Settings.ConsecutiveVoteNudgeDismissals += 1;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
         }
 
         /// <summary>User voted from a nudge - they engage with it, so clear
@@ -9605,7 +10885,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null || Settings.ConsecutiveVoteNudgeDismissals == 0) return;
             Settings.ConsecutiveVoteNudgeDismissals = 0;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
         }
 
         /// <summary>When the named car preset is a community download, bump
@@ -9629,7 +10909,7 @@ namespace TrueforceForAll.Plugin
             if (_useCountedThisSession.Add(communityId))
             {
                 rec.UseCount += 1;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
             return communityId;
         }
@@ -9693,7 +10973,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Slot remount failed: " + ex.Message);
+                    "[TF4ALL] Slot remount failed: " + ex.Message);
             }
             // Drop any per-car community consensus the previous
             // identity fetched - the new identity must refresh from
@@ -9707,16 +10987,27 @@ namespace TrueforceForAll.Plugin
             // Allow the next user (or anonymous after sign-out) to
             // see the welcome pitch once if they haven't yet.
             _initWelcomePromptOffered = false;
+            // Drop per-identity state BEFORE notifying subscribers: a UI panel refreshing during the
+            // event (supporter badge / Discord row) must not read the PRIOR user's cached status.
+            // The account-status cache (entitlement + Discord link) is per-identity; presence belongs
+            // to the prior identity too, so a stale "peer online" can't keep the pull/heartbeat running
+            // across the switch. The reconcile below re-probes presence for the new identity.
+            InvalidateAccountStatusCache();
+            _hasActivePeer = false;
+            System.Threading.Interlocked.Exchange(ref _presenceCheckedUtcTicks, 0);
             try { AuthIdentityChanged?.Invoke(newKey ?? ""); }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] AuthIdentityChanged subscriber threw: " + ex.Message);
+                    "[TF4ALL] AuthIdentityChanged subscriber threw: " + ex.Message);
             }
-            // Start/stop the cloud auto-pull poll for the new identity (no-op when signed out).
+            // Re-arm both timers for the new identity (both stop cleanly once signed out).
             UpdateAutoPullTimer();
-            // Start/stop the session-revoke heartbeat for the new identity (stops once signed out).
             UpdateSessionHeartbeatTimer();
+            // Reconcile sync state for the new identity: probe presence, run the drift backstop, and
+            // catch up if a peer is online. ignoreActivity so a fresh sign-in pulls without first
+            // requiring an interaction; the peer gate still spares solo users.
+            ReconcileSyncState(ignoreActivity: true);
         }
 
         // Ensures Settings.UserSlots exists, runs the one-time legacy
@@ -9742,7 +11033,7 @@ namespace TrueforceForAll.Plugin
                 if (signedInUserId != null)
                     RekeySlot(CommunityAuth.SlotKeyFromEmail(sess.Email), signedInUserId);
                 Settings.SlotsKeyedByUserIdV1 = true;
-                try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                try { PersistSettingsCore(); } catch { }
             }
 
             // F04: Snapshot the legacy-data owner email on first sign-in so the pre-slot migration anchors to the right user even if auth flips before EnsureUserSlotsMounted runs.
@@ -9769,9 +11060,9 @@ namespace TrueforceForAll.Plugin
                 if (Settings.UserSlots.Count > 0)
                 {
                     SimHub.Logging.Current.Warn(
-                        "[Trueforce] UserSlotsMigratedV1 was reset but slots exist; restoring flag.");
+                        "[TF4ALL] UserSlotsMigratedV1 was reset but slots exist; restoring flag.");
                     Settings.UserSlotsMigratedV1 = true;
-                    try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                    try { PersistSettingsCore(); } catch { }
                 }
                 else
                 {
@@ -9796,10 +11087,10 @@ namespace TrueforceForAll.Plugin
                     else
                     {
                         SimHub.Logging.Current.Info(
-                            "[Trueforce] Migration: target slot already has data; skipping legacy migration to avoid clobber.");
+                            "[TF4ALL] Migration: target slot already has data; skipping legacy migration to avoid clobber.");
                     }
                     Settings.ActiveSlotKey = desiredKey;
-                    try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                    try { PersistSettingsCore(); } catch { }
                 }
             }
             MountUserSlot(desiredKey);
@@ -9820,7 +11111,7 @@ namespace TrueforceForAll.Plugin
             Settings.UserSlots.Remove(oldKey);
             if (string.Equals(Settings.ActiveSlotKey ?? "", oldKey, StringComparison.Ordinal))
                 Settings.ActiveSlotKey = newKey;
-            SimHub.Logging.Current.Info("[Trueforce] Re-keyed a user slot to the stable account id.");
+            SimHub.Logging.Current.Info("[TF4ALL] Re-keyed a user slot to the stable account id.");
         }
 
         // Swap which account is live: its community history, its preset LIBRARY (a private folder
@@ -9878,7 +11169,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn(
-                    "[Trueforce] Account library re-point failed: " + ex.GetType().Name);
+                    "[TF4ALL] Account library re-point failed: " + ex.GetType().Name);
             }
             _lastLibFingerprint = null;   // folder changed: force the auto-sync drift backstop to recompute
 
@@ -9930,7 +11221,7 @@ namespace TrueforceForAll.Plugin
                 {
                     // F24: log exception type only; ex.Message can include file paths.
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Game-default re-derive on slot mount failed: " + ex.GetType().Name);
+                        "[TF4ALL] Game-default re-derive on slot mount failed: " + ex.GetType().Name);
                 }
                 // On a REAL account switch, discard the prior account's in-memory per-car overrides
                 // (and the persisted-baseline cache) BEFORE loading this account's car presets: so
@@ -9947,7 +11238,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info(
-                        "[Trueforce] Car-default re-derive on slot mount failed: " + ex.GetType().Name);
+                        "[TF4ALL] Car-default re-derive on slot mount failed: " + ex.GetType().Name);
                 }
                 // The active car's effective override may have changed;
                 // re-resolve it so the live audio + FFB stays consistent.
@@ -9957,7 +11248,7 @@ namespace TrueforceForAll.Plugin
                     catch (Exception ex)
                     {
                         SimHub.Logging.Current.Info(
-                            "[Trueforce] Re-apply active car override on slot mount failed: " + ex.GetType().Name);
+                            "[TF4ALL] Re-apply active car override on slot mount failed: " + ex.GetType().Name);
                     }
                 }
             }
@@ -9968,20 +11259,20 @@ namespace TrueforceForAll.Plugin
             {
                 ApplyGlobalFfbToLive();   // master gain + FFB scalars aren't covered by ApplyActiveCarOverride
                 try { ApplyActiveCarOverride(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Effect re-apply on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Effect re-apply on slot mount failed: " + ex.GetType().Name); }
                 try { ApplyForzaSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Telemetry re-apply on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Telemetry re-apply on slot mount failed: " + ex.GetType().Name); }
                 try { LibraryReloaded?.Invoke(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
                 try { UpdateAutoPullTimer(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Auto-pull timer refresh on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Auto-pull timer refresh on slot mount failed: " + ex.GetType().Name); }
             }
 
-            try { this.SaveCommonSettings("GeneralSettings", Settings); }
+            try { PersistSettingsCore(); }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Persist after slot mount failed: " + ex.GetType().Name);
+                    "[TF4ALL] Persist after slot mount failed: " + ex.GetType().Name);
             }
         }
 
@@ -10054,14 +11345,14 @@ namespace TrueforceForAll.Plugin
                     {
                         int skipped = BackupLibrary.Restore(target, src);
                         SimHub.Logging.Current.Info(
-                            "[Trueforce] Seeded a private library for this account (" + (src.Count - skipped) + " files) from the existing library.");
+                            "[TF4ALL] Seeded a private library for this account (" + (src.Count - skipped) + " files) from the existing library.");
                     }
                     else { try { System.IO.Directory.CreateDirectory(target); } catch { } }
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn("[Trueforce] Account library seed failed: " + ex.GetType().Name);
+                SimHub.Logging.Current.Warn("[TF4ALL] Account library seed failed: " + ex.GetType().Name);
             }
             slot.LibrarySeededV1 = true;
         }
@@ -10085,7 +11376,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Profile stash failed: " + ex.GetType().Name);
+                SimHub.Logging.Current.Info("[TF4ALL] Profile stash failed: " + ex.GetType().Name);
             }
             slot.AutoSyncBackupEnabled        = Settings.AutoSyncBackupEnabled;
             slot.BackupLastSyncedRevision     = Settings.BackupLastSyncedRevision ?? "";
@@ -10112,7 +11403,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Profile apply failed: " + ex.GetType().Name);
+                SimHub.Logging.Current.Info("[TF4ALL] Profile apply failed: " + ex.GetType().Name);
             }
             Settings.AutoSyncBackupEnabled        = slot.AutoSyncBackupEnabled;
             Settings.BackupLastSyncedRevision     = slot.BackupLastSyncedRevision ?? "";
@@ -10139,7 +11430,7 @@ namespace TrueforceForAll.Plugin
                     _device.FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb;
                 }
             }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Global FFB re-apply on slot mount failed: " + ex.GetType().Name); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Global FFB re-apply on slot mount failed: " + ex.GetType().Name); }
         }
 
         // Init-side welcome path: same modal SettingsControl pops, but
@@ -10173,7 +11464,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Init welcome construct failed: " + ex.Message);
+                    "[TF4ALL] Init welcome construct failed: " + ex.Message);
                 return;
             }
             // If no owner is loaded yet, fall back to a manual center so
@@ -10198,7 +11489,7 @@ namespace TrueforceForAll.Plugin
                     catch (Exception ex)
                     {
                         SimHub.Logging.Current.Info(
-                            "[Trueforce] Init sign-in failed: " + ex.Message);
+                            "[TF4ALL] Init sign-in failed: " + ex.Message);
                         signInCancelled = true;
                     }
                 }
@@ -10207,7 +11498,7 @@ namespace TrueforceForAll.Plugin
                     Settings.HasSeenNetworkedWelcome = true;
                     Settings.WelcomeNextShowAt       = null;
                     if (Settings.CommunityEnabled != true) SetCommunityEnabled(true);
-                    try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                    try { PersistSettingsCore(); } catch { }
                     return;
                 }
             }
@@ -10226,19 +11517,7 @@ namespace TrueforceForAll.Plugin
                 Settings.WelcomeNextShowAt =
                     DateTime.UtcNow.AddDays(WelcomeReshowDays);
             }
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
-            if (signInCancelled)
-            {
-                try
-                {
-                    System.Windows.MessageBox.Show(owner,
-                        "We'll remind you about community features later. Sign in anytime from the Account tab.",
-                        "Community features",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information);
-                }
-                catch { }
-            }
+            try { PersistSettingsCore(); } catch { }
         }
 
         // ---- Community auth passthroughs ----------------------------------
@@ -10249,6 +11528,11 @@ namespace TrueforceForAll.Plugin
 
         internal Task<AuthCallResult> AuthSendOtpAsync(string email)
             => _auth?.SendOtpAsync(email) ?? Task.FromResult(AuthCallResult.NetworkFailure);
+
+        // Retry-after seconds parsed from the most recent rate-limited send,
+        // so the sign-in modal can show an accurate resend countdown. Null
+        // when the last send wasn't rate-limited or the server gave no hint.
+        internal int? AuthLastSendRetryAfterSeconds => _auth?.LastSendRetryAfterSeconds;
 
         internal Task<AuthCallResult> AuthVerifyOtpAsync(string email, string code)
             => _auth?.VerifyOtpAsync(email, code) ?? Task.FromResult(AuthCallResult.NetworkFailure);
@@ -10278,7 +11562,7 @@ namespace TrueforceForAll.Plugin
         {
             if (incoming == null || incoming.Count == 0) return;
             MergeImportedCustomEngines(incoming);
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
         }
 
         /// <summary>Persist a freshly-downloaded community car preset into
@@ -10358,8 +11642,11 @@ namespace TrueforceForAll.Plugin
         ///   cyl=N         - Forza is the primary cohort. Strongest single
         ///                   signal: a swap that changes the cylinder count
         ///                   is unambiguously a different engine.
-        ///   maxrpm=BAND   - Hard rev ceiling. Banded to nearest 500 to
-        ///                   ride out per-frame jitter / per-game variance.
+        ///   maxrpm=BAND   - Hard rev ceiling. Banded to nearest 50 (near-exact,
+        ///                   tighter than redline): it's the only discriminator
+        ///                   Forza gives us and a deterministic spec, so it
+        ///                   stays tight to separate close upgrade builds
+        ///                   instead of merging them into one bucket.
         ///   redline=BAND  - Engaged rev-limiter point. Often equals or is
         ///                   close to maxrpm; banded too. When present and
         ///                   distinct from maxrpm it adds discrimination
@@ -10390,7 +11677,7 @@ namespace TrueforceForAll.Plugin
             int? cyl = ActiveCarEffectiveCyl();
             if (cyl.HasValue && cyl.Value >= 1 && cyl.Value <= 16)
                 parts.Add("cyl=" + cyl.Value);
-            int maxBand = BandRpm(EnginePulse.ObservedMaxRpm);
+            int maxBand = BandMaxRpm(EnginePulse.ObservedMaxRpm);
             if (maxBand > 0) parts.Add("maxrpm=" + maxBand);
             int redBand = BandRpm(EnginePulse.ObservedRedlineRpm);
             if (redBand > 0) parts.Add("redline=" + redBand);
@@ -10414,14 +11701,16 @@ namespace TrueforceForAll.Plugin
             return null;
         }
 
-        // 500-RPM banding: same engine across users lands in the same band
-        // even when telemetry differs by tens of RPM. Returns 0 for
-        // sub-500 / unset values so the caller drops the component.
-        private static int BandRpm(double rpm)
-        {
-            if (rpm < 500) return 0;
-            return (int)Math.Round(rpm / 500.0) * 500;
-        }
+        // RPM banding for the variant signature lives in Core
+        // (VariantSignatureMath) so it's unit-tested; these are thin
+        // delegators that keep the call sites above unchanged. Redline bands
+        // to 500 (loose, pools cross-user submissions); MaxRpm bands to 50
+        // (near-exact: it's the only discriminator Forza gives us and it's a
+        // deterministic spec, so it stays tight to separate close upgrade
+        // builds).
+        private static int BandRpm(double rpm) => VariantSignatureMath.BandRedline(rpm);
+
+        private static int BandMaxRpm(double rpm) => VariantSignatureMath.BandMaxRpm(rpm);
 
         /// <summary>Write a User-source CarName fact onto the local CarFacts
         /// bundle for (game, carId). Updates the displayed name immediately
@@ -10445,7 +11734,7 @@ namespace TrueforceForAll.Plugin
             }
             bundle.CarName = name;
 
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
 
             if (game == _activeGame && carId == _activeCarId)
                 ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
@@ -10457,21 +11746,9 @@ namespace TrueforceForAll.Plugin
         /// CommunityEnabled is false OR backend isn't configured.</summary>
         public void SubmitCarNameToCommunity(string game, string carId, string name)
         {
-            _community?.SubmitCarNameAsync(game, carId, name);
-        }
-
-        /// <summary>Fire-and-forget vote on the current community engine-
-        /// layout consensus. direction +1 = confirm, -1 = refute.
-        /// expectedPayloadHash is the consensus row's payload_hash captured
-        /// at fetch time; the server's CAS guard raises if it doesn't match
-        /// the current consensus (consensus changed between display and
-        /// click). UI should refetch and re-render in that case.</summary>
-        public void VoteEngineLayoutToCommunity(string game, string carId,
-            int direction, string expectedPayloadHash)
-        {
-            _community?.VoteEngineLayoutAsync(game, carId, direction,
-                expectedPayloadHash,
-                ComputeActiveCarVariantSignature(game, carId));
+            _community?.SubmitCarNameAsync(game, carId, name, CommunityNameLocaleSig());
+            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+                NoteMotdContribution(MotdContribution.CarFact);
         }
 
         // Map CarFactSource onto the source-label vocabulary the engine-layout
@@ -10530,8 +11807,8 @@ namespace TrueforceForAll.Plugin
             }
             if (changed)
             {
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info("[Trueforce] Migrated FFB spike taming flag from legacy values.");
+                PersistSettingsCore();
+                SimHub.Logging.Current.Info("[TF4ALL] Migrated FFB spike taming flag from legacy values.");
             }
         }
 
@@ -10603,9 +11880,9 @@ namespace TrueforceForAll.Plugin
 
             if (changed)
             {
-                this.SaveCommonSettings("GeneralSettings", Settings);
+                PersistSettingsCore();
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Migrated EnginePulse LoadLayer / HighRpmBoost defaults "
+                    "[TF4ALL] Migrated EnginePulse LoadLayer / HighRpmBoost defaults "
                     + "(Off @ 0.3 / 0.4 -> On @ 0.8 / 0.7) for presets at the old defaults.");
             }
         }
@@ -10693,9 +11970,9 @@ namespace TrueforceForAll.Plugin
 
             if (changed)
             {
-                this.SaveCommonSettings("GeneralSettings", Settings);
+                PersistSettingsCore();
                 SimHub.Logging.Current.Info(
-                    "[Trueforce] Migrated RevLimiter engage threshold default "
+                    "[TF4ALL] Migrated RevLimiter engage threshold default "
                     + "(0.97 -> 0.85) for presets at the old default.");
             }
         }
@@ -10735,6 +12012,7 @@ namespace TrueforceForAll.Plugin
                     case SectionKind.Ducking:        return !DuckingEquals(snap);
                     case SectionKind.Airborne:       return !AirborneEquals(snap);
                     case SectionKind.SpikeReduction: return !SpikeReductionEquals(snap);
+                    case SectionKind.StationarySpring: return !StationarySpringEquals(snap);
                     case SectionKind.Audio:    return !EffectEquals(snap, EffectField.Audio);
                     case SectionKind.Engine:   return !EffectEquals(snap, EffectField.Engine);
                     case SectionKind.Bumps:    return !EffectEquals(snap, EffectField.Bumps);
@@ -10784,16 +12062,27 @@ namespace TrueforceForAll.Plugin
         public bool SectionHasAnchor(SectionKind kind)
         {
             if (Settings == null) return false;
+            GameSettingsSnapshot snap = null;
             bool hasGamePreset = !string.IsNullOrEmpty(_activePresetName)
                 && Settings.Presets != null
-                && Settings.Presets.ContainsKey(_activePresetName);
-            if (hasGamePreset) return true;
+                && Settings.Presets.TryGetValue(_activePresetName, out snap)
+                && snap != null;
+            // A game preset is only an ANCHOR for the sections it actually
+            // carries. When the preset OMITS this section (a partial preset, or
+            // one saved before the effect existed) it provides no saved baseline,
+            // so we fall through to the per-car override check; with no override
+            // either, the section has NO anchor and the UI uses sticky-true (an
+            // edit shows dirty and stays dirty until saved). Without this an
+            // omitted section read permanently dirty (Eq vs null) or - after the
+            // null-guard in EffectEquals - permanently clean, masking real edits.
+            if (hasGamePreset && PresetCarriesSection(snap, kind)) return true;
 
             // Master / Ducking / SpikeReduction are not per-car, so without
-            // a game preset they have no anchor.
+            // a game preset that carries them they have no anchor.
             if (kind == SectionKind.Master
                 || kind == SectionKind.Ducking
-                || kind == SectionKind.SpikeReduction) return false;
+                || kind == SectionKind.SpikeReduction
+                || kind == SectionKind.StationarySpring) return false;
             if (string.IsNullOrEmpty(_activeCarId) || Settings.CarOverrides == null) return false;
             if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo) || liveCo == null) return false;
             switch (kind)
@@ -10813,13 +12102,48 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
+        /// <summary>True iff the preset snapshot actually carries this section.
+        /// Master / Ducking / SpikeReduction live in always-present scalar fields
+        /// so they're always carried; the effect sections are nullable objects a
+        /// partial preset can omit. Used by SectionHasAnchor to decide whether the
+        /// preset is a real baseline for the section or whether it has "no opinion"
+        /// (omitted -> sticky-true edit tracking instead).</summary>
+        private static bool PresetCarriesSection(GameSettingsSnapshot snap, SectionKind kind)
+        {
+            if (snap == null) return false;
+            switch (kind)
+            {
+                case SectionKind.Master:
+                case SectionKind.Ducking:
+                case SectionKind.SpikeReduction: return true;
+                case SectionKind.StationarySpring: return snap.StationarySpringEnabled != null;
+                case SectionKind.Audio:      return snap.AudioCapture != null;
+                case SectionKind.Engine:     return snap.EnginePulse  != null;
+                case SectionKind.Bumps:      return snap.RoadBumps    != null;
+                case SectionKind.Traction:   return snap.TractionLoss != null;
+                case SectionKind.Shift:      return snap.GearShift    != null;
+                case SectionKind.Abs:        return snap.AbsClick     != null;
+                case SectionKind.PitLimiter: return snap.PitLimiter   != null;
+                case SectionKind.Drs:        return snap.Drs          != null;
+                case SectionKind.Collision:  return snap.Collision    != null;
+                case SectionKind.RevLimiter: return snap.RevLimiter   != null;
+                case SectionKind.Airborne:   return snap.Airborne     != null;
+            }
+            return true;
+        }
+
         private bool MasterEquals(GameSettingsSnapshot snap)
         {
-            return EqF2(Settings.MasterGain,              snap.MasterGain)
-                && EqF2(Settings.FfbScale,                snap.FfbScale)
+            // FFB scale is personal: for a community preset it isn't applied or
+            // saved into the shared identity, so it must not count toward this
+            // section's dirty state either (else applying a downloaded preset
+            // would leave Master spuriously dirty). For the user's own presets
+            // it's a full member (savable per-game). Master gain is NOT here: it
+            // is a global setting (auto-persisted, never preset-scoped).
+            bool personal = !string.IsNullOrEmpty(snap.CommunitySourceId);
+            return (personal || EqF2(Settings.FfbScale,   snap.FfbScale))
                 &&     Settings.FfbInvertSign          == snap.FfbInvertSign
-                && EqF1(Settings.FfbSmoothTimeConstantMs, snap.FfbSmoothTimeConstantMs)
-                &&     Settings.SkipFfbPassthrough     == snap.SkipFfbPassthrough;
+                && EqF1(Settings.FfbSmoothTimeConstantMs, snap.FfbSmoothTimeConstantMs);
         }
 
         private bool SpikeReductionEquals(GameSettingsSnapshot snap)
@@ -10830,21 +12154,37 @@ namespace TrueforceForAll.Plugin
                 && EqI(Settings.FfbPeakSoftLimitLsb,  snap.FfbPeakSoftLimitLsb);
         }
 
+        // Stationary spring is a global (non-per-car) section. A preset saved
+        // before the spring lived in the snapshot has null fields -> "no
+        // opinion" -> not dirty (ApplyGamePreset leaves the live value alone),
+        // mirroring AirborneEquals.
+        private bool StationarySpringEquals(GameSettingsSnapshot snap)
+        {
+            if (snap.StationarySpringEnabled == null) return true;
+            return Settings.StationarySpringEnabled        == snap.StationarySpringEnabled.Value
+                && EqF2(Settings.StationarySpringStrength,  snap.StationarySpringStrength  ?? Settings.StationarySpringStrength)
+                && EqI (Settings.StationarySpringCutoffKmh, snap.StationarySpringCutoffKmh ?? Settings.StationarySpringCutoffKmh);
+        }
+
         private bool DuckingEquals(GameSettingsSnapshot snap)
         {
-            return EqF2(Settings.DuckDepth,    snap.DuckDepth)
+            return Settings.DuckingEnabled == snap.DuckingEnabled
+                && EqF2(Settings.DuckDepth,    snap.DuckDepth)
                 && EqI (Settings.DuckAttackMs, snap.DuckAttackMs)
                 && EqI (Settings.DuckReleaseMs, snap.DuckReleaseMs);
         }
 
         // Airborne ducking is a global (non-per-car) section. A preset saved
         // before this effect existed has no Airborne block (snap.Airborne ==
-        // null); treat that as "no opinion" and compare against the shipped
-        // default so the section reads clean until the user actually changes it.
+        // null); treat that as "no opinion" -> not dirty. ApplyGamePreset leaves
+        // the live Airborne value untouched in that case, so comparing it against
+        // the shipped default (the old behavior) wrongly lit the section dirty
+        // whenever the carried-over value wasn't exactly the default.
         private bool AirborneEquals(GameSettingsSnapshot snap)
         {
+            if (snap.Airborne == null) return true;
             var a = ActiveAirborne ?? new AirborneSettings();
-            var b = snap.Airborne  ?? new AirborneSettings();
+            var b = snap.Airborne;
             return a.Enabled          == b.Enabled
                 && EqF2(a.Reduction, b.Reduction)
                 && a.DuckEngine       == b.DuckEngine
@@ -10901,42 +12241,46 @@ namespace TrueforceForAll.Plugin
                 // override whose values match the default must read clean. (This
                 // is what lets toggling an effect off then back on clear the
                 // dirty state when the car had no prior override.)
+                //
+                // Non-override branch: when the active preset doesn't CARRY this
+                // section (snap.X == null - a partial preset, or one saved before
+                // the effect existed), the preset has "no opinion" on it.
+                // ApplyGamePreset leaves the live value untouched in that case, so
+                // there's nothing to be dirty against: the section reads clean
+                // until the user actually edits it. Without the snap.X == null
+                // guard, Eq(non-null live, null) returns false and the section
+                // lights up dirty the moment you switch to such a preset, even
+                // though nothing was changed.
                 case EffectField.Audio:
                     if (liveCo?.AudioCapture != null) return Eq(liveCo.AudioCapture, savedCo?.AudioCapture ?? snap.AudioCapture);
-                    return Eq(Settings.AudioCapture, snap.AudioCapture);
+                    return snap.AudioCapture == null || Eq(Settings.AudioCapture, snap.AudioCapture);
                 case EffectField.Engine:
                     if (liveCo?.EnginePulse  != null) return Eq(liveCo.EnginePulse,  savedCo?.EnginePulse  ?? snap.EnginePulse);
-                    return Eq(Settings.EnginePulse,  snap.EnginePulse);
+                    return snap.EnginePulse  == null || Eq(Settings.EnginePulse,  snap.EnginePulse);
                 case EffectField.Bumps:
                     if (liveCo?.RoadBumps    != null) return Eq(liveCo.RoadBumps,    savedCo?.RoadBumps    ?? snap.RoadBumps);
-                    return Eq(Settings.RoadBumps,    snap.RoadBumps);
+                    return snap.RoadBumps    == null || Eq(Settings.RoadBumps,    snap.RoadBumps);
                 case EffectField.Traction:
                     if (liveCo?.TractionLoss != null) return Eq(liveCo.TractionLoss, savedCo?.TractionLoss ?? snap.TractionLoss);
-                    return Eq(Settings.TractionLoss, snap.TractionLoss);
+                    return snap.TractionLoss == null || Eq(Settings.TractionLoss, snap.TractionLoss);
                 case EffectField.Shift:
                     if (liveCo?.GearShift    != null) return Eq(liveCo.GearShift,    savedCo?.GearShift    ?? snap.GearShift);
-                    return Eq(Settings.GearShift,    snap.GearShift);
+                    return snap.GearShift    == null || Eq(Settings.GearShift,    snap.GearShift);
                 case EffectField.Abs:
                     if (liveCo?.AbsClick     != null) return Eq(liveCo.AbsClick,     savedCo?.AbsClick     ?? snap.AbsClick);
-                    return Eq(Settings.AbsClick,     snap.AbsClick);
+                    return snap.AbsClick     == null || Eq(Settings.AbsClick,     snap.AbsClick);
                 case EffectField.PitLimiter:
                     if (liveCo?.PitLimiter   != null) return Eq(liveCo.PitLimiter,   savedCo?.PitLimiter   ?? snap.PitLimiter);
-                    return Eq(Settings.PitLimiter,   snap.PitLimiter);
+                    return snap.PitLimiter   == null || Eq(Settings.PitLimiter,   snap.PitLimiter);
                 case EffectField.Drs:
                     if (liveCo?.Drs          != null) return Eq(liveCo.Drs,          savedCo?.Drs          ?? snap.Drs);
-                    return Eq(Settings.Drs,          snap.Drs);
+                    return snap.Drs          == null || Eq(Settings.Drs,          snap.Drs);
                 case EffectField.Collision:
                     if (liveCo?.Collision    != null) return Eq(liveCo.Collision,    savedCo?.Collision    ?? snap.Collision);
-                    return Eq(Settings.Collision,    snap.Collision);
+                    return snap.Collision    == null || Eq(Settings.Collision,    snap.Collision);
                 case EffectField.RevLimiter:
                     if (liveCo?.RevLimiter   != null) return Eq(liveCo.RevLimiter,   savedCo?.RevLimiter   ?? snap.RevLimiter ?? new RevLimiterSettings());
-                    // A preset saved before this effect existed has no
-                    // RevLimiter section (snap.RevLimiter == null). Treat that
-                    // as "no opinion" and compare against the shipped default,
-                    // so the section reads clean (no phantom Save button)
-                    // until the user actually changes it. Newer effects can't
-                    // rely on every old preset JSON being regenerated.
-                    return Eq(Settings.RevLimiter,   snap.RevLimiter ?? new RevLimiterSettings());
+                    return snap.RevLimiter   == null || Eq(Settings.RevLimiter,   snap.RevLimiter);
             }
             return true;
         }
@@ -11159,7 +12503,7 @@ namespace TrueforceForAll.Plugin
         /// Mirrors the per-section "Save…" / "Revert" buttons in the UI:
         /// Master and Ducking are global-only; the rest have a per-car
         /// override component that revert respects.</summary>
-        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs, SpikeReduction, PitLimiter, Drs, Collision, RevLimiter, Airborne }
+        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs, SpikeReduction, PitLimiter, Drs, Collision, RevLimiter, Airborne, StationarySpring }
 
         /// <summary>Revert one section to the active preset's saved snapshot.
         /// Scope-aware: if the snapshot has a per-car override for the
@@ -11174,12 +12518,16 @@ namespace TrueforceForAll.Plugin
             switch (kind)
             {
                 case SectionKind.Master:
-                    Settings.MasterGain              = snap.MasterGain;
-                    Settings.FfbScale                = snap.FfbScale;
+                    // FFB scale is personal: reverted only for locally-authored
+                    // presets; a community preset's Master revert leaves the
+                    // user's own personal value in place. Master gain is global
+                    // (not preset-scoped), so revert never touches it.
+                    if (string.IsNullOrEmpty(snap.CommunitySourceId))
+                    {
+                        Settings.FfbScale            = snap.FfbScale;
+                    }
                     Settings.FfbInvertSign           = snap.FfbInvertSign;
                     Settings.FfbSmoothTimeConstantMs = snap.FfbSmoothTimeConstantMs;
-                    Settings.SkipFfbPassthrough      = snap.SkipFfbPassthrough;
-                    _mixer.MasterGain = Settings.MasterGain;
                     if (_device != null)
                     {
                         _device.FfbScale                = Settings.FfbScale;
@@ -11202,10 +12550,21 @@ namespace TrueforceForAll.Plugin
                     }
                     return true;
 
+                case SectionKind.StationarySpring:
+                    // Global section; restore from the preset's saved values, or
+                    // the shipped defaults when the preset predates the field.
+                    // ApplyStationarySpring reads Settings live each frame, so no
+                    // _device push is needed.
+                    Settings.StationarySpringEnabled   = snap.StationarySpringEnabled   ?? true;
+                    Settings.StationarySpringStrength  = snap.StationarySpringStrength  ?? 0.5;
+                    Settings.StationarySpringCutoffKmh = snap.StationarySpringCutoffKmh ?? 12.0;
+                    return true;
+
                 case SectionKind.Ducking:
-                    Settings.DuckDepth     = snap.DuckDepth;
-                    Settings.DuckAttackMs  = snap.DuckAttackMs;
-                    Settings.DuckReleaseMs = snap.DuckReleaseMs;
+                    Settings.DuckingEnabled = snap.DuckingEnabled;
+                    Settings.DuckDepth      = snap.DuckDepth;
+                    Settings.DuckAttackMs   = snap.DuckAttackMs;
+                    Settings.DuckReleaseMs  = snap.DuckReleaseMs;
                     return true;
 
                 case SectionKind.Airborne:
@@ -11408,7 +12767,7 @@ namespace TrueforceForAll.Plugin
             if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) return false;
             ApplyGamePreset(snap);
             _activePresetName = presetName;
-            SimHub.Logging.Current.Info($"[Trueforce] Applied preset '{presetName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Applied preset '{presetName}'.");
             return true;
         }
 
@@ -11423,7 +12782,7 @@ namespace TrueforceForAll.Plugin
             // mode may overwrite a built-in in place; user presets always save.
             if (IsBuiltinPreset(presetName) && !DevMode)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Refusing to overwrite built-in preset '{presetName}'.");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to overwrite built-in preset '{presetName}'.");
                 return;
             }
             // Skip the active-preset rename + log on disk failure so the
@@ -11451,9 +12810,9 @@ namespace TrueforceForAll.Plugin
             }
             if (!PersistGamePresetToFolder(presetName, fresh)) return;
             _activePresetName = presetName;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             RequestAutoBackup();   // preset file changed: arm auto-sync (no-op unless enabled)
-            SimHub.Logging.Current.Info($"[Trueforce] Saved preset '{presetName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Saved preset '{presetName}'.");
         }
 
         /// <summary>Save ONLY the targeted section into the active preset's
@@ -11473,11 +12832,9 @@ namespace TrueforceForAll.Plugin
             switch (kind)
             {
                 case SectionKind.Master:
-                    snap.MasterGain              = Settings.MasterGain;
                     snap.FfbScale                = Settings.FfbScale;
                     snap.FfbInvertSign           = Settings.FfbInvertSign;
                     snap.FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs;
-                    snap.SkipFfbPassthrough      = Settings.SkipFfbPassthrough;
                     break;
                 case SectionKind.SpikeReduction:
                     snap.FfbSpikeTamingEnabled  = Settings.FfbSpikeTamingEnabled;
@@ -11485,7 +12842,13 @@ namespace TrueforceForAll.Plugin
                     snap.FfbSpikeMaxLsbPerMs    = Settings.FfbSpikeMaxLsbPerMs;
                     snap.FfbPeakSoftLimitLsb    = Settings.FfbPeakSoftLimitLsb;
                     break;
+                case SectionKind.StationarySpring:
+                    snap.StationarySpringEnabled   = Settings.StationarySpringEnabled;
+                    snap.StationarySpringStrength  = Settings.StationarySpringStrength;
+                    snap.StationarySpringCutoffKmh = Settings.StationarySpringCutoffKmh;
+                    break;
                 case SectionKind.Ducking:
+                    snap.DuckingEnabled = Settings.DuckingEnabled;
                     snap.DuckDepth     = Settings.DuckDepth;
                     snap.DuckAttackMs  = Settings.DuckAttackMs;
                     snap.DuckReleaseMs = Settings.DuckReleaseMs;
@@ -11523,12 +12886,12 @@ namespace TrueforceForAll.Plugin
             if (!PersistGamePresetToFolder(_activePresetName, snap))
             {
                 SimHub.Logging.Current.Warn(
-                    $"[Trueforce] Couldn't save {kind} into preset '{_activePresetName}'.");
+                    $"[TF4ALL] Couldn't save {kind} into preset '{_activePresetName}'.");
                 return false;
             }
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             RequestAutoBackup();   // preset file changed: arm auto-sync (no-op unless enabled)
-            SimHub.Logging.Current.Info($"[Trueforce] Saved {kind} into preset '{_activePresetName}' (scoped).");
+            SimHub.Logging.Current.Info($"[TF4ALL] Saved {kind} into preset '{_activePresetName}' (scoped).");
             return true;
         }
 
@@ -11589,7 +12952,7 @@ namespace TrueforceForAll.Plugin
                 else
                     _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
             }
-            SimHub.Logging.Current.Info($"[Trueforce] Saved {kind} into car preset '{presetName}' for '{_activeCarId}' (scoped).");
+            SimHub.Logging.Current.Info($"[TF4ALL] Saved {kind} into car preset '{presetName}' for '{_activeCarId}' (scoped).");
             return true;
         }
 
@@ -11605,7 +12968,7 @@ namespace TrueforceForAll.Plugin
             // (also removes the folder file + its default bindings below).
             if (wasBuiltin && !DevMode)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Refusing to delete built-in preset '{presetName}'.");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to delete built-in preset '{presetName}'.");
                 return false;
             }
 
@@ -11632,14 +12995,14 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Delete '{presetName}' failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Delete '{presetName}' failed: {ex.Message}");
                 return false;
             }
 
             if (_activePresetName == presetName) _activePresetName = null;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             RequestAutoBackup();   // preset file deleted: arm auto-sync so the deletion propagates
-            SimHub.Logging.Current.Info($"[Trueforce] Deleted preset '{presetName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Deleted preset '{presetName}'.");
             return true;
         }
 
@@ -11673,7 +13036,7 @@ namespace TrueforceForAll.Plugin
             // rename them (renames the folder file + repoints defaults below).
             if (wasBuiltin && !DevMode)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Refusing to rename built-in preset '{oldName}'.");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to rename built-in preset '{oldName}'.");
                 return false;
             }
             if (!Settings.Presets.TryGetValue(oldName, out var snap) || snap == null) return false;
@@ -11690,14 +13053,14 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Rename '{oldName}' -> '{newName}' failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Rename '{oldName}' -> '{newName}' failed: {ex.Message}");
                 return false;
             }
 
             if (_activePresetName == oldName) _activePresetName = newName;
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             RequestAutoBackup();   // preset renamed (file path changed): arm auto-sync
-            SimHub.Logging.Current.Info($"[Trueforce] Renamed preset '{oldName}' to '{newName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Renamed preset '{oldName}' to '{newName}'.");
             return true;
         }
 
@@ -11732,12 +13095,12 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Duplicate '{sourceName}' -> '{newName}' failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Duplicate '{sourceName}' -> '{newName}' failed: {ex.Message}");
                 return false;
             }
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             RequestAutoBackup();   // new preset file: arm auto-sync so the duplicate propagates
-            SimHub.Logging.Current.Info($"[Trueforce] Duplicated preset '{sourceName}' as '{newName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Duplicated preset '{sourceName}' as '{newName}'.");
             return true;
         }
 
@@ -11772,11 +13135,11 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] DEV set game default for '{gameName}' failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] DEV set game default for '{gameName}' failed: {ex.Message}");
                     return false;
                 }
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: '{presetName}' set as built-in default for '{gameName}'.");
+                PersistSettingsCore();
+                SimHub.Logging.Current.Info($"[TF4ALL] DEV: '{presetName}' set as built-in default for '{gameName}'.");
                 return true;
             }
 
@@ -11792,7 +13155,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Set game default for '{gameName}' failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Set game default for '{gameName}' failed: {ex.Message}");
                     return false;
                 }
             }
@@ -11808,9 +13171,9 @@ namespace TrueforceForAll.Plugin
                 slot.OverrideGameDefaults[gameName] = presetName;
                 RebuildPresetCacheFromFolders();
             }
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             RequestAutoBackup();   // default binding changed: arm auto-sync
-            SimHub.Logging.Current.Info($"[Trueforce] '{presetName}' set as default for '{gameName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] '{presetName}' set as default for '{gameName}'.");
             return true;
         }
 
@@ -11833,11 +13196,11 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] DEV clear game default for '{gameName}' failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] DEV clear game default for '{gameName}' failed: {ex.Message}");
                     return false;
                 }
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: cleared built-in default for '{gameName}'.");
+                PersistSettingsCore();
+                SimHub.Logging.Current.Info($"[TF4ALL] DEV: cleared built-in default for '{gameName}'.");
                 return true;
             }
 
@@ -11846,9 +13209,9 @@ namespace TrueforceForAll.Plugin
                 && slot.OverrideGameDefaults.Remove(gameName))
             {
                 RebuildPresetCacheFromFolders();
-                this.SaveCommonSettings("GeneralSettings", Settings);
+                PersistSettingsCore();
                 SimHub.Logging.Current.Info(
-                    $"[Trueforce] Cleared per-user default for '{gameName}' (device-wide kept).");
+                    $"[TF4ALL] Cleared per-user default for '{gameName}' (device-wide kept).");
                 return true;
             }
             try
@@ -11859,11 +13222,11 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Clear game default for '{gameName}' failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Clear game default for '{gameName}' failed: {ex.Message}");
                 return false;
             }
-            this.SaveCommonSettings("GeneralSettings", Settings);
-            SimHub.Logging.Current.Info($"[Trueforce] Cleared default preset for '{gameName}'.");
+            PersistSettingsCore();
+            SimHub.Logging.Current.Info($"[TF4ALL] Cleared default preset for '{gameName}'.");
             return true;
         }
 
@@ -11881,7 +13244,7 @@ namespace TrueforceForAll.Plugin
             ApplyGamePreset(snap);
             _activePresetName = presetName;
             _offlineEditPresetName = presetName;
-            SimHub.Logging.Current.Info($"[Trueforce] Offline edit mode: editing preset '{presetName}'.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Offline edit mode: editing preset '{presetName}'.");
             return true;
         }
 
@@ -11899,12 +13262,12 @@ namespace TrueforceForAll.Plugin
             // write-through updates the folder file too).
             if (IsBuiltinPreset(name) && !DevMode)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Can't overwrite built-in preset '{name}' on edit-mode save; fork via Save as new.");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Can't overwrite built-in preset '{name}' on edit-mode save; fork via Save as new.");
                 return false;
             }
             SavePresetAs(name);            // persist edits to the edited preset
             RestorePreEditGameState();     // return to the previously-active preset
-            SimHub.Logging.Current.Info($"[Trueforce] Saved '{name}' and exited offline edit (restored prior preset).");
+            SimHub.Logging.Current.Info($"[TF4ALL] Saved '{name}' and exited offline edit (restored prior preset).");
             return true;
         }
 
@@ -11917,7 +13280,7 @@ namespace TrueforceForAll.Plugin
             if (Settings.Presets != null && Settings.Presets.ContainsKey(newName)) return false;
             SavePresetAs(newName);
             RestorePreEditGameState();
-            SimHub.Logging.Current.Info($"[Trueforce] Saved as new '{newName}' and exited offline edit (restored prior preset).");
+            SimHub.Logging.Current.Info($"[TF4ALL] Saved as new '{newName}' and exited offline edit (restored prior preset).");
             return true;
         }
 
@@ -11947,11 +13310,11 @@ namespace TrueforceForAll.Plugin
                 if (Settings.GameDefaults == null)
                     Settings.GameDefaults = new Dictionary<string, string>();
                 Settings.GameDefaults[_activeGame] = newName;
-                this.SaveCommonSettings("GeneralSettings", Settings);
+                PersistSettingsCore();
             }
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Silent-forked to '{newName}'"
+                $"[TF4ALL] Silent-forked to '{newName}'"
                 + (!string.IsNullOrEmpty(_activeGame)
                     ? $" + bound as default for {_activeGame}"
                     : "")
@@ -11967,7 +13330,7 @@ namespace TrueforceForAll.Plugin
             if (!IsOfflineEditing) return;
             string was = _offlineEditPresetName;
             RestorePreEditGameState();
-            SimHub.Logging.Current.Info($"[Trueforce] Exited offline edit mode (dropped unsaved edits to '{was}').");
+            SimHub.Logging.Current.Info($"[TF4ALL] Exited offline edit mode (dropped unsaved edits to '{was}').");
         }
 
         // Re-apply the preset that was active before editing began, by name from
@@ -12017,11 +13380,18 @@ namespace TrueforceForAll.Plugin
             _preEditCarSnapshot         = SnapshotCurrentAsPreset();
             _preEditCarActiveId         = _activeCarId;
             _preEditCarActivePresetName = _activePresetName;
+            _preEditCarActiveGame       = _activeGame;
 
             // Baseline: the default game preset for the car's own game, so the
             // override compares against the right globals (fixes the "wrong
             // preset -> everything dirty" case when the running game differs).
             string carGame = GetCarPresetGame(carId, presetName);
+            // Pin the edited car's game as the active game for the session so
+            // the header + Car-facts panel (name / engine / redline) read and
+            // WRITE against the right (game, carId) key, not an empty or live-
+            // game key. Without this, editing a car you're not driving left
+            // the Car-facts name blank and its Save a no-op. Restored on exit.
+            if (!string.IsNullOrEmpty(carGame)) _activeGame = carGame;
             if (!string.IsNullOrEmpty(carGame)
                 && Settings?.GameDefaults != null
                 && Settings.GameDefaults.TryGetValue(carGame, out var gp)
@@ -12036,7 +13406,7 @@ namespace TrueforceForAll.Plugin
             if (!SelectCarForEditing(carId, presetName)) return false;
             _offlineEditCarId         = carId;
             _offlineEditCarPresetName = presetName;
-            SimHub.Logging.Current.Info($"[Trueforce] Offline edit mode: editing car preset '{presetName}' for '{carId}' (baseline game '{carGame}').");
+            SimHub.Logging.Current.Info($"[TF4ALL] Offline edit mode: editing car preset '{presetName}' for '{carId}' (baseline game '{carGame}').");
             return true;
         }
 
@@ -12049,9 +13419,11 @@ namespace TrueforceForAll.Plugin
             if (_preEditCarSnapshot != null) ApplyGamePreset(_preEditCarSnapshot);
             _activePresetName = _preEditCarActivePresetName;
             _activeCarId      = _preEditCarActiveId;
+            _activeGame       = _preEditCarActiveGame;
             _preEditCarSnapshot         = null;
             _preEditCarActiveId         = null;
             _preEditCarActivePresetName = null;
+            _preEditCarActiveGame       = null;
         }
 
         // DEV authoring: write the frozen car's edited override through to the
@@ -12088,11 +13460,11 @@ namespace TrueforceForAll.Plugin
                 BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, diskName, json);
                 BuiltinPresets.Reload();
                 LoadAndMigrateCarPresets();   // push folder built-ins into the live store
-                SimHub.Logging.Current.Info($"[Trueforce] DEV: wrote car '{carId}' through to the built-in folder.");
+                SimHub.Logging.Current.Info($"[TF4ALL] DEV: wrote car '{carId}' through to the built-in folder.");
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] DEV car write-through failed for '{carId}': {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] DEV car write-through failed for '{carId}': {ex.Message}");
             }
         }
 
@@ -12143,7 +13515,7 @@ namespace TrueforceForAll.Plugin
             _preEditCarActivePresetName = null;
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Silent-forked car preset to '{newName}' for '{_activeCarId}'.");
+                $"[TF4ALL] Silent-forked car preset to '{newName}' for '{_activeCarId}'.");
             return true;
         }
 
@@ -12159,18 +13531,30 @@ namespace TrueforceForAll.Plugin
         {
             if (snap == null || Settings == null) return;
 
-            Settings.MasterGain              = SafeMath.SafeFloat(snap.MasterGain, 0.0f, 10.0f, 1.0f);
-            Settings.FfbScale                = SafeMath.SafeFloat(snap.FfbScale, 0.0f, 10.0f, 0.80f);
+            // FFB scale is PERSONAL: a downloaded / community preset must not
+            // override the user's own value. Apply it only for locally-authored
+            // presets (CommunitySourceId == null); for a community preset the
+            // live (personal) value is left in place. Master gain is NOT applied
+            // from any preset: it is a global setting, independent of presets.
+            if (string.IsNullOrEmpty(snap.CommunitySourceId))
+            {
+                Settings.FfbScale            = SafeMath.SafeFloat(snap.FfbScale, 0.0f, 10.0f, 0.80f);
+            }
             Settings.FfbInvertSign           = snap.FfbInvertSign;
             Settings.FfbSmoothTimeConstantMs = SafeMath.SafeFloat(snap.FfbSmoothTimeConstantMs, 0.0f, 1000.0f, 0.0f);
             Settings.FfbSpikeTamingEnabled   = snap.FfbSpikeTamingEnabled;
             Settings.FfbSpikeUseSlewLimiter  = snap.FfbSpikeUseSlewLimiter;
             Settings.FfbSpikeMaxLsbPerMs     = SafeMath.SafeFloat(snap.FfbSpikeMaxLsbPerMs, 0.0f, 65535.0f, 2508.36f);
             Settings.FfbPeakSoftLimitLsb     = SafeMath.SafeFloat(snap.FfbPeakSoftLimitLsb, 0.0f, 65535.0f, 2061.90f);
-            Settings.SkipFfbPassthrough      = snap.SkipFfbPassthrough;
+            Settings.DuckingEnabled          = snap.DuckingEnabled;
             Settings.DuckDepth               = SafeMath.SafeFloat(snap.DuckDepth, 0.0f, 1.0f, 0.60f);
             Settings.DuckAttackMs            = SafeMath.SafeFloat(snap.DuckAttackMs, 0.0f, 10000.0f, 5.0f);
             Settings.DuckReleaseMs           = SafeMath.SafeFloat(snap.DuckReleaseMs, 0.0f, 10000.0f, 80.0f);
+            // Stationary spring: nullable in the snapshot. Null = preset predates
+            // the field, so leave the user's current value untouched (migration).
+            if (snap.StationarySpringEnabled.HasValue)   Settings.StationarySpringEnabled   = snap.StationarySpringEnabled.Value;
+            if (snap.StationarySpringStrength.HasValue)  Settings.StationarySpringStrength  = snap.StationarySpringStrength.Value;
+            if (snap.StationarySpringCutoffKmh.HasValue) Settings.StationarySpringCutoffKmh = snap.StationarySpringCutoffKmh.Value;
 
             if (snap.AudioCapture != null) Settings.AudioCapture = CloneOrNull(snap.AudioCapture);
             if (snap.EnginePulse  != null) Settings.EnginePulse  = Clone(snap.EnginePulse);
@@ -12219,31 +13603,6 @@ namespace TrueforceForAll.Plugin
         private static AudioCaptureSettings CloneOrNull(AudioCaptureSettings s)
             => s == null ? null : new AudioCaptureSettings { Enabled = s.Enabled, Gain = s.Gain, LowpassCutoffHz = s.LowpassCutoffHz, HighpassCutoffHz = s.HighpassCutoffHz };
 
-        private static Dictionary<string, CarOverride> CloneOverrides(Dictionary<string, CarOverride> src)
-        {
-            if (src == null) return new Dictionary<string, CarOverride>();
-            var d = new Dictionary<string, CarOverride>(src.Count);
-            foreach (var kv in src)
-            {
-                var o = kv.Value;
-                if (o == null) continue;
-                d[kv.Key] = new CarOverride
-                {
-                    EnginePulse  = o.EnginePulse  == null ? null : Clone(o.EnginePulse),
-                    RoadBumps    = o.RoadBumps    == null ? null : Clone(o.RoadBumps),
-                    TractionLoss = o.TractionLoss == null ? null : Clone(o.TractionLoss),
-                    GearShift    = o.GearShift    == null ? null : Clone(o.GearShift),
-                    AbsClick     = o.AbsClick     == null ? null : Clone(o.AbsClick),
-                    PitLimiter   = o.PitLimiter   == null ? null : Clone(o.PitLimiter),
-                    Drs          = o.Drs          == null ? null : Clone(o.Drs),
-                    Collision    = o.Collision    == null ? null : Clone(o.Collision),
-                    RevLimiter   = o.RevLimiter   == null ? null : Clone(o.RevLimiter),
-                    AudioCapture = CloneOrNull(o.AudioCapture),
-                };
-            }
-            return d;
-        }
-
         // ---------- single-preset export/import (sharing) ----------
 
         /// <summary>Snapshot of the current top-level settings, used by
@@ -12255,7 +13614,6 @@ namespace TrueforceForAll.Plugin
         {
             return new GameSettingsSnapshot
             {
-                MasterGain              = Settings.MasterGain,
                 FfbScale                = Settings.FfbScale,
                 FfbInvertSign           = Settings.FfbInvertSign,
                 FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs,
@@ -12263,7 +13621,10 @@ namespace TrueforceForAll.Plugin
                 FfbSpikeUseSlewLimiter  = Settings.FfbSpikeUseSlewLimiter,
                 FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs,
                 FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb,
-                SkipFfbPassthrough      = Settings.SkipFfbPassthrough,
+                StationarySpringEnabled   = Settings.StationarySpringEnabled,
+                StationarySpringStrength  = Settings.StationarySpringStrength,
+                StationarySpringCutoffKmh = Settings.StationarySpringCutoffKmh,
+                DuckingEnabled          = Settings.DuckingEnabled,
                 DuckDepth               = Settings.DuckDepth,
                 DuckAttackMs            = Settings.DuckAttackMs,
                 DuckReleaseMs           = Settings.DuckReleaseMs,
@@ -12313,7 +13674,7 @@ namespace TrueforceForAll.Plugin
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[Trueforce] Exported preset '{presetName}' to {path}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Exported preset '{presetName}' to {path}.");
         }
 
         // Trim and return null on blank so JSON serialization omits empty
@@ -12359,7 +13720,7 @@ namespace TrueforceForAll.Plugin
                         || local.ElectricMode != def.ElectricMode)
                     {
                         SimHub.Logging.Current.Info(
-                            $"[Trueforce] Custom-engine import: keeping local def '{local.Name}' (Id {def.Id}); incoming '{def.Name}' has different content.");
+                            $"[TF4ALL] Custom-engine import: keeping local def '{local.Name}' (Id {def.Id}); incoming '{def.Name}' has different content.");
                     }
                     skipped++;
                     continue;
@@ -12372,6 +13733,16 @@ namespace TrueforceForAll.Plugin
                     ElectricMode = def.ElectricMode,
                     Pattern      = def.Pattern,
                     Author       = NullIfBlank(def.Author),
+                    // Carry community lineage (same as CloneCarOverride does for
+                    // CarOverride). Dropping these made a downloaded engine look
+                    // locally authored, so IsRedistributable short-circuits true
+                    // and the author's AllowInPacks=false is bypassed on re-bundle.
+                    CommunitySourceId         = def.CommunitySourceId,
+                    CommunityUploadedById     = def.CommunityUploadedById,
+                    CommunityUploadedByUserId = def.CommunityUploadedByUserId,
+                    CommunityUploadedBodyHash = def.CommunityUploadedBodyHash,
+                    CommunityUploadedVersion  = def.CommunityUploadedVersion,
+                    CommunityAllowInPacks     = def.CommunityAllowInPacks,
                 });
                 existing[def.Id] = def;
                 added++;
@@ -12448,6 +13819,15 @@ namespace TrueforceForAll.Plugin
                     ElectricMode = def.ElectricMode,
                     Pattern      = def.Pattern,
                     Author       = NullIfBlank(def.Author) ?? curatorAuthor,
+                    // Provenance/permission must travel with the export so the
+                    // recipient's IsRedistributable gate stays honest (e.g. an
+                    // author's AllowInPacks=false is preserved peer-to-peer).
+                    CommunitySourceId         = def.CommunitySourceId,
+                    CommunityUploadedById     = def.CommunityUploadedById,
+                    CommunityUploadedByUserId = def.CommunityUploadedByUserId,
+                    CommunityUploadedBodyHash = def.CommunityUploadedBodyHash,
+                    CommunityUploadedVersion  = def.CommunityUploadedVersion,
+                    CommunityAllowInPacks     = def.CommunityAllowInPacks,
                 });
             }
             return result.Count > 0 ? result : null;
@@ -12493,9 +13873,9 @@ namespace TrueforceForAll.Plugin
             BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, importName, snapJson);
             UserPresets.Reload();
             RebuildPresetCacheFromFolders();
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
 
-            SimHub.Logging.Current.Info($"[Trueforce] Imported preset '{importName}' from {path} into the user library.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Imported preset '{importName}' from {path} into the user library.");
             return new ImportPresetResult
             {
                 PresetName    = importName,
@@ -12552,7 +13932,12 @@ namespace TrueforceForAll.Plugin
                     TractionLoss = Clone(ActiveTraction),
                     GearShift    = Clone(ActiveShift),
                     AbsClick     = Clone(ActiveAbs),
+                    PitLimiter   = Clone(ActivePitLimiter),
+                    Drs          = Clone(ActiveDrs),
+                    Collision    = Clone(ActiveCollision),
+                    RevLimiter   = Clone(ActiveRevLimiter),
                     AudioCapture = CloneOrNull(ActiveAudio),
+                    Airborne     = Clone(ActiveAirborne),
                 };
             }
             // Carry the active preset name into the exported file so a
@@ -12570,10 +13955,14 @@ namespace TrueforceForAll.Plugin
                 Description   = NullIfBlank(description),
                 AuthorVersion = NullIfBlank(authorVersion),
                 Override      = ovr,
+                // Bundle any custom firing patterns the override references so
+                // the file is self-contained for the recipient (their library
+                // absorbs missing-by-Id defs on import). Null when none.
+                CustomEngines = CollectReferencedCustomEngines(snapshots: null, carOverrides: new[] { ovr }),
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{file.PresetName}' for '{_activeCarId}' to {path}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Exported car preset '{file.PresetName}' for '{_activeCarId}' to {path}.");
         }
 
         /// <summary>Export a specific car preset (arbitrary carId / presetName)
@@ -12613,10 +14002,13 @@ namespace TrueforceForAll.Plugin
                 Description   = NullIfBlank(description),
                 AuthorVersion = NullIfBlank(authorVersion),
                 Override      = entry.Override,
+                // Bundle referenced custom firing patterns so the shared file is
+                // self-contained (recipient's library absorbs them on import).
+                CustomEngines = CollectReferencedCustomEngines(snapshots: null, carOverrides: new[] { entry.Override }),
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[Trueforce] Exported car preset '{carId}/{diskName}' to {path}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Exported car preset '{carId}/{diskName}' to {path}.");
             return true;
         }
 
@@ -12676,11 +14068,11 @@ namespace TrueforceForAll.Plugin
             // returns false then, so the in-memory write alone would silently
             // revert on next plugin start).
             BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, file.CarId, presetName);
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
 
             if (file.CarId == _activeCarId) ReloadActiveCarOverrideFromStore();
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Imported car preset '{presetName}' for '{file.CarId}' from {path}.");
+                $"[TF4ALL] Imported car preset '{presetName}' for '{file.CarId}' from {path}.");
             return new ImportCarPresetResult
             {
                 CarId         = file.CarId,
@@ -12919,7 +14311,7 @@ namespace TrueforceForAll.Plugin
             }
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Exported pack to {path}: {presetsCount} game preset(s), {carsCount} car preset(s).");
+                $"[TF4ALL] Exported pack to {path}: {presetsCount} game preset(s), {carsCount} car preset(s).");
             return (presetsCount, carsCount);
         }
 
@@ -13007,7 +14399,7 @@ namespace TrueforceForAll.Plugin
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[Trueforce] Exported single preset '{presetName}' to {path}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Exported single preset '{presetName}' to {path}.");
         }
 
         // Clone-and-stamp a list of CustomEngineDefs for export. Mirrors
@@ -13111,7 +14503,7 @@ namespace TrueforceForAll.Plugin
             };
             System.IO.File.WriteAllText(path,
                 Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[Trueforce] Exported single car preset '{carId}/{presetName}' to {path}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Exported single car preset '{carId}/{presetName}' to {path}.");
         }
 
         /// <summary>Read every preset and car-preset file in the pack zip.
@@ -13142,7 +14534,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] PeekPackManifest({path}) failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] PeekPackManifest({path}) failed: {ex.Message}");
                 return null;
             }
         }
@@ -13182,8 +14574,10 @@ namespace TrueforceForAll.Plugin
                         packName   = manifest.PackName;
                         // Full-pack import: merge every CustomEngineDef the
                         // manifest carried so any contained preset's
-                        // EnginePulse.CustomEngineId resolves on apply.
+                        // EnginePulse.CustomEngineId resolves on apply, and record
+                        // each as a pack entry (reference-counted on removal).
                         MergeImportedCustomEngines(manifest.CustomEngines);
+                        AddEnginePackEntries(packEntries, manifest.CustomEngines);
                     }
                 }
 
@@ -13241,7 +14635,7 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Pack import of preset '{pf.PresetName}' failed: {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Pack import of preset '{pf.PresetName}' failed: {ex.Message}");
                         }
                     }
                     else if (entry.FullName.StartsWith("cars/", StringComparison.OrdinalIgnoreCase)
@@ -13308,11 +14702,11 @@ namespace TrueforceForAll.Plugin
                 UserPresets.Reload();
                 RebuildPresetCacheFromFolders();
             }
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             if (!string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Imported pack from {path}: {presetsImported} game preset(s), {carsImported} car preset(s).");
+                $"[TF4ALL] Imported pack from {path}: {presetsImported} game preset(s), {carsImported} car preset(s).");
             return new ImportPackResult
             {
                 PresetsImported = presetsImported,
@@ -13455,12 +14849,12 @@ namespace TrueforceForAll.Plugin
                             if (setGameDefaultFor.Contains(pf.PresetName))
                             {
                                 SimHub.Logging.Current.Info(
-                                    $"[Trueforce] Selective pack import: set-as-default for game preset '{gName}' requested but not yet supported (data model doesn't carry preset->game mapping).");
+                                    $"[TF4ALL] Selective pack import: set-as-default for game preset '{gName}' requested but not yet supported (data model doesn't carry preset->game mapping).");
                             }
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Selective pack import of preset '{pf.PresetName}' failed: {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Selective pack import of preset '{pf.PresetName}' failed: {ex.Message}");
                         }
                     }
                     else if (entry.FullName.StartsWith("cars/", StringComparison.OrdinalIgnoreCase)
@@ -13516,7 +14910,13 @@ namespace TrueforceForAll.Plugin
             // items the user kept. Skipping unselected rows' defs keeps the
             // recipient's library clean of patterns they didn't ask for.
             if (manifestCustomEngines != null && referencedCustomEngineIds.Count > 0)
+            {
                 MergeImportedCustomEngines(manifestCustomEngines, referencedCustomEngineIds);
+                // Record the referenced engines as pack entries (the only ones
+                // this selective import merged), reference-counted on removal.
+                AddEnginePackEntries(packEntries, manifestCustomEngines,
+                    onlyIds: referencedCustomEngineIds);
+            }
 
             if (packEntries.Count > 0)
             {
@@ -13537,11 +14937,11 @@ namespace TrueforceForAll.Plugin
                 UserPresets.Reload();
                 RebuildPresetCacheFromFolders();
             }
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             if (!string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
 
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Selective pack import from {path}: {presetsImported}/{includedGamePresets.Count} game preset(s), {carsImported}/{includedCarPresets.Count} car preset(s), {carDefaultsSet} car default(s) set.");
+                $"[TF4ALL] Selective pack import from {path}: {presetsImported}/{includedGamePresets.Count} game preset(s), {carsImported}/{includedCarPresets.Count} car preset(s), {carDefaultsSet} car default(s) set.");
             return new ImportPackResult
             {
                 PresetsImported = presetsImported,
@@ -13610,24 +15010,326 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            this.SaveCommonSettings("GeneralSettings", Settings);
+            PersistSettingsCore();
             if (activeCarBindingChanged) ReloadActiveCarOverrideFromStore();
             return summary;
         }
 
-        /// <summary>Destructively remove an installed pack: delete each entry
-        /// whose current on-disk hash still matches its install-time
-        /// BaselineHash (so the user hasn't edited it), leave entries the user
-        /// touched in place, and drop the pack record either way. Entries
-        /// imported before BaselineHash was tracked are conservatively kept so
-        /// we never delete data we can't reason about.</summary>
+        // ---- Custom-engine reference analysis + auto-fallback healing -------
+
+        // True iff this EnginePulse actively uses the given custom engine id
+        // (Layout == Custom AND CustomEngineId matches). A stale id under a
+        // non-Custom layout doesn't count as a live reference.
+        private static bool EnginePulseRefsEngine(EnginePulseSettings ep, string engineId)
+            => ep != null
+            && ep.Layout == Effects.EngineLayout.Custom
+            && !string.IsNullOrEmpty(ep.CustomEngineId)
+            && string.Equals(ep.CustomEngineId, engineId, StringComparison.Ordinal);
+
+        private CustomEngineDef FindCustomEngineById(string id)
+        {
+            if (string.IsNullOrEmpty(id) || Settings?.CustomEngines == null) return null;
+            foreach (var c in Settings.CustomEngines)
+                if (c != null && string.Equals(c.Id, id, StringComparison.Ordinal)) return c;
+            return null;
+        }
+
+        // Record an engine pack entry for each manifest engine this pack bundles
+        // that resolved into the library. Recorded for EVERY bundling pack (not
+        // just the one that first added it) so "N other packs contain this
+        // engine" is meaningful on removal. BaselineHash is taken from the
+        // library def so removal can detect later edits. When onlyIds is non-null,
+        // restrict to that set (selective import). Safe to list a shared engine:
+        // removal only deletes an engine that nothing else references.
+        private void AddEnginePackEntries(List<InstalledPackEntry> packEntries,
+            IEnumerable<CustomEngineDef> manifestEngines, HashSet<string> onlyIds = null)
+        {
+            if (packEntries == null || manifestEngines == null) return;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var eng in manifestEngines)
+            {
+                if (eng == null || string.IsNullOrEmpty(eng.Id)) continue;
+                if (onlyIds != null && !onlyIds.Contains(eng.Id)) continue;
+                if (!seen.Add(eng.Id)) continue;
+                var libDef = FindCustomEngineById(eng.Id);
+                if (libDef == null) continue;
+                packEntries.Add(new InstalledPackEntry
+                {
+                    Kind         = InstalledPackEntry.KindEngine,
+                    EngineId     = eng.Id,
+                    Name         = libDef.Name,
+                    BaselineHash = PresetBodyHasher.ComputeCustomEngineHash(libDef),
+                });
+            }
+        }
+
+        /// <summary>Count where a custom engine is referenced: the global
+        /// default, every game preset (incl. inline car overrides), every car
+        /// preset, and the active config. Optional exclusions skip a pack's own
+        /// presets so pack-removal math counts only references that would
+        /// survive the removal. Public for the Customs-tab delete warning.</summary>
+        public EngineUsage GetEngineUsage(string engineId) => AnalyzeEngineUsage(engineId, null, null);
+
+        private EngineUsage AnalyzeEngineUsage(string engineId,
+            ISet<string> excludeGameNames, ISet<(string carId, string presetName)> excludeCarKeys)
+        {
+            var u = new EngineUsage();
+            if (string.IsNullOrEmpty(engineId) || Settings == null) return u;
+
+            if (EnginePulseRefsEngine(Settings.EnginePulse, engineId)) u.GlobalDefault = true;
+
+            if (Settings.Presets != null)
+            {
+                foreach (var kv in Settings.Presets)
+                {
+                    if (excludeGameNames != null && excludeGameNames.Contains(kv.Key)) continue;
+                    var snap = kv.Value;
+                    if (snap == null) continue;
+                    bool hit = EnginePulseRefsEngine(snap.EnginePulse, engineId);
+                    if (!hit && snap.CarOverrides != null)
+                        foreach (var inl in snap.CarOverrides.Values)
+                            if (EnginePulseRefsEngine(inl?.EnginePulse, engineId)) { hit = true; break; }
+                    if (hit) u.GamePresetCount++;
+                }
+            }
+
+            foreach (var carKv in GetAllCarPresets())
+            {
+                foreach (var pKv in carKv.Value)
+                {
+                    var entry = pKv.Value;
+                    if (entry?.Override == null) continue;
+                    if (excludeCarKeys != null
+                        && excludeCarKeys.Contains((carKv.Key, pKv.Key))) continue;
+                    if (EnginePulseRefsEngine(entry.Override.EnginePulse, engineId)) u.CarPresetCount++;
+                }
+            }
+
+            var activeEp = GetActiveCarOverride()?.EnginePulse ?? Settings.EnginePulse;
+            if (EnginePulseRefsEngine(activeEp, engineId)) u.ActiveConfig = true;
+
+            return u;
+        }
+
+        // Game-preset names + car (carId, presetName) keys this pack installed,
+        // so usage analysis can exclude them (they're being removed alongside).
+        private (HashSet<string> games, HashSet<(string carId, string presetName)> cars) PackEntryExclusions(InstalledPack pack)
+        {
+            var games = new HashSet<string>(StringComparer.Ordinal);
+            var cars  = new HashSet<(string carId, string presetName)>();
+            if (pack?.Entries != null)
+                foreach (var e in pack.Entries)
+                {
+                    if (e == null) continue;
+                    if (e.Kind == InstalledPackEntry.KindGame && !string.IsNullOrEmpty(e.Name))
+                        games.Add(e.Name);
+                    else if (e.Kind == InstalledPackEntry.KindCar
+                        && !string.IsNullOrEmpty(e.CarId) && !string.IsNullOrEmpty(e.PresetName))
+                        cars.Add((e.CarId, e.PresetName));
+                }
+            return (games, cars);
+        }
+
+        // Other installed packs (not `exclude`) that also list this engine id.
+        private int CountOtherPacksWithEngine(string engineId, InstalledPack exclude)
+        {
+            if (string.IsNullOrEmpty(engineId) || _installedPacks == null) return 0;
+            int n = 0;
+            foreach (var p in _installedPacks.Load().Packs)
+            {
+                if (p == null || ReferenceEquals(p, exclude) || p.Entries == null) continue;
+                foreach (var e in p.Entries)
+                    if (e != null && e.Kind == InstalledPackEntry.KindEngine
+                        && string.Equals(e.EngineId, engineId, StringComparison.Ordinal))
+                    { n++; break; }
+            }
+            return n;
+        }
+
+        // True iff the engine is referenced by anything OUTSIDE this pack: another
+        // installed pack, or a preset/override that isn't one of this pack's own
+        // entries (which are being removed with it).
+        private bool IsEngineReferencedOutsidePack(string engineId, InstalledPack pack)
+        {
+            if (CountOtherPacksWithEngine(engineId, pack) > 0) return true;
+            var (xg, xc) = PackEntryExclusions(pack);
+            return AnalyzeEngineUsage(engineId, xg, xc).TotalPresetRefs > 0;
+        }
+
+        // An engine pack entry counts as "edited" only when its install-time
+        // BaselineHash is recorded AND the current library def's content differs.
+        private bool EngineEntryEdited(InstalledPackEntry e)
+        {
+            if (e == null || string.IsNullOrEmpty(e.BaselineHash) || string.IsNullOrEmpty(e.EngineId))
+                return false;
+            var def = FindCustomEngineById(e.EngineId);
+            if (def == null) return false; // already gone; nothing to protect
+            return !string.Equals(PresetBodyHasher.ComputeCustomEngineHash(def), e.BaselineHash,
+                                  StringComparison.Ordinal);
+        }
+
+        /// <summary>What removing this pack would touch, computed before any
+        /// deletion so the UI can prompt: how many entries the user edited, and
+        /// which bundled engines are still used outside the pack.</summary>
+        public PackRemovalImpact AnalyzePackRemoval(InstalledPack pack)
+        {
+            var impact = new PackRemovalImpact();
+            if (pack?.Entries == null) return impact;
+            foreach (var e in pack.Entries)
+            {
+                if (e == null) continue;
+                if (e.Kind == InstalledPackEntry.KindGame)
+                {
+                    if (!string.IsNullOrEmpty(e.Name)
+                        && !IsEntrySafeToDelete(e, gameName: e.Name, isCar: false))
+                        impact.EditedEntryCount++;
+                }
+                else if (e.Kind == InstalledPackEntry.KindCar)
+                {
+                    if (!string.IsNullOrEmpty(e.CarId) && !string.IsNullOrEmpty(e.PresetName)
+                        && !IsEntrySafeToDelete(e, gameName: null, isCar: true))
+                        impact.EditedEntryCount++;
+                }
+                else if (e.Kind == InstalledPackEntry.KindEngine)
+                {
+                    if (string.IsNullOrEmpty(e.EngineId)) continue;
+                    if (FindCustomEngineById(e.EngineId) == null) continue; // already gone
+                    if (EngineEntryEdited(e)) impact.EditedEntryCount++;
+                    int otherPacks  = CountOtherPacksWithEngine(e.EngineId, pack);
+                    var (xg, xc)    = PackEntryExclusions(pack);
+                    int outsideRefs = AnalyzeEngineUsage(e.EngineId, xg, xc).TotalPresetRefs;
+                    if (otherPacks > 0 || outsideRefs > 0)
+                        impact.SharedEngines.Add(new SharedEngineRef
+                        {
+                            EngineId          = e.EngineId,
+                            EngineName        = FindCustomEngineById(e.EngineId)?.Name ?? "(custom engine)",
+                            OtherPackCount    = otherPacks,
+                            OutsidePresetRefs = outsideRefs,
+                        });
+                }
+            }
+            return impact;
+        }
+
+        // Rewrite every stored preset / car preset / global default / in-memory
+        // override whose EnginePulse points Layout=Custom at one of `deletedIds`
+        // back to Layout=Auto (clearing CustomEngineId), so a deleted engine
+        // leaves an Auto-resolved feel instead of a dangling Custom ref. Built-in
+        // (factory) presets are skipped. Returns the number of items rewritten.
+        // Callers persist + re-apply afterward.
+        private int RewriteEnginePulseToAuto(ISet<string> deletedIds)
+        {
+            if (deletedIds == null || deletedIds.Count == 0) return 0;
+            int rewritten = 0;
+
+            bool ClearIfDeleted(EnginePulseSettings ep)
+            {
+                if (ep != null && ep.Layout == Effects.EngineLayout.Custom
+                    && !string.IsNullOrEmpty(ep.CustomEngineId)
+                    && deletedIds.Contains(ep.CustomEngineId))
+                {
+                    ep.Layout = Effects.EngineLayout.Auto;
+                    ep.CustomEngineId = "";
+                    return true;
+                }
+                return false;
+            }
+
+            // Global default + in-memory active per-car overrides.
+            if (ClearIfDeleted(Settings?.EnginePulse)) rewritten++;
+            if (Settings?.CarOverrides != null)
+                foreach (var ovr in Settings.CarOverrides.Values)
+                    if (ClearIfDeleted(ovr?.EnginePulse)) rewritten++;
+
+            // Stored user game presets (factory files are not user-writable).
+            try
+            {
+                foreach (var kv in new List<KeyValuePair<string, string>>(UserPresets.PresetJsons))
+                {
+                    try
+                    {
+                        var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value, _safeJsonSettings);
+                        if (snap == null) continue;
+                        bool changed = ClearIfDeleted(snap.EnginePulse);
+                        if (snap.CarOverrides != null)
+                            foreach (var inl in snap.CarOverrides.Values)
+                                if (ClearIfDeleted(inl?.EnginePulse)) changed = true;
+                        if (changed)
+                        {
+                            string json = Newtonsoft.Json.JsonConvert.SerializeObject(snap, Newtonsoft.Json.Formatting.Indented);
+                            BuiltinPresetWriter.WriteGame(UserPresets.CurrentFolder, kv.Key, json);
+                            rewritten++;
+                        }
+                    }
+                    catch (Exception ex)
+                    { SimHub.Logging.Current.Warn($"[TF4ALL] Engine auto-fallback rewrite of game preset '{kv.Key}' failed: {ex.Message}"); }
+                }
+            }
+            catch (Exception ex)
+            { SimHub.Logging.Current.Warn($"[TF4ALL] Engine auto-fallback game-preset sweep failed: {ex.Message}"); }
+
+            // Stored user car presets (skip built-ins).
+            try
+            {
+                foreach (var carKv in GetAllCarPresets())
+                    foreach (var pKv in carKv.Value)
+                    {
+                        var entry = pKv.Value;
+                        if (entry == null || entry.IsBuiltin || entry.Override == null) continue;
+                        if (ClearIfDeleted(entry.Override.EnginePulse))
+                        {
+                            try { _carStore?.Save(entry.CarId, entry.PresetName, entry.GameName, entry.Override); rewritten++; }
+                            catch (Exception ex)
+                            { SimHub.Logging.Current.Warn($"[TF4ALL] Engine auto-fallback rewrite of car preset '{entry.CarId}/{entry.PresetName}' failed: {ex.Message}"); }
+                        }
+                    }
+            }
+            catch (Exception ex)
+            { SimHub.Logging.Current.Warn($"[TF4ALL] Engine auto-fallback car-preset sweep failed: {ex.Message}"); }
+
+            return rewritten;
+        }
+
+        /// <summary>Delete custom engines by id, then heal: any preset / override
+        /// / global default / active config that referenced one falls back to
+        /// Auto (eager rewrite + live re-apply). Returns how many engines were
+        /// removed. Used by the Customs-tab delete.</summary>
+        public int DeleteCustomEngines(IEnumerable<string> ids)
+        {
+            if (ids == null || Settings?.CustomEngines == null) return 0;
+            var idSet = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var s in ids) if (!string.IsNullOrEmpty(s)) idSet.Add(s);
+            if (idSet.Count == 0) return 0;
+            int removed = Settings.CustomEngines.RemoveAll(c => c != null && c.Id != null && idSet.Contains(c.Id));
+            if (removed == 0) return 0;
+            RewriteEnginePulseToAuto(idSet);
+            UserPresets.Reload();
+            RebuildPresetCacheFromFolders();
+            PersistSettings();
+            if (!string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
+            ApplyActiveCarOverride();
+            return removed;
+        }
+
+        /// <summary>Destructively remove an installed pack. Game/car/engine
+        /// entries are deleted unless the user edited them (kept unless
+        /// <see cref="RemovePackOptions.RemoveEditedEntries"/>); a bundled engine
+        /// still used outside the pack is kept unless
+        /// <see cref="RemovePackOptions.DeleteSharedEngines"/>. Any preset left
+        /// pointing at a deleted engine is healed to Auto. The pack record is
+        /// dropped either way.</summary>
         public RemovePackSummary RemovePack(InstalledPack pack)
+            => RemovePack(pack, new RemovePackOptions());
+
+        public RemovePackSummary RemovePack(InstalledPack pack, RemovePackOptions options)
         {
             var summary = new RemovePackSummary();
             if (pack == null) return summary;
+            options = options ?? new RemovePackOptions();
 
             string folder = UserPresets.CurrentFolder;
             bool gameTouched = false, carTouched = false;
+            var deletedEngineIds = new HashSet<string>(StringComparer.Ordinal);
 
             if (pack.Entries != null)
             {
@@ -13637,12 +15339,13 @@ namespace TrueforceForAll.Plugin
                     if (e.Kind == InstalledPackEntry.KindGame)
                     {
                         if (string.IsNullOrEmpty(e.Name)) continue;
-                        if (IsEntrySafeToDelete(e, gameName: e.Name, isCar: false))
+                        bool edited = !IsEntrySafeToDelete(e, gameName: e.Name, isCar: false);
+                        if (!edited || options.RemoveEditedEntries)
                         {
                             try { BuiltinPresetWriter.DeleteGame(folder, e.Name); summary.EntriesDeleted++; gameTouched = true; }
                             catch (Exception ex)
                             {
-                                SimHub.Logging.Current.Warn($"[Trueforce] Pack remove: delete of game preset '{e.Name}' failed: {ex.Message}");
+                                SimHub.Logging.Current.Warn($"[TF4ALL] Pack remove: delete of game preset '{e.Name}' failed: {ex.Message}");
                                 summary.EntriesKept++;
                             }
                         }
@@ -13651,14 +15354,32 @@ namespace TrueforceForAll.Plugin
                     else if (e.Kind == InstalledPackEntry.KindCar)
                     {
                         if (string.IsNullOrEmpty(e.CarId) || string.IsNullOrEmpty(e.PresetName)) continue;
-                        if (IsEntrySafeToDelete(e, gameName: null, isCar: true))
+                        bool edited = !IsEntrySafeToDelete(e, gameName: null, isCar: true);
+                        if (!edited || options.RemoveEditedEntries)
                         {
                             try { _carStore?.Delete(e.CarId, e.PresetName); summary.EntriesDeleted++; carTouched = true; }
                             catch (Exception ex)
                             {
-                                SimHub.Logging.Current.Warn($"[Trueforce] Pack remove: delete of car preset '{e.CarId}/{e.PresetName}' failed: {ex.Message}");
+                                SimHub.Logging.Current.Warn($"[TF4ALL] Pack remove: delete of car preset '{e.CarId}/{e.PresetName}' failed: {ex.Message}");
                                 summary.EntriesKept++;
                             }
+                        }
+                        else summary.EntriesKept++;
+                    }
+                    else if (e.Kind == InstalledPackEntry.KindEngine)
+                    {
+                        if (string.IsNullOrEmpty(e.EngineId)) continue;
+                        var def = FindCustomEngineById(e.EngineId);
+                        if (def == null) continue; // already gone (another pack removed it)
+                        bool shared = IsEngineReferencedOutsidePack(e.EngineId, pack);
+                        bool delete = shared
+                            ? options.DeleteSharedEngines
+                            : (!EngineEntryEdited(e) || options.RemoveEditedEntries);
+                        if (delete)
+                        {
+                            Settings.CustomEngines.Remove(def);
+                            deletedEngineIds.Add(e.EngineId);
+                            summary.EntriesDeleted++;
                         }
                         else summary.EntriesKept++;
                     }
@@ -13667,12 +15388,31 @@ namespace TrueforceForAll.Plugin
 
             _installedPacks?.RemovePack(pack);
 
+            // Refresh the game-preset cache BEFORE healing: the rewrite reads the
+            // in-memory cache, and a preset deleted above is still cached until we
+            // reload. Skipping this would let the rewrite recreate (resurrect) a
+            // just-deleted preset that happened to reference a deleted engine.
             if (gameTouched)
             {
                 UserPresets.Reload();
                 RebuildPresetCacheFromFolders();
             }
+
+            // Heal presets/overrides still pointing at a deleted engine: -> Auto.
+            if (deletedEngineIds.Count > 0)
+            {
+                int healed = RewriteEnginePulseToAuto(deletedEngineIds);
+                if (healed > 0)
+                {
+                    UserPresets.Reload();
+                    RebuildPresetCacheFromFolders();
+                }
+                PersistSettings();
+                carTouched = true;
+            }
+
             if (carTouched && !string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
+            if (deletedEngineIds.Count > 0) ApplyActiveCarOverride();
 
             return summary;
         }
@@ -13720,6 +15460,49 @@ namespace TrueforceForAll.Plugin
         /// PackManagerWindow so it always sees current state without holding
         /// onto a stale cached file across reopens.</summary>
         public InstalledPacksFile LoadInstalledPacks() => _installedPacks?.Load() ?? new InstalledPacksFile();
+
+        /// <summary>Register a pack downloaded from the Community browser into the
+        /// installed-packs sidecar so it shows in the Library → Packs grid (and is
+        /// later removable / set-as-default like a disk-imported pack). Merges by
+        /// CommunitySourceId so a repeat or partial download folds into one row.
+        /// The caller builds the entry list (with per-entry BaselineHash via the
+        /// HashInstalled* helpers) as it imports.</summary>
+        public void RegisterCommunityPack(InstalledPack pack) => _installedPacks?.AddOrMergePack(pack);
+
+        /// <summary>Baseline hash of a just-written game preset, read back from
+        /// disk so it matches what RemovePack's edit-detection recomputes. Public
+        /// wrapper over <see cref="TryHashGamePresetFile"/> for the community
+        /// download path.</summary>
+        public string HashInstalledGamePresetFile(string presetName) => TryHashGamePresetFile(presetName);
+
+        /// <summary>Baseline hash of a just-written car preset, read back from
+        /// disk (CarPresetStore.Save folds in attribution, so the input can't be
+        /// hashed directly). Public wrapper over the private helper.</summary>
+        public string HashInstalledCarPresetFile(string carId, string presetName)
+            => TryHashCarPresetFile(carId, presetName);
+
+        /// <summary>Baseline hash of a custom engine now in the library, by id.
+        /// Used to stamp an engine pack entry so removal can tell whether the
+        /// user edited it since install.</summary>
+        public string HashInstalledEngine(string engineId)
+        {
+            var def = FindCustomEngineById(engineId);
+            return def != null ? PresetBodyHasher.ComputeCustomEngineHash(def) : null;
+        }
+
+        // Game-preset analogue of TryHashCarPresetFile: read the file back from
+        // the same path RemovePack/IsEntrySafeToDelete will read, so a clean
+        // (unedited) entry hashes identically and stays safe to delete.
+        private string TryHashGamePresetFile(string presetName)
+        {
+            try
+            {
+                string path = BuiltinPresetWriter.GetGamePresetPath(UserPresets.CurrentFolder, presetName);
+                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+                return InstalledPacksStore.ComputeContentHash(System.IO.File.ReadAllText(path));
+            }
+            catch { return null; }
+        }
 
         // Stamp the baseline hash on a freshly-saved car preset. CarPresetStore.Save
         // folds existing on-disk attribution into the serialized output, so the
@@ -13777,7 +15560,7 @@ namespace TrueforceForAll.Plugin
             if (Settings == null) return;
             string json = Newtonsoft.Json.JsonConvert.SerializeObject(Settings, Newtonsoft.Json.Formatting.Indented);
             System.IO.File.WriteAllText(path, json);
-            SimHub.Logging.Current.Info($"[Trueforce] Settings exported to {path}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Settings exported to {path}.");
         }
 
         /// <summary>Bundle ALL user-owned Trueforce data into one zip archive
@@ -13834,12 +15617,12 @@ namespace TrueforceForAll.Plugin
                         }
                         catch (Exception ex)
                         {
-                            SimHub.Logging.Current.Warn($"[Trueforce] Backup: couldn't add '{path}': {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Backup: couldn't add '{path}': {ex.Message}");
                         }
                     }
                 }
             }
-            SimHub.Logging.Current.Info($"[Trueforce] Backup wrote {fileCount} entries ({totalBytes} bytes) to {zipPath}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Backup wrote {fileCount} entries ({totalBytes} bytes) to {zipPath}.");
             return (fileCount, totalBytes);
         }
 
@@ -13875,7 +15658,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] Restore: couldn't snapshot live Settings (will continue without rollback safety net): {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Restore: couldn't snapshot live Settings (will continue without rollback safety net): {ex.Message}");
             }
 
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
@@ -13958,6 +15741,9 @@ namespace TrueforceForAll.Plugin
                         Settings.CarsMigratedV2         = true;
                         Settings.LegacyBuiltinsCleanedV1 = true;
                         Settings.FoldersRestructuredV3  = true;
+                        Settings.CarPresetOrdinalNamesMigratedV1 = true;
+                        Settings.CarPresetOrdinalNamesMigratedV2 = true;
+                        Settings.ForzaCarIdsNormalizedV1         = true;
                     }
                 }
                 else
@@ -13977,14 +15763,14 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception delEx)
                 {
-                    SimHub.Logging.Current.Warn($"[Trueforce] Restore rollback: couldn't delete partial extract: {delEx.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Restore rollback: couldn't delete partial extract: {delEx.Message}");
                 }
                 if (movedAside && System.IO.Directory.Exists(safeDir))
                 {
                     try { System.IO.Directory.Move(safeDir, userRoot); }
                     catch (Exception mvEx)
                     {
-                        SimHub.Logging.Current.Warn($"[Trueforce] Restore rollback: couldn't move original user library back: {mvEx.Message}. Original is preserved at {safeDir}.");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Restore rollback: couldn't move original user library back: {mvEx.Message}. Original is preserved at {safeDir}.");
                     }
                 }
                 if (preState != null)
@@ -14001,7 +15787,7 @@ namespace TrueforceForAll.Plugin
                 throw new InvalidOperationException($"Restore failed and was rolled back: {ex.Message}", ex);
             }
 
-            SimHub.Logging.Current.Info($"[Trueforce] Restore extracted {restored} user file(s) from {zipPath} (previous library archived at {safeDir}).");
+            SimHub.Logging.Current.Info($"[TF4ALL] Restore extracted {restored} user file(s) from {zipPath} (previous library archived at {safeDir}).");
             return restored;
         }
 
@@ -14038,7 +15824,7 @@ namespace TrueforceForAll.Plugin
             // Re-establish active-account slot consistency (re-point its library folder + stash the
             // restored profile into the slot), exactly as the cloud restore remounts the slot.
             try { MountUserSlot(Settings.ActiveSlotKey ?? ""); }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Settings import: slot remount failed: " + ex.GetType().Name); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings import: slot remount failed: " + ex.GetType().Name); }
             _mixer.MasterGain = Settings.MasterGain;
             ApplyGlobalFfbToLive();   // push restored FFB scalars (scale/invert/spike) to the live device, not just master gain
             if (_audio != null)
@@ -14059,7 +15845,7 @@ namespace TrueforceForAll.Plugin
             // Rebuild the runtime cache from the (potentially updated) folders.
             RebuildPresetCacheFromFolders();
             ApplyActiveCarOverride();
-            SimHub.Logging.Current.Info($"[Trueforce] Settings imported from {path}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Settings imported from {path}.");
         }
 
         // ===================== Phase 2 Discord link (M5) =====================
@@ -14082,6 +15868,7 @@ namespace TrueforceForAll.Plugin
         private AchievementClient _achievementClient;
         // Account session list + per-session revoke (Account tab "Active sessions").
         private SessionClient _sessionClient;
+        private ModerationClient _moderationClient;
 
         internal struct DiscordLinkResult
         {
@@ -14114,11 +15901,12 @@ namespace TrueforceForAll.Plugin
                 catch (DiscordOAuthException ex)   { return new DiscordLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[Trueforce] Discord authorize error: " + ex.Message);
+                    SimHub.Logging.Current.Info("[TF4ALL] Discord authorize error: " + ex.Message);
                     return new DiscordLinkResult { Ok = false, Message = "Couldn't start Discord linking." };
                 }
 
                 var (ok, message, username) = await _discordLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
+                if (ok) InvalidateAccountStatusCache();   // link can change supporter-via-role + the link row
                 return new DiscordLinkResult { Ok = ok, Message = message, Username = username };
             }
             finally { _discordLinkOp.Release(); }
@@ -14130,14 +15918,96 @@ namespace TrueforceForAll.Plugin
             if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = "Discord linking isn't available." };
             if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = "Sign in first." };
             bool ok = await _discordLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
+            if (ok) InvalidateAccountStatusCache();   // unlink can drop supporter-via-role + clears the link row
             return new DiscordLinkResult { Ok = ok, Message = ok ? "Discord unlinked." : "Couldn't unlink. Try again." };
         }
 
-        /// <summary>Current link state for the settings UI (linked + display name).</summary>
-        internal async Task<(bool linked, string username)> GetDiscordStatusAsync(System.Threading.CancellationToken ct)
+        /// <summary>Last-known Discord-link status, cached from GetDiscordStatusAsync so
+        /// the MOTD strip can read it synchronously (mirrors LastKnownSupporter). False
+        /// when signed out / unresolved.</summary>
+        internal bool LastKnownDiscordLinked { get; private set; }
+
+        // ---- Account-status cache (entitlement + Discord link): event-driven, not clock-polled ----
+        // These change rarely and on discrete events (sign-in, link/unlink, a Patreon pledge lapsing
+        // server-side on its monthly date). The client copy is DISPLAY-ONLY (uploads are gated by
+        // server-side RLS), so a long backstop is safe. The cache is refreshed on the events that can
+        // change it (InvalidateAccountStatusCache below) plus a forced read when the Account/Backup tab
+        // opens; the weekly TTL only catches a server-side lapse on a plugin left running for days.
+        // Single-flight (`_entInFlight` / `_discordInFlight`) coalesces the badge + cloud-gating reads
+        // that used to fire the entitlement RPC twice per account refresh.
+        private static readonly TimeSpan AccountStatusTtl = TimeSpan.FromDays(7);
+        private readonly object _entCacheLock = new object();
+        private (bool isSupporter, string tier, DateTime? retainUntil)? _entCache;
+        private DateTime _entCacheAtUtc;
+        private Task<(bool, string, DateTime?)> _entInFlight;
+        private readonly object _discordCacheLock = new object();
+        private (bool linked, string username)? _discordCache;
+        private DateTime _discordCacheAtUtc;
+        private Task<(bool, string)> _discordInFlight;
+
+        /// <summary>Drop the cached supporter + Discord-link state so the next read refetches. Called on
+        /// sign-in/out, link/unlink, and any action that can change entitlement.</summary>
+        internal void InvalidateAccountStatusCache()
         {
-            if (_discordLinkClient == null || _auth == null || !_auth.IsSignedIn) return (false, null);
-            return await _discordLinkClient.GetMyDiscordAsync(ct).ConfigureAwait(false);
+            lock (_entCacheLock) { _entCache = null; }
+            lock (_discordCacheLock) { _discordCache = null; }
+        }
+
+        /// <summary>Current Discord link state for the settings UI (linked + display name). Cached;
+        /// pass forceRefresh on explicit user intent (opening the Account tab, manual refresh).</summary>
+        internal Task<(bool linked, string username)> GetDiscordStatusAsync(System.Threading.CancellationToken ct)
+            => GetDiscordStatusAsync(ct, forceRefresh: false);
+
+        internal async Task<(bool linked, string username)> GetDiscordStatusAsync(
+            System.Threading.CancellationToken ct, bool forceRefresh)
+        {
+            if (_discordLinkClient == null || _auth == null || !_auth.IsSignedIn)
+            {
+                LastKnownDiscordLinked = false;
+                lock (_discordCacheLock) { _discordCache = null; }
+                return (false, null);
+            }
+            Task<(bool, string)> task;
+            lock (_discordCacheLock)
+            {
+                if (!forceRefresh && _discordCache.HasValue
+                    && (DateTime.UtcNow - _discordCacheAtUtc) < AccountStatusTtl)
+                {
+                    var c = _discordCache.Value;
+                    LastKnownDiscordLinked = c.linked;
+                    return c;
+                }
+                if (_discordInFlight == null) _discordInFlight = FetchDiscordStatusAsync();
+                task = _discordInFlight;
+            }
+            var result = await task.ConfigureAwait(false);
+            LastKnownDiscordLinked = result.Item1;
+            return result;
+        }
+
+        private async Task<(bool, string)> FetchDiscordStatusAsync()
+        {
+            try
+            {
+                var result = await _discordLinkClient
+                    .GetMyDiscordAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
+                lock (_discordCacheLock)
+                {
+                    _discordCache = result;
+                    _discordCacheAtUtc = DateTime.UtcNow;
+                    _discordInFlight = null;
+                }
+                return result;
+            }
+            catch
+            {
+                lock (_discordCacheLock)
+                {
+                    _discordInFlight = null;
+                    if (_discordCache.HasValue) return _discordCache.Value;   // keep last good on a transient failure
+                }
+                return (false, null);
+            }
         }
 
         // ===================== Phase 2 Patreon link =====================
@@ -14175,11 +16045,12 @@ namespace TrueforceForAll.Plugin
                 catch (PatreonOAuthException ex)   { return new PatreonLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[Trueforce] Patreon authorize error: " + ex.Message);
+                    SimHub.Logging.Current.Info("[TF4ALL] Patreon authorize error: " + ex.Message);
                     return new PatreonLinkResult { Ok = false, Message = "Couldn't start Patreon linking." };
                 }
 
                 var (ok, message, name) = await _patreonLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
+                if (ok) InvalidateAccountStatusCache();   // a Patreon link proves an active pledge: refresh entitlement
                 return new PatreonLinkResult { Ok = ok, Message = message, Name = name };
             }
             finally { _patreonLinkOp.Release(); }
@@ -14191,6 +16062,7 @@ namespace TrueforceForAll.Plugin
             if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = "Patreon linking isn't available." };
             if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = "Sign in first." };
             bool ok = await _patreonLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
+            if (ok) InvalidateAccountStatusCache();   // unlink can drop the entitlement: refresh it
             return new PatreonLinkResult { Ok = ok, Message = ok ? "Patreon unlinked." : "Couldn't unlink. Try again." };
         }
 
@@ -14203,10 +16075,85 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Read the signed-in user's supporter entitlement for the in-plugin badge.
         /// Advisory/display only; the real backup gate is enforced server-side.</summary>
-        internal async Task<(bool isSupporter, string tier, DateTime? retainUntil)> GetSupporterTierAsync(System.Threading.CancellationToken ct)
+        /// <summary>Last-known supporter status, cached from GetSupporterTierAsync so
+        /// UI (e.g. the MOTD strip) can read it synchronously. Defaults false.</summary>
+        internal bool LastKnownSupporter { get; private set; }
+
+        /// <summary>Signed-in user's supporter entitlement for the badge / cloud-gating. Cached
+        /// (display-only; real gate is server-side). Pass forceRefresh on explicit user intent.</summary>
+        internal Task<(bool isSupporter, string tier, DateTime? retainUntil)> GetSupporterTierAsync(System.Threading.CancellationToken ct)
+            => GetSupporterTierAsync(ct, forceRefresh: false);
+
+        internal async Task<(bool isSupporter, string tier, DateTime? retainUntil)> GetSupporterTierAsync(
+            System.Threading.CancellationToken ct, bool forceRefresh)
         {
-            if (_entitlementClient == null || _auth == null || !_auth.IsSignedIn) return (false, null, null);
-            return await _entitlementClient.GetMyEntitlementAsync(ct).ConfigureAwait(false);
+            if (_entitlementClient == null || _auth == null || !_auth.IsSignedIn)
+            {
+                LastKnownSupporter = false;
+                lock (_entCacheLock) { _entCache = null; }
+                return (false, null, null);
+            }
+            Task<(bool, string, DateTime?)> task;
+            lock (_entCacheLock)
+            {
+                if (!forceRefresh && _entCache.HasValue
+                    && (DateTime.UtcNow - _entCacheAtUtc) < AccountStatusTtl)
+                {
+                    var c = _entCache.Value;
+                    LastKnownSupporter = c.isSupporter;
+                    return c;
+                }
+                if (_entInFlight == null) _entInFlight = FetchEntitlementAsync();
+                task = _entInFlight;
+            }
+            var result = await task.ConfigureAwait(false);
+            LastKnownSupporter = result.Item1;
+            return result;
+        }
+
+        private async Task<(bool, string, DateTime?)> FetchEntitlementAsync()
+        {
+            try
+            {
+                var result = await _entitlementClient
+                    .GetMyEntitlementAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
+                lock (_entCacheLock)
+                {
+                    _entCache = result;
+                    _entCacheAtUtc = DateTime.UtcNow;
+                    _entInFlight = null;
+                }
+                return result;
+            }
+            catch
+            {
+                lock (_entCacheLock)
+                {
+                    _entInFlight = null;
+                    if (_entCache.HasValue) return _entCache.Value;   // keep last good on a transient failure
+                }
+                return (false, null, null);
+            }
+        }
+
+        /// <summary>Community contributions the MOTD strip tracks recency for, so the
+        /// matching nudge stays hidden while the user is an active contributor and
+        /// returns once they've gone quiet (TrueforceSettings.MotdContributionRecency).</summary>
+        internal enum MotdContribution { Share, Vote, CarFact }
+
+        /// <summary>Stamp "the user just contributed" (UTC) so the matching MOTD
+        /// community nudge stays suppressed for the recency window. Best-effort persist.</summary>
+        internal void NoteMotdContribution(MotdContribution kind)
+        {
+            if (Settings == null) return;
+            var now = DateTime.UtcNow;
+            switch (kind)
+            {
+                case MotdContribution.Share:   Settings.LastSharedPresetOn  = now; break;
+                case MotdContribution.Vote:    Settings.LastVotedOn         = now; break;
+                case MotdContribution.CarFact: Settings.LastSubmittedFactOn = now; break;
+            }
+            try { SaveMotdState(); } catch { }
         }
 
         /// <summary>Read the public supporters roster for the Account tab's wall. Sourced from
@@ -14303,6 +16250,38 @@ namespace TrueforceForAll.Plugin
         private string _lastLibFingerprint;
         private volatile bool _backupDirty;
 
+        // ---- Activity + presence gating (cost control: only touch the backend when it can matter) ----
+        // The cloud pull and the revoke heartbeat used to run on flat timers for any signed-in user,
+        // which meant a SOLO IDLE user generated ~1800 metadata calls/hour for nothing. Both are now
+        // gated so they cost essentially zero unless there's a real reason to talk to the server:
+        //   * pull runs only while the user is ACTIVELY using the plugin AND another of this account's
+        //     sessions is online (nobody else online => nothing could have changed to pull);
+        //   * the revoke heartbeat runs only while 2+ sessions exist (a lone session can't be revoked
+        //     by anyone, and revocation is still enforced server-side + caught lazily on the next call).
+        // "Active" = a UI interaction within this window (panel load counts). Idle past it => dormant.
+        private static readonly TimeSpan ActivityIdleWindow = TimeSpan.FromMinutes(4);
+        private long _lastActivityUtcTicks;   // DateTime.UtcNow.Ticks of the last interaction; 0 = never
+        // Presence (is another session online?) is refreshed ONLY on wake / Account-tab load, never on a
+        // timer, so a one-device user makes at most a handful of get_my_sessions probes a day. A short
+        // cache coalesces rapid wakes; a peer counts as online only if its heartbeat is recent (a
+        // signed-in-but-closed device stops heartbeating, so its last_seen goes stale and it drops out).
+        private static readonly TimeSpan PresenceCacheTtl = TimeSpan.FromMinutes(3);
+        private static readonly TimeSpan PeerOnlineWindow = TimeSpan.FromMinutes(5);
+        private volatile bool _hasActivePeer;
+        private long _presenceCheckedUtcTicks;
+        private int _presenceBusy;   // single-flight the get_my_sessions presence probe
+        // Adaptive pull cadence: start at 60s while active + a peer is online, but each consecutive
+        // "no change" poll stretches the interval (60s -> 5min -> 10min). A peer left running but idle
+        // produces nothing but unchanged polls, so the active device winds down to a 10min trickle
+        // instead of hammering at 60s forever. Any detected change (or a wake) snaps back to 60s.
+        private const int AutoPullBaseMs  = 60000;    // snappy cadence right after a change / wake
+        private const int AutoPullMidMs   = 300000;   // 5min once changes have stopped flowing
+        private const int AutoPullMaxMs   = 600000;   // 10min steady-state trickle for an idle peer
+        private const int AutoPullFloorMs = 10000;    // hard floor: nothing may poll faster than this
+        private const int PullMidAfter    = 5;        // no-change polls before stepping to 5min
+        private const int PullMaxAfter    = 8;        // no-change polls before stepping to 10min
+        private volatile int _pullNoChangeStreak;     // consecutive unchanged polls; drives the backoff
+
         /// <summary>Fired after a cloud restore/merge re-applies the library to live state, so an
         /// open preset browser redraws without the user hitting Refresh library. Fires on the UI
         /// thread (ApplyRestoredEnvelopeCore is dispatched there).</summary>
@@ -14366,8 +16345,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 json = await Task.Run(() => BackupService.Serialize(
-                    BackupService.BuildEnvelope(Settings, UserLibraryFolderForBackup(),
-                        Environment.MachineName, DateTime.UtcNow))).ConfigureAwait(false);
+                    BuildEnvelopeLocked())).ConfigureAwait(false);
             }
             catch (BackupTooLargeException ex) { return Fail(BackupStatus.TooLarge, ex.Message); }   // permanent: caller won't retry-spin
             catch (Exception ex) { return Fail(BackupStatus.Failed, "Couldn't build the backup: " + ex.Message); }
@@ -14408,13 +16386,13 @@ namespace TrueforceForAll.Plugin
                 }
                 else
                 {
-                    SimHub.Logging.Current.Info("[Trueforce] Backup: revision stamp skipped (status=" + res
+                    SimHub.Logging.Current.Info("[TF4ALL] Backup: revision stamp skipped (status=" + res
                         + "); a false 'cloud changed' prompt may appear next time.");
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[Trueforce] Backup: revision stamp failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Backup: revision stamp failed: " + ex.Message);
             }
         }
 
@@ -14450,8 +16428,7 @@ namespace TrueforceForAll.Plugin
                 // UPLOAD FIRST (the cloud is the shared source of truth) and only mutate
                 // this PC once the upload is confirmed (atomic: a failed upload leaves
                 // local state untouched and ready to retry).
-                var localEnv = await Task.Run(() => BackupService.BuildEnvelope(
-                    Settings, UserLibraryFolderForBackup(), Environment.MachineName, DateTime.UtcNow)).ConfigureAwait(false);
+                var localEnv = await Task.Run(() => BuildEnvelopeLocked()).ConfigureAwait(false);
                 var merged = BackupService.Merge(localEnv, cloudEnv, keepCloudSettings, Environment.MachineName, DateTime.UtcNow);
                 var up = await _backupClient.UploadAsync(BackupService.Serialize(merged)).ConfigureAwait(false);
                 if (up != BackupTransfer.Success) return FromTransfer(up, "Merged backup upload failed");
@@ -14519,11 +16496,14 @@ namespace TrueforceForAll.Plugin
             Settings.CarsMigratedV2          = true;
             Settings.LegacyBuiltinsCleanedV1 = true;
             Settings.FoldersRestructuredV3   = true;
+            Settings.CarPresetOrdinalNamesMigratedV1 = true;
+            Settings.CarPresetOrdinalNamesMigratedV2 = true;
+            Settings.ForzaCarIdsNormalizedV1         = true;
 
             // ApplySettings replaced the DownloadedCommunityPresets reference; re-link the
             // active slot so the per-user slot system stays consistent.
             try { MountUserSlot(Settings.ActiveSlotKey); }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: slot remount failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: slot remount failed: " + ex.Message); }
 
             // Auto-sync deletes: remove files that were in the LAST-SYNCED baseline but are absent
             // from this authoritative bundle (deleted on the other PC). Read the OLD baseline now,
@@ -14543,7 +16523,7 @@ namespace TrueforceForAll.Plugin
             }
             int skipped = BackupLibrary.Restore(UserLibraryFolderForBackup(), env.Library, deleteIfAbsent);
             if (skipped > 0)
-                SimHub.Logging.Current.Warn("[Trueforce] Backup restore: " + skipped + " preset file(s) could not be written.");
+                SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: " + skipped + " preset file(s) could not be written.");
             UserPresets.Reload();
             RebuildPresetCacheFromFolders();
             LoadAndMigrateCarPresets();
@@ -14554,12 +16534,12 @@ namespace TrueforceForAll.Plugin
             // effects; ApplyForzaSettings rebuilds the telemetry source in place (port/bind). A full
             // pipeline re-init isn't safe (InitPipeline is once-only: helper process + threads + mixer).
             try { ApplyActiveCarOverride(); }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: effect re-apply failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: effect re-apply failed: " + ex.Message); }
             try { ApplyForzaSettings(); }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: telemetry re-apply failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: telemetry re-apply failed: " + ex.Message); }
             // Tell any open preset browser to redraw from the rebuilt caches (no manual Refresh).
             try { LibraryReloaded?.Invoke(); }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[Trueforce] Backup restore: library-reloaded notify failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: library-reloaded notify failed: " + ex.Message); }
         }
 
         // ---- Auto-sync (debounced, fast-forward only) ----
@@ -14599,7 +16579,7 @@ namespace TrueforceForAll.Plugin
                     && string.Equals(_auth.SignedInUserId ?? "", idAtStart, StringComparison.Ordinal);
                 if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
                 {
-                    // Another backup op (usually an auto-pull poll, now every 2s) holds the slot.
+                    // Another backup op (a catch-up pull or a concurrent push) holds the slot.
                     // Re-arm a short retry instead of waiting for the next user edit: a settings-only
                     // change isn't covered by the library drift backstop, so without this it could
                     // sit dirty indefinitely. (This was the "occasionally doesn't sync" race.)
@@ -14621,7 +16601,7 @@ namespace TrueforceForAll.Plugin
                         // reconciles via the merge branch (not a clobbering fast-forward). Re-arm a
                         // backstop retry slightly longer than the pull period so the merge lands
                         // first; if it already cleared dirty, the retry tick is a no-op.
-                        SimHub.Logging.Current.Info("[Trueforce] Auto-sync: cloud changed on another device; the next pull will reconcile.");
+                        SimHub.Logging.Current.Info("[TF4ALL] Auto-sync: cloud changed on another device; the next pull will reconcile.");
                         ArmAutoSyncRetry(2500);
                         return;
                     }
@@ -14637,13 +16617,13 @@ namespace TrueforceForAll.Plugin
                     else if (outcome.Status == BackupStatus.Failed && StillValid())
                         ArmAutoSyncBackoff();   // transient upload failure: capped exponential backoff
                     else if (outcome.Status == BackupStatus.TooLarge)
-                        SimHub.Logging.Current.Warn("[Trueforce] Auto-sync paused: the backup is too large to upload. " + outcome.Message);
+                        SimHub.Logging.Current.Warn("[TF4ALL] Auto-sync paused: the backup is too large to upload. " + outcome.Message);
                     // Forbidden / NotSignedIn / TooLarge are PERMANENT: leave dirty set but do NOT
                     // re-arm (no spin). The next user edit re-primes a fresh prompt attempt.
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[Trueforce] Auto-sync error: " + ex.Message);
+                    SimHub.Logging.Current.Info("[TF4ALL] Auto-sync error: " + ex.Message);
                     ArmAutoSyncBackoff();   // unexpected error mid-push: capped exponential backoff, don't wait for the next edit
                 }
                 finally { _backupOp.Release(); }
@@ -14677,11 +16657,138 @@ namespace TrueforceForAll.Plugin
             ArmAutoSyncRetry(delay);
         }
 
+        // ---- Activity + presence coordinator ----
+
+        /// <summary>True when the user has interacted with the plugin within the activity window.
+        /// Drives the backup pull: an idle device has nothing consuming a pulled change, so it
+        /// shouldn't poll. Reading is lock-free; the UI stamps it via <see cref="NoteUserActivity"/>.</summary>
+        internal bool IsUserActive
+        {
+            get
+            {
+                long t = System.Threading.Interlocked.Read(ref _lastActivityUtcTicks);
+                if (t == 0) return false;
+                return (DateTime.UtcNow - new DateTime(t, DateTimeKind.Utc)) < ActivityIdleWindow;
+            }
+        }
+
+        /// <summary>UI hook: call on any interaction with the plugin (and on panel load). Stamps
+        /// activity; if we had gone idle, this is a WAKE and we reconcile sync state once (refresh
+        /// presence, re-arm the heartbeat gate, run the drift backstop, catch up if a peer is online).
+        /// Cheap and idempotent: it does no network work unless the idle->active edge is crossed.</summary>
+        internal void NoteUserActivity()
+        {
+            if (_shuttingDown) return;
+            long now = DateTime.UtcNow.Ticks;
+            long prev = System.Threading.Interlocked.Exchange(ref _lastActivityUtcTicks, now);
+            bool wasIdle = prev == 0 || (now - prev) >= ActivityIdleWindow.Ticks;
+            if (wasIdle) ReconcileSyncState(ignoreActivity: true);
+        }
+
+        /// <summary>Probe whether another of this account's sessions is currently online and cache the
+        /// answer. This is the ONLY thing that drives the pull + heartbeat gates, and it runs only on
+        /// wake / Account-tab load (never on a timer). Reuses a recent result so rapid wakes don't
+        /// re-call get_my_sessions. An unreachable probe keeps the prior belief (doesn't thrash gates).</summary>
+        internal async Task RefreshPresenceAsync(bool force)
+        {
+            if (_shuttingDown || _sessionClient == null || _auth == null || !_auth.IsSignedIn)
+            {
+                if (_hasActivePeer) { _hasActivePeer = false; try { UpdateSessionHeartbeatTimer(); } catch { } }
+                return;
+            }
+            if (!force)
+            {
+                long checkedAt = System.Threading.Interlocked.Read(ref _presenceCheckedUtcTicks);
+                if (checkedAt != 0 && (DateTime.UtcNow - new DateTime(checkedAt, DateTimeKind.Utc)) < PresenceCacheTtl)
+                    return;   // recent enough; reuse the cached _hasActivePeer
+            }
+            if (System.Threading.Interlocked.CompareExchange(ref _presenceBusy, 1, 0) != 0) return;
+            try
+            {
+                var sessions = await _sessionClient
+                    .GetMySessionsAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
+                if (sessions == null) return;   // unreachable / not configured: leave the gate as-is
+                ApplySessionsForPresence(sessions);
+            }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Presence probe error: " + ex.Message); }
+            finally { System.Threading.Interlocked.Exchange(ref _presenceBusy, 0); }
+        }
+
+        /// <summary>Derive "is another session online" from a session list and update the gates. The
+        /// Account tab already loads get_my_sessions to show the session list, so it feeds this for
+        /// free (opening that tab refreshes presence without an extra call).</summary>
+        internal void ApplySessionsForPresence(System.Collections.Generic.List<SessionClient.SessionRow> sessions)
+        {
+            if (sessions == null) return;
+            bool peer = false;
+            var now = DateTime.UtcNow;
+            foreach (var s in sessions)
+            {
+                if (s == null || s.IsCurrent) continue;
+                DateTime? seen = s.LastSeen ?? s.LastActive ?? s.CreatedAt;
+                if (seen.HasValue && (now - seen.Value) < PeerOnlineWindow) { peer = true; break; }
+            }
+            System.Threading.Interlocked.Exchange(ref _presenceCheckedUtcTicks, now.Ticks);
+            if (peer != _hasActivePeer)
+            {
+                _hasActivePeer = peer;
+                try { UpdateSessionHeartbeatTimer(); } catch { }   // start/stop the heartbeat to match
+            }
+        }
+
+        // Library drift backstop, relocated off the (now gated) pull tick so it still runs for a solo
+        // user. Catches a local library mutation that didn't arm the push directly (e.g. files changed
+        // by an external tool while the plugin was idle/closed); a real in-app edit already armed it.
+        // Cheap: a metadata fingerprint gates the authoritative content-vs-baseline compare.
+        private void RunLibraryDriftCheck()
+        {
+            if (_shuttingDown || Settings == null || !Settings.AutoSyncBackupEnabled) return;
+            if (_backupClient == null || _auth == null || !_auth.IsSignedIn) return;
+            if (_backupDirty) return;   // already pending: nothing new to detect
+            try
+            {
+                string fp = BackupLibrary.Fingerprint(UserLibraryFolderForBackup());
+                if (!string.Equals(fp, _lastLibFingerprint, StringComparison.Ordinal))
+                {
+                    if (LocalLibraryDiffersFromBaseline()) RequestAutoBackup();
+                    _lastLibFingerprint = fp;
+                }
+            }
+            catch { /* fingerprint / compare is best-effort */ }
+        }
+
+        /// <summary>One-shot reconcile: run the drift backstop, refresh presence, re-arm the heartbeat
+        /// gate, and (if a peer is online) fire an immediate catch-up pull. Called on wake, startup,
+        /// and every sign-in/identity flip. <paramref name="ignoreActivity"/> lets the catch-up pull
+        /// bypass the activity gate (the user just woke, or this is an explicit startup reconcile),
+        /// while the peer gate still applies so a solo device never pulls.</summary>
+        private void ReconcileSyncState(bool ignoreActivity)
+        {
+            if (_shuttingDown) return;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    try { RunLibraryDriftCheck(); } catch { }
+                    await RefreshPresenceAsync(force: true).ConfigureAwait(false);
+                    if (_hasActivePeer)
+                    {
+                        _pullNoChangeStreak = 0;   // wake / sign-in: reset backoff so the catch-up + next polls are snappy
+                        RunAutoPull(ignoreActivity);
+                    }
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Sync reconcile error: " + ex.Message); }
+            });
+        }
+
         // ---- Auto-pull (poll the cloud; fast-forward when local is clean, else silent smart-merge) ----
 
-        /// <summary>Ensure the cloud poll is running. Idempotent; call on startup, sign-in/out,
-        /// and the auto-sync toggle. The poll runs unconditionally once started. RunAutoPull
-        /// self-gates on signed-in + auto-sync + idle, so a tick is a cheap no-op otherwise.</summary>
+        /// <summary>Kick the cloud poll loop. Idempotent; call on startup, sign-in/out, and the auto-sync
+        /// toggle. The timer is one-shot and re-arms itself from RunAutoPull (adaptive backoff). Each tick
+        /// HARD-gates on (user active) AND (a peer is online): when those fail the loop simply stops (no
+        /// re-arm) and a wake / sign-in / toggle re-kicks it here, so a solo or idle user makes zero backup
+        /// calls. Kicking it regardless of sign-in state avoids a startup race where a session restored
+        /// after Init would otherwise never begin polling.</summary>
         public void UpdateAutoPullTimer()
         {
             if (_shuttingDown) return;
@@ -14691,28 +16798,42 @@ namespace TrueforceForAll.Plugin
                 if (_autoPullTimer == null)
                     _autoPullTimer = new System.Threading.Timer(_ => RunAutoPull(), null,
                         System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
-                // Poll unconditionally (first ~1.5s, then every 2s). Starting it regardless of
-                // current sign-in state avoids a STARTUP RACE: if the saved session restores AFTER
-                // Init (so IsSignedIn was false when Init called this) and no identity-change event
-                // re-fires, a state-gated timer would never start and the PC would never auto-pull
-                // until a manual toggle. RunAutoPull's own guards make an unwanted tick a no-op.
-                // Each idle tick is a metadata-only revision check (tiny GET /object/info, no
-                // supporter RLS, no app rate limit); the full envelope downloads only when the
-                // cloud revision actually moved, so a 2s poll stays cheap. Ticks never stack: the
-                // single-flight _backupOp.WaitAsync(0) no-ops a tick if one is already running.
-                _autoPullTimer.Change(1500, 2000);
+                // The timer is one-shot and re-arms itself from RunAutoPull (adaptive backoff). Kick a
+                // base-cadence tick: it self-gates and only keeps the loop alive while active + a peer
+                // is online, otherwise the loop stops and a wake / sign-in / toggle re-kicks it here.
+                _autoPullTimer.Change(AutoPullBaseMs, System.Threading.Timeout.Infinite);
             }
+            catch { /* timer disposed during shutdown */ }
+        }
+
+        // Next pull interval from the no-change streak: 60s -> 5min -> 10min as unchanged polls pile up.
+        private int NextPullDelayMs()
+        {
+            int s = _pullNoChangeStreak;
+            if (s >= PullMaxAfter) return AutoPullMaxMs;
+            if (s >= PullMidAfter) return AutoPullMidMs;
+            return AutoPullBaseMs;
+        }
+
+        // Re-arm the one-shot pull timer for the next tick (floored). Called from RunAutoPull's tail.
+        private void ArmNextAutoPull(int delayMs)
+        {
+            if (_shuttingDown || _autoPullTimer == null) return;
+            try { _autoPullTimer.Change(Math.Max(AutoPullFloorMs, delayMs), System.Threading.Timeout.Infinite); }
             catch { /* timer disposed during shutdown */ }
         }
 
         // ---- Revoke heartbeat (sign this device out promptly if its session was revoked elsewhere) ----
 
-        /// <summary>Start/stop the session-revoke heartbeat based on signed-in state. Idempotent;
-        /// call on startup and on every identity flip. Runs for ANY signed-in user (unlike the
-        /// auto-pull poll, which is auto-sync/supporter gated).</summary>
+        /// <summary>Start/stop the session-revoke heartbeat. Idempotent; call on startup, every identity
+        /// flip, and whenever presence changes. Gated on 2+ sessions: a lone session can't be revoked by
+        /// anyone (the RPC refuses to revoke the caller's own current session), so heartbeating it is
+        /// pure waste. When solo, revocation is still enforced server-side and caught lazily on the next
+        /// authenticated call / token refresh / Account-tab poke, so this only changes promptness, never
+        /// enforcement. Resumes automatically the moment a second session is detected.</summary>
         public void UpdateSessionHeartbeatTimer()
         {
-            bool want = !_shuttingDown && _sessionClient != null && _auth != null && _auth.IsSignedIn;
+            bool want = !_shuttingDown && _sessionClient != null && _auth != null && _auth.IsSignedIn && _hasActivePeer;
             unchecked { _sessionHeartbeatGen++; }   // invalidate any tick scheduled under stale state
             try
             {
@@ -14766,14 +16887,14 @@ namespace TrueforceForAll.Plugin
                     if (gen != _sessionHeartbeatGen || _shuttingDown || _auth == null || !_auth.IsSignedIn) return;
                     if (status != SessionStatus.Revoked) return;   // Active or Unknown: leave the session alone
 
-                    SimHub.Logging.Current.Info("[Trueforce] Session was revoked from another device; signing this device out.");
+                    SimHub.Logging.Current.Info("[TF4ALL] Session was revoked from another device; signing this device out.");
                     var disp = System.Windows.Application.Current?.Dispatcher;
                     if (disp != null && !disp.CheckAccess())
                         disp.Invoke(() => { try { _auth.SignOut(); } catch { } });
                     else
                         _auth.SignOut();
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Session heartbeat error: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Session heartbeat error: " + ex.Message); }
                 finally { System.Threading.Interlocked.Exchange(ref _sessionHeartbeatBusy, 0); }
             });
         }
@@ -14781,14 +16902,19 @@ namespace TrueforceForAll.Plugin
         // One poll tick. Cheap revision check first; only downloads + applies when the cloud
         // actually moved. Defers while a session is live (re-applying effects / rebinding the
         // telemetry source would blip FFB). Single-flights with manual/auto ops via _backupOp.
-        private void RunAutoPull()
+        // Hard-gated on (a peer is online) so a solo user never pulls, and on (user active) so an
+        // idle device doesn't poll either; the wake/startup reconcile passes ignoreActivity to fire
+        // a one-shot catch-up without waiting for the next interaction.
+        private void RunAutoPull(bool ignoreActivity = false)
         {
             int gen = _autoPullGen;
             Task.Run(async () =>
             {
                 if (_shuttingDown || Settings == null || !Settings.AutoSyncBackupEnabled) return;
                 if (_backupClient == null || _auth == null || !_auth.IsSignedIn) return;
-                if (IsGameRunning) return;                                        // don't apply mid-drive; a later idle tick will
+                if (!_hasActivePeer) return;                                      // solo: nobody else could have written
+                if (!ignoreActivity && !IsUserActive) return;                     // idle: nothing is consuming a pulled change
+                if (IsGameRunning) return;                                        // don't apply mid-drive; a later tick will
                 // Capture the account we started under. Re-assert after EVERY await before applying,
                 // uploading, or stamping, so a sign-out / account switch during the (up to 90s)
                 // download can't apply or upload one account's data under another's identity.
@@ -14796,31 +16922,15 @@ namespace TrueforceForAll.Plugin
                 bool StillValid() => gen == _autoPullGen && !_shuttingDown
                     && _auth != null && _auth.IsSignedIn && Settings != null && Settings.AutoSyncBackupEnabled
                     && string.Equals(_auth.SignedInUserId ?? "", idAtStart, StringComparison.Ordinal);
-                if (!await _backupOp.WaitAsync(0).ConfigureAwait(false)) return;  // an op is running; try next tick
+                if (!await _backupOp.WaitAsync(0).ConfigureAwait(false)) { ArmNextAutoPull(AutoPullBaseMs); return; }  // contended: retry soon
+                bool changed = false;
                 try
                 {
                     var (rev, cloudRev) = await _backupClient.GetRevisionAsync().ConfigureAwait(false);
                     if (rev != BackupTransfer.Success) return;                    // NotFound (no cloud yet) / transient: nothing to pull
                     string last = Settings?.BackupLastSyncedRevision ?? "";
                     if (string.Equals(cloudRev ?? "", last, StringComparison.Ordinal))
-                    {
-                        // Cloud is current. Backstop for un-armed local library mutations (delete/
-                        // rename/duplicate/default change): a CHEAP metadata fingerprint (paths +
-                        // mtimes + sizes, no content reads) gates the authoritative content-vs-
-                        // baseline compare, so this periodic check stays fast as the library grows.
-                        // we only re-hash content when the fingerprint actually moved. Library-only,
-                        // so settings counters that auto-increment can't false-trigger it.
-                        if (!_backupDirty && StillValid())
-                        {
-                            string fp = BackupLibrary.Fingerprint(UserLibraryFolderForBackup());
-                            if (!string.Equals(fp, _lastLibFingerprint, StringComparison.Ordinal))
-                            {
-                                if (LocalLibraryDiffersFromBaseline()) RequestAutoBackup();
-                                _lastLibFingerprint = fp;
-                            }
-                        }
-                        return;
-                    }
+                        return;   // cloud unchanged. (Un-armed local drift is caught by RunLibraryDriftCheck on wake/startup.)
                     if (!StillValid()) return;
 
                     var (dl, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
@@ -14836,7 +16946,7 @@ namespace TrueforceForAll.Plugin
                         if (!StillValid() || _backupDirty) return;
                         ApplyRestoredEnvelope(cloudEnv, propagateDeletes: true);
                         if (StillValid()) await StampSyncedRevisionAsync().ConfigureAwait(false);
-                        SimHub.Logging.Current.Info("[Trueforce] Auto-sync: pulled a newer backup from your other device.");
+                        SimHub.Logging.Current.Info("[TF4ALL] Auto-sync: pulled a newer backup from your other device.");
                     }
                     else
                     {
@@ -14845,8 +16955,7 @@ namespace TrueforceForAll.Plugin
                         // baseline, so each PC's edits to DIFFERENT fields both survive. Upload the
                         // merge first (cloud is the shared truth), then apply locally.
                         int changeGen = _backupChangeGen;   // detect a local edit during build+upload
-                        var localEnv = await Task.Run(() => BackupService.BuildEnvelope(
-                            Settings, UserLibraryFolderForBackup(), Environment.MachineName, DateTime.UtcNow)).ConfigureAwait(false);
+                        var localEnv = await Task.Run(() => BuildEnvelopeLocked()).ConfigureAwait(false);
                         Newtonsoft.Json.Linq.JObject baseSettings = null, baseForza = null;
                         System.Collections.Generic.Dictionary<string, string> baseLib = null;
                         try
@@ -14866,16 +16975,40 @@ namespace TrueforceForAll.Plugin
                         }
                         catch { /* missing/bad baseline: the 3-way merge degrades gracefully */ }
                         var merged = BackupService.Merge(localEnv, cloudEnv, baseSettings, baseForza, baseLib, Environment.MachineName, DateTime.UtcNow);
+                        // A local edit that lands after the changeGen snapshot makes
+                        // `merged` stale. Applying stale content would overwrite the
+                        // newer on-disk edit with the pre-edit copy (and the uploaded
+                        // cloud copy lacks the edit too, so it would be silently lost
+                        // from BOTH sides). Mirror the fast-forward guard: bail before
+                        // publishing/applying, leaving _backupDirty set and the
+                        // baseline un-stamped, so the next tick re-merges from fresh
+                        // disk state and the edit survives and gets pushed.
+                        if (changeGen != _backupChangeGen) return;   // edit during build: don't publish a stale merge
                         var up = await _backupClient.UploadAsync(BackupService.Serialize(merged)).ConfigureAwait(false);
                         if (up != BackupTransfer.Success || !StillValid()) return;   // not a supporter / account changed: leave dirty
-                        if (changeGen == _backupChangeGen) _backupDirty = false;     // an edit during build+upload stays pending
+                        if (changeGen != _backupChangeGen) return;   // edit during upload: same reasoning, don't clobber it locally
+                        _backupDirty = false;
                         ApplyRestoredEnvelope(merged, propagateDeletes: true);
                         if (StillValid()) await StampSyncedRevisionAsync().ConfigureAwait(false);
-                        SimHub.Logging.Current.Info("[Trueforce] Auto-sync: merged your changes with your other device.");
+                        SimHub.Logging.Current.Info("[TF4ALL] Auto-sync: merged your changes with your other device.");
+                    }
+                    changed = true;   // a newer cloud revision was pulled/merged
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Auto-pull error: " + ex.Message); }
+                finally
+                {
+                    _backupOp.Release();
+                    // Re-arm the loop with adaptive backoff. A change snaps back to the snappy base
+                    // cadence; a run that found nothing (a peer left running idle keeps producing
+                    // unchanged polls) stretches the interval 60s -> 5min -> 10min. Only re-arms while a
+                    // peer is still believed online; an idle/solo run returns before this and the loop
+                    // stops, restarting on the next wake.
+                    if (!_shuttingDown && _hasActivePeer)
+                    {
+                        if (changed) _pullNoChangeStreak = 0; else _pullNoChangeStreak++;
+                        ArmNextAutoPull(changed ? AutoPullBaseMs : NextPullDelayMs());
                     }
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Auto-pull error: " + ex.Message); }
-                finally { _backupOp.Release(); }
             });
         }
 
@@ -14908,7 +17041,7 @@ namespace TrueforceForAll.Plugin
         private BackupEnvelope SafeParse(string json)
         {
             try { return BackupService.Parse(json); }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[Trueforce] Backup envelope parse failed: " + ex.Message); return null; }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Backup envelope parse failed: " + ex.Message); return null; }
         }
         private static BackupOutcome FromTransfer(BackupTransfer t, string ctx)
         {
@@ -15034,7 +17167,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[Trueforce] Could not read CustomGames.json: {ex.Message}");
+                SimHub.Logging.Current.Info($"[TF4ALL] Could not read CustomGames.json: {ex.Message}");
             }
             _customGamesCache = newCache;
             _customGamesCacheLoadedAt = DateTime.UtcNow;
@@ -15176,7 +17309,7 @@ namespace TrueforceForAll.Plugin
                     if (stillAlive) return;
 
                     // Process exited, tear down and fall through to the scan.
-                    SimHub.Logging.Current.Info($"[Trueforce] Captured process {_capturedProcess.Id} exited; releasing.");
+                    SimHub.Logging.Current.Info($"[TF4ALL] Captured process {_capturedProcess.Id} exited; releasing.");
                     try { _capturedProcess.Dispose(); } catch { }
                     _capturedProcess = null;
                     _audio.Stop();
@@ -15258,12 +17391,12 @@ namespace TrueforceForAll.Plugin
                 _helperHost?.SetTargetPid(keep.Id);
                 EnterStreamingGcMode();
                 _captureStatus = $"Capturing {label} (PID {keep.Id})";
-                SimHub.Logging.Current.Info($"[Trueforce] {_captureStatus}.");
+                SimHub.Logging.Current.Info($"[TF4ALL] {_captureStatus}.");
             }
             catch (Exception ex)
             {
                 _captureStatus = $"Capture error: {ex.Message}";
-                SimHub.Logging.Current.Error("[Trueforce] Capture retarget failed", ex);
+                SimHub.Logging.Current.Error("[TF4ALL] Capture retarget failed", ex);
             }
         }
         // ---------- producer ----------
@@ -15329,7 +17462,10 @@ namespace TrueforceForAll.Plugin
             double above1 = Math.Max(l2, l3);                  // ducks L1 (road/traction/DRS hum)
             double above2 = l3;                                 // ducks L2 (rev/pit limiter)
 
-            float depth     = Settings?.DuckDepth     ?? 0.5f;
+            // Sidechain ducking can be turned off entirely; treat depth as 0 so
+            // continuous effects are never dipped (the tuning is preserved). The
+            // airborne stage below is separate, with its own enable.
+            float depth     = (Settings?.DuckingEnabled ?? true) ? (Settings?.DuckDepth ?? 0.5f) : 0f;
             float attackMs  = Settings?.DuckAttackMs  ?? 5.0f;
             float releaseMs = Settings?.DuckReleaseMs ?? 80.0f;
 
@@ -15475,7 +17611,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 SimHub.Logging.Current.Error(
-                    $"[Trueforce] producer {phase} error (rate-limited 1/5s): {ex.GetType().Name}: {ex.Message}");
+                    $"[TF4ALL] producer {phase} error (rate-limited 1/5s): {ex.GetType().Name}: {ex.Message}");
             }
             catch { }
         }
@@ -15487,7 +17623,7 @@ namespace TrueforceForAll.Plugin
         // tick never stalls. Single-flight via _recoveryInProgress.
         private void MaybeRecoverDevice()
         {
-            if (_shuttingDown || _recoveryInProgress) return;
+            if (_shuttingDown || System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return;
 
             var d = _device;
             bool needsRecovery = d == null || d.StreamFaulted;
@@ -15504,7 +17640,9 @@ namespace TrueforceForAll.Plugin
                 && now - _lastRecoveryAttemptTicks < RecoveryIntervalTicks)
                 return;
             _lastRecoveryAttemptTicks = now;
-            _recoveryInProgress = true;
+            // Atomically claim the single-flight slot; if the UI-thread probe
+            // already holds it, bail so the two can't both run a bring-up.
+            if (System.Threading.Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) != 0) return;
 
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -15518,16 +17656,16 @@ namespace TrueforceForAll.Plugin
                     if (_shuttingDown) return;
                     bool ok = TryBringUpDevice();
                     SimHub.Logging.Current.Info(ok
-                        ? "[Trueforce] Wheel re-attached; stream resumed."
-                        : "[Trueforce] Wheel re-attach failed; will keep retrying.");
+                        ? "[TF4ALL] Wheel re-attached; stream resumed."
+                        : "[TF4ALL] Wheel re-attach failed; will keep retrying.");
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Error("[Trueforce] Wheel re-attach crashed", ex);
+                    SimHub.Logging.Current.Error("[TF4ALL] Wheel re-attach crashed", ex);
                 }
                 finally
                 {
-                    _recoveryInProgress = false;
+                    System.Threading.Interlocked.Exchange(ref _recoveryInProgress, 0);
                 }
             });
         }
@@ -15566,11 +17704,12 @@ namespace TrueforceForAll.Plugin
                 return "Cannot probe: Logitech G HUB is running and holds the "
                      + "wheel's HID. Close G HUB, then run the self-test again.";
 
-            if (_recoveryInProgress)
+            // Atomically claim the single-flight slot shared with the watchdog;
+            // if it's already held, don't start a second bring-up.
+            if (System.Threading.Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) != 0)
                 return "A re-attach is already in progress. Wait a moment and "
                      + "run the self-test again.";
 
-            _recoveryInProgress = true;
             _lastRecoveryAttemptTicks = Stopwatch.GetTimestamp();
             var sb = new System.Text.StringBuilder();
             try
@@ -15602,7 +17741,7 @@ namespace TrueforceForAll.Plugin
             }
             finally
             {
-                _recoveryInProgress = false;
+                System.Threading.Interlocked.Exchange(ref _recoveryInProgress, 0);
             }
         }
 
@@ -15626,7 +17765,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null) return false;
             Settings.UsbPcapCmdPathOverride = usbPcapCmdPath ?? "";
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
             return RestartFfbTap();
         }
 
@@ -15665,9 +17804,9 @@ namespace TrueforceForAll.Plugin
             // device to a new address after a replug, never switching wheels.
             Settings.ManualUsbPcapVid           = deviceAddress > 0 ? vid : 0;
             Settings.ManualUsbPcapPid           = deviceAddress > 0 ? pid : 0;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
             SimHub.Logging.Current.Info(
-                $"[Trueforce] Manual USB device {(deviceAddress > 0 ? $"set to {iface} dev {deviceAddress}" : "cleared")}.");
+                $"[TF4ALL] Manual USB device {(deviceAddress > 0 ? $"set to {iface} dev {deviceAddress}" : "cleared")}.");
             return RestartFfbTap();
         }
 
@@ -15682,7 +17821,7 @@ namespace TrueforceForAll.Plugin
             _simulateNoFfb = !_simulateNoFfb;
             if (_ffbTap != null) _ffbTap.SimulateNoFfbCapture = _simulateNoFfb;
             if (!_simulateNoFfb) _noFfbCaptureNotice = null;
-            SimHub.Logging.Current.Info($"[Trueforce] Simulate-no-FFB-capture {(_simulateNoFfb ? "ON" : "OFF")}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Simulate-no-FFB-capture {(_simulateNoFfb ? "ON" : "OFF")}.");
             return _simulateNoFfb;
         }
 
@@ -15699,13 +17838,137 @@ namespace TrueforceForAll.Plugin
                 _ffbTap.ExperimentalCapture = on;
                 _ffbTap.ResetFeatureIndexResolution();
             }
-            SimHub.Logging.Current.Info($"[Trueforce] Experimental FFB capture {(on ? "ON" : "OFF")}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] Experimental FFB capture {(on ? "ON" : "OFF")}.");
         }
 
         public bool DebugToggleExperimentalCapture()
         {
             bool on = !(Settings?.ExperimentalFfbCapture ?? false);
             SetExperimentalFfbCapture(on);
+            return on;
+        }
+
+        // ---------- Issue #13: stop the Trueforce stream while paused (test toggle) ----------
+
+        // True while we have stopped the stream for a pause, so we only fire
+        // SendStopCommand / SendStartCommand on the pause/resume edges.
+        private bool _stopStreamPauseActive;
+        // A real pause stops telemetry for far longer than this; the threshold
+        // only has to clear normal inter-frame jitter (Forza runs 60-160 Hz).
+        private const double StopStreamPauseStaleMs = 250.0;
+        // Telemetry must read active continuously for this long before we restart
+        // the stream, so a quick-travel / teleport flap can't re-engage us.
+        private const long ResumeHoldMs = 300;
+        private long _resumeCandidateSinceTicks;   // 0 = no resume pending
+
+        // Drive the device in/out of Trueforce mode on pause edges when the
+        // StopStreamOnPause toggle is on. Stopping the stream (vs streaming a
+        // zero force) is what lets the wheel revert to its native FFB and the
+        // game's own auto-center, which is the only thing confirmed to stop the
+        // G923/FH6 full-lock (issue #13). Called every DataUpdate so it keeps
+        // ticking even when telemetry has stopped. Default-off: when the toggle
+        // is off this is a no-op and the existing return-zero pause-release
+        // (the FfbTargetProvider lambda) stays in charge.
+        private void UpdateStopStreamOnPauseGate()
+        {
+            // We may only actively hold the stream stopped while the toggle is
+            // on AND we have a live game/source to judge pause state against.
+            // In every other case (toggle off, plugin disabled, no device, no
+            // active game, no source) we must NOT leave the stream stopped: if
+            // we previously stopped it for a pause, resume now so the device is
+            // never stranded paused. A stranded pause silently kills both the
+            // Test buttons and in-game FFB until the toggle is flipped, because
+            // the early-return below used to skip the resume once the game
+            // closed (a pause nulls _activeGame). Only resume when the plugin
+            // is still meant to be driving the wheel.
+            var src = _telemetrySource;
+            bool canGate = Settings != null && Settings.StopStreamOnPause
+                           && Settings.PluginEnabled && _device != null
+                           && src != null && !string.IsNullOrEmpty(_activeGame);
+            if (!canGate)
+            {
+                if (_stopStreamPauseActive)
+                {
+                    if (Settings != null && Settings.PluginEnabled && _device != null)
+                    {
+                        _ffbTap?.ClearLastFfbTarget();
+                        _device.Resume();
+                        _device.SendStartCommand();
+                    }
+                    _stopStreamPauseActive = false;
+                }
+                _resumeCandidateSinceTicks = 0;
+                return;
+            }
+
+            // Paused = the game's own session flag is down (authoritative, or the
+            // physics proxy with no telemetry), OR telemetry has actually stopped
+            // flowing. The staleness arm is what catches FH6 fast-travel /
+            // teleport / race-start, where Forza halts UDP so IsRaceOn freezes at
+            // 1 and IsSessionActive never reports the pause on its own.
+            bool paused = (!src.IsSessionActive && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
+                          || src.MsSinceLastFrame > StopStreamPauseStaleMs;
+
+            if (paused)
+            {
+                _resumeCandidateSinceTicks = 0;   // cancel any pending resume
+                if (!_stopStreamPauseActive)
+                {
+                    _device.SendStopCommand();
+                    _device.Pause();
+                    _stopStreamPauseActive = true;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] StopStreamOnPause: paused, left Trueforce mode so the wheel reverts to native FFB.");
+                }
+                // Keep the held force cleared the WHOLE time we're stopped, not
+                // just at the pause instant: the tap keeps capturing while paused,
+                // so turning the wheel against the game's auto-center would
+                // otherwise land a strong counter-force in the tap that replays
+                // on the next restart and slams the wheel (issue #13).
+                _ffbTap?.ClearLastFfbTarget();
+                return;
+            }
+
+            // Not paused. If we never stopped, nothing to do.
+            if (!_stopStreamPauseActive) { _resumeCandidateSinceTicks = 0; return; }
+
+            // Stopped + telemetry back: wait out the hysteresis so a one-frame
+            // flap mid-transition can't restart us, and stay cleared until we do.
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_resumeCandidateSinceTicks == 0) _resumeCandidateSinceTicks = now;
+            long heldMs = (now - _resumeCandidateSinceTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
+            if (heldMs < ResumeHoldMs)
+            {
+                _ffbTap?.ClearLastFfbTarget();
+                return;
+            }
+
+            // Restart from a clean slate: discard anything the tap grabbed during
+            // the pause / transition so the first force we emit is the game's
+            // current FFB, not a stale captured snapshot.
+            _ffbTap?.ClearLastFfbTarget();
+            _device.Resume();
+            _device.SendStartCommand();
+            _stopStreamPauseActive = false;
+            _resumeCandidateSinceTicks = 0;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] StopStreamOnPause: resumed, restarted Trueforce stream.");
+        }
+
+        // NOLOCK access code / future UI. Persists Settings.StopStreamOnPause.
+        // When turning it off mid-pause, the gate resumes the stream on its next
+        // tick so we never strand the wheel with no stream.
+        public void SetStopStreamOnPause(bool on)
+        {
+            if (Settings != null) Settings.StopStreamOnPause = on;
+            PersistSettings();
+            SimHub.Logging.Current.Info($"[TF4ALL] StopStreamOnPause {(on ? "ON" : "OFF")}.");
+        }
+
+        public bool DebugToggleStopStreamOnPause()
+        {
+            bool on = !(Settings?.StopStreamOnPause ?? false);
+            SetStopStreamOnPause(on);
             return on;
         }
 
@@ -15739,9 +18002,9 @@ namespace TrueforceForAll.Plugin
                     {
                         Settings.ManualUsbPcapInterface     = iface ?? "";
                         Settings.ManualUsbPcapDeviceAddress = addr > 0 ? addr : 0;
-                        this.SaveCommonSettings("GeneralSettings", Settings);
+                        PersistSettingsCore();
                         SimHub.Logging.Current.Info(
-                            $"[Trueforce] Updated saved USB device override to {iface} dev {addr} (wheel re-enumerated).");
+                            $"[TF4ALL] Updated saved USB device override to {iface} dev {addr} (wheel re-enumerated).");
                     }
                 }
                 catch { }
@@ -15757,7 +18020,7 @@ namespace TrueforceForAll.Plugin
                 if (Settings != null && !Settings.ExperimentalFfbCapture)
                     msg += " If your wheel should have force feedback, try turning on 'Enable experimental FFB detection' (Effects tab, under FFB tweaks), then drive a few seconds.";
                 _noFfbCaptureNotice = msg;
-                SimHub.Logging.Current.Warn($"[Trueforce] {msg}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] {msg}");
             };
         }
 
@@ -15805,7 +18068,7 @@ namespace TrueforceForAll.Plugin
             var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
             _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
             {
-                Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
+                Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                 HostElevated = IsRunningElevated,
             };
             if (_hidWheelVid != 0 || _hidWheelPid != 0)
@@ -15847,9 +18110,9 @@ namespace TrueforceForAll.Plugin
             if (Settings == null) return;
             if (Settings.LogUsbBytesEnabled == enabled) return;
             Settings.LogUsbBytesEnabled = enabled;
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
             ApplyUsbBytesLoggingSetting();
-            SimHub.Logging.Current.Info($"[Trueforce] USB byte logging {(enabled ? "enabled" : "disabled")}.");
+            SimHub.Logging.Current.Info($"[TF4ALL] USB byte logging {(enabled ? "enabled" : "disabled")}.");
         }
 
         // Launches the bundled USBPcap installer (silent /S, elevated). Called
@@ -15863,7 +18126,7 @@ namespace TrueforceForAll.Plugin
             string setup = System.IO.Path.Combine(pluginDir, "vendor", "USBPcapSetup.exe");
             if (!System.IO.File.Exists(setup))
             {
-                SimHub.Logging.Current.Warn($"[Trueforce] USBPcap setup not found at {setup}. Was the plugin installed via the official installer?");
+                SimHub.Logging.Current.Warn($"[TF4ALL] USBPcap setup not found at {setup}. Was the plugin installed via the official installer?");
                 return;
             }
             // Authenticode signature verification on the bundled USBPcap
@@ -15895,23 +18158,23 @@ namespace TrueforceForAll.Plugin
                     {
                         proc?.WaitForExit();
                     }
-                    SimHub.Logging.Current.Info("[Trueforce] USBPcap installer finished. Re-probing.");
+                    SimHub.Logging.Current.Info("[TF4ALL] USBPcap installer finished. Re-probing.");
 
                     // Clear any user-set override so the fresh install gets
                     // picked up from the default Program Files paths.
                     if (Settings != null) Settings.UsbPcapCmdPathOverride = "";
-                    try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+                    try { PersistSettingsCore(); } catch { }
                     RestartFfbTap();
                 }
                 catch (System.ComponentModel.Win32Exception)
                 {
                     // User cancelled the UAC prompt, or another shell-execute
                     // failure. Swallow without restarting the tap.
-                    SimHub.Logging.Current.Info("[Trueforce] USBPcap install cancelled or blocked by UAC.");
+                    SimHub.Logging.Current.Info("[TF4ALL] USBPcap install cancelled or blocked by UAC.");
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Error("[Trueforce] USBPcap install failed", ex);
+                    SimHub.Logging.Current.Error("[TF4ALL] USBPcap install failed", ex);
                 }
             });
         }

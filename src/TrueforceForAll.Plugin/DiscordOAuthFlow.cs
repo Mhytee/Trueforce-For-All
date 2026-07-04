@@ -58,7 +58,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    log?.Invoke($"[Trueforce] Discord: couldn't bind {prefix}: {ex.Message}");
+                    log?.Invoke($"[TF4ALL] Discord: couldn't bind {prefix}: {ex.Message}");
                 }
             }
             if (listener == null)
@@ -78,7 +78,7 @@ namespace TrueforceForAll.Plugin
 
                 // Log the URL so support has a manual fallback if the browser didn't actually open
                 // (Process.Start can return without throwing on a misconfigured default browser).
-                log?.Invoke("[Trueforce] Discord authorize URL: " + authorizeUrl);
+                log?.Invoke("[TF4ALL] Discord authorize URL: " + authorizeUrl);
                 try { Process.Start(new ProcessStartInfo(authorizeUrl) { UseShellExecute = true }); }
                 catch (Exception ex) { throw new DiscordOAuthException("Couldn't open your browser. The link is in the SimHub log. (" + ex.Message + ")"); }
 

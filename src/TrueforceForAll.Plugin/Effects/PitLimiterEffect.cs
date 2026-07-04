@@ -113,6 +113,14 @@ namespace TrueforceForAll.Plugin.Effects
             _amp = stillEngaged ? ActiveAmp : 0;
         }
 
+        // Telemetry stopped: if the game closed with the pit limiter on, the
+        // pulse would hold forever. Drop the amplitude and clear the hold.
+        public override void OnTelemetryStall()
+        {
+            _amp = 0;
+            _lastActiveTicks = 0;
+        }
+
         public override void Reset()
         {
             _amp = 0;
