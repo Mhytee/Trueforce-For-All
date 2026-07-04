@@ -213,17 +213,19 @@ namespace TrueforceForAll.Plugin.Effects
         // RedlineRpm semantics across the modes:
         //   * Manual (or legacy "Redline" enum value): always use
         //     Settings.RedlineRpm if set; null = engine off.
-        //   * Auto: prefer CarFactsRedline (User/Community/Baked - the
-        //     resolver's chosen source for this car/variant), then
-        //     telemetry sanity-gated, then Threshold-percent of the live
-        //     MaxRpm, then default 0.85 * MaxRpm. A stored RedlineRpm is
-        //     NOT used in Auto (it can't follow MaxRpm); the percentage
-        //     scales instead.
+        //   * Auto: live slider draft, then the user's per-gear/default
+        //     redline, then the game telemetry redline (sanity-gated),
+        //     then the community per-gear / variant consensus (banded),
+        //     then Threshold-percent of the live MaxRpm, then the 0.85
+        //     default. A stored RedlineRpm is NOT used in Auto (it can't
+        //     follow MaxRpm); the percentage scales instead.
         //
-        // Order matters: User/Community CarFacts are corrections people
-        // made BECAUSE telemetry was wrong (iRacing reports redline
-        // higher than the actual buzz point, AC titles vary, etc). If
-        // telemetry won that fight, the correction would silently no-op.
+        // Order matters: a USER value always beats telemetry (their
+        // deliberate correction must never silently no-op), but community
+        // consensus deliberately sits BELOW the game telemetry redline.
+        // The game is the source of truth when it reports one; the adopt
+        // prompt is the explicit path that promotes a community value into
+        // a user value, which then outranks telemetry.
         /// <summary>True when the rev-limiter buzz is firing on the default
         /// 0.85 × MaxRpm estimate because no authoritative redline was
         /// available (no telemetry redline, no CarFacts, no tuned
