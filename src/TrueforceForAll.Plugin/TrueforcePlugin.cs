@@ -7041,6 +7041,26 @@ namespace TrueforceForAll.Plugin
                         ? "[Trueforce] Wheel re-attached; stream resumed."
                         : "[Trueforce] Wheel re-attach failed; will keep retrying.");
 
+                    // EXPERIMENTAL: on re-attach the wheel PID may have just
+                    // resolved (it enumerated after startup), so re-push the
+                    // per-wheel FFB feature index. Without this the decode +
+                    // re-apply stay stuck on the startup default (G PRO 0x0E)
+                    // and a G923/RS50 that plugged in late feels dead.
+                    if (ok && _driverChannel != null && _driverChannel.IsOpen
+                        && Settings != null && Settings.ExperimentalDriverIntercept)
+                    {
+                        try
+                        {
+                            byte ffbIdx = WheelDiscovery.FfbFeatureIndexFor(_hidWheelPid);
+                            _driverChannel.SetFfbFeatureIndex(ffbIdx);
+                            SimHub.Logging.Current.Info($"[Trueforce] driver FFB feature index re-pushed 0x{ffbIdx:X2} on re-attach (PID 0x{_hidWheelPid:X4}).");
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Warn($"[Trueforce] FFB index re-push threw: {ex.GetType().Name}: {ex.Message}");
+                        }
+                    }
+
                     // EXPERIMENTAL: retry the driver-LED channel open if it
                     // failed during Init (typical when the wheel wasn't
                     // enumerable yet). Only runs when the driver intercept is

@@ -263,7 +263,7 @@ namespace TffaFakeGame
                 short force = (short)(Math.Sin(i * 0.05) * 12000);
                 var f = new byte[LenLong];
                 f[0] = RepLong; f[1] = DevWired; f[2] = featIdx; f[3] = FfbFnByte;
-                f[4] = (byte)(force >> 8); f[5] = (byte)(force & 0xFF);   // BE16 force target
+                f[10] = (byte)(force >> 8); f[11] = (byte)(force & 0xFF);   // BE16 force target at bytes 10-11 (where the decoder reads it)
                 try { longS.Write(f); sent++; }
                 catch (Exception ex) { Console.WriteLine($"  write failed after {sent}: {ex.Message}"); break; }
                 Thread.Sleep(gapMs);

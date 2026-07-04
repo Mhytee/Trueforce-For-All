@@ -56,9 +56,6 @@ EVT_WDF_DEVICE_FILE_CREATE                   TFFAUsbEvtControlFileCreate;
 EVT_WDF_FILE_CLEANUP                         TFFAUsbEvtControlFileCleanup;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL           TFFAUsbEvtControlIoDeviceControl;
 
-// Forward declaration; full definition further down.
-static ULONG TFFAUsbGetProtectedPid(VOID);
-
 // ---------- Target wheels (runtime hwid gate) ---------------------------
 //
 // We install as a USB class filter, so PnP loads us into every USB device's
@@ -507,7 +504,6 @@ TFFAUsbEvtIoInternalDeviceControl(
         owner = g_OwnerPid;
         WdfSpinLockRelease(g_OwnerLock);
     }
-    if (owner == 0) owner = TFFAUsbGetProtectedPid();
     // Retained for logging only. NOT used to decide interception: at the
     // URB-submit layer the write runs on a system worker thread, so this is
     // often PID 4 (System) for both the game's and the plugin's own writes
@@ -764,41 +760,4 @@ TFFAUsbEvtControlIoDeviceControl(
             WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
             return;
     }
-}
-
-// ---------- Registry fallback (ProtectedPid) ----------------------------
-//
-// Identical contract to TFFAFilter: when no control-device owner is set,
-// we can fall back to a ProtectedPid value under our Parameters key. Used
-// by scripted tests; harmless if absent.
-
-static ULONG
-TFFAUsbGetProtectedPid(VOID)
-{
-    UNICODE_STRING keyPath = RTL_CONSTANT_STRING(
-        L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services\\TFFAUsbFilter\\Parameters");
-    UNICODE_STRING valueName = RTL_CONSTANT_STRING(L"ProtectedPid");
-    OBJECT_ATTRIBUTES attrs;
-    HANDLE handle = NULL;
-    NTSTATUS status;
-    ULONG pid = 0;
-
-    InitializeObjectAttributes(&attrs, &keyPath,
-        OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-    status = ZwOpenKey(&handle, KEY_QUERY_VALUE, &attrs);
-    if (NT_SUCCESS(status)) {
-        UCHAR buf[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
-        ULONG resultLen = 0;
-        status = ZwQueryValueKey(handle, &valueName,
-            KeyValuePartialInformation, buf, sizeof(buf), &resultLen);
-        if (NT_SUCCESS(status)) {
-            PKEY_VALUE_PARTIAL_INFORMATION info = (PKEY_VALUE_PARTIAL_INFORMATION)buf;
-            if (info->Type == REG_DWORD && info->DataLength == sizeof(ULONG)) {
-                pid = *(PULONG)info->Data;
-            }
-        }
-        ZwClose(handle);
-    }
-    return pid;
 }
