@@ -132,7 +132,7 @@ needs attestation.
 - `src/TrueforceForAll.Core/WheelDiscovery.cs` — per-wheel FFB index map.
 - `src/TrueforceForAll.Plugin/TrueforcePlugin.cs` — resolve the index from the
   wheel PID and push it after claiming.
-- `tffa-driver-handoff/` — the build script, the test kit, and the
+- `tf4all-driver/` — the build script, the test kit, and the
   `tffa-fakegame` harness for reproducing all of this without a sim.
 
 if any of this becomes a problem or steps on something else it's easy to revert,
