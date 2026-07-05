@@ -12,7 +12,10 @@ Two independent paths exist and should be reported separately:
   derived. Dominated by the USBPcap tap tail.
 
 Roughly 8-12 ms of Path A is fixed (WASAPI engine quantum, USB 1 ms frame, firmware
-13-slot window, 1 kHz packet cadence). The rest is reducible.
+13-slot window, 1 ms packet cadence at our chosen 1000 packets/s). The cadence is a
+parameter, not a firmware constraint (the wheel accepts 250-1000 packets/s, per
+mescon 2026-07), but lowering it would grow this term, so 1 ms stands as the
+practical floor. The rest is reducible.
 
 ## Finalized public copy (changes 2 and 3, for this release)
 

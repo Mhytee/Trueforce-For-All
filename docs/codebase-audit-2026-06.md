@@ -58,7 +58,7 @@ Left as-is (verified benign): Biquad struct tear (self-heals on next filter edit
 
 ## MEDIUM
 
-- [ ] M1. `TrueforceDevice.cs:593` anti-burst catch-up clamp effectively unreachable; a ~50ms stall bursts back-to-back 1kHz writes.
+- [ ] M1. `TrueforceDevice.cs:593` anti-burst catch-up clamp effectively unreachable; a ~50ms stall bursts back-to-back 1kHz writes. 2026-07 severity note: the wheel accepts game-chosen rates across 250-1000 pkt/s (per mescon), so cadence deviation per se is not a firmware hazard; a burst does momentarily exceed 1000 pkt/s, which is outside the observed band, so the fix stays worth doing as a correctness tidy-up rather than a wheel-safety concern.
 - [x] M2. `UsbPcapFfbTap.cs:810` `PacketsParsed` (plain long) drives the liveness watchdog; non-atomic 64-bit read on 32-bit can misfire the capture-kill. FIXED: backed by `_packetsParsed` with `Interlocked.Increment`/`Interlocked.Read`.
 - [~] M3. `AcSharedMemoryTelemetrySource.cs:130` reads at offsets 248/300 not bounds-checked. SKIPPED: not reachable. The MMF view maps a full page (>=4 KB), so `ReadSingle(300)` can't throw for AC's ~800-byte physics struct; original AC is the only consumer (ACC/EVO/Rally are native-TF, auto-disabled). Over-defensive; no change.
 - [x] M4. `MairaIpcSource.cs:108` stale MMF/view handles never disposed on reconnect; leaks a handle per reconnect cycle. FIXED: the TryRefresh catch now disposes `_view`/`_mmf` before nulling, so the next EnsureOpen can't leak them.
