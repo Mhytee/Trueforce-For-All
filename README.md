@@ -196,17 +196,6 @@ section of the plugin settings:
 The result is `Forza → this plugin → SimHub`, so haptics from this plugin
 and everything SimHub drives both work at the same time.
 
-## iRacing + MAIRA
-
-iRacing ships native Trueforce, so this plugin normally stays out of its
-way. The exception is **Marvin's Awesome iRacing App (MAIRA)**: running
-MAIRA on a Logitech wheel requires setting `loadTrueForceAPI=0` in
-iRacing's `app.ini`, which turns iRacing's Trueforce fully off. This
-plugin restores the Trueforce textural haptics for MAIRA users, running
-alongside MAIRA's force feedback without conflict. No MAIRA changes are
-needed. Step-by-step setup is in
-[docs/iracing-maira-trueforce.md](docs/iracing-maira-trueforce.md).
-
 ## Games with native Trueforce
 
 Some titles already ship Trueforce on PC, so the plugin defaults itself
@@ -222,7 +211,7 @@ releases the wheel.
 
 | Game | How to disable native Trueforce | Plugin takes over? |
 |---|---|---|
-| iRacing | `app.ini` `loadTrueForceAPI=0` (see iRacing + MAIRA above) | Yes |
+| iRacing | Set `loadTrueForceAPI=0` in `app.ini` | Yes |
 | Dirt Rally 2.0 | In-game Trueforce on/off switch | Yes |
 | GRID (2019) | In-game Trueforce on/off switch | Yes |
 | Automobilista 2 | Steam launch option `disableTF` (try `-disableTF` if that fails) | Likely, untested |
@@ -268,9 +257,6 @@ gracefully
   wheel's own Trueforce intensity scaling stops responding to the dial.
   Use the in-plugin Master Gain and per-effect Gain controls to set
   intensity instead.
-- **Validated on G PRO and RS50 + AC + Wreckfest 2 + FH5 + FH6 +
-  iRacing with MAIRA** so far. Other games should work
-  but haven't been tested by us yet. Feedback welcome.
 
 ## FAQ
 
