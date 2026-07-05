@@ -1435,7 +1435,6 @@ namespace TrueforceForAll.Plugin
             CarCylinderResolver.AttachPersistentCache(Settings.CarCylinderCache, ref cacheVer);
             Settings.CarCylinderCacheVersion = cacheVer;
             MigrateLegacyGamePresets();
-            MigrateSpikeTamingFlag();
             InstallBuiltinPresetsIfMissing();
 
             // Per-car file store: load files into Settings.CarOverrides
@@ -4726,42 +4725,16 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // FfbSpikeTamingEnabled was added after FfbSpikeMaxLsbPerMs /
-        // FfbPeakSoftLimitLsb were already in the wild. Pre-flag versions had
-        // either non-zero value mean "active". On upgrade, persisted settings
-        // and saved presets carry the tuned values but no flag, so the flag
-        // would default false and silently disable spike taming for users
-        // who'd already tuned it. Infer the flag from the legacy values: if
-        // either is non-zero, treat the user as having opted in.
-        private void MigrateSpikeTamingFlag()
-        {
-            if (Settings == null) return;
-            bool changed = false;
-            if (!Settings.FfbSpikeTamingEnabled &&
-                (Settings.FfbSpikeMaxLsbPerMs > 0f || Settings.FfbPeakSoftLimitLsb > 0f))
-            {
-                Settings.FfbSpikeTamingEnabled = true;
-                changed = true;
-            }
-            if (Settings.Presets != null)
-            {
-                foreach (var snap in Settings.Presets.Values)
-                {
-                    if (snap == null) continue;
-                    if (!snap.FfbSpikeTamingEnabled &&
-                        (snap.FfbSpikeMaxLsbPerMs > 0f || snap.FfbPeakSoftLimitLsb > 0f))
-                    {
-                        snap.FfbSpikeTamingEnabled = true;
-                        changed = true;
-                    }
-                }
-            }
-            if (changed)
-            {
-                this.SaveCommonSettings("GeneralSettings", Settings);
-                SimHub.Logging.Current.Info("[Trueforce] Migrated FFB spike taming flag from legacy values.");
-            }
-        }
+        // NOTE (v0.1.25): MigrateSpikeTamingFlag used to live here. It inferred
+        // FfbSpikeTamingEnabled from non-zero spike values for pre-v0.1.0
+        // installs (flag defaulted false back then). Since v0.1.3 the flag
+        // defaults true, so missing-key JSON already deserializes to enabled,
+        // and the only state the inference could still match (flag false +
+        // non-zero values) is a deliberate user disable, which by design keeps
+        // the tuned values. It ran unguarded on every startup and force
+        // re-enabled spike reduction after the user saved it off. Removed;
+        // the persisted flag is now honored as saved. Do not reintroduce
+        // value-based inference for this flag.
 
         // EnginePulse LoadLayer + HighRpmBoost shipped Off at 0.3 / 0.4 in
         // 0.1.7-0.1.8. In 0.1.9 the defaults flipped to On at 0.8 / 0.7. Saved
