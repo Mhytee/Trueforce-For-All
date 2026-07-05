@@ -2,31 +2,7 @@
 
 A living view of where the project is heading. This is a direction doc, not a
 promise of dates or order. Items move, get reordered, or get dropped as we
-learn more. Clean enough to share with supporters on Patreon and Discord;
-honest enough to say what is real, what is partial, and what is still just an
-idea.
-
-Each item carries a status: **in progress**, **partial**, **planned**, or
-**exploring**.
-
----
-
-## Recently shipped
-
-The base is free and stays free. Recent work:
-
-- Community preset sharing: upload, browse, vote, and download tuning presets
-  made by other drivers.
-- Per-car facts layer so the right character settings follow a car across
-  setups, learned from the community.
-- UI overhaul with tabbed layout, plus Account and Support tabs.
-- Forza UDP telemetry source (FH6 and others) with road bumps, engine pulse,
-  and airborne feel.
-- Rev limiter and airborne effects, on by default where they help most.
-- Account linking for Patreon and Discord, with a supporters wall.
-- Achievements, including recognition for early and founding supporters.
-- Supporter backup and sync: optional cloud backup of your settings and presets
-  so your tuning travels between machines (supporter feature).
+learn more.
 
 ---
 
@@ -36,17 +12,12 @@ The base is free and stays free. Recent work:
 
 *Status: in progress, validating on hardware.*
 
-When a game puts out its own force feedback, Trueforce for All should
-find it and pass it straight through every time, on whatever Trueforce-enabled
-Logitech wheel you own, without you flipping a hidden switch.
+Your wheel's force feedback should be found automatically, with no hidden switch
+to flip.
 
-We already work with every game. The harder part is the wheel side: different
-wheels report their force feedback on different paths and in different formats,
-so reliably picking it up means recognizing every one of those. Some of that
-detection currently sits behind an experimental toggle while we validate it on
-real hardware (it reads more of the ways a wheel can report force feedback, and
-it self-heals the tap if it drops instead of going quiet). The goal is to make
-detection automatic for every wheel, so nobody has to find and flip that toggle.
+For most people it already just works. Some still have to switch on experimental
+detection before their force feedback is picked up. More testing should let us
+retire that toggle and make detection automatic for everyone.
 
 ### Airborne and traction-loss feel, consistent across games
 
@@ -64,15 +35,85 @@ airborne and traction-loss to agree across games, so leaving the ground never
 gets misread as losing grip, with per-game tuning only where a title genuinely
 needs it.
 
-### Polishing the new community and account features
+### Richer force feedback from telemetry
 
-*Status: in progress, ongoing.*
+*Status: early experiment. Long-term.*
 
-The new sharing, car facts, account, and supporter features should
-feel smooth, not rough.
+Some games send force feedback slower than the wheel can use it, so it feels
+coarser than the car really is.
 
-A lot landed at once. New surface area means new bugs, so expect a run of fixes
-and small refinements as real-world use surfaces the rough edges.
+Logitech wheels can take FFB updates at around 1000hz, but many games send force
+feedback near 60hz, and even the faster ones fall short of that (Assetto Corsa
+runs about 333hz), so the wheel sits waiting between updates. Using the game's
+telemetry, we could fill in the detail between those updates and drive the wheel
+at its full rate, so a low-rate game feels richer without changing anything in it. A game-agnostic engine with a small per-game piece
+would carry it, building on the per-game telemetry work already in the plugin. It could run on
+what we ship today, since we already stream to the wheel's Trueforce endpoint at
+full rate, so it doesn't need the FFB router driver. The driver would unlock it for
+games with native Trueforce, where it would divert the game's signal so ours isn't
+fighting it.
+
+### Community and account features
+
+*Status: implemented, in testing before release.*
+
+A shared layer of car knowledge and tuning, plus the account that ties it together.
+
+- **Community car facts.** Crowd-sourced names, engine types, and redlines fill in
+  your cars automatically, cached locally so they keep working offline. You can
+  confirm or correct any value, and optionally share your corrections back.
+- **Engine-variant awareness.** The plugin notices when you switch to a different
+  version of a car (an engine swap shows up as a new engine signature in the
+  telemetry) and applies that variant's own redline and engine type, so the rev
+  limiter and engine feel match the swapped engine, not the stock one.
+- **Preset sharing.** Share the tuning you're driving, browse and download presets
+  from other drivers, and optionally auto-update a downloaded preset when its
+  author publishes a new version (unless you've edited your own copy).
+- **Accounts.** Sign in and link Patreon and Discord, with a supporters wall and
+  achievements you earn for in-plugin actions like contributing to the community,
+  sharing presets, and submitting or correcting car facts. Supporter status
+  unlocks cloud backup (below).
+
+A lot was built at once, so it's getting a round of real-world testing and polish
+before it reaches a release.
+
+### Discord community
+
+*Status: coming soon.*
+
+A place to get help and connect with other drivers.
+
+Built and getting its final tweaks before it goes live. When it launches, linking
+your Discord will automatically grant roles for your supporter status and
+achievements.
+
+### Cloud backup and sync
+
+*Status: implemented, in testing before release.*
+
+Your settings and presets, backed up and carried between the machines you drive on.
+
+An optional cloud backup for supporters: it saves your tuning, presets, and
+settings and syncs them across your machines, so your setup follows you. Built and
+in testing now, headed to a release once it's solid.
+
+### Mappable gain
+
+*Status: implemented, in testing before release.*
+
+Adjust your force strength without stopping to open the app.
+
+Bind master gain up and down to a wheel button or rotary through SimHub's Controls
+to change force strength mid-session. Built and in testing.
+
+### Home-screen gain widget
+
+*Status: implemented, in testing before release.*
+
+Quick master and audio gain, right on SimHub's home screen.
+
+An optional gain widget on SimHub's home screen for master and audio gain, next to
+the other feedback controls. Built and in testing.
 
 ### Easier to diagnose and fix on your own
 
@@ -96,23 +137,12 @@ Two parts, both underway:
 Kill the specific buzz or rattle your rig makes at certain
 frequencies, without dulling the detail you actually want to feel.
 
-Some frequencies make a wheelbase or rig ring and rattle, which shows up as an
-unwanted buzz in the wheel. A parametric EQ lets you pull those problem bands
-down (set the frequency, width, and amount for each band) while leaving the rest
-of the feel intact.
-
-How it would work:
-
-- Ship sensible default curves per wheelbase, since a given wheelbase model
-  tends to resonate at the same frequencies for everyone who owns one.
-- Let you fine-tune the bands for your own rig on top of those defaults, since
-  mounting and cockpit add resonances of their own.
-- Sits as a filter on the final wheel output, after effects are mixed, before
-  the signal reaches the wheel.
-
-Because the resonances are mostly a property of the wheelbase, EQ curves travel
-in your cloud backup and, down the line, can be shared in the community library
-the way tuning presets are, keyed to the wheelbase they were made for.
+Some frequencies make a wheelbase or rig resonate, causing unwanted tones and rattling. A
+parametric EQ lets you pull those problem bands down (frequency, width, and amount
+per band) while leaving the rest of the feel intact. We would ship default curves
+per wheelbase and let you fine-tune for your own rig on top. Since the resonances
+are mostly a wheelbase trait, your EQ settings would travel in cloud backup and
+could be shared like presets.
 
 ### Localization
 
@@ -126,65 +156,69 @@ likely be community-contributed, with the app built to swap languages cleanly.
 
 ### Lower-latency audio transport (shared-memory ring)
 
-*Status: exploring, deferred. Small gain, higher risk.*
+*Status: exploring, deferred. Small gain.*
 
-Shave a little more delay off the audio path, so the wheel responds a
-hair faster to what is happening in the game's audio.
+Shave a little more delay off the audio path, so the wheel responds a hair faster
+to the game's audio.
 
-The audio-capture helper runs as a separate process and currently hands samples
-to the plugin over a simple pipe. Replacing that pipe with a lock-free
-shared-memory ring would cut roughly 1 to 2 ms of typical latency and remove the
-pipe's worst-case coalescing spike (about 2.7 ms). This only touches the
-captured-audio path; telemetry effects like engine pulse and road bumps, and
-force feedback passthrough, are unaffected.
-
-It is deferred on purpose. We already shrank the pipe read to 1 KB, which
-captured most of the win, so the remaining gain is small. A cross-process
-lock-free ring is the riskiest change in this area (synchronization, buffer
-wraparound, teardown) and needs on-wheel validation, while the pipe is simple
-and proven. If we revisit it, the helper process stays (it exists for
-COM-activation reliability) and the pipe stays as a fallback. Worth doing only
-if later profiling shows the transport is still a meaningful part of the delay.
+The audio helper hands samples to the plugin over a pipe today. A lock-free
+shared-memory ring would trim another 1 to 2 ms, but we already captured most of
+that win by shrinking the pipe read.
 
 ### LED support
 
-*Status: partial, and a bigger lift to generalize.*
+*Status: in progress, via the FFB router driver.*
 
-Your wheel's rev lights and other LEDs driven by the game, working
-at the same time as force feedback.
+Your wheel's rev lights driven by the game, at the same time as force feedback.
 
-Today rev lights work in one place: the Marvin's AIRA (MAIRA) iRacing
-integration, tested on a G PRO. Making LEDs work broadly is the bigger lift.
-Writing LEDs and force feedback to the wheel at the same time contends at the
-firmware, which can cut the force feedback out. We have a clear picture of why,
-but a clean general solution is still ahead of us. The filter driver (below) is
-the most promising path to solving the contention properly.
+Writing LEDs and force feedback to the wheel at once contends at the firmware and
+can cut the force out, which is why it hasn't worked broadly. The FFB router driver
+(below) fixes that by making us the only thing writing to the wheel, and early
+testing already drives rev lights alongside force. Getting it into your hands
+depends on the driver work below.
 
-### Filter driver
+### Working in games that already have Trueforce
 
-*Status: exploring. Long-term.*
+*Status: planned, via the FFB router driver.*
 
-A Windows filter driver that sits below the game and beside the wheel, never
-inside the game. Two things it could unlock:
+Use the plugin in games that already have their own Trueforce.
 
-- Solve the LED-versus-force-feedback contention cleanly, so rev lights and
-  other LEDs run without stealing force feedback.
-- Broaden coverage for wheels and scenarios that the user-mode approach cannot
-  reach reliably.
+Today we step aside in those titles to avoid fighting the game for the wheel. The
+FFB router driver (below) lets us take the game's Trueforce over cleanly, so we can
+layer your effects on top or replace it, and reach these games with the
+telemetry-driven feel above.
 
-Driver work is careful, slow, and needs hardware validation, so it stays in the
-exploring stage until the path is proven.
+### FFB Router Driver
 
----
+*Status: in active development.*
 
-## Principles that shape the list
+A Windows filter driver that sits between the game and the wheel, never touching
+the game itself. It turns our passive read of the game's force feedback into an
+active one, diverting the game's signals before they reach the wheel so we become
+the only thing writing to it. That is what makes the rev lights and native-Trueforce work above possible.
 
-- Free base, forever. Support is patronage for the infrastructure and time, not
-  a paywall on features.
-- Describe effects by the feel, not the telemetry plumbing.
-- Below the game (filter drivers, virtual devices) or beside it
-  (cooperative integrations), never inside it. No injection, no anti-cheat risk.
-- Honest status over hype. Partial is called partial.
+The core loop is confirmed on hardware (a G923 in Assetto Corsa). It still needs
+validation on more wheels and games, and shipping requires getting the driver
+signed. That certificate runs about $400 a year, already paid out of pocket, with signing still in progress.
+
+### Other wheel brands
+
+*Status: stretch, far off.*
+
+Bring our FFB enhancements to Fanatec, Moza, and other non-Logitech wheels.
+
+Most wheels take force feedback through DirectInput, the standard channel, not
+anything Logitech-specific. The router could do there what it does on Logitech:
+route the FFB signal to the plugin, which modulates it and hands it back to be
+re-applied, carrying force-feedback improvements like the telemetry-driven detail.
+And it doesn't have to be our plugin: the router could feed any program that wants
+to ingest or interact with the FFB signal, which makes it a general force-feedback
+router, not just a Trueforce one.
+
+Our Trueforce-style effects stay Logitech-only for now. Other brands have their
+own high-frequency haptic channels (Fanatec's FullForce, for example), so the
+effects could reach those wheels too, once such a protocol is reverse-engineered
+or opened up by the wheel manufacturer.
 
 ---
 
