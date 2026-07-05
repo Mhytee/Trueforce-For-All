@@ -8,8 +8,10 @@
 //   End: save settings, stop producer + capture, clean up the device.
 //
 // The producer thread runs independently of the SimHub data tick because
-// Trueforce wants 1 kHz samples; SimHub's data ticks vary by game (60-200 Hz
-// typical) and would be too coarse to drive the stream directly.
+// the stream pump consumes samples at 4 kHz (our chosen 1000 packets/s × 4
+// per packet; the wheel accepts a 250-1000 packets/s band, per mescon);
+// SimHub's data ticks vary by game (60-200 Hz typical) and would be too
+// coarse to drive the stream directly.
 
 using System;
 using System.Collections.Generic;
@@ -6766,10 +6768,13 @@ namespace TrueforceForAll.Plugin
         // ---------- producer ----------
 
         // Float-space silence floor. Samples with |v| < this are zeroed so the
-        // u16 conversion produces exactly 0x8000, TrueforceDevice's silence
-        // detection requires exact-center samples to choose the keepalive packet
-        // shape. ~3e-4 corresponds to ±10 LSB out of 32767, well below any
-        // perceptible content but above floating-point noise.
+        // u16 conversion produces exactly 0x8000; TrueforceDevice's allCenter
+        // scan needs exact-center samples to detect "no audio". That detection
+        // does NOT pick the keepalive packet shape (keepalive is chosen solely
+        // by FFB-target freshness in StreamTick); it selects the silence-center
+        // window fill inside the ACTIVE shape, so cur alone drives the motor
+        // while no effect plays. ~3e-4 corresponds to ±10 LSB out of 32767,
+        // well below any perceptible content but above floating-point noise.
         private const float SilenceFloor = 3e-4f;
 
         // Layered sidechain ducking. Effects sit in priority tiers; an effect

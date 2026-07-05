@@ -1,4 +1,4 @@
-// DSP pipeline that downsamples per-process loopback audio to 1 kHz mono
+// DSP pipeline that downsamples per-process loopback audio to 4 kHz mono
 // and exposes it as an ISampleSource for the Mixer / TrueforceDevice path.
 //
 // Audio frames are pushed in via Feed() (called by HelperHost when the
@@ -11,9 +11,9 @@
 // Pipeline per input frame:
 //   stereo float @ 48 kHz   →  per-channel 2nd-order Butterworth LPF @ 400 Hz
 //                           →  L+R / 2 (mono)
-//                           →  decimate to 1 kHz via phase accumulator
+//                           →  decimate to 4 kHz via phase accumulator
 //                           →  ring buffer
-//   1 kHz ring              →  RenderAdd pulls + applies Gain
+//   4 kHz ring              →  RenderAdd pulls + applies Gain
 
 using System;
 using System.Threading;

@@ -5854,7 +5854,8 @@ namespace TrueforceForAll.Plugin
             // Build the consolidated detail line. Each ring contributes a
             // "label: oldCap → newCap samples (oldMs → newMs ms)" segment;
             // segments are joined with " · ". Ms = samples * 0.25 (4 kHz
-            // packet rate, 1 sample = 0.25 ms). Rings that have returned
+            // sample rate = 1000 packets/s × 4 per packet; 1 sample =
+            // 0.25 ms). Rings that have returned
             // to their original cap are omitted from this run's notice.
             var segments = new System.Collections.Generic.List<string>();
             if (_ratchetTfOriginalCap is int tfOrig && !tfBackToStart)
