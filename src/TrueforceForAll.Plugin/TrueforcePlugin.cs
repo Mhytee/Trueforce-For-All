@@ -1744,7 +1744,7 @@ namespace TrueforceForAll.Plugin
                     _producerThread.Start();
                 }
 
-                _streamStatus = "Streaming (1 kHz, 250 packets/s)";
+                _streamStatus = "Streaming (4 kHz, 1000 packets/s)";
                 SimHub.Logging.Current.Info("[Trueforce] Stream started.");
             }
             catch (Exception ex)
