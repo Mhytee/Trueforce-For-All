@@ -34,9 +34,11 @@ namespace TrueforceForAll.Core
 
         /// <summary>
         /// Sample rate the source is being run at. Defaults to 4 kHz to match
-        /// what AC EVO empirically streams. mescon's docs note 1 kHz; we have
-        /// not isolated whether the rate matters functionally or it's just
-        /// what AC EVO happens to send.
+        /// what AC EVO empirically streams (our chosen 1000 packets/s × 4
+        /// samples per packet). Confirmed (mescon, 2026-07): the wheel does
+        /// not require a specific rate; games choose anywhere in at least the
+        /// 250-1000 packets/s band. 4 kHz is a choice we match, not a
+        /// requirement.
         /// </summary>
         public double SampleRate { get; set; } = 4000.0;
 

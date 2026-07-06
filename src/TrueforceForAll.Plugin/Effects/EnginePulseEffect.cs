@@ -112,8 +112,9 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>Idle hum amplitude when the engine is on but throttle is closed.
         /// We can afford larger amplitudes now that the FFB pass-through tap
         /// writes AC's torque target into ep3 cur, the audio in the rolling
-        /// window is purely additive on top, no longer competing with the
-        /// wheel firmware's "Trueforce vs FFB priority" decision.</summary>
+        /// window is purely additive on top (confirmed on RS50 by mescon,
+        /// 2026-07), no longer competing with the wheel firmware's
+        /// "Trueforce vs FFB priority" decision.</summary>
         public float IdleAmp { get; set; } = 0.05f;
 
         /// <summary>Peak amplitude near redline.</summary>

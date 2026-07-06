@@ -1561,7 +1561,8 @@ namespace TrueforceForAll.Plugin
                 // Spawn the USBPcap FFB tap. Reads AC's outgoing HID++ FFB target
                 // off the bus and feeds it to TrueforceDevice so we can mirror it
                 // into ep3 bytes 6-9, without this, our ep3 stream overrides AC's
-                // FFB with zero motor torque whenever Trueforce content plays.
+                // FFB with zero motor torque whenever Trueforce content plays
+                // (cur-as-torque-target confirmed by mescon on RS50, 2026-07).
                 // Override precedence: env var > persisted manual picker > auto.
                 // The persisted picker exists because USBPcap's descriptor-cache
                 // can go stale for hot-plugged wheels, leaving auto-discovery
