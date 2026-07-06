@@ -5,9 +5,10 @@
 // AC sends DirectInput-equivalent FFB to the wheel as HID Set_Output_Reports
 // on ep0 (control endpoint). The actual force command is HID++ feature page
 // 0x8123 (G-series force feedback) function 2 long-form messages, signed
-// 16-bit big-endian at offset 10-11 of the HID++ payload. The firmware-
-// assigned feature *index* varies per wheel (0x0e on G PRO); it is seeded
-// to 0x0e and auto-resolved per wheel (see _ffbFeatureIndex). When we
+// 16-bit big-endian at offset 10-11 of the HID++ payload. The feature
+// *index* is fixed per wheel model (G PRO 0x0e, RS50 0x10); it is seeded
+// per model via SetFfbFeatureIndexSeed (default 0x0e) with the runtime
+// resolver as the fallback (see _ffbFeatureIndex). When we
 // stream Trueforce on ep3, the wheel uses
 // bytes 6-9 of our packet as motor torque, ignoring AC's ep0 commands. By
 // mirroring AC's commands into bytes 6-9, FFB and Trueforce coexist.
@@ -179,10 +180,15 @@ namespace TrueforceForAll.Core
         private readonly object _tupleLock = new object();
 
         // Resolved HID++ FFB feature index. Logitech wheels deliver native FFB
-        // via HID++ feature page 0x8123, but the firmware-assigned feature
-        // *index* varies per model/firmware. G PRO places it at 0x0e, so we
-        // seed with that and behaviour on G PRO is unchanged from the first
-        // packet. For any other index, MaybeResolveFfbFeatureIndex() promotes
+        // via HID++ feature page 0x8123, but the feature *index* is fixed per
+        // wheel model: G PRO = 0x0e, RS50 = 0x10 (confirmed by mescon,
+        // 2026-07, who also confirmed the USB product string identifies the
+        // model even when a compat-mode RS50 spoofs the G PRO PID). The
+        // plugin seeds the per-model value via SetFfbFeatureIndexSeed
+        // (default 0x0e), so known wheels are correct from the first packet.
+        // The resolver stays as the fallback for unknown models and
+        // self-heals a dead-silent wrong seed (see SetFfbFeatureIndexSeed
+        // for the confirm-lock limit): MaybeResolveFfbFeatureIndex() promotes
         // the dominant high-rate func-0x20 index, counting BOTH HID++ long
         // (reportId 0x11) and very-long (reportId 0x12) reports toward it.
         //
@@ -201,11 +207,14 @@ namespace TrueforceForAll.Core
         // old 0x11-only extractor dropped every 0x12 packet, so cur was never
         // populated and the device never entered active mode.
         //
-        // The 0x12 extraction, the 0x11+0x12 resolver summing, and the lowered
-        // sample floor are all gated behind ExperimentalCapture (off by
-        // default). With it off, behaviour is byte-identical to the shipped
-        // 0.1.18 path (0x11-only, floor 200), so existing users are untouched;
-        // testers opt in via the FFBX access code. See ExperimentalCapture.
+        // The 0x12 extraction and the 0x11+0x12 resolver summing are gated
+        // behind ExperimentalCapture (off by default) OR Rs50Identified
+        // (positive RS50 identification at discovery), so RS50 owners get the
+        // issue-#8 path out of the box. The lowered sample floor stays
+        // experimental-only: with the 0x10 seed it no longer matters on an
+        // identified RS50. With both off, behaviour is byte-identical to the
+        // shipped 0.1.18 path (0x11-only, floor 200), so existing users are
+        // untouched; testers opt in via the FFBX access code.
         private const byte FfbFeatureIndexSeed = 0x0e;
         // Min cumulative func-0x20 samples at a candidate index before the
         // resolver switches off the seed. Default 200 (the shipped value).
@@ -224,6 +233,16 @@ namespace TrueforceForAll.Core
         // self-learning capture heuristics. Off = shipped 0.1.18 behaviour.
         // volatile: UI thread writes, parser thread reads each packet.
         public volatile bool ExperimentalCapture;
+        // Positive RS50 identification from discovery (native RS50 PID, or an
+        // RS50 product string on a spoofed G PRO PID; mescon, 2026-07). Widens
+        // the report-0x12 gates without the FFBX opt-in. Never set for other
+        // wheels, so G PRO / G923 paths are untouched. volatile: plugin thread
+        // writes at wiring time, parser thread reads each packet.
+        public volatile bool Rs50Identified;
+        // Per-model seed for the feature index (default: G PRO's 0x0e). Set by
+        // the plugin before Start() from PID + product string, see
+        // SetFfbFeatureIndexSeed below.
+        private volatile byte _ffbSeed = FfbFeatureIndexSeed;
         private volatile byte _ffbFeatureIndex = FfbFeatureIndexSeed;
         private bool _ffbIndexResolved;                 // parser-thread only
         // Set true the first time real FFB is actually extracted on the
@@ -302,16 +321,36 @@ namespace TrueforceForAll.Core
         // this just keeps us from asking off noise.
         private const long CaptureConfirmSamples = 50;
 
+        /// <summary>Set the per-model feature-index seed (from PID + USB
+        /// product string, see WheelDiscovery.FfbFeatureIndexSeedFor). Call
+        /// before Start(). Seed only: the resolver still runs, and a wrong
+        /// seed self-heals while the seeded index stays dead-silent (the
+        /// silent-seed escape in MaybeResolveFfbFeatureIndex). The limit: a
+        /// func-0x20 packet arriving ON the seeded index extracts and
+        /// confirm-locks it, so a wrong seed pointing at an index that still
+        /// sees traffic can stick. That exposure is identical to the
+        /// universal 0x0e seed this replaces, and per mescon (2026-07) a
+        /// compat-mode RS50 keeps feature 0x10 live, so the RS50 seed is
+        /// expected correct. Adopts the seed immediately unless extracted
+        /// force has already confirmed an index; ResetFeatureIndexResolution
+        /// also re-arms to this value, so an FFBX toggle keeps the per-model
+        /// seed.</summary>
+        public void SetFfbFeatureIndexSeed(byte seed)
+        {
+            _ffbSeed = seed;
+            if (!_ffbIndexConfirmed) _ffbFeatureIndex = seed;
+        }
+
         /// <summary>Re-arm the feature-index resolver: drop back to the seed
         /// index and clear the resolved/confirmed latches so the next pass
-        /// re-evaluates under the current <see cref="ExperimentalCapture"/>
-        /// rules. Called when the FFBX toggle flips, so a live change takes
-        /// effect without a SimHub restart. Keeps the accumulated tuple
-        /// history, so if 0x12 traffic was already seen the re-resolve to the
-        /// real index is immediate.</summary>
+        /// re-evaluates under the current <see cref="ExperimentalCapture"/> /
+        /// <see cref="Rs50Identified"/> rules. Called when the FFBX toggle
+        /// flips, so a live change takes effect without a SimHub restart.
+        /// Keeps the accumulated tuple history, so if 0x12 traffic was
+        /// already seen the re-resolve to the real index is immediate.</summary>
         public void ResetFeatureIndexResolution()
         {
-            _ffbFeatureIndex       = FfbFeatureIndexSeed;
+            _ffbFeatureIndex       = _ffbSeed;
             _ffbIndexResolved      = false;
             _ffbIndexConfirmed     = false;
             _nextFfbResolveTicks   = 0;
@@ -359,9 +398,13 @@ namespace TrueforceForAll.Core
             if (FfbSamplesCaptured < CaptureConfirmSamples) return;
 
             var needed = new List<string>();
-            // 0x12 is load-bearing only if force flowed on 0x12 and never on
-            // 0x11; otherwise the default (0x11-only) path would have worked.
-            if (ExperimentalCapture && _forceSeenOn0x12 && !_forceSeenOn0x11)
+            // needed=[...] means "the FFBX toggle was load-bearing" (it gates
+            // the experimental-success banner and the graduation evidence).
+            // 0x12 counts only if force flowed on 0x12 and never on 0x11 AND
+            // RS50 identity had not already opened the gate; when identity
+            // covered it, FFBX wasn't needed even if it is also on, and the
+            // rs50Id=ON marker below carries the attribution instead.
+            if (ExperimentalCapture && !Rs50Identified && _forceSeenOn0x12 && !_forceSeenOn0x11)
                 needed.Add("report0x12");
             if (ExperimentalCapture && _resolveSwitchedAtCount > 0
                 && _resolveSwitchedAtCount < FfbIndexMinSamplesDefault)
@@ -374,7 +417,8 @@ namespace TrueforceForAll.Core
 
             _captureFingerprint =
                 $"transport={_firstTransport} {ridStr}{featStr}encoding={_firstEncoding} " +
-                $"experimental={(ExperimentalCapture ? "ON" : "OFF")} needed=[{neededStr}]";
+                $"experimental={(ExperimentalCapture ? "ON" : "OFF")}" +
+                $"{(Rs50Identified ? " rs50Id=ON" : "")} needed=[{neededStr}]";
 
             Log($"FFB capture confirmed (sustained, {FfbSamplesCaptured} samples): {_captureFingerprint}");
         }
@@ -1198,10 +1242,11 @@ namespace TrueforceForAll.Core
                 // per-wheel-resolved feature index. Both report IDs share the
                 // same header+payload layout (force = signed int16, big-endian,
                 // at offset 10-11). Some wheels (RS50 on FH6, issue #8) send the
-                // bulk of FFB as 0x12; accepting it is gated behind
-                // ExperimentalCapture so the default path stays 0x11-only.
+                // bulk of FFB as 0x12; accepting it is gated behind the FFBX
+                // opt-in or positive RS50 identification, so the default path
+                // on other wheels stays 0x11-only.
                 bool is0x11 = reportId == 0x11;
-                bool is0x12 = ExperimentalCapture && reportId == 0x12;
+                bool is0x12 = (ExperimentalCapture || Rs50Identified) && reportId == 0x12;
                 if ((is0x11 || is0x12) && featIdx == _ffbFeatureIndex && (funcByte & 0xf0) == 0x20 && !SimulateNoFfbCapture)
                 {
                     short ffbTarget = (short)((payload[dataOffset + 10] << 8) | payload[dataOffset + 11]);
@@ -1304,9 +1349,10 @@ namespace TrueforceForAll.Core
                 {
                     // Key = (reportId<<16)|(featIdx<<8)|(funcByte&0xf0).
                     byte rid = (byte)(kv.Key >> 16);
-                    // Default: 0x11 only (shipped behaviour). Experimental also
-                    // counts very-long 0x12 toward the same feature index.
-                    bool ridOk = rid == 0x11 || (ExperimentalCapture && rid == 0x12);
+                    // Default: 0x11 only (shipped behaviour). The FFBX opt-in
+                    // or an identified RS50 also counts very-long 0x12 toward
+                    // the same feature index.
+                    bool ridOk = rid == 0x11 || ((ExperimentalCapture || Rs50Identified) && rid == 0x12);
                     if (!ridOk) continue;                          // long / very-long form
                     if ((byte)kv.Key != 0x20) continue;            // function 2
                     byte f = (byte)(kv.Key >> 8);

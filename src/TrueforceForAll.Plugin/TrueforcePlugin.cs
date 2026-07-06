@@ -90,6 +90,12 @@ namespace TrueforceForAll.Plugin
         // matches the wheel HID has already enumerated.
         private ushort _hidWheelVid;
         private ushort _hidWheelPid;
+        // USB product string of the matched wheel (null if unreadable). Kept
+        // alongside VID/PID because it can outrank the PID: an RS50 in G PRO
+        // compatibility mode spoofs the G PRO PID but keeps its own product
+        // string (mescon, 2026-07). Feeds the tap's per-wheel index seed and
+        // RS50 report-0x12 gate in WireFfbTapCallbacks.
+        private string _hidWheelProductString;
         public ushort HidWheelVid => _hidWheelVid;
         public ushort HidWheelPid => _hidWheelPid;
 
@@ -1522,7 +1528,19 @@ namespace TrueforceForAll.Plugin
             var match = matches[0];
             _hidWheelVid = match.Vid;
             _hidWheelPid = match.Pid;
-            WheelStatus = $"{match.Model}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
+            _hidWheelProductString = match.ProductString;
+
+            // Product-string identity outranks the PID table for the label: an
+            // RS50 in G PRO compatibility mode enumerates under the G PRO PID
+            // (c272) but keeps its RS50 product string (mescon, 2026-07).
+            // Additive only: an unknown or unreadable string changes nothing.
+            string modelLabel = WheelDiscovery.DisplayModel(match);
+            if (!string.Equals(modelLabel, match.Model, StringComparison.Ordinal))
+            {
+                SimHub.Logging.Current.Info(
+                    $"[Trueforce] Product string '{match.ProductString}' identifies an RS50 behind PID 0x{match.Pid:X4}.");
+            }
+            WheelStatus = $"{modelLabel}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
                         + (match.Unverified ? "  [unconfirmed model]" : "");
             SimHub.Logging.Current.Info($"[Trueforce] Found {WheelStatus}.");
 
@@ -1536,7 +1554,7 @@ namespace TrueforceForAll.Plugin
             if (match.Unverified)
             {
                 _unverifiedWheelNotice =
-                    $"{match.Model} is supported by inference but not hardware-tested. " +
+                    $"{modelLabel} is supported by inference but not hardware-tested. " +
                     "If Trueforce effects work but your game's force feedback is silent, " +
                     "please report it (Feedback > Report an issue, attach Export logs).";
                 SimHub.Logging.Current.Warn($"[Trueforce] {_unverifiedWheelNotice}");
@@ -7097,7 +7115,7 @@ namespace TrueforceForAll.Plugin
                     sb.Append("        Plug in a G PRO / RS50 / G923 and close G HUB.");
                     return sb.ToString();
                 }
-                sb.AppendLine($"[OK]   Discovery: {matches[0].Model} "
+                sb.AppendLine($"[OK]   Discovery: {WheelDiscovery.DisplayModel(matches[0])} "
                     + $"(VID 0x{matches[0].Vid:X4}, PID 0x{matches[0].Pid:X4})");
 
                 CleanupDevice();
@@ -7234,6 +7252,17 @@ namespace TrueforceForAll.Plugin
             // Re-apply the experimental capture opt-in across tap restarts.
             tap.ExperimentalCapture = Settings?.ExperimentalFfbCapture ?? false;
 
+            // Per-wheel identity (mescon, 2026-07): seed the HID++ 0x8123
+            // feature-index resolver (RS50 = 0x10, else the G PRO's 0x0e) and
+            // open the RS50 report-0x12 path without the FFBX opt-in. Seed
+            // only: the tap's resolver stays live; a dead-silent wrong seed
+            // self-heals (see SetFfbFeatureIndexSeed for the confirm-lock
+            // limit). With no wheel matched yet (vid/pid 0, string null) this
+            // is exactly the historical behavior: seed 0x0e, RS50 gate off.
+            tap.Rs50Identified = WheelDiscovery.IsRs50(_hidWheelPid, _hidWheelProductString);
+            tap.SetFfbFeatureIndexSeed(
+                WheelDiscovery.FfbFeatureIndexSeedFor(_hidWheelPid, _hidWheelProductString));
+
             // Heartbeat for the liveness watchdog: our stream's packets-sent
             // count. Reads the current device each call, so it survives device
             // swaps. While streaming this climbs ~1 kHz.
@@ -7269,7 +7298,11 @@ namespace TrueforceForAll.Plugin
                 // If experimental FFB detection is off, point the user at it:
                 // a wheel sending force in a shape the default path doesn't
                 // recognize (e.g. RS50 on report 0x12) is exactly this case.
-                if (Settings != null && !Settings.ExperimentalFfbCapture)
+                // Skip the hint for an identified RS50: its report-0x12 path
+                // is already open, so the toggle wouldn't do what the hint
+                // implies (it would only lower the resolver sample floor).
+                if (Settings != null && !Settings.ExperimentalFfbCapture
+                    && !WheelDiscovery.IsRs50(_hidWheelPid, _hidWheelProductString))
                     msg += " If your wheel should have force feedback, try turning on 'Enable experimental FFB detection' (main page or Advanced > FFB pass-through), then drive a few seconds.";
                 _noFfbCaptureNotice = msg;
                 SimHub.Logging.Current.Warn($"[Trueforce] {msg}");
