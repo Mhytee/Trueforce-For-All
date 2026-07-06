@@ -77,6 +77,17 @@ namespace TrueforceForAll.Core
             }
         }
 
+        /// <summary>Product-string-aware variant for the driver-intercept
+        /// channel: an RS50 masquerading on the G PRO PID (compatibility
+        /// mode; mescon, 2026-07) needs its real index 0x10 pushed, or the
+        /// kernel filter's interception test (featIdx != g_FfbFeatureIndex)
+        /// never matches and the game's FFB leaks straight to the wheel.
+        /// Falls through to the PID table when the string does not
+        /// positively identify an RS50 (additive-only, like the rest of the
+        /// product-string identity).</summary>
+        public static byte FfbFeatureIndexFor(ushort pid, string productString) =>
+            IsRs50(pid, productString) ? (byte)0x10 : FfbFeatureIndexFor(pid);
+
         // True when (vid,pid) is one of our supported Trueforce wheels. Used to
         // tell a "USBPcap can't see the FFB" problem apart from "the user pinned
         // a device that isn't even a wheel" so we give the right guidance.

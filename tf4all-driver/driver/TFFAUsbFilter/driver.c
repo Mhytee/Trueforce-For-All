@@ -76,7 +76,13 @@ typedef struct _TFFAUSB_TARGET_WHEEL {
 // is correct-by-default per wheel, before any owner pushes an override via
 // IOCTL_TFFA_SET_FFB_INDEX. Confirmed on hardware: G PRO = 0x0E, G923 Xbox
 // (C26D/C26E) = 0x0B (2026-07-02). From capture notes (override if wrong):
-// G923 PS (C266) = 0x08, RS50 = 0x10.
+// G923 PS (C266) = 0x08, RS50 = 0x10 (also confirmed by mescon, 2026-07).
+// NOTE: a PID_C272 match may actually be an RS50 in G PRO compatibility
+// mode (same PID, RS50 product string; mescon 2026-07). The kernel cannot
+// see the product string here, so the seed will be 0x0E; the owner's
+// IOCTL_TFFA_SET_FFB_INDEX push (derived from PID + product string in the
+// plugin) corrects it to 0x10. Until that push, FFB for such a wheel
+// passes through unintercepted (the documented fail-open).
 static const TFFAUSB_TARGET_WHEEL g_TargetWheels[] = {
     { L"VID_046D&PID_C272", L"Logitech G PRO (Xbox/PC)",   0x0E },
     { L"VID_046D&PID_C268", L"Logitech G PRO (PS/PC)",     0x0E },

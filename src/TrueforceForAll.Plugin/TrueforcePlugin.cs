@@ -1920,8 +1920,12 @@ namespace TrueforceForAll.Plugin
                     // Per-wheel FFB feature index (page 0x8123): G PRO 0x0E,
                     // G923 Xbox 0x0B, etc. The driver self-defaults this per
                     // wheel too, but we set it explicitly so our decode of the
-                    // intercepted stream (and the SET-index push) match.
-                    byte ffbIdx = WheelDiscovery.FfbFeatureIndexFor(_hidWheelPid);
+                    // intercepted stream (and the SET-index push) match. The
+                    // product string outranks the PID: a compat-mode RS50 on
+                    // the G PRO PID needs 0x10 pushed or the driver intercepts
+                    // nothing for it and game FFB leaks through (mescon,
+                    // 2026-07).
+                    byte ffbIdx = WheelDiscovery.FfbFeatureIndexFor(_hidWheelPid, _hidWheelProductString);
 
                     _driverChannel = new TFFADriverChannel(
                         log: msg => SimHub.Logging.Current.Info(msg),
@@ -7042,7 +7046,7 @@ namespace TrueforceForAll.Plugin
                     {
                         try
                         {
-                            byte ffbIdx = WheelDiscovery.FfbFeatureIndexFor(_hidWheelPid);
+                            byte ffbIdx = WheelDiscovery.FfbFeatureIndexFor(_hidWheelPid, _hidWheelProductString);
                             _driverChannel.SetFfbFeatureIndex(ffbIdx);
                             SimHub.Logging.Current.Info($"[Trueforce] driver FFB feature index re-pushed 0x{ffbIdx:X2} on re-attach (PID 0x{_hidWheelPid:X4}).");
                         }

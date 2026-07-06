@@ -67,8 +67,11 @@ namespace TrueforceForAll.Core
 
         // HID++ feature index for FFB (page 0x8123). Per-wheel; G PRO uses
         // 0x0e, RS50 uses 0x10. Seed with G PRO since that's the bring-up
-        // wheel; per-wheel auto-resolution can be added later (the registry-
-        // wide TryGetFreshFfbTarget already won't fire for indices we miss).
+        // wheel; the plugin resolves the real per-wheel value from PID + USB
+        // product string (WheelDiscovery.FfbFeatureIndexFor overload; the
+        // string catches a compat-mode RS50 on the G PRO PID, mescon
+        // 2026-07) and pushes it via SetFfbFeatureIndex (the registry-wide
+        // TryGetFreshFfbTarget already won't fire for indices we miss).
         // NOTE: this is decoded entirely from the intercepted byte stream,
         // not via WheelDiscovery; matches UsbPcapFfbTap's FfbFeatureIndexSeed.
         // volatile: set from the plugin thread, read on the RECV worker thread.
