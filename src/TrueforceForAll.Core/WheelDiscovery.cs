@@ -17,6 +17,12 @@ namespace TrueforceForAll.Core
         public ushort Vid;
         public ushort Pid;
         public string Model;
+        // USB product string as reported by the device, null if the read
+        // failed. Read at discovery because it can outrank the PID: an RS50
+        // in G PRO compatibility mode spoofs the G PRO PID (c272) but keeps
+        // its own product string ("RS50 Base for PlayStation/PC"), while a
+        // real G PRO reports "PRO Racing Wheel" (per mescon, 2026-07).
+        public string ProductString;
         // True when the PID is supported by inference (shared HID++ family)
         // but not hardware-confirmed. The UI surfaces a "report back" notice
         // so a user can tell us if Trueforce works but FFB pass-through
@@ -79,6 +85,57 @@ namespace TrueforceForAll.Core
             if (vid != LogitechVid) return false;
             foreach (var (p, _) in SupportedPids) if (p == pid) return true;
             return false;
+        }
+
+        /// <summary>Chassis identity derived from the USB product string.
+        /// Strings may only ADD identity (a positive match), never subtract
+        /// support: Unknown means "trust the PID". Console-mode wheels can
+        /// enumerate with no product string at all, and the G923 variants'
+        /// exact strings aren't recorded yet, so anything unrecognized falls
+        /// through to PID behavior.</summary>
+        public enum WheelChassis { Unknown, GPro, Rs50, G923 }
+
+        public static WheelChassis ClassifyProduct(string productString)
+        {
+            if (string.IsNullOrEmpty(productString)) return WheelChassis.Unknown;
+            string n = productString.ToLowerInvariant();
+            if (n.Contains("rs50")) return WheelChassis.Rs50;
+            if (n.Contains("g923")) return WheelChassis.G923;
+            // A real G PRO reports "PRO Racing Wheel" (mescon, 2026-07,
+            // verified live on an RS50 and against a real-G PRO capture).
+            if (n.Contains("pro racing wheel")) return WheelChassis.GPro;
+            return WheelChassis.Unknown;
+        }
+
+        /// <summary>True when the wheel is positively an RS50: the native RS50
+        /// PID, or an RS50 product string on any PID. The second case is an
+        /// RS50 in G PRO compatibility mode, which spoofs the G PRO PID (c272)
+        /// but keeps its own product string (mescon, 2026-07).</summary>
+        public static bool IsRs50(ushort pid, string productString) =>
+            pid == 0xC276 || ClassifyProduct(productString) == WheelChassis.Rs50;
+
+        /// <summary>Seed for the FFB tap's HID++ 0x8123 feature-index
+        /// resolver: RS50 = 0x10, everything else = the G PRO's 0x0e (the
+        /// historical seed for all wheels; G923 keeps it because its indices
+        /// are not capture-confirmed). Seed only: the tap's resolver stays
+        /// live, and a dead-silent wrong seed self-heals (see
+        /// UsbPcapFfbTap.SetFfbFeatureIndexSeed for the confirm-lock
+        /// limit).</summary>
+        public static byte FfbFeatureIndexSeedFor(ushort pid, string productString) =>
+            IsRs50(pid, productString) ? (byte)0x10 : (byte)0x0e;
+
+        /// <summary>User-facing model label for a discovered wheel: the
+        /// PID-table model, except an RS50 masquerading on a non-RS50 PID
+        /// (G PRO compatibility mode, identified by product string; mescon,
+        /// 2026-07) is labeled as such. Single source of truth so the wheel
+        /// status, self-test, and notices can never disagree about what was
+        /// found.</summary>
+        public static string DisplayModel(WheelMatch m)
+        {
+            if (m == null) return null;
+            if (m.Pid != 0xC276 && ClassifyProduct(m.ProductString) == WheelChassis.Rs50)
+                return "Logitech RS50 (G PRO compatibility mode)";
+            return m.Model;
         }
 
         /// <summary>A Logitech HID device present on the bus that looks like a
@@ -193,12 +250,19 @@ namespace TrueforceForAll.Core
                     if (!IsTrueforceInterface(dev))
                         continue;
 
+                    // Best-effort product string; identity is additive-only,
+                    // so a failed read (null) just means PID behavior.
+                    string productString = null;
+                    try { productString = dev.GetProductName(); }
+                    catch { }
+
                     results.Add(new WheelMatch
                     {
                         Device = dev,
                         Vid = LogitechVid,
                         Pid = pid,
                         Model = model,
+                        ProductString = productString,
                         Unverified = IsUnverified(pid),
                     });
                 }
