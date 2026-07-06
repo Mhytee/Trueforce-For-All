@@ -21,9 +21,10 @@ namespace TrueforceForAll.Plugin.Effects
         public int EnvelopeMs { get; set; } = 80;
 
         /// <summary>Peak amplitude at the start of the envelope. Sized to the
-        /// FFB pass-through writes AC's torque target into ep3 cur, so the
-        /// audio in the rolling window is purely additive, no longer
-        /// constrained to small amplitudes for FFB coexistence.</summary>
+        /// model where the FFB pass-through writes AC's torque target into
+        /// ep3 cur, so the audio in the rolling window is purely additive
+        /// (confirmed on RS50 by mescon, 2026-07), no longer constrained to
+        /// small amplitudes for FFB coexistence.</summary>
         public float PeakAmp { get; set; } = 0.35f;
 
         public Waveform Waveform { get; set; } = Waveform.Sine;

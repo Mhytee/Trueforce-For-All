@@ -11,6 +11,8 @@
 // stream Trueforce on ep3, the wheel uses
 // bytes 6-9 of our packet as motor torque, ignoring AC's ep0 commands. By
 // mirroring AC's commands into bytes 6-9, FFB and Trueforce coexist.
+// (cur-as-torque-target confirmed independently by mescon's Linux kernel
+// driver on RS50 hardware, 2026-07.)
 //
 // USBPcap installs as a kernel-mode USB filter driver. USBPcapCMD.exe streams
 // pcap to stdout when invoked with -o -. We don't require admin in our

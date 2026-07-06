@@ -130,7 +130,9 @@ namespace TrueforceForAll.Core
         // Optional FFB target source. Returns AC's most-recent FFB target as a
         // signed int16 if it was captured within FfbTargetMaxAgeMs, or null
         // otherwise. We use this as cur (bytes 6-9) for active packets so AC's
-        // FFB drives the motor while our audio overlays in the rolling window.
+        // FFB drives the motor while our audio overlays in the rolling window
+        // (cur = torque target, window = additive overlay: confirmed by
+        // mescon's Linux driver on RS50, 2026-07).
         //
         // Threshold is large (10 seconds) because AC drops its HID++ FFB update
         // rate dramatically when the FFB target hasn't changed (stationary wheel,
@@ -661,8 +663,14 @@ namespace TrueforceForAll.Core
             }
 
             // Two packet shapes we send (observed by diffing AC EVO's stream vs
-            // silent baselines, these three things change together; we have not
-            // isolated which the wheel actually keys off):
+            // silent baselines). Semantics confirmed by mescon (2026-07, second
+            // implementation on real RS50 hardware): cur (bytes 6-9) is the
+            // motor torque target, the window is a purely additive audio
+            // overlay on top of it, and byte 10 (the new-sample count) is the
+            // audio demultiplexer. cur is honored in BOTH shapes, and byte 10 /
+            // window / cur do not need to covary: byte10=0 with a non-center
+            // cur is a valid force-only packet (his driver's standard shape;
+            // we do not currently send it).
             //   "active"  bytes[10..11] = 04 0d, cur (bytes 6-9) carries the
             //             FFB target, window carries 4 new audio samples.
             //             When streaming this shape, the wheel uses cur as the
@@ -670,6 +678,12 @@ namespace TrueforceForAll.Core
             //   "keepalive" bytes[10..11] = 00 00, window all zeros, cur=0x8000.
             //             When streaming this shape, the wheel uses its normal
             //             ep0 HID++ FFB path.
+            // STILL OPEN: which field gates that ep0 fallback (byte 10, center
+            // cur, or something else). mescon's data cannot settle it: his
+            // Linux driver owns the wheel exclusively, so concurrent ep0 game
+            // FFB never occurs in his setup. Tap-mode coexistence depends on
+            // the answer; do not send force-only packets in tap mode until it
+            // is isolated on hardware.
             //
             // Decision: send "active" whenever the FFB tap has a fresh value. We
             // STAY in active mode continuously while AC is running, regardless of
@@ -721,7 +735,8 @@ namespace TrueforceForAll.Core
                 {
                     // No audio content, fill the window with silence-center so
                     // the wheel's audio overlay contributes zero force, leaving
-                    // only cur as the motor torque target.
+                    // only cur as the motor torque target (additive-overlay
+                    // semantics confirmed on RS50 by mescon, 2026-07).
                     for (int i = 0; i < Window; i++) _window[i] = 0x8000;
                 }
 
@@ -872,9 +887,12 @@ namespace TrueforceForAll.Core
         }
 
         // EVO-style silent keepalive: NewPerPacket=0, window literal zeros, cur=0x8000.
-        // When we send this shape the wheel uses its normal ep0 HID++ FFB path
-        // (we haven't isolated which of bytes 10-11 / cur=0x8000 / zero window
-        // is the actual trigger, they covary in EVO's captures).
+        // byte10=0 means "no new audio samples" (confirmed by mescon, 2026-07)
+        // and cur is still honored, so cur=0x8000 commands zero ep3 force.
+        // That the wheel then falls back to its normal ep0 HID++ FFB path is
+        // our own observation of this all-zero shape; which field gates the
+        // fallback is still not isolated (the fields covary in EVO's captures,
+        // and mescon's single-writer driver never exercises concurrent ep0).
         private static void BuildSilentPacket(byte[] pkt, byte seq)
         {
             Array.Clear(pkt, 0, PacketLen);
@@ -898,7 +916,11 @@ namespace TrueforceForAll.Core
             pkt[8] = (byte)(current & 0xFF);
             pkt[9] = (byte)(current >> 8);
             pkt[10] = (byte)NewPerPacket;
-            pkt[11] = 0x0d;         // constant byte from captures
+            pkt[11] = 0x0d;         // constant in every capture, ours and
+                                    // mescon's. Plausibly 13 = Window slot
+                                    // count (byte 10 declares new samples,
+                                    // byte 11 the window length); hypothesis,
+                                    // not confirmed.
             // bytes 12..63: 13 slots of u16 LE duplicated (oldest first)
             for (int i = 0; i < Window; i++)
             {

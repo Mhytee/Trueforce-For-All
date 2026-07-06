@@ -331,7 +331,10 @@ reverse-engineered by the [mescon Linux driver project][mescon]. This
 repo is the Windows-side glue on top of that: a SimHub plugin that opens
 the wheel, synthesizes the telemetry/audio-derived effects, handles
 per-game tuning, and runs the USBPcap-based FFB tap that mirrors the
-game's HID++ output into bytes 6-9 of the Trueforce ep3 stream.
+game's HID++ output into bytes 6-9 of the Trueforce ep3 stream. That
+mechanism (bytes 6-9 as the motor torque target, the rolling window as
+an additive overlay on top) has since been independently confirmed by
+the mescon driver's own implementation on RS50 hardware.
 
 ## License
 
