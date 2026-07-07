@@ -17,8 +17,13 @@ jobs:
   snapshot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # The snapshot data lives on an orphan `stats-data` branch so daily
+      # commits don't clutter main's log. Checkout that branch, append,
+      # push back to it. Read via: git show origin/stats-data:stats/download-stats.csv
+      - name: Checkout stats-data branch
         uses: actions/checkout@v4
+        with:
+          ref: stats-data
 
       - name: Append download counts
         env:
@@ -42,7 +47,7 @@ jobs:
                 '.[] | select(.draft == false) | .tag_name as $t | .assets[] | [$d, $t, .name, .download_count] | @csv' \
             >> "$CSV"
 
-      - name: Commit snapshot
+      - name: Commit snapshot to stats-data
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -52,5 +57,5 @@ jobs:
             echo "No change to commit."
           else
             git commit -m "chore: download-stats snapshot $(date -u +%Y-%m-%d)"
-            git push
+            git push origin HEAD:stats-data
           fi
