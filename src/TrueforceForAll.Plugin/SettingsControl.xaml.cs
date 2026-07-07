@@ -976,7 +976,7 @@ namespace TrueforceForAll.Plugin
                         // as the car's default (built into SaveActiveCarPresetAs).
                         if (!_plugin.ExitOfflineEditCarSaveAsAndApply(carClean))
                         {
-                            TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
+                            TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                             return;
                         }
                     }
@@ -988,7 +988,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditCarSave())
                 {
-                    TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                     return;
                 }
             }
@@ -1005,7 +1005,7 @@ namespace TrueforceForAll.Plugin
                         // the game default.
                         if (!_plugin.ExitOfflineEditSaveAsAndApply(clean))
                         {
-                            TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
+                            TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                             return;
                         }
                     }
@@ -1017,7 +1017,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditSave())
                 {
-                    TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                     return;
                 }
             }
@@ -1050,7 +1050,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.ExitOfflineEditCarSaveAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -1081,7 +1081,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.ExitOfflineEditSaveAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Save failed.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -2300,8 +2300,9 @@ namespace TrueforceForAll.Plugin
             // Ducking, Spike reduction) whose changes only ever belong at the
             // game/global level, not a car. (Sticky-true when no game preset is
             // active, so unsaved tuning still surfaces.)
-            bool gameDirty = false;
-            for (int i = 0; i < _effectDirty.Length; i++) if (_effectDirty[i]) { gameDirty = true; break; }
+            int dirtyCount = 0;
+            for (int i = 0; i < _effectDirty.Length; i++) if (_effectDirty[i]) dirtyCount++;
+            bool gameDirty = dirtyCount > 0;
 
             // Car-level drift, checked independently: a car-preset-only edit
             // might not light any per-section bit (those compare against the
@@ -2334,10 +2335,19 @@ namespace TrueforceForAll.Plugin
             // be wrong); the CAR-side Save buttons stay, since saving the car is
             // exactly the point.
             bool carEdit = _plugin?.IsOfflineEditingCar == true;
+            // "Save all" only when more than one section changed; a lone edit
+            // reads better as plain "Save" ("all" implies a batch).
+            string saveLabel = dirtyCount > 1 ? "★ Save all" : "★ Save";
             if (HeaderGameSaveAllBtn != null)
+            {
                 HeaderGameSaveAllBtn.Visibility = (any && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
+                HeaderGameSaveAllBtn.Content = saveLabel;
+            }
             if (HeaderCarSaveAllBtn != null)
+            {
                 HeaderCarSaveAllBtn.Visibility = carDirty ? Visibility.Visible : Visibility.Collapsed;
+                HeaderCarSaveAllBtn.Content = saveLabel;
+            }
 
             // "Save as new…" mirrors its Save-all neighbour: it only makes sense
             // when there's unsaved tuning to capture under a new name.
@@ -3013,22 +3023,22 @@ namespace TrueforceForAll.Plugin
         // logic stays in MaybeRefreshCarCommunityCountAsync since the
         // dropdown reads it.
 
-        // Both header "Save all" buttons open the same target chooser (save to
-        // this car / game default / both). The button's PLACEMENT (next to the
-        // game vs car picker) and visibility just signal where the unsaved
-        // tuning is; the popover stays so "both" remains reachable and the user
-        // confirms the target. The car-side button passes a hint so the popover
-        // can lead with the car option.
+        // Each header Save button saves directly to the scope it sits next to:
+        // the game-side button overwrites the active game preset, the car-side
+        // button saves the current tuning to the active car's override. No
+        // chooser -- the button's PLACEMENT is the target choice. (To also push
+        // a car tune up to the game default, or vice-versa, click the other
+        // Save button too.)
         private void HeaderGameSaveAll_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            ShowGlobalSavePopover(preferCar: false);
+            SaveAllGameDefaults();
         }
 
         private void HeaderCarSaveAll_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            ShowGlobalSavePopover(preferCar: true);
+            SaveAllForCar();
         }
 
         private void ClearEffectDirty(EffectKind which)
@@ -3154,7 +3164,7 @@ namespace TrueforceForAll.Plugin
         // Rebuild the CAR-preset picker in the header. When a car is loaded it
         // lists that car's presets (built-ins first, alpha) plus every OTHER
         // car's presets (each selectable copies its tuning onto the current car,
-        // ApplyCopy). A display-only "None — using game default" row shows when
+        // ApplyCopy). A display-only "None - using game default" row shows when
         // the active car has no preset; a "No car loaded" placeholder shows and
         // disables the combo when no car is detected.
         private void RefreshCarPresetPicker()
@@ -4700,13 +4710,8 @@ namespace TrueforceForAll.Plugin
                 }
                 catch { }
 
-                if (!silentOnSuccess)
-                {
-                    TrueforceDialog.Show(null,
-                        "Trueforce: Logs exported",
-                        $"Exported logs to:\n{zipPath}\n\nAttach this zip to your bug report so support can see what's happening.",
-                        DialogKind.Info);
-                }
+                // The Explorer reveal above is the confirmation; the standalone
+                // "Logs exported" modal was redundant with it, so it's dropped.
                 return zipPath;
             }
             catch (Exception ex)
@@ -6048,7 +6053,7 @@ namespace TrueforceForAll.Plugin
         private async void BackupNow_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            SetBackupStatus("Backing up...");
+            SetBackupStatus("Backing up…");
             if (BackupNowBtn != null) BackupNowBtn.IsEnabled = false;
             try
             {
@@ -6061,7 +6066,7 @@ namespace TrueforceForAll.Plugin
                     };
                     bool? ok = dlg.ShowDialog();
                     if (ok != true || dlg.Choice == BackupConflictChoice.Cancel) { SetBackupStatus(""); return; }
-                    SetBackupStatus("Resolving...");
+                    SetBackupStatus("Resolving…");
                     var resolved = await _plugin.ResolveBackupConflictAsync(dlg.Choice, dlg.KeepCloudSettings);
                     SetBackupStatus(resolved.Message);
                 }
@@ -6082,7 +6087,7 @@ namespace TrueforceForAll.Plugin
                 "Download your cloud backup and apply it to this PC? Your local-only presets are kept; global settings are replaced by the cloud's.",
                 DialogKind.Destructive, okLabel: "Restore", cancelLabel: "Cancel");
             if (confirm != true) return;
-            SetBackupStatus("Restoring...");
+            SetBackupStatus("Restoring…");
             if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = false;
             try
             {
@@ -6118,7 +6123,7 @@ namespace TrueforceForAll.Plugin
             _discordLinkInProgress = true;
             _discordLinkCts?.Dispose();
             _discordLinkCts = new System.Threading.CancellationTokenSource();
-            SetDiscordStatus("Opening Discord in your browser...");
+            SetDiscordStatus("Opening Discord in your browser…");
             if (LinkDiscordBtn != null) LinkDiscordBtn.Content = "Cancel";
             if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = false;
             try
@@ -6392,7 +6397,19 @@ namespace TrueforceForAll.Plugin
             if (gen != _supportersWallGen || SupportersWallPanel == null) return;
 
             SupportersWallPanel.Children.Clear();
-            if (rows == null || rows.Count == 0)
+            if (rows == null)
+            {
+                // Load failed (not configured / unreachable / error) — distinct
+                // from a genuinely empty roster so we don't tell real supporters
+                // they don't exist.
+                if (SupportersWallStatus != null)
+                {
+                    SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
+                    SupportersWallStatus.Text = "Couldn't load supporters. Check your connection and try again.";
+                }
+                return;
+            }
+            if (rows.Count == 0)
             {
                 if (SupportersWallStatus != null)
                 {
@@ -6794,7 +6811,7 @@ namespace TrueforceForAll.Plugin
             _patreonLinkInProgress = true;
             _patreonLinkCts?.Dispose();
             _patreonLinkCts = new System.Threading.CancellationTokenSource();
-            SetPatreonStatus("Opening Patreon in your browser...");
+            SetPatreonStatus("Opening Patreon in your browser…");
             if (LinkPatreonBtn != null) LinkPatreonBtn.Content = "Cancel";
             if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = false;
             try
@@ -7351,9 +7368,8 @@ namespace TrueforceForAll.Plugin
                 title:      "Change email",
                 line1Label: "New email address",
                 line1Init:  "",
-                line2Label: "Notes (not sent anywhere)",
-                line2Init:  "",
-                line2Lines: 2)
+                line2Label: null,
+                line2Init:  null)
             {
                 Owner = Window.GetWindow(this),
             };
@@ -7521,7 +7537,7 @@ namespace TrueforceForAll.Plugin
                 int gen = unchecked(++_accountSessionsGen);
                 if (AccountSessionsList != null) AccountSessionsList.Children.Clear();
                 if (AccountSignOutOthersBtn != null) AccountSignOutOthersBtn.Visibility = Visibility.Collapsed;
-                SetSessionsStatus("Loading sessions...");
+                SetSessionsStatus("Loading sessions…");
 
                 System.Collections.Generic.List<SessionClient.SessionRow> sessions = null;
                 try { sessions = await _plugin.AuthGetSessionsAsync(System.Threading.CancellationToken.None); }
@@ -7707,6 +7723,13 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Revoke session failed: " + ex.Message);
+                // Don't leave the button stuck on "Revoking..."; restore it and
+                // tell the user it didn't go through. (btn is scoped to the try,
+                // so re-derive it from sender here.)
+                if (sender is Button b) { b.IsEnabled = true; b.Content = "Revoke"; }
+                TrueforceDialog.Show(null, "Revoke session",
+                    "Couldn't revoke that session. Check your connection and try again.",
+                    DialogKind.Info);
             }
         }
 
@@ -7738,6 +7761,10 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Sign-out-others failed: " + ex.Message);
+                if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
+                TrueforceDialog.Show(null, "Sign out everywhere else",
+                    "Couldn't sign out the other devices. Check your connection and try again.",
+                    DialogKind.Info);
             }
         }
 
@@ -7804,9 +7831,8 @@ namespace TrueforceForAll.Plugin
                 title:      "Confirm account deletion",
                 line1Label: "Type DELETE to confirm",
                 line1Init:  "",
-                line2Label: "Notes (optional, not sent anywhere)",
-                line2Init:  "",
-                line2Lines: 2)
+                line2Label: null,
+                line2Init:  null)
             {
                 Owner = Window.GetWindow(this),
             };
@@ -10571,7 +10597,14 @@ namespace TrueforceForAll.Plugin
 
             bool ok = code.Equals("MAIRA", StringComparison.OrdinalIgnoreCase)
                    || code.Equals("TEST", StringComparison.OrdinalIgnoreCase);
-            if (!ok) return;
+            if (!ok)
+            {
+                // Give a visible result for a typed-but-unrecognized code instead
+                // of swallowing it silently (blank input stays silent).
+                if (!string.IsNullOrWhiteSpace(code) && AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Code not recognized. Type HELP to list valid codes.";
+                return;
+            }
 
             if (!_plugin.Settings.RpmLedUnlocked)
             {
@@ -11060,7 +11093,11 @@ namespace TrueforceForAll.Plugin
             {
                 bothBtn.Click += (s, args) =>
                 {
-                    _plugin.SaveSectionToBoth((TrueforcePlugin.SectionKind)(int)which);
+                    if (!_plugin.SaveSectionToBoth((TrueforcePlugin.SectionKind)(int)which))
+                    {
+                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        return;   // leave the popover open + dirty bit set
+                    }
                     ClearEffectDirty(which);
                     RefreshFromPlugin();
                     win.DialogResult = true;
@@ -11094,7 +11131,11 @@ namespace TrueforceForAll.Plugin
                 // into the in-memory snapshot + write GeneralSettings; other
                 // sections keep their saved values and their dirty bits remain.
                 _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
-                _plugin.SaveSectionToActivePreset((TrueforcePlugin.SectionKind)(int)which);
+                if (!_plugin.SaveSectionToActivePreset((TrueforcePlugin.SectionKind)(int)which))
+                {
+                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    return;   // don't clear the dirty bit on a failed write
+                }
                 ClearEffectDirty(which);
                 // Overwrite the active preset only. Binding it as the game's
                 // auto-load default is a separate, explicit action (the header
@@ -11154,7 +11195,11 @@ namespace TrueforceForAll.Plugin
                                 && (existing == null || !existing.ContainsKey(suggestion));
                 if (silentOk)
                 {
-                    _plugin.SaveActiveCarPresetAs(suggestion);
+                    if (!_plugin.SaveActiveCarPresetAs(suggestion))
+                    {
+                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        return;
+                    }
                 }
                 else
                 {
@@ -11166,7 +11211,11 @@ namespace TrueforceForAll.Plugin
                         initial: suggestion,
                         existing: existing);
                     if (string.IsNullOrEmpty(newName)) return;
-                    _plugin.SaveActiveCarPresetAs(newName);
+                    if (!_plugin.SaveActiveCarPresetAs(newName))
+                    {
+                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        return;
+                    }
                 }
             }
             else
@@ -11181,7 +11230,7 @@ namespace TrueforceForAll.Plugin
                     (TrueforcePlugin.SectionKind)(int)which);
                 if (!ok)
                 {
-                    TrueforceDialog.Show(null, "Trueforce", "Save failed (see SimHub log for details).", DialogKind.Info);
+                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Info);
                     return;
                 }
             }
@@ -11197,19 +11246,6 @@ namespace TrueforceForAll.Plugin
             // personal preference.
             if (which == EffectKind.Engine) MaybePromptToSubmitEngineData(carId);
             else if (which == EffectKind.RevLimiter) MaybePromptToSubmitRedlineData(carId);
-        }
-
-        /// <summary>Update active preset in place. Whole-snapshot save.
-        /// Clears all dirty indicators (global + every section).</summary>
-        private void UpdateActivePresetFromUi()
-        {
-            string name = _plugin.ActivePresetName;
-            if (string.IsNullOrEmpty(name)) return;
-            _plugin.SavePresetAs(name);
-            if (!string.IsNullOrEmpty(_plugin.ActiveGame))
-                _plugin.SetDefaultPresetForActiveGame(name);   // save-to-game-defaults binds
-            ClearDirty();
-            RefreshFromPlugin();
         }
 
         /// <summary>Save current full state as a new named preset (same flow
@@ -11229,7 +11265,11 @@ namespace TrueforceForAll.Plugin
                     $"A preset called '{name}' already exists. Overwrite?",
                     DialogKind.Confirm) != true)
                 return;
-            _plugin.SavePresetAs(name);
+            if (!_plugin.SavePresetAs(name))
+            {
+                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                return;
+            }
             // Bind it as this game's default so the save actually sticks across
             // sessions (a "save to game defaults" that didn't bind would leave
             // the preset orphaned and not auto-load next time).
@@ -11241,11 +11281,7 @@ namespace TrueforceForAll.Plugin
             // Tell the Preset Manager the local library just changed so the
             // newly-saved game preset shows up in its list automatically.
             _presetManager?.OnLocalLibraryChanged();
-            TrueforceDialog.Show(null, "Trueforce",
-                string.IsNullOrEmpty(game)
-                    ? $"Saved as '{name}'."
-                    : $"Saved as '{name}' and bound as the default for '{game}'.",
-                DialogKind.Info);
+            FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{name}' ✓");
         }
 
         // ---------- Preset library ----------
@@ -11289,131 +11325,11 @@ namespace TrueforceForAll.Plugin
 
         private string SelectedPresetName => _plugin?.ActivePresetName;
 
-        // The global "Save preset" button mirrors the per-section Save popover,
-        // but operates on ALL dirty fields at once: it asks whether to save to
-        // this car, the game defaults, or both. (Per-section Save offers the
-        // same three choices for just its one section.)
-        private void SavePreset_Click(object sender, RoutedEventArgs e) => ShowGlobalSavePopover();
-
-        private void ShowGlobalSavePopover(bool preferCar = false)
-        {
-            if (_plugin == null) return;
-            Button preferredBtn = null;
-
-            // Deliberately no "nothing to save" guard: the user may want to push
-            // the current tuning to a DIFFERENT target than they already saved
-            // to (e.g. saved to this car, now also wants it as the game
-            // default). After the first save the dirty bits are clean, so a
-            // dirty-gate would wrongly block that. The popover just directs the
-            // current tuning to a chosen target, which is valid either way.
-            string carId       = _plugin.ActiveCarId;
-            bool   carDetected = !string.IsNullOrEmpty(carId);
-            string activeP     = _plugin.ActivePresetName;
-            bool   hasPreset   = !string.IsNullOrEmpty(activeP);
-            bool   builtin     = hasPreset && _plugin.IsBuiltinPreset(activeP);
-
-            var win = new Window
-            {
-                Title  = "Save preset",
-                Width  = 440,
-                Height = carDetected ? 290 : 180,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                ResizeMode    = ResizeMode.NoResize,
-                ShowInTaskbar = false,
-                Owner = Window.GetWindow(this),
-            };
-            if (win.Owner == null) win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            ApplyDarkTheme(win);
-
-            var sp = new StackPanel { Margin = new Thickness(14) };
-            sp.Children.Add(new TextBlock
-            {
-                Text = "Save all your current tuning to…",
-                FontSize = 13, FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 10),
-            });
-
-            // Choice 1 + 2: per-car and both (only when a car is identified).
-            if (carDetected)
-            {
-                var carBtn = new Button { Content = $"For this car ({carId})", Height = 32, Margin = new Thickness(0, 0, 0, 6) };
-                sp.Children.Add(carBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = "Saves your tuning just for this car (per-car override). Won't change other cars or the game default.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
-                });
-                carBtn.Click += (s, a) => { SaveAllForCar(); win.DialogResult = true; };
-                if (preferCar) preferredBtn = carBtn;
-
-                var bothBtn = new Button { Content = "Both (game default + keep for this car)", Height = 32, Margin = new Thickness(0, 0, 0, 6) };
-                sp.Children.Add(bothBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = "Saves as the game default AND pins it to this car as its own override.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
-                });
-                bothBtn.Click += (s, a) =>
-                {
-                    if (SaveActiveCarPresetWithFork()) { RecomputeAllEffectDirty(); SaveAllGameDefaults(bindAsDefault: true); }
-                    win.DialogResult = true;
-                };
-            }
-
-            // Choice 3: game defaults (fork from a built-in / create one when
-            // none, else overwrite the active default in place).
-            bool gameHasGame = !string.IsNullOrEmpty(_plugin.ActiveGame);
-            bool gameIsDefault = gameHasGame && hasPreset && !builtin
-                && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
-            string gameLabel;
-            string gameHint;
-            if (!hasPreset || builtin)
-            {
-                gameLabel = gameHasGame ? "Save as game defaults" : "Save as new preset";
-                gameHint  = gameHasGame
-                    ? "Saves your tuning as a new preset and binds it as this game's default."
-                    : "Saves your tuning as a new preset.";
-            }
-            else if (gameIsDefault)
-            {
-                gameLabel = $"Update preset '{ToBuiltinDisplay(activeP)}' (game default)";
-                gameHint  = $"Overwrites '{ToBuiltinDisplay(activeP)}' (this game's default preset) with your current tuning.";
-            }
-            else
-            {
-                gameLabel = $"Update preset '{ToBuiltinDisplay(activeP)}'";
-                gameHint  = $"Overwrites '{ToBuiltinDisplay(activeP)}' with your current tuning. Won't change which preset is this game's default.";
-            }
-            var gameBtn = new Button { Content = gameLabel, Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                Style = TryFindResource("PopoverPrimaryButton") as Style };   // green accent: recommended save target
-            sp.Children.Add(gameBtn);
-            sp.Children.Add(new TextBlock
-            {
-                Text = gameHint,
-                FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
-            });
-            gameBtn.Click += (s, a) => { SaveAllGameDefaults(); win.DialogResult = true; };
-            if (preferredBtn == null) preferredBtn = gameBtn;   // game-side click, or no car
-
-            var btnRow = new StackPanel
-            {
-                Orientation = System.Windows.Controls.Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right,
-            };
-            btnRow.Children.Add(new Button { Content = "Cancel", Width = 80, IsCancel = true });
-            sp.Children.Add(btnRow);
-
-            win.Content = sp;
-            // Lead with the target that matches the button the user clicked
-            // (car-side vs game-side): focus it so Enter commits there and the
-            // focus ring points at it, without reordering the choices.
-            if (preferredBtn != null)
-            {
-                var target = preferredBtn;
-                win.Loaded += (s, a) => target.Focus();
-            }
-            win.ShowDialog();
-        }
+        // The old global "Save preset" chooser (save to this car / game default
+        // / both, in one modal) was removed: the two header Save buttons now
+        // save directly to their own scope (see HeaderGameSaveAll_Click /
+        // HeaderCarSaveAll_Click), which is clearer than routing both through a
+        // three-option popover.
 
         // Save all dirty tuning to the active game-default preset: forks from a
         // built-in / creates one when there's none, else overwrites in place.
@@ -11424,6 +11340,29 @@ namespace TrueforceForAll.Plugin
         // auto-load binding alone, so saving an edit never silently changes
         // which preset this game loads (that's the "Set as default" button's
         // job). The fork branch below establishes its own binding.
+        // Transient "Saved" confirmation shown inline next to the header Save
+        // buttons, replacing the old blocking success dialogs (audit A2 — a
+        // one-click Save shouldn't interrupt with a modal you must dismiss).
+        // Only one save happens at a time, so a single shared timer clears
+        // whichever label is showing.
+        private System.Windows.Threading.DispatcherTimer _saveStatusTimer;
+        private void FlashSaveStatus(TextBlock target, string msg)
+        {
+            if (HeaderGameSaveStatus != null) HeaderGameSaveStatus.Text = "";
+            if (HeaderCarSaveStatus  != null) HeaderCarSaveStatus.Text  = "";
+            if (target == null) return;
+            target.Text = msg;
+            _saveStatusTimer?.Stop();
+            _saveStatusTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3.5) };
+            _saveStatusTimer.Tick += (_, __) =>
+            {
+                _saveStatusTimer.Stop();
+                if (HeaderGameSaveStatus != null) HeaderGameSaveStatus.Text = "";
+                if (HeaderCarSaveStatus  != null) HeaderCarSaveStatus.Text  = "";
+            };
+            _saveStatusTimer.Start();
+        }
+
         private void SaveAllGameDefaults(bool bindAsDefault = false)
         {
             string activeP = _plugin.ActivePresetName;
@@ -11433,30 +11372,28 @@ namespace TrueforceForAll.Plugin
                 ForkAndSaveAsGamePreset();   // shows its own "Saved as…" confirmation
                 return;
             }
-            _plugin.SavePresetAs(activeP);
+            if (!_plugin.SavePresetAs(activeP))
+            {
+                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                return;
+            }
             if (bindAsDefault && !string.IsNullOrEmpty(_plugin.ActiveGame))
                 _plugin.SetDefaultPresetForActiveGame(activeP);
             bool isDefault = !string.IsNullOrEmpty(_plugin.ActiveGame)
                 && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
             ClearDirty();
             RefreshFromPlugin();
-            TrueforceDialog.Show(null, "Trueforce",
-                isDefault
-                    ? $"Saved to game default preset '{ToBuiltinDisplay(activeP)}'."
-                    : $"Saved preset '{ToBuiltinDisplay(activeP)}'.",
-                DialogKind.Info);
+            FlashSaveStatus(HeaderGameSaveStatus, isDefault ? "Saved as game default ✓" : "Saved ✓");
         }
 
         // Save all dirty car-scoped tuning to the active car's override (forks a
-        // user car preset from a built-in if needed). Shows a confirmation.
+        // user car preset from a built-in if needed). Flashes an inline confirm.
         private void SaveAllForCar()
         {
             if (!SaveActiveCarPresetWithFork()) return;   // user cancelled fork prompt
             RecomputeAllEffectDirty();
             RefreshFromPlugin();
-            TrueforceDialog.Show(null, "Trueforce",
-                "Saved your current tuning for this car.",
-                DialogKind.Info);
+            FlashSaveStatus(HeaderCarSaveStatus, "Saved ✓");
         }
 
         /// <summary>Save the live car override to its active preset file.
@@ -11503,19 +11440,27 @@ namespace TrueforceForAll.Plugin
                                 && (existing == null || !existing.ContainsKey(suggestion));
                 if (silentOk)
                 {
-                    _plugin.SaveActiveCarPresetAs(suggestion);
+                    if (!_plugin.SaveActiveCarPresetAs(suggestion))
+                    {
+                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        return false;
+                    }
                 }
                 else
                 {
                     string newName = PromptForCarPresetName(
                         title: "Save unsaved car-preset changes",
                         body: onBuiltin
-                            ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{carId}':"
-                            : $"Save the current tuning as a new user preset for '{carId}':",
+                            ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{fallbackName}':"
+                            : $"Save the current tuning as a new user preset for '{fallbackName}':",
                         initial: suggestion,
                         existing: existing);
                     if (string.IsNullOrEmpty(newName)) return false; // cancelled
-                    _plugin.SaveActiveCarPresetAs(newName);
+                    if (!_plugin.SaveActiveCarPresetAs(newName))
+                    {
+                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        return false;
+                    }
                 }
                 ok = true;
             }
@@ -11564,17 +11509,17 @@ namespace TrueforceForAll.Plugin
                 while (existing.Contains(newName)) newName = $"{baseName} ({i++})";
             }
 
-            _plugin.SavePresetAs(newName);
+            if (!_plugin.SavePresetAs(newName))
+            {
+                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                return;
+            }
             // Auto-bind as game's default if a game is loaded.
             if (!string.IsNullOrEmpty(game))
                 _plugin.SetDefaultPresetForActiveGame(newName);
             ClearDirty();
             RefreshFromPlugin();
-            TrueforceDialog.Show(null, "Trueforce",
-                string.IsNullOrEmpty(game)
-                    ? $"Saved as '{newName}'."
-                    : $"Saved as '{newName}' and bound as the default for '{game}'. The built-in default stays available as fallback.",
-                DialogKind.Info);
+            FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{newName}' ✓");
         }
 
         private void SaveAsPreset_Click(object sender, RoutedEventArgs e)
@@ -11595,7 +11540,11 @@ namespace TrueforceForAll.Plugin
                     DialogKind.Confirm) != true)
                 return;
 
-            _plugin.SavePresetAs(name);
+            if (!_plugin.SavePresetAs(name))
+            {
+                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                return;
+            }
             ClearDirty();
             RefreshFromPlugin();
         }
@@ -11630,7 +11579,11 @@ namespace TrueforceForAll.Plugin
                 initial: suggestion,
                 existing: _plugin.GetCarPresets(carId));
             if (string.IsNullOrEmpty(newName)) return;   // cancelled
-            _plugin.SaveActiveCarPresetAs(newName);
+            if (!_plugin.SaveActiveCarPresetAs(newName))
+            {
+                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                return;
+            }
             ClearDirty();
             RefreshFromPlugin();
             MaybePromptToSubmitEngineData(carId);
@@ -12077,11 +12030,12 @@ namespace TrueforceForAll.Plugin
             bool anyAction = false;
             var win = new PackManagerWindow(
                 loadPacks:     plugin.LoadInstalledPacks,
-                setAsDefaults: p =>
+                setAsDefaults: (p, policy) =>
                 {
                     anyAction = true;
-                    return plugin.SetPackAsDefaults(p);
+                    return plugin.SetPackAsDefaults(p, policy);
                 },
+                previewDefaults: plugin.PreviewPackDefaults,
                 removePack:    p =>
                 {
                     anyAction = true;
@@ -12760,18 +12714,46 @@ namespace TrueforceForAll.Plugin
         private const string PatreonUrl = "https://www.patreon.com/Mhytee";
         private const string PayPalUrl  = "https://www.paypal.me/mhytee";
 
+        // Transient inline status for the Support tab so "Opening…" / "Link
+        // copied." don't linger forever. Keyed per-label; fade=true animates the
+        // label out instead of a hard clear.
+        private readonly System.Collections.Generic.Dictionary<TextBlock, System.Windows.Threading.DispatcherTimer> _supportStatusTimers
+            = new System.Collections.Generic.Dictionary<TextBlock, System.Windows.Threading.DispatcherTimer>();
+        private void ClearStatusAfter(TextBlock label, double seconds, bool fade)
+        {
+            if (label == null) return;
+            if (_supportStatusTimers.TryGetValue(label, out var prev)) prev.Stop();
+            var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(seconds) };
+            t.Tick += (_, __) =>
+            {
+                t.Stop();
+                if (!fade) { label.Text = ""; return; }
+                var anim = new System.Windows.Media.Animation.DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(450)));
+                anim.Completed += (_, ___) =>
+                {
+                    label.Text = "";
+                    label.BeginAnimation(System.Windows.UIElement.OpacityProperty, null);   // release -> restore base opacity
+                };
+                label.BeginAnimation(System.Windows.UIElement.OpacityProperty, anim);
+            };
+            _supportStatusTimers[label] = t;
+            t.Start();
+        }
+
         private void Patreon_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening Patreon in your browser…";
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PatreonUrl) { UseShellExecute = true });
+                ClearStatusAfter(SupportOpenStatus, 3.0, fade: false);   // launched: drop the notice once it's open
             }
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
+                SimHub.Logging.Current.Info("[TF4ALL] Open Patreon failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
-                    $"Couldn't open browser:\n{ex.Message}\n\nURL: {PatreonUrl}",
+                    $"Couldn't open your browser. Copy this link into it instead:\n\n{PatreonUrl}",
                     DialogKind.Error);
             }
         }
@@ -12785,12 +12767,14 @@ namespace TrueforceForAll.Plugin
                 {
                     UseShellExecute = true,  // .NET Framework 4.8 launches the URL via the default browser
                 });
+                ClearStatusAfter(SupportOpenStatus, 3.0, fade: false);
             }
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
-                TrueforceDialog.Show(null, "Trueforce",
-                                $"Couldn't open browser:\n{ex.Message}\n\nURL: {DonateUrl}",
+                SimHub.Logging.Current.Info("[TF4ALL] Open Ko-fi failed: " + ex.Message);
+                TrueforceDialog.Show(null, "Trueforce For All",
+                                $"Couldn't open your browser. Copy this link into it instead:\n\n{DonateUrl}",
                                 DialogKind.Error);
             }
         }
@@ -12801,24 +12785,31 @@ namespace TrueforceForAll.Plugin
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening PayPal in your browser…";
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PayPalUrl) { UseShellExecute = true });
+                ClearStatusAfter(SupportOpenStatus, 3.0, fade: false);
             }
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
+                SimHub.Logging.Current.Info("[TF4ALL] Open PayPal failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
-                    $"Couldn't open browser:\n{ex.Message}\n\nURL: {PayPalUrl}",
+                    $"Couldn't open your browser. Copy this link into it instead:\n\n{PayPalUrl}",
                     DialogKind.Error);
             }
         }
 
-        // Copy the project link for sharing. Brief inline confirmation; falls back to showing
-        // the URL if the clipboard is locked by another app.
+        // Copy the project link for sharing. Brief inline confirmation that fades
+        // after a few seconds; falls back to showing the URL if the clipboard is
+        // locked by another app.
         private void CopyShareLink_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 System.Windows.Clipboard.SetText(RepoUrl);
-                if (SupportShareStatus != null) SupportShareStatus.Text = "Link copied.";
+                if (SupportShareStatus != null)
+                {
+                    SupportShareStatus.Text = "Link copied.";
+                    ClearStatusAfter(SupportShareStatus, 3.0, fade: true);
+                }
             }
             catch
             {

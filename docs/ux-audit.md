@@ -17,6 +17,22 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 > - Findings that say "don't confirm at all" (e.g. sign-out on a reversible action) only had their labels fixed; the confirmation still fires. Reconsider per-finding.
 > - **A5** dialog titles are still inconsistent ("Trueforce For All" vs action titles). NOT done.
 
+## Re-verification (2026-07-07)
+
+Full re-audit of all 104 findings against current code. **~59 fixed, ~13 partial, ~32 still open.** The systemic dialog levers are fully done (A1: zero `MessageBox.Show` remain; A4: zero `MessageBoxButton.YesNo`, all destructive confirms use `DialogKind.Destructive` with verb labels). This session also inlined the header save-success feedback (A2 slice) and knocked out a batch of copy / accessibility fixes. Boxes below are checked for fixed items.
+
+**Still partial (themed but the deeper issue remains — mostly "still a modal where it should be inline"):**
+- Manual device picker: banner auto-appears now, but the picker button stays gated behind MANUALPIN.
+- Sign-out: verb-labeled now, but still confirms a reversible action.
+- Resend link: underlined now, but no keyboard focus ring.
+- Community network actions: "Loading…" text now, but no spinner/disabled state.
+- Preset Manager Library rename/duplicate/delete/set-default/name-collision/"no games": themed dialogs, but still blocking modals (Community pane is inline) — no per-pane status label yet.
+- Remove-pack: confirm is now Destructive, but the success message is still a second modal.
+- Mixed dialog construction: native MessageBox gone, but TrueforceDialog + hand-built Window prompts coexist.
+- Report-a-bug prompt: shortened with verb buttons, but the "drag the zip in" instruction still lives in the prompt.
+- Ineligible pack items: a section-header explainer was added, but the per-row tag is still terse.
+- Save/export success popups: header saves are inline now, but export/backup/log-export success are still modal.
+
 ## The five systemic levers (fix once, clears many findings)
 
 - **A1.** Two dialog systems (~120 MessageBox vs ~28 TrueforceDialog). Pick one (TrueforceDialog). Add a grep/CI check banning new MessageBox.Show.
@@ -45,7 +61,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml.cs:1699-1711 EffectExpander_Expanded -> MarkEffectSeen (only on expand); SettingsControl.xaml.cs:1623-1633 Apply() clears on value change only; TrueforcePlugin.cs:2417-2423 MarkEffectSeen just appends, no expiry; XAML style tooltip SettingsControl.xaml:65 "Disappears once you expand the section or change a value."
   - **Fix:** Tie NEW-badge expiry to the banner/version lifecycle: when the user dismisses the What's-new banner (which stamps LastSeenVersion), also mark every currently-known effect as seen, OR auto-expire a per-effect badge after it has been shown across N launches or once LastSeenVersion advances past the version that introduced it. At minimum, clear all NEW badges when the changelog banner is dismissed so the badge and banner stay in sync.
 
-- [ ] **🟠 MED / poor-copy** FFB smooth tooltip is hardcoded to Assetto Corsa but the control applies to every game's pass-through
+- [x] **🟠 MED / poor-copy** FFB smooth tooltip is hardcoded to Assetto Corsa but the control applies to every game's pass-through
   - **Problem:** The FFB pass-through 'FFB smooth (ms)' control sits under the generic 'FFB pass-through' section that mirrors any game's own force feedback to the wheel (the section is greyed only for native-Trueforce games). Its tooltip, however, talks only about Assetto Corsa: 'Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms...'. A user playing iRacing, rFactor, RaceRoom, etc. gets AC-specific numbers that don't describe their game, which reads as a copy bug and undermines trust in the help text.
   - **Evidence:** SettingsControl.xaml:1102 and 1106 ToolTip="Low-pass on AC's incoming FFB target. AC sends FFB updates every ~7 ms; smoothing converts the staircase into a ramp..." on the FfbSmoothSlider, inside the general FfbPassthroughControls panel (1090).
   - **Fix:** Rewrite the tooltip in game-agnostic terms, e.g. 'Smooths the game's incoming force-feedback signal. Games send FFB updates in discrete steps; smoothing turns that staircase into a ramp. Higher = smoother but more lag; lower = tighter but a possible faint mechanical tick; 0 = pure passthrough (tightest response).' Drop the AC-specific 7 ms figure or qualify it as an example.
@@ -71,12 +87,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml:1053 <TextBox x:Name="MasterGainText" ... Text="1.00"/> (no ToolTip, no editable affordance); same pattern repeated for every effect (e.g. 1097 FfbScaleText, 1353 EngineGainText). Changelog promises the feature: EffectChangelog.cs:159-160 "Type exact slider values ... can be clicked and typed".
   - **Fix:** Add a shared tooltip such as 'Type an exact value' to the value TextBoxes (or a single ToolTip on a reusable style), and/or give them a subtle editable border so the typing affordance is discoverable.
 
-- [ ] **🟡 LOW / layout** Master gain has no tooltip explaining what it does, unlike most other controls
+- [x] **🟡 LOW / layout** Master gain has no tooltip explaining what it does, unlike most other controls
   - **Problem:** Master gain is the single most important control on the Effects tab and the first row, yet its label and slider have no tooltip. Many adjacent and far-less-important controls (FFB smooth, stationary spring strength, every Forza surface knob) do have explanatory tooltips. A new user sees 'Master gain:' 0-2 with no guidance on what it scales (all effects? pass-through too?) or what 1.00 means.
   - **Evidence:** SettingsControl.xaml:1049-1053 'Master gain:' label + MasterGainSlider + MasterGainText, none with a ToolTip; contrast with tooltipped controls like 1101-1102 (FFB smooth) and 1144-1145 (Spring strength).
   - **Fix:** Add a tooltip to the Master gain label/slider, e.g. 'Overall strength of all of the plugin's effects. 1.00 = as tuned; below 1 softens everything, above 1 amplifies. Does not change your game's own force feedback.'
 
-- [ ] **🟡 LOW / poor-copy** Spring strength tooltip references 'direct-drive rim', against the owner's wheel-terminology rule
+- [x] **🟡 LOW / poor-copy** Spring strength tooltip references 'direct-drive rim', against the owner's wheel-terminology rule
   - **Problem:** The stationary-spring strength tooltip warns that 'a strong spring snaps a direct-drive rim to center hard.' The product's scope is Trueforce-enabled Logitech wheels, which are belt/gear driven (G923) and explicitly not direct-drive per the owner's terminology rule. Telling users about 'direct-drive rim' behavior is both off-scope and potentially misleading for the actual supported hardware.
   - **Evidence:** SettingsControl.xaml:1145 ToolTip="...Start low; a strong spring snaps a direct-drive rim to center hard."
   - **Fix:** Replace 'direct-drive rim' with the supported-hardware framing, e.g. '...Start low; a strong spring can snap the wheel to center hard.'
@@ -90,12 +106,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Settings + Controls tabs  `settings-controls`
 
-- [ ] **🟠 MED / feedback** Value-readout boxes next to sliders look editable but silently ignore typed input
+- [x] **🟠 MED / feedback** Value-readout boxes next to sliders look editable but silently ignore typed input  _(verified 2026-07-07: NOT a bug. The readout boxes ARE editable; the ctor's WireEditableReadouts() reflection wires type-to-set on every slider readout.)_
   - **Problem:** The numeric boxes shown to the right of every slider on the Controls and Settings tabs are plain WPF TextBox controls. They display the slider's current value, but they have no LostFocus or KeyDown handler and are not marked IsReadOnly, so a user who clicks one, types a value, and presses Tab/Enter sees nothing happen. The text gets overwritten on the next slider move with no explanation. The author clearly knows IsReadOnly exists (it is used on the self-test/log readout at line 1438), so these read-write-looking boxes are an inconsistency, not a deliberate choice. Affects Step per press (Controls tab), Output ring, Audio ring, Ducking Depth/Attack/Release, and Master gain.
   - **Evidence:** SettingsControl.xaml:2261 `<TextBox Grid.Column="2" x:Name="MasterGainStepText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.05"/>` (no handler, no IsReadOnly); same pattern at SettingsControl.xaml:2496 PerfTfRingText, :2506 PerfAudioRingText, :2541 DuckDepthText, :2554 DuckAttackText, :2562 DuckReleaseText, :1053 MasterGainText. Code-behind only WRITES to them (SettingsControl.xaml.cs:376 `MasterGainStepText.Text = _plugin.MasterGainStep.ToString("F2");`, :3593) and never reads/parses them, vs the working IsReadOnly box at SettingsControl.xaml:1438.
   - **Fix:** Either add IsReadOnly="True" (and ideally Focusable="False" / a non-edit cursor) to all the slider-readout TextBoxes so they read as static value labels, or wire LostFocus/KeyDown handlers that parse and clamp the typed value into the slider (the same pattern already used for ForzaPortBox). Do not leave them looking editable but inert.
 
-- [ ] **🟠 MED / feedback** Unrecognized access code gives no feedback at all
+- [x] **🟠 MED / feedback** Unrecognized access code gives no feedback at all
   - **Problem:** Typing a string that is not a known code into the Access code box and pressing Enter (or on focus loss) does nothing visible: the handler falls through to `if (!ok) return;` with no status text and no clearing of the box. A user who mistypes a real code (e.g. 'MARIA' for 'MAIRA', or trailing space variants), or who was told a code that has since changed, gets zero signal about whether the code was wrong, the feature is already unlocked, or the box even works. The box also still holds their failed input.
   - **Evidence:** SettingsControl.xaml.cs:9127-9129 `bool ok = code.Equals("MAIRA", ...) || code.Equals("TEST", ...); if (!ok) return;` returns silently. Contrast: every recognized code sets AccessCodeStatus.Text and clears AccessCodeBox.Text. AccessCode_Changed fires CommitAccessCode on every focus-loss (SettingsControl.xaml.cs:8450), so partial/typo input routinely hits this silent path.
   - **Fix:** On a non-empty, unrecognized code set AccessCodeStatus.Text to something like 'Code not recognized. Type HELP to list valid codes.' (only when the box is non-empty, so blanking it stays silent). Leave the typed text in place so the user can correct it, or clear it; either is fine as long as there is a visible result.
@@ -105,23 +121,23 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml:2625-2629 button `UsbPcapPickDeviceButton` `Visibility="Collapsed"` with ToolTip ending 'Type MANUALPIN in the access code box to reveal this control.' (tooltip on a hidden control is unreachable). SettingsControl.xaml.cs:9118-9119 toggles both UsbPcapPickDeviceButton and FfbTapPickerBannerButton visibility together off ShowManualOverrideUi.
   - **Fix:** Keep auto-discovery primary, but surface the manual picker through the contextual banner whenever the FFB tap reports it cannot locate the wheel, independent of the MANUALPIN flag (the comment at SettingsControl.xaml:2620-2624 even claims the banner 'stays available' but the code gates it). The MANUALPIN code can remain for force-revealing the always-on Diagnostics button; just don't gate the genuine can't-find-wheel recovery path behind a secret string.
 
-- [ ] **🟡 LOW / unnecessary-dialog** Export logs shows a redundant success modal after already opening Explorer on the file
+- [x] **🟡 LOW / unnecessary-dialog** Export logs shows a redundant success modal after already opening Explorer on the file
   - **Problem:** After exporting logs the code already opens Explorer with the new zip selected (the user sees exactly where the file is), then immediately also pops a blocking MessageBox repeating the same path and a generic instruction. The Explorer reveal is the better, non-blocking feedback; the modal is an extra click that interrupts the flow. Same redundancy on the file Backup path.
   - **Evidence:** SettingsControl.xaml.cs:4427-4443: Explorer is launched (`explorer.exe`, `/select,...`) and THEN `MessageBox.Show($"Exported logs to:\n{zipPath}...", "Trueforce: Logs exported", ...)`. Backup_Click does the same modal at SettingsControl.xaml.cs:10365-10367.
   - **Fix:** Drop the success MessageBox (or downgrade to an inline status line near the button) since Explorer already reveals the file. Keep the failure MessageBox. If you want explicit confirmation text, put it in an inline status label rather than a modal that must be dismissed.
 
-- [ ] **🟡 LOW / poor-copy** Access code box tooltip is dismissive and gives the user nothing to act on
+- [x] **🟡 LOW / poor-copy** Access code box tooltip is dismissive and gives the user nothing to act on
   - **Problem:** The access code box's only tooltip is 'If you don't know what this is for, you don't need it.' For a control that is the single gateway to the entire test/feature-unlock catalog (including the MANUALPIN device-recovery path and MAIRA/TEST), this is needlessly opaque and slightly condescending. A user who was handed a code (e.g. a tester, or someone following a support reply) gets no hint that HELP lists everything.
   - **Evidence:** SettingsControl.xaml:2837 `ToolTip="If you don't know what this is for, you don't need it."` on AccessCodeBox. The HELP/CODES catalog that would orient them exists (SettingsControl.xaml.cs:8503 TestCodeCatalog) but is never referenced from the tooltip.
   - **Fix:** Reword to something neutral and actionable, e.g. 'Enter a code to unlock test or recovery features. Type HELP to list valid codes.' This keeps it low-profile for normal users while giving anyone with a reason to use it a clear next step.
   - _verifier adjusted medium->low: Confirmed: AccessCodeBox ToolTip at 2837 is exactly 'If you don't know what this is for, you don't need it.' and is the box's only tooltip. The HELP/CODES catalog (TestCodeCatalog, surfaced via CommitAccessCode 8543-8552) exists but the tooltip never points to it. It is a real (mild) copy/onboarding gap for testers/support-directed users, and the proposed neutral+actionable reword ('...Type HELP to list valid codes') is a clear improvement. Downgrading from medium to low: this is a single secondary tooltip on an intentionally low-profile power-user control, so impact is small; the 'dismissive/condescending' characterization is somewhat subjective._
 
-- [ ] **🟡 LOW / poor-copy** Self-test tooltip describes 'G HUB' as something the plugin checks for Trueforce, conflicting with terminology rules
+- [x] **🟡 LOW / poor-copy** Self-test tooltip describes 'G HUB' as something the plugin checks for Trueforce, conflicting with terminology rules
   - **Problem:** The Run self-test tooltip lists 'G HUB' among the things it checks alongside FFB pass-through and Trueforce-adjacent items. Per the project's own terminology discipline, G HUB never carries or synthesizes Trueforce, and listing it in a Trueforce-feature health check invites the wrong mental model that G HUB is part of the Trueforce path. The self-test result text also uses 'G HUB' (SelfTest_Click).
   - **Evidence:** SettingsControl.xaml:2661 ToolTip 'Checks USBPcap, G HUB, wheel, stream, FFB pass-through and telemetry, then sends a short test buzz...'. The self-test buzz line below it (SettingsControl.xaml:2661) and FFB pass-through copy are otherwise careful; G HUB here is the odd one out.
   - **Fix:** If the check is really 'is G HUB running and possibly holding the wheel', say that explicitly (e.g. 'checks whether G HUB is open and may be blocking the wheel'). Otherwise drop G HUB from the list so it isn't implied to be a Trueforce source.
 
-- [ ] **🟡 LOW / layout** Forwarder help text is a 9-line numbered wall of instructions crammed inside a checkbox's help block
+- [x] **🟡 LOW / layout** Forwarder help text is a 9-line numbered wall of instructions crammed inside a checkbox's help block
   - **Problem:** The 'Also forward to SimHub' option packs a 3-step numbered procedure plus prose into a single HelpText TextBlock using literal &#10; newlines, embedded inside the expander. It reads as a wall of text for what is an optional, advanced relay setting. The numbered steps reference navigating SimHub's Home/Game config, which is a lot to parse inline and easy to lose your place in.
   - **Evidence:** SettingsControl.xaml:2373-2374 single TextBlock Text contains '...keeps working too. The setup above already points Forza at this plugin; this just adds the relay to SimHub.&#10;1. In SimHub, click the Home button... &#10;2. Enable this box... &#10;3. Drive for a moment...' (three steps jammed into one block).
   - **Fix:** Split the one-line intro from the numbered steps, render the steps as separate TextBlocks (or move the step-by-step into the existing 'Not receiving packets?' style collapsible) so the option's primary description stays short and the procedure is opt-in to read.
@@ -131,7 +147,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml.cs:8485 '"Trueforce For All"', :8548 '"Trueforce For All: test codes"', :4441 '"Trueforce: Logs exported"', :4544 '"Trueforce"', :12078 '"Trueforce"', :10367 '"Trueforce For All"'; UsbDevicePickerWindow.cs:405 '"Trueforce"'.
   - **Fix:** Pick one product name for dialog titles (the user goes by the full 'Trueforce For All' branding elsewhere) and use it consistently, with the colon-subtitle form only where a specific result is being named ('Trueforce For All: logs exported').
 
-- [ ] **🟡 LOW / accessibility** Device picker selection highlight relies on a hardcoded amber/black color pair with no other selection cue
+- [x] **🟡 LOW / accessibility** Device picker selection highlight relies on a hardcoded amber/black color pair with no other selection cue
   - **Problem:** In the manual USB device picker, the selected row is signaled only by a color swap (amber background #FFB300, near-black text #1A1A1A). There is no bold, checkmark, or other non-color indicator, and the colors are hardcoded for the dark theme. For a low-vision or color-deficient user this is a color-only signal of which device is about to be applied (a consequential choice that restarts the FFB tap).
   - **Evidence:** UsbDevicePickerWindow.cs:245-248 selTrigger sets only BackgroundProperty '#FFB300' and ForegroundProperty '#1A1A1A' on IsSelected; no weight/glyph change. The 'ACTIVE'/'matches HID wheel' Notes column (UsbDevicePickerWindow.cs:377-382) helps identify the wheel but is separate from the selection cue.
   - **Fix:** Add a non-color selection indicator (e.g. FontWeight Bold on the selected row, or a leading marker column) in addition to the amber highlight, so the current selection is distinguishable without relying on color alone.
@@ -145,7 +161,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Account tab + sign-in  `account`
 
-- [ ] **🟠 MED / flow** Sign-in modal forces an extra value-prop step before the user can do anything
+- [x] **🟠 MED / flow** Sign-in modal forces an extra value-prop step before the user can do anything
   - **Problem:** The sign-in modal opens on a 'preview' step (Stage 0) whose only action is a 'Continue' button that just advances to the email field. The same value-prop sentence is then repeated on the email step. For a returning user who already knows what sign-in does, this is a forced extra click and a forced extra modal screen with no input on it. The information ('share presets, vote, manage uploads, 6-digit code, no password') is identical to the email-step subtitle, so the preview adds a click without adding information.
   - **Evidence:** SignInWindow.cs:63-98 ShowPreviewStep(): "Sign in to share your presets, vote, and manage your uploads. We email a 6-digit code (no password)." with a "Continue" button whose handler is `continueBtn.Click += (s, e) => ShowEmailStep();`; the email step (line 113-118) then repeats "We'll email a 6-digit code. No password to remember. Signing in lets you use community features."
   - **Fix:** Drop the preview step and open directly on the email entry step. Keep the one-line value prop as the email step's subtitle (already present). If a preview is desired for first-timers, gate it to first run only, or fold the value prop into the email step so there is no extra click.
@@ -155,7 +171,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml.cs:6587-6592 AccountAuth_Click: `MessageBox.Show(... "Sign out of your community account?", "Sign out", MessageBoxButton.YesNo, MessageBoxImage.Question)`; duplicated in AccountChip_Click at SettingsControl.xaml.cs:6522-6525 with the same copy.
   - **Fix:** Sign out immediately without a confirmation (it is reversible), or if a guard is wanted, replace the Yes/No question with a clear verb-labeled prompt. Given the user can re-sign-in in seconds, removing the confirmation entirely is the better flow. Factor the shared logic so the two call sites stay consistent.
 
-- [ ] **🟠 MED / discoverability** Active sessions, data export, and account deletion are buried in a collapsed expander with no hint
+- [x] **🟠 MED / discoverability** Active sessions, data export, and account deletion are buried in a collapsed expander with no hint
   - **Problem:** The 'Active sessions' card (with per-device revoke and 'Sign out everywhere else'), 'Export my data', and 'Delete account' all live inside the 'Account details' expander, which is collapsed by default. A user who wants to revoke a session on a lost machine, export their data, or delete their account has no on-screen cue that those controls exist; they have to guess that 'Account details' hides security and data controls. Session management and account deletion are exactly the things a worried user goes looking for and can't find.
   - **Evidence:** SettingsControl.xaml:2940 `<Expander x:Name="AccountDetailsExpander" Header="Account details" IsExpanded="False" ...>` wrapping the sessions box (2956), the danger zone with Export/Delete (2982-2992). The collapsed header text is just "Account details" with no sub-label.
   - **Fix:** Either expand the section by default when signed in, or rename the header to signal contents (e.g. 'Sessions, data, and account deletion') and add a one-line summary under it. At minimum surface 'Active sessions' as its own visible section since session revoke is a security action users actively seek.
@@ -175,7 +191,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml.cs:7285-7287 `MessageBox.Show(... "Saved to:\n" + dlg.FileName, "Export my data", MessageBoxButton.OK, MessageBoxImage.Information);` after the SaveFileDialog already picked the path. Similarly AccountChangeEmail_Click:6887 'That's already your email.' modal and AccountDelete_Click:7352 'Account deleted.' modal.
   - **Fix:** Replace the export-success popup with an inline confirmation near the Export button (e.g. a small 'Saved.' label with an 'Open folder' link). Keep modals only where the user must acknowledge consequences (delete result is arguably fine; export success is not).
 
-- [ ] **🟡 LOW / poor-copy** Change-email and delete-account reuse a generic two-line dialog with a confusing unused 'Notes' field
+- [x] **🟡 LOW / poor-copy** Change-email and delete-account reuse a generic two-line dialog with a confusing unused 'Notes' field
   - **Problem:** The Change email and Delete account flows reuse TwoLineEditWindow and add a second 'Notes' field labeled '(not sent anywhere)' / '(optional, not sent anywhere)'. The notes are genuinely never used or stored, so presenting a labeled input the app silently discards is confusing: a user reasonably expects a labeled field to do something. It reads like leftover scaffolding from a generic dialog.
   - **Evidence:** SettingsControl.xaml.cs:6868-6869 Change email: `line2Label: "Notes (not sent anywhere)"`; SettingsControl.xaml.cs:6308-6309 [delete] `line2Label: "Notes (optional, not sent anywhere)"`. Neither dlg.Line2Result is read anywhere in the handlers.
   - **Fix:** Use a single-line input dialog for these flows so there is no orphan Notes field, or drop the line2 field entirely. If TwoLineEditWindow must be reused, support a one-line mode rather than showing an input that does nothing.
@@ -185,12 +201,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SignInWindow.cs:261-267 `new Button { Content = "Send a new code", ... Background = Brushes.Transparent, BorderBrush = Brushes.Transparent, Foreground = InfoFg, FontSize = 11, Cursor = Cursors.Hand }` placed inline after a MutedFg 'Didn't get it?' TextBlock.
   - **Fix:** Give the resend link an underline (TextDecorations) or a subtle border so it reads as actionable without relying on color, and ensure it shows a visible focus state for keyboard users.
 
-- [ ] **🟡 LOW / consistency** Inconsistent confirmation dialog button styles across account destructive/session actions
+- [x] **🟡 LOW / consistency** Inconsistent confirmation dialog button styles across account destructive/session actions
   - **Problem:** Closely-related account confirmations use different button conventions: revoke-session and sign-out-others use OK/Cancel, while sign-out and delete-account use Yes/No. Within the same Account surface the user sees three different affirmative button labels (OK, Yes, type-DELETE) for similar 'confirm this account action' prompts, which is inconsistent and slightly raises the read-cost of each prompt.
   - **Evidence:** SettingsControl.xaml.cs:7196 revoke uses `MessageBoxButton.OKCancel`; 7225 sign-out-others uses `MessageBoxButton.OKCancel`; 6590 sign-out uses `MessageBoxButton.YesNo`; 7300 delete uses `MessageBoxButton.YesNo`.
   - **Fix:** Standardize the confirmation pattern across account actions. Prefer explicit verb-labeled buttons (e.g. 'Revoke'/'Cancel', 'Sign out'/'Cancel') via a small shared confirm helper rather than mixing OK/Cancel and Yes/No with question icons.
 
-- [ ] **🟡 LOW / poor-copy** Verify-step instruction says 'Paste it below' but the code can also be typed
+- [x] **🟡 LOW / poor-copy** Verify-step instruction says 'Paste it below' but the code can also be typed
   - **Problem:** The code-entry step tells the user to 'Paste it below', which under-describes the field (most users type a 6-digit code read from email rather than paste it). It is a minor mismatch between copy and the actual interaction, and the numeric-only filter already supports typing.
   - **Evidence:** SignInWindow.cs:211 `Text = "We sent a 6-digit code to " + email + ". Paste it below."` while the input accepts typed digits via the PreviewTextInput digit filter (lines 230-233).
   - **Fix:** Change to 'Enter the code below.' so the instruction covers both typing and pasting.
@@ -204,32 +220,32 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Support us tab  `support`
 
-- [ ] **🟠 MED / feedback** "Opening X in your browser…" status is set but never cleared
+- [x] **🟠 MED / feedback** "Opening X in your browser…" status is set but never cleared
   - **Problem:** When a user clicks Support on Patreon / Tip on Ko-fi / PayPal, SupportOpenStatus is set to "Opening X in your browser…" but is only cleared in the catch (error) branch. On the normal success path the green status text stays on screen forever (and survives switching tabs and coming back). It also reads as if a browser is still opening long after it already did, and if the user then clicks a different one of the three buttons the prior message is replaced but never naturally resolves to a neutral state.
   - **Evidence:** SettingsControl.xaml.cs:11285 `if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening Patreon in your browser…";` (same at :11300 Ko-fi, :11318 PayPal). Cleared only on error at :11290/:11308/:11323; no clear on success.
   - **Fix:** Either drop the persistent status entirely (the browser opening is its own feedback) or auto-clear it after a few seconds with a DispatcherTimer, e.g. set "Opening Patreon…" then clear to "" after ~3s. Mirror the pattern you'd want for the share status too.
 
-- [ ] **🟠 MED / error-handling** Supporters wall can't tell 'no supporters' from 'failed to load' and shows the wrong empty state
+- [x] **🟠 MED / error-handling** Supporters wall can't tell 'no supporters' from 'failed to load' and shows the wrong empty state
   - **Problem:** RefreshSupportersWallAsync catches any exception into rows=null and treats null exactly like an empty list, showing "Be the first to support Trueforce For All." So a network failure, an unconfigured backend, or an untrusted-URL rejection all render as 'nobody has pledged yet'. That actively misleads (it tells real supporters they don't exist) and offers no retry path; a transient outage looks like the wall is empty.
   - **Evidence:** SettingsControl.xaml.cs:5916 `try { rows = await _plugin.GetSupportersAsync(...); } catch { rows = null; }` then :5921 `if (rows == null || rows.Count == 0)` -> :5926 `"Be the first to support Trueforce For All."`. GetSupportersAsync also returns an empty list on every failure path (SupportersClient.cs:49,69,84), so the UI never learns it was an error.
   - **Fix:** Distinguish failure from genuinely-empty: have GetSupportersAsync signal failure (e.g. return null on error vs empty list on success) and in the UI show "Couldn't load supporters. Check your connection." with a retry, reserving "Be the first to support..." for a real empty roster.
 
-- [ ] **🟡 LOW / consistency** Error dialog title inconsistent: "Trueforce" vs "Trueforce For All"
+- [x] **🟡 LOW / consistency** Error dialog title inconsistent: "Trueforce" vs "Trueforce For All"
   - **Problem:** The three browser-open error dialogs on the Support tab use two different window titles. Ko-fi's uses "Trueforce" while Patreon's and PayPal's use "Trueforce For All". Beyond inconsistency, a bare "Trueforce" title violates the terminology rule that Trueforce is Logitech's protocol/wheel category, not this product's name.
   - **Evidence:** SettingsControl.xaml.cs:11310 `"Trueforce", MessageBoxButton.OK, MessageBoxImage.Error);` (Donate_Click) vs :11292 and :11325 which use `"Trueforce For All"`.
   - **Fix:** Change the Ko-fi error dialog title at :11310 to "Trueforce For All" to match the other two.
 
-- [ ] **🟡 LOW / error-handling** Raw exception text shown in browser-open failure dialogs
+- [x] **🟡 LOW / error-handling** Raw exception text shown in browser-open failure dialogs
   - **Problem:** If launching the browser fails, the user sees a MessageBox containing the raw `ex.Message`. For a 'couldn't open browser' case that string is rarely actionable to a sim racer (e.g. a Win32 shell-exec error) and the dialog gives no next step beyond showing the URL.
   - **Evidence:** SettingsControl.xaml.cs:11291 `MessageBox.Show($"Couldn't open browser:\n{ex.Message}\n\nURL: {PatreonUrl}", ...)` (and identical at :11309, :11324).
   - **Fix:** Drop the raw `{ex.Message}` and keep the actionable part: "Couldn't open your browser. Copy this link instead:" followed by the URL (which is already shown). Optionally copy the URL to the clipboard automatically and confirm inline rather than via a modal.
 
-- [ ] **🟡 LOW / feedback** "Link copied." share confirmation never resets
+- [x] **🟡 LOW / feedback** "Link copied." share confirmation never resets
   - **Problem:** After Copy share link, SupportShareStatus shows "Link copied." permanently. It stays visible indefinitely and on the next visit to the tab, so the confirmation stops meaning 'you just copied it' and becomes ambient noise. The failure fallback ("Couldn't copy. Link: ...") has the same permanence issue.
   - **Evidence:** SettingsControl.xaml.cs:11336 `if (SupportShareStatus != null) SupportShareStatus.Text = "Link copied.";` with no later reset; fallback at :11340.
   - **Fix:** Auto-clear the share status after ~3s via a DispatcherTimer (same helper as supportus-01), so the green confirmation reads as a transient toast.
 
-- [ ] **🟡 LOW / consistency** Inline status uses literal three dots in one place, proper ellipsis elsewhere
+- [x] **🟡 LOW / consistency** Inline status uses literal three dots in one place, proper ellipsis elsewhere
   - **Problem:** The Patreon link flow status uses a literal "..." three-period string, while the Support tab open-status and the supporters-wall loading text use the single-character ellipsis "…". Mixed ellipsis styling across the same account/support area is a minor consistency nit a careful user can notice.
   - **Evidence:** SettingsControl.xaml.cs:6321 `SetPatreonStatus("Opening Patreon in your browser...");` (three dots) vs :11285 `"Opening Patreon in your browser…"` and SettingsControl.xaml:3055 `Text="Loading supporters…"` (single-char ellipsis).
   - **Fix:** Standardize on one form. The codebase already favors the "…" character in the XAML; change :6321 (and any sibling SetPatreonStatus '...' strings) to use "…".
@@ -244,12 +260,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Preset Manager layout  `preset-layout`
 
-- [ ] **🟠 MED / discoverability** Updates chip has no visible label text, only a tooltip
+- [x] **🟠 MED / discoverability** Updates chip has no visible label text, only a tooltip
   - **Problem:** The persistent gold UpdatesChip surfacing pending community-preset updates has no Content set in the XAML (no label, no count, no icon defined inline). Its only affordance is a ToolTip, which is invisible until hover. A user glancing at the tab can't tell what the gold pill is or that there are N pending updates without hovering, undermining the whole point of a persistent badge.
   - **Evidence:** PresetManagerControl.xaml:198-206 `<Button x:Name="UpdatesChip" ... Background="#E5C04A" ... ToolTip="One or more community presets you downloaded have a newer version. Click to review them."/>` (no Content / child element)
   - **Fix:** Give the chip a visible label with the count, e.g. "3 preset updates" or an icon + count, set from code-behind alongside the count. The tooltip can keep the longer explanation.
 
-- [ ] **🟠 MED / poor-copy** Custom-engine empty state describes deletion fallback as "fall back to silence"
+- [x] **🟠 MED / poor-copy** Custom-engine empty state describes deletion fallback as "fall back to silence"
   - **Problem:** The Custom engines help text says presets that referenced a deleted engine "fall back to silence until repicked." "Fall back to silence" is ambiguous (does the whole effect go silent? the car? the engine pulse only?) and reads as a scary side effect surfaced at the top of the panel rather than where the deletion actually happens. A user reading this before deleting anything may worry it breaks their setup.
   - **Evidence:** PresetManagerControl.xaml:453-454 `Text="Your saved custom engines. Edit or delete them here; presets that referenced a deleted engine fall back to silence until repicked. ..."`
   - **Fix:** Reword to name the affected effect and the recovery plainly, e.g. "If you delete an engine that a preset uses, that preset's engine pulse turns off until you pick a new engine for it." Surface the warning in the delete-confirmation flow, not as standing help copy.
@@ -259,19 +275,19 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** PresetManagerControl.xaml:383-403 (`<StackPanel DockPanel.Dock="Right" Orientation="Horizontal">` with 8 fixed-width RowButtons) and the same pattern at :296-310
   - **Fix:** Wrap the action buttons in a WrapPanel (or a right-aligned WrapPanel) so they flow to a second row when width is constrained, or collapse less-frequent actions (Rename car, Set as built-in) into an overflow "More" menu. At minimum verify the row fits at SimHub's minimum panel width.
 
-- [ ] **🟡 LOW / layout** Car "Default" column Width (70) is smaller than its MinWidth (95)
+- [x] **🟡 LOW / layout** Car "Default" column Width (70) is smaller than its MinWidth (95)
   - **Problem:** The car list's Default column declares Width="70" but MinWidth="95". WPF will never honor the 70px width because the MinWidth floor is higher, so the column always renders at least 95px and the intended sizing is silently ignored. It signals the column sizing was set by guesswork and pushes the star-sized Car name column narrower than intended. Either the Width or the MinWidth is wrong, and the developer-intended 70px never takes effect.
   - **Evidence:** PresetManagerControl.xaml:435 `<DataGridTextColumn Header="Default"     Width="70"  MinWidth="95"  Binding="{Binding ActiveLabel}"/>`
   - **Fix:** Reconcile the two numbers: if 70px is the goal, lower MinWidth to <=70; if 95px is the real minimum, raise Width to 95 (or set Width="Auto"). The Default column only holds a star marker plus the word, so something like Width="60" MinWidth="60" is enough.
   - _verifier adjusted high->low: Evidence confirmed verbatim at line 435: Width=70, MinWidth=95. WPF honors MinWidth as a floor, so the column renders at >=95px and the 70 never takes effect; this is a genuine (if invisible) inconsistency that signals guesswork sizing. Real but cosmetic/dev-hygiene, not a user-visible defect: the column still renders, just wider than the 70 hint. Downgrading high->low. The proposed reconcile (Width=MinWidth=~60) is reasonable since the cell only holds a star + word._
 
-- [ ] **🟡 LOW / consistency** "Share" CTA uses a star glyph (★) that collides with the Default-marker star used in the grid
+- [x] **🟡 LOW / consistency** "Share" CTA uses a star glyph (★) that collides with the Default-marker star used in the grid
   - **Problem:** The Share buttons are labelled "★ Share" (Game/Car/Custom), while the same ★ glyph is documented as the marker in the car list's Default column ("the ★ in Default marks the one that loads for that car"). Using one symbol for two unrelated meanings (a primary call-to-action vs. "this is the active default") in the same view is confusing and dilutes the star's meaning.
   - **Evidence:** PresetManagerControl.xaml:305 `Content="★ Share"` and :367 help text `the ★ in Default marks the one that loads for that car`
   - **Fix:** Drop the star from the Share label (the gold fill already makes it the primary CTA) so the only ★ in the view is the Default marker. If a glyph is wanted on Share, use a non-conflicting one like an upload/share arrow.
   - _verifier adjusted medium->low: Confirmed: ★ Share at lines 305/398/465 and the Default-marker star referenced in help at 367. The double meaning is real, but the contexts are well separated (gold CTA button vs a grid cell marker) and the gold fill already carries the CTA. Minor polish, not a confusing collision in practice. Downgrading medium->low. The owner's no-em-dash/terminology memory shows copy is carefully curated, so this is a fair nit but low impact._
 
-- [ ] **🟡 LOW / discoverability** Refresh button is an unlabeled ↻ glyph; its tooltip is the only explanation
+- [x] **🟡 LOW / discoverability** Refresh button is an unlabeled ↻ glyph; its tooltip is the only explanation
   - **Problem:** The library refresh control is a 28x28 button whose only content is the ↻ character with Focusable="False". There is no text label and it is not keyboard-focusable, so the action (reload presets from disk) is discoverable only by hovering for the tooltip. Icon-only buttons without a label are a common discoverability and accessibility gap.
   - **Evidence:** PresetManagerControl.xaml:185-193 `<Button x:Name="RefreshLibraryBtn" ... Focusable="False" FocusVisualStyle="{x:Null}" ToolTip="Reload presets from disk..."> <TextBlock Text="&#x21BB;" .../>`
   - **Fix:** Keep the compact icon but add an AutomationProperties.Name ("Reload presets from disk") so screen readers announce it, and consider not suppressing focus so keyboard users can reach it. The tooltip text is already good.
@@ -293,7 +309,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** PresetManagerControl.xaml:389 `Content="Set as default"`, :299 `Content="Set default games…"`, :525 `Content="Set as defaults"`
   - **Fix:** Standardize on one verb pattern, e.g. "Set as default…" (singular) everywhere a single binding is set, and reserve plural only where it genuinely binds multiple (Packs). Align the Game button to match if it sets one preset's game bindings.
 
-- [ ] **🟡 LOW / layout** Help text uses Opacity 0.6 plus FontSize 11, risking low contrast / readability
+- [x] **🟡 LOW / layout** Help text uses Opacity 0.6 plus FontSize 11, risking low contrast / readability
   - **Problem:** The shared HelpText style sets FontSize 11 and Opacity 0.6. On SimHub's dark theme, 11px text at 60% opacity is a faint grey that is hard to read, and several help blocks carry the load-bearing instructions for the whole panel (how to create presets, what Edit does). Opacity-based dimming also reduces effective contrast below comfortable levels.
   - **Evidence:** PresetManagerControl.xaml:10-14 `<Style x:Key="HelpText" ...> <Setter Property="FontSize" Value="11"/> <Setter Property="Opacity" Value="0.6"/>`
   - **Fix:** Use a fixed mid-grey Foreground (e.g. #FFB0B0B0, as the inline Filter labels already do) instead of Opacity 0.6, and consider 12px for the primary help line, so the guidance is legible against the dark background.
@@ -335,7 +351,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** PresetManagerControl.xaml.cs:745 `"Create pack failed: " + ex.Message`; line 2437 `"Share preset failed: " + ex.Message`; line 2698 `"Share pack failed: " + ex.Message`; line 2872 `"Share preset failed: " + ex.Message`; line 3305 `"Share custom engine failed: " + ex.Message`. The exception is already logged on the line above each (e.g. line 2435 `SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message)`).
   - **Fix:** Show a fixed, plain-language message ('Couldn't share that. Check your connection and try again; details are in the SimHub log.') and keep the ex.Message only in the log. Prefer an inline status label over a modal, matching the Community pane.
 
-- [ ] **🟠 MED / poor-copy** Sharing game presets, custom engines and packs is gated behind copy that calls it 'community car data'
+- [x] **🟠 MED / poor-copy** Sharing game presets, custom engines and packs is gated behind copy that calls it 'community car data'
   - **Problem:** The share/create gates for game presets, custom engines, and packs all tell the user to enable 'Use community car data', but none of those items are car data. A user trying to share a game preset or a custom engine reads an instruction that points at a setting whose name does not describe what they are sharing, which is confusing and looks like the wrong toggle.
   - **Evidence:** PresetManagerControl.xaml.cs:719 (Create pack) `"Turn on 'Use community car data' on the Account tab to share packs."`; line 2323 (game preset) `"Turn on 'Use community car data' ... to share presets."`; line 3224 (custom engine) `"Turn on 'Use community car data' ... to share custom engines."`; also tooltips at lines 2028 and 2224.
   - **Fix:** Either rename the underlying toggle to something kind-neutral (e.g. 'Use community features' / 'Connect to the community library') and update these strings to match, or have each gate reference the toggle by a neutral phrase rather than 'car data'. Keep the wording identical to whatever the Account-tab label actually reads.
@@ -355,7 +371,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** PresetManagerControl.xaml.cs:2519 `MessageBox.Show(... "No games seen yet. Launch a game once so SimHub registers it, then come back to bind a default preset.", "Set default for game", MessageBoxButton.OK, MessageBoxImage.Information)`.
   - **Fix:** Show this as an inline status line in the Games pane, or disable the Set-default button and put the same guidance in its tooltip, so the user is not interrupted by a modal.
 
-- [ ] **🟡 LOW / confirmation** Single-preset delete confirmation has no consequence beyond a name uses a generic Yes/No
+- [x] **🟡 LOW / confirmation** Single-preset delete confirmation has no consequence beyond a name uses a generic Yes/No
   - **Problem:** Deleting a single non-default user preset prompts 'Delete preset X?' with Yes/No buttons. When the preset is NOT a default of any game/car (the common case), there is no irreversible side effect being communicated, yet the user still gets a generic Yes/No whose verbs ('Yes'/'No') are less clear than action verbs. The confirm is defensible for deletes, but the button labels could be clearer and the no-consequence case is borderline needless friction.
   - **Evidence:** PresetManagerControl.xaml.cs:2467-2468 `string warning = ... $"Delete preset '{sel.Name}'?"; if (MessageBox.Show(... warning, "Delete preset", MessageBoxButton.YesNo, MessageBoxImage.Question) ...)`; car equivalent line 3099-3101.
   - **Fix:** Keep the confirm for deletes but use a custom dialog with explicit verb buttons (Delete / Cancel) via the existing TrueforceDialog/UpdateVsNewChooserWindow styling, rather than generic Yes/No, for consistency with the styled dialogs used elsewhere in this file.
@@ -374,12 +390,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Settings code-behind dialogs  `settings-dialogs`
 
-- [ ] **🔴 HIGH / consistency** 78 stock-Windows MessageBox alerts vs 14 themed dialogs in the same panel
+- [x] **🔴 HIGH / consistency** 78 stock-Windows MessageBox alerts vs 14 themed dialogs in the same panel
   - **Problem:** The plugin ships a dark-themed dialog (TrueforceDialog) explicitly built so 'confirms / info / warning prompts match the dark themed UI instead of rendering as stock Windows alerts.' Yet inside this one file there are 78 raw MessageBox.Show calls and only 14 TrueforceDialog.Show calls. A user clicking around the dark UI gets jarring light-grey native Windows alert boxes for most actions (saves, errors, sign-out, revoke, achievements, export/import) but themed dark dialogs for others (apply-preset, overwrite, remove-preset). Visually inconsistent and reads as two different apps stitched together.
   - **Evidence:** TrueforceDialog.cs:1-6 'Replacement for System.Windows.MessageBox across the plugin so confirms / info / warning prompts match the dark themed UI instead of rendering as stock Windows alerts.' vs SettingsControl.xaml.cs grep counts: 78x MessageBox.Show, 14x TrueforceDialog.Show. Example raw alert: line 6038 'MessageBox.Show(Window.GetWindow(this), "Sign in to see your achievements.", "Achievements", MessageBoxButton.OK, MessageBoxImage.Information);' sits right next to themed dialogs like line 3326 TrueforceDialog.Show(...).
   - **Fix:** Route the remaining MessageBox.Show calls through TrueforceDialog (map OK->Info/Warning/Error kind, YesNo->Confirm, destructive YesNo->Destructive). At minimum convert the high-visibility, frequently-hit ones (saves, sign-out, revoke, errors). It is a near mechanical swap since TrueforceDialog already returns bool? mapping Yes/OK->true.
 
-- [ ] **🟠 MED / unnecessary-dialog** Routine save success interrupts with an OK-to-dismiss popup
+- [x] **🟠 MED / unnecessary-dialog** Routine save success interrupts with an OK-to-dismiss popup
   - **Problem:** Every successful save throws a modal Information box the user must click OK to dismiss. Saving is the most common, fully expected, non-destructive action; a blocking 'Saved.' popup adds a click and a context break every single time. The file even has inline status labels (AuthorNameStatus, AccessCodeStatus, BackupStatusText) proving the inline-status pattern is already available and used elsewhere, so the modal is gratuitous here.
   - **Evidence:** SettingsControl.xaml.cs:9945 'MessageBox.Show($"Saved to game default preset '{ToBuiltinDisplay(activeP)}'.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Information);'; :9956 'MessageBox.Show("Saved your current tuning for this car.", ...)'; :9768 'MessageBox.Show(... "Saved as '{name}'." ...)'; :10071 'MessageBox.Show(... "Saved as '{newName}'..." ...)'. Contrast inline pattern at :8497 'AuthorNameStatus.Text = "Saved.";' and :5633 SetBackupStatus.
   - **Fix:** Replace these save-success modals with a transient inline status (a small 'Saved' label near the Save button that fades, or reuse the existing status TextBlock pattern). Reserve modals for failures only.
@@ -390,12 +406,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml.cs:10523 'MessageBox.Show(owner, $"Exported preset '{nm}' to:\n{dlg1.FileName}", ...)'; :10546 exported car preset; :10576 exported pack; :10366 'Backed up {count} file(s) ({bytes:N0} bytes) to:\n{dlg.FileName}'; :4440 'Exported logs to:\n{zipPath}...'; :7286 'Saved to:\n' + dlg.FileName.
   - **Fix:** Replace success modals with an inline status line ('Exported to <file>' with a clickable 'Show in folder' link), or keep only the Explorer reveal. If a modal must stay, make it a non-blocking toast.
 
-- [ ] **🟠 MED / consistency** Confirm dialogs mix OKCancel and YesNo for the same kind of decision
+- [x] **🟠 MED / consistency** Confirm dialogs mix OKCancel and YesNo for the same kind of decision
   - **Problem:** Yes/No-style confirmations are inconsistent across the panel: some destructive/important confirms use OK/Cancel buttons, others use Yes/No, with no rule. This makes the affirmative target unpredictable (sometimes 'OK' is the green-light, sometimes 'Yes'), and OK/Cancel is weaker copy than verb labels. The session controls use OKCancel while account-level destructive actions use YesNo.
   - **Evidence:** OKCancel: SettingsControl.xaml.cs:7196 revoke session 'MessageBoxButton.OKCancel'; :7225 sign out everywhere 'OKCancel'; :12094 USBPcap reinstall 'OKCancel'. YesNo: :6353 unlink Patreon 'YesNo'; :5686 unlink Discord 'YesNo'; :6525 sign out 'YesNo'; :7300 delete account 'YesNo'; :10391 restore 'YesNo'.
   - **Fix:** Pick one convention for confirmations (YesNo, or better, verb-labeled buttons) and apply it everywhere. TrueforceDialog already accepts okLabel/cancelLabel so confirms can read e.g. okLabel:'Sign out' cancelLabel:'Keep' instead of generic Yes/No.
 
-- [ ] **🟠 MED / confirmation** Vague Yes/No on destructive confirms where verb labels would be clearer
+- [x] **🟠 MED / confirmation** Vague Yes/No on destructive confirms where verb labels would be clearer
   - **Problem:** The most consequential confirmations (delete account, restore-replace-all, import-settings-replace-all) use generic Yes/No buttons. The owner's own TrueforceDialog supports custom button labels precisely so a destructive action can read 'Delete' / 'Keep' instead of an ambiguous 'Yes'. With Yes/No the user must read the whole paragraph to know which button is the dangerous one; a labeled affirmative ('Replace everything') is self-describing and the Destructive kind even paints it red.
   - **Evidence:** SettingsControl.xaml.cs:7300 delete account 'MessageBoxButton.YesNo'; :10391 'Restore will REPLACE all current TF4ALL settings...Continue?' YesNo; :10776 '...Importing replaces all current settings...Continue with this file?' YesNo. Capability unused: TrueforceDialog.cs:46-48 Show(..., string okLabel = null, string cancelLabel = null) and :27 'Destructive, // Yes / No; affirmative button painted red'.
   - **Fix:** Route these through TrueforceDialog with DialogKind.Destructive and explicit labels, e.g. okLabel:'Replace everything', cancelLabel:'Cancel' (restore/import) and okLabel:'Delete account', cancelLabel:'Keep account' (delete).
@@ -406,7 +422,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Fix:** Show a plain-language, action-oriented message ('Couldn't save the backup. Make sure the file isn't open and you have permission to that folder.') and log ex.Message to SimHub.Logging for diagnosis. The codebase already logs-and-summarizes elsewhere (e.g. :7214), so reuse that split: friendly user copy + full detail in the log.
   - _verifier adjusted high->medium: All cited raw-ex.Message sites confirmed: 4543 browser, 10371 backup, 10407 restore, 10528/10551/10581 export, 6897 email, 7266 export-my-data, 7329 delete, 2410/2576 share, 9182 self-test. Real issue: raw IO/HTTP exception text is unhelpful to a wheel user. Downgrading high->medium for two reasons: (1) several of these already log AND show (e.g. 2407 logs before 2410, 2573 before 2576), so the diagnostic split the finding asks for is partly present; (2) line 9182 (backup self-test) is a dev-mode-only diagnostic button where surfacing raw ex.Message is acceptable and arguably desirable, so it should be excluded from the fix. The user-facing failure paths (backup/restore/export) are the ones worth rewording._
 
-- [ ] **🟠 MED / feedback** Two account actions fail completely silently (log only, no user feedback)
+- [x] **🟠 MED / feedback** Two account actions fail completely silently (log only, no user feedback)
   - **Problem:** Revoke-session and sign-out-others swallow exceptions to the log with no user-visible feedback. The button was set to 'Revoking...'/'Signing out...' and is never restored on the exception path, and there is no error dialog, so on a thrown error the button looks stuck mid-action forever and the user has no idea it failed. The non-exception failure paths do show a message, but the catch block does not.
   - **Evidence:** SettingsControl.xaml.cs:7212-7215 'catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Revoke session failed: " + ex.Message); }' with the button left as 'Revoking...' from :7199; same pattern :7241-7244 for sign-out-others, button left 'Signing out...' from :7228.
   - **Fix:** In both catch blocks, restore the button label/enabled state and surface a short inline or dialog message ('Couldn't revoke that session. Check your connection and try again.'), matching the already-present non-exception failure copy at :7208 / :7237.
@@ -416,7 +432,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** SettingsControl.xaml.cs:4283-4291 'MessageBox.Show("Include your SimHub logs with this bug report?\n\nClick Yes to first export your logs to a zip on your Desktop. After the GitHub form opens, drag the zip into the issue body to attach it. Including logs makes bugs MUCH easier to diagnose, especially anything wheel- or USBPcap-related.\n\nClick No to open the form without exporting logs.", "Trueforce: Include logs?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);'.
   - **Fix:** Shorten the prompt to the decision ('Attach your SimHub logs? They make bugs much easier to diagnose.'). Move the 'drag the zip into the issue' instruction to the export-success step (line 4440) which already fires right before/after the form opens, so it appears when it's actually relevant.
 
-- [ ] **🟡 LOW / flow** Welcome -> Sign-in -> result is a forced chain of sequential modals
+- [x] **🟡 LOW / flow** Welcome -> Sign-in -> result is a forced chain of sequential modals
   - **Problem:** The networked-welcome flow stacks modals: WelcomeWindow (modal) -> SignInWindow (modal) -> and if the user cancels sign-in, yet another modal ('We'll remind you about community features later.'). That third popup is an info-only OK-dismiss after the user already declined; it interrupts to tell them nothing they need to act on. Two-to-three blocking dialogs in a row to decline an optional feature is heavy.
   - **Evidence:** SettingsControl.xaml.cs:7632 'bool? ok = welcome.ShowDialog();' then :7661 'bool? signedIn = signIn.ShowDialog();' then on cancel :7718-7721 'MessageBox.Show(owner, "We'll remind you about community features later. Sign in anytime from the Account tab.", "Community features", MessageBoxButton.OK, MessageBoxImage.Information);'.
   - **Fix:** Drop the post-cancel info modal; the decline is self-evident from closing the dialog. If reassurance is wanted, surface it as a one-time inline note on the Account tab rather than a blocking popup.
@@ -427,7 +443,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** 'Trueforce': SettingsControl.xaml.cs:9945, :9772, :3480, :4450, :12078. 'Trueforce For All': :10367, :10577, :10581, :8485, :8856. Contextual: :6880 'Change email', :7196 'Revoke session'.
   - **Fix:** Standardize the product/window title (prefer the contextual action title where one exists, e.g. 'Export', 'Restore'; otherwise a single consistent product string). TrueforceDialog already defaults to 'Trueforce For All' (TrueforceDialog.cs:65), so migrating to it (finding 01) also fixes this.
 
-- [ ] **🟡 LOW / poor-copy** Bare 'Save failed.' error gives no next step
+- [x] **🟡 LOW / poor-copy** Bare 'Save failed.' error gives no next step
   - **Problem:** Several save-failure dialogs say only 'Save failed.' with no cause and no guidance on what to do. The user is left stuck with no path forward (retry? check disk? check log?). One variant does point at the log, showing the better copy exists but isn't applied consistently.
   - **Evidence:** SettingsControl.xaml.cs:975 'MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);' (also :1006, :901, :913, :930, :942). Better variant at :9708 'MessageBox.Show("Save failed (see SimHub log for details).", "Trueforce");'.
   - **Fix:** Standardize on actionable copy: 'Couldn't save. See the SimHub log for details, then try again.' Apply the same string to all the bare 'Save failed.' sites.
@@ -472,7 +488,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** PresetShareWindow.cs:666 `statusText.Text = ... : _plugin.DescribeLastUploadError();` and TrueforcePlugin.cs:8807 `return string.IsNullOrEmpty(detail) ? prefix : prefix + " (" + Trim(detail) + ")";` (Trim only caps length at 120 chars, does not sanitize).
   - **Fix:** Keep the raw detail in the log only; show users the friendly prefix plus a concrete next step (e.g. for ValidationFailed: 'A preset with this name may already exist. Rename and try again.'). Do not surface raw constraint/network strings inline.
 
-- [ ] **🟡 LOW / consistency** Same validation rule worded two different ways across the edit dialogs
+- [x] **🟡 LOW / consistency** Same validation rule worded two different ways across the edit dialogs
   - **Problem:** The two Save handlers in EditCommunityPresetWindow validate the identical 2-96 character name rule but phrase the warning differently: 'Name must be 2-96 characters.' in the car ctor vs 'Name must be 2 to 96 characters.' in the game ctor. Two strings for one rule in one file is an avoidable inconsistency.
   - **Evidence:** EditCommunityPresetWindow.cs:175 `MessageBox.Show(this, "Name must be 2-96 characters.", ...)` vs EditCommunityPresetWindow.cs:456 `MessageBox.Show(this, "Name must be 2 to 96 characters.", ...)`
   - **Fix:** Use one shared constant/message for the name-length rule across both ctors.
@@ -482,17 +498,17 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** PresetPreviewWindow.cs:87 `Text = $"Score {score} (▲ {summary?.Upvotes ?? 0} / ▼ {summary?.Downvotes ?? 0})   |   {summary?.Downloads ?? 0} downloads",` (rendered as 'Score N (▲ U / ▼ D)').
   - **Fix:** Label the counts in words ('Score 3, 5 up / 2 down, 40 downloads') or reuse the colored signed-score style from the popover so up/down is unambiguous and font-independent.
 
-- [ ] **🟡 LOW / feedback** Section picker treats 'Apply with nothing checked' as a silent cancel
+- [x] **🟡 LOW / feedback** Section picker treats 'Apply with nothing checked' as a silent cancel
   - **Problem:** In the download section picker, all sections start checked. If a user unchecks everything and clicks Apply expecting something to happen, the dialog silently closes with DialogResult=false and nothing is imported, with no message telling them why. The action and the no-op look identical from the outside.
   - **Evidence:** CommunitySectionPickerWindow.cs:123-127 `if (ChosenSections.Count == 0) { DialogResult = false;  // nothing checked; treat as cancel\n Close(); return; }`
   - **Fix:** Disable the Apply button while zero sections are checked (mirroring the empty-list disable already done at line 115), so the no-op is impossible rather than silent. Optionally show 'Pick at least one section to import.'
 
-- [ ] **🟡 LOW / poor-copy** Set-as-default tooltips expose internal model names (CarDefaults)
+- [x] **🟡 LOW / poor-copy** Set-as-default tooltips expose internal model names (CarDefaults)
   - **Problem:** The import preview's Set-as-default tooltip says 'Bind as the default preset for this car (CarDefaults).' The parenthetical 'CarDefaults' is an internal data-model identifier that means nothing to a user and adds no information over the plain-English clause before it.
   - **Evidence:** ImportPreviewWindow.cs:405 `ToolTip = "Bind as the default preset for this car (CarDefaults).",`
   - **Fix:** Drop the internal name: 'Make this the default preset for this car.'
 
-- [ ] **🟡 LOW / discoverability** Import preview group toggles are underlined text links with tiny hit targets
+- [x] **🟡 LOW / discoverability** Import preview group toggles are underlined text links with tiny hit targets
   - **Problem:** The 'Include all / none' and 'Default all / none' bulk toggles are 11px underlined TextBlocks driven by MouseLeftButtonUp. They have no keyboard path, no focus visual, and a small click target, so a keyboard user cannot reach them and a mouse user may not realize 'all'/'none' are clickable rather than labels. These are the only fast way to flip a whole group.
   - **Evidence:** ImportPreviewWindow.cs:329-342 `MakeLink` builds `new TextBlock { ... FontSize = 11, Cursor = ...Hand, TextDecorations = TextDecorations.Underline }; tb.MouseLeftButtonUp += (s, e) => onClick();` used at lines 276/282/292/298.
   - **Fix:** Use real Buttons styled as links (focusable, keyboard-activatable, with a visible focus rect) and give them a slightly larger padded hit area.
@@ -506,12 +522,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Pack management & update windows  `packs`
 
-- [ ] **🟠 MED / confirmation** Destructive 'Remove pack' confirm uses vague OK/Cancel instead of verb labels
+- [x] **🟠 MED / confirmation** Destructive 'Remove pack' confirm uses vague OK/Cancel instead of verb labels
   - **Problem:** The only guard before deleting a pack and every preset it installed is a MessageBox with OK/Cancel buttons. 'OK' is an ambiguous label for a destructive, irreversible delete: a user skimming the dialog cannot tell from the buttons alone which one deletes. Verb-labeled buttons (Delete / Keep) are far clearer for destructive actions, and the rest of the app already uses Yes/No elsewhere for a similar destructive prompt (settings-backup import), so OK/Cancel here is also inconsistent.
   - **Evidence:** PackManagerWindow.cs:393-402 `MessageBox.Show(this, $"Remove {packLabel} and delete every preset it installed ... This cannot be undone.", "Remove pack", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);`
   - **Fix:** Use a custom dialog (the app already has TrueforceDialog) with explicit verb buttons: 'Delete pack' (danger-styled) and 'Cancel'. If staying on MessageBox, at minimum keep MessageBoxResult.Cancel as default (already done) but switch the body to name the action on the affirmative path. Align the button style with the settings-backup confirm so destructive prompts are consistent app-wide.
 
-- [ ] **🟠 MED / confirmation** 'Set pack as defaults' silently overwrites existing defaults with no confirm and no undo
+- [x] **🟠 MED / confirmation** 'Set pack as defaults' silently overwrites existing defaults with no confirm and no undo
   - **Problem:** Clicking 'Set pack as defaults' immediately walks every entry and overwrites the user's existing game/car default bindings. The tooltip even admits 'Overwrites existing defaults silently.' There is no confirmation and no undo; a user who clicks it to inspect what it does will have clobbered their carefully chosen defaults and only learns the count after the fact from the status toast ('overwrote N existing'). Overwriting another bundle's defaults is not trivially reversible from this window.
   - **Evidence:** PackManagerWindow.cs:158 ToolTip `"...Overwrites existing defaults silently."`; PackManagerWindow.cs:368-377 `OnSetDefaultsClicked` calls `_setAsDefaults(p)` with no prior confirmation.
   - **Fix:** When the operation would overwrite one or more existing defaults, show a brief confirm first ('This will replace N existing default(s). Apply pack defaults?') with Apply/Cancel. Alternatively show the would-overwrite count in the details panel before the click so the consequence is visible up front.
@@ -526,7 +542,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** PackManagerWindow.cs:132-138 `_statusText = new TextBlock { ... TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis }`; summary built in FormatSetDefaultsSummary (PackManagerWindow.cs:419-429).
   - **Fix:** Allow the status line to wrap (TextWrapping.Wrap) and give the row Auto height, or put the full summary in the details panel. The comment says NoWrap is to keep the button row from moving; a fixed 2-line MaxHeight with wrap achieves both.
 
-- [ ] **🟡 LOW / consistency** Two different location names for the same Account area in adjacent error messages
+- [x] **🟡 LOW / consistency** Two different location names for the same Account area in adjacent error messages
   - **Problem:** The two pre-flight gate messages in the upload handler point the user to different-sounding places for related account setup: one says 'on the Account tab', the next says '(Settings -> Account)'. A user reading both back to back cannot tell whether these are one place or two, which undercuts the guidance.
   - **Evidence:** CreatePackWindow.cs:200 `"Turn on 'Use community car data' on the Account tab first."` and CreatePackWindow.cs:206 `"Sign in first (Settings -> Account)."`
   - **Fix:** Use one consistent reference. Since the tab is named 'Account', standardize on 'the Account tab' in both messages (drop the 'Settings ->' framing), so both gates point to the same visible label.
@@ -536,12 +552,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** CreatePackWindow.cs:366 `MakeIneligibleRow(... + "  (community item, not redistributable)")` (and the car/engine variants at lines 417, 464).
   - **Fix:** Lengthen the tag to convey the cause, e.g. '(its author did not allow re-bundling)'. Optionally add one line of muted helper text at the top of the section explaining that only your own items and community items whose author allowed re-bundling can be included.
 
-- [ ] **🟡 LOW / poor-copy** Version delta rendered as ASCII 'v3 -> v5' is hard to scan
+- [x] **🟡 LOW / poor-copy** Version delta rendered as ASCII 'v3 -> v5' is hard to scan
   - **Problem:** Each update row shows the version change as an ASCII arrow string crammed into a metadata line alongside author, game, and car id separated by pipes. 'v3 -> v5' is functional but reads as code, and the dense 'by X | Game CarId | v3 -> v5' line is busy. This is a minor readability/polish issue on an otherwise clear dialog.
   - **Evidence:** PresetUpdatesAvailableWindow.cs:164 `string ver = "v" + local.SeenContentVersion + " -> v" + server.ContentVersion;` rendered into PresetUpdatesAvailableWindow.cs:166 `Text = by + "   |   " + server.Game + "   " + server.CarId + "   |   " + ver`
   - **Fix:** Use a real arrow glyph or the word 'to' ('v3 to v5') and consider giving the version delta its own subtle emphasis (e.g. a small colored chip) so the user can see at a glance how far behind they are.
 
-- [ ] **🟡 LOW / poor-copy** Export picker header always says 'bundle into the pack' even when exporting a single preset
+- [x] **🟡 LOW / poor-copy** Export picker header always says 'bundle into the pack' even when exporting a single preset
   - **Problem:** The picker is shown for every export, but the export becomes a single loose .tfpreset.json/.tfcar.json file when exactly one item is picked (no pack is created). The static header always says 'Pick the presets to bundle into the pack. Recipients can import the whole pack at once.' A user exporting one preset is told they are building a pack, which contradicts the single-file output they actually get.
   - **Evidence:** PackPickerWindow.cs:100-106 header `Text = "Pick the presets to bundle into the pack. Recipients can import the whole pack at once."`; output-mode comment at PackPickerWindow.cs:121-123 confirms 1 item exports as a single loose file, 2+ as a pack.
   - **Fix:** Soften the header to cover both outcomes, e.g. 'Pick the presets to export. Pick two or more to bundle them into one pack.' That sets the right expectation regardless of count.
@@ -555,35 +571,35 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Onboarding & misc windows  `onboarding-misc`
 
-- [ ] **🔴 HIGH / flow** Custom engine editor silently wipes hand-edited firing pattern when you nudge the cylinder count or change shape
+- [x] **🔴 HIGH / flow** Custom engine editor silently wipes hand-edited firing pattern when you nudge the cylinder count or change shape
   - **Problem:** The Pattern textbox is explicitly advertised as editable for expert tuning, but any change to the Shape dropdown or the Count slider calls RegeneratePattern, which overwrites the whole textbox with a freshly generated string. A user who carefully hand-tunes a pattern and then bumps the count by one (or re-picks the shape) loses all their edits with no warning, no confirmation, and no undo. The code comment claims edits survive, which is incorrect for the very interactions that regenerate.
   - **Evidence:** CustomEngineEditor.xaml.cs:189-198 RegeneratePattern sets "PatternTextBox.Text = s;" unconditionally; it is called from Shape_Changed (line 137) and Count_ValueChanged (line 186). The comment at lines 189-191 claims "manual edits the user has made on top of a generated pattern survive across unrelated UI interactions" but a count/shape change is not unrelated and does destroy them. Pattern tooltip at .xaml:83 invites editing: "Auto-fills when you pick a shape / count above; edit freely for expert tuning."
   - **Fix:** Detect whether the textbox has been hand-edited away from the last generated value (set a dirty flag on user TextChanged). If dirty, do not silently regenerate on count/shape change; instead either leave the edited pattern alone, or prompt once ("Regenerate pattern from shape and count? Your manual edits will be replaced.") before overwriting. At minimum, only regenerate when the textbox still matches the last auto-generated string.
 
-- [ ] **🟠 MED / poor-copy** Welcome modal and car-facts share modal directly contradict each other on whether your username is shown
+- [x] **🟠 MED / poor-copy** Welcome modal and car-facts share modal directly contradict each other on whether your username is shown
   - **Problem:** The first-run Welcome modal sells signing in with the promise that your name appears on what you contribute, but the actual contribution dialog (the one that fires when you correct engine data) tells you the opposite: your username is NOT shown. A user who signed in specifically to get attribution on contributions will feel misled the first time they submit a correction, and a privacy-conscious user reading the two screens will not know which is true.
   - **Evidence:** WelcomeWindow.cs:77 "When you correct a redline or share a preset, your contribution flows to everyone else loading that car. Sign in to put your username on what you share and keep your uploads yours." vs CarFactsShareWindow.cs:142 "Submitted as your signed-in account. Your username isn't shown on submissions."
   - **Fix:** Reconcile the two. If car-fact submissions are intentionally anonymous and only shared presets carry a username, scope the Welcome bullet accordingly: e.g. "Sign in to put your username on presets you share and keep your uploads yours" (drop the redline/correction half of the sentence from the attribution claim). Make sure both screens describe the same visibility rule.
   - _verifier adjusted high->medium: Both quotes verified verbatim: WelcomeWindow.cs:77 and CarFactsShareWindow.cs:142. The conflict is real but softer than 'directly contradict.' The Welcome bullet opens by lumping 'correct a redline OR share a preset' as 'your contribution,' then says 'put your username on what you share.' A careful reader maps 'what you share' to presets, but the sentence frames corrections as contributions too, so the attribution claim reads as covering corrections. The share modal then says username isn't shown. Genuine ambiguity worth reconciling, but it's a copy-scoping nuance, not a flat contradiction, so medium not high. Proposed fix (scope the bullet to presets) is sound._
 
-- [ ] **🟠 MED / poor-copy** Manage-variants window exposes internal jargon (Baked, engine signature, resolver) to end users
+- [x] **🟠 MED / poor-copy** Manage-variants window exposes internal jargon (Baked, engine signature, resolver) to end users
   - **Problem:** The engine-variants window is a user-facing management screen but its body copy, empty state, and Source column surface internal implementation terms a normal driver will not understand: '(Baked)', 'engine signature', 'the resolver', and 'next-best source'. This makes a routine 'rename/delete a duplicate' task feel like reading developer notes, and the Source values come straight from an enum ToString so they read as code identifiers rather than plain English.
   - **Evidence:** CarFactsVariantsWindow.cs:89-94 "Variants are auto-created from telemetry on each new engine signature for this car. ... Built-in (Baked) rows come from the car list and can't be edited."; line 235 "SourceLabel = v.Source.ToString()" (raw enum: Baked/Scanner/etc.); DeleteCell_Click body 286 "The resolver will fall back to the next-best source for this car."; empty hint 121 "Register one from the 'New engine variant' prompt next time it pops."
   - **Fix:** Map enum sources to friendly labels (e.g. Baked -> 'Built-in', Scanner -> 'Detected', User -> 'Yours', Community -> 'Community') instead of ToString. Rewrite the body in plain terms: 'These are the engine setups saved for this car. ... Built-in ones come with the app and can't be changed.' Replace 'engine signature' with 'engine setup' and drop 'resolver'/'next-best source' from the delete prompt (e.g. 'Trueforce For All will use the next saved setup for this car.').
 
-- [ ] **🟡 LOW / consistency** Custom engine editor uses stock Windows MessageBox instead of the plugin's styled TrueforceDialog
+- [x] **🟡 LOW / consistency** Custom engine editor uses stock Windows MessageBox instead of the plugin's styled TrueforceDialog
   - **Problem:** Every other modal in this surface is dark-themed and routes confirmations/info through the shared TrueforceDialog primitive, which exists precisely so prompts match the dark UI instead of rendering as stock Windows alerts. The custom engine editor's two validation prompts pop a bright stock white MessageBox, breaking the visual family right in the middle of an otherwise-themed editor and signaling 'error' more harshly than intended.
   - **Evidence:** CustomEngineEditor.xaml.cs:205-207 "MessageBox.Show(this, \"Please enter a name for this engine.\", \"Custom engine\", MessageBoxButton.OK, MessageBoxImage.Information);" and 222-225 "MessageBox.Show(this, \"The firing pattern couldn't be parsed...\", \"Custom engine\", MessageBoxButton.OK, MessageBoxImage.Warning);". TrueforceDialog.cs header comment (lines 1-6) states it is the "Replacement for System.Windows.MessageBox across the plugin so confirms / info / warning prompts match the dark themed UI instead of rendering as stock Windows alerts."
   - **Fix:** Replace both MessageBox.Show calls with TrueforceDialog.Show(this, "Custom engine", <body>, DialogKind.Info / DialogKind.Warning). Better still for the empty-name case, show an inline validation hint next to the Name field rather than a modal at all.
   - _verifier adjusted medium->low: Verified: two MessageBox.Show calls at 205-207 and 222-225 in an otherwise dark-themed editor; TrueforceDialog.cs header (1-6) confirms it is the intended styled replacement for exactly these prompts. Genuine consistency break. Downgraded to low: both are rare validation-error paths (empty name / unparseable pattern), low frequency, purely cosmetic, no functional impact. Worth fixing for polish but not medium-weight._
 
-- [ ] **🟡 LOW / feedback** Car name dialog silently rejects out-of-range input with no signal that Save did nothing
+- [x] **🟡 LOW / feedback** Car name dialog silently rejects out-of-range input with no signal that Save did nothing
   - **Problem:** When the name is shorter than 2 or longer than 96 characters, clicking Save (or pressing Enter) does nothing at all: no error, no shake, no highlight, the dialog just stays open. A user who typed a single-character name and hit Save will think the button is broken. The static hint '2 to 96 characters' is present but a user does not connect a passive grey line to 'that's why nothing happened.'
   - **Evidence:** CarNameInputWindow.cs:112-118 TryCommit: "if (v.Length < 2 || v.Length > 96) return;   // silent reject; muted hint already shown". The hint is the muted static TextBlock at lines 68-72 "2 to 96 characters."
   - **Fix:** On invalid commit, give visible feedback: turn the hint text red/highlight the textbox border, and/or focus the textbox. The MaxLength=96 already prevents the upper bound at the keyboard, so the only reachable case is too-short; surface that explicitly (e.g. flash 'Name needs at least 2 characters').
   - _verifier adjusted medium->low: Verified: TryCommit at 115 silently returns on length<2 or >96; MaxLength=96 (line 63) caps the upper bound at the keyboard so only too-short is reachable. The '2 to 96 characters' hint (68-72) is passive grey text. Clicking Save on a 1-char name does nothing with no signal = real minor feedback gap. Severity is low not medium: the input is auto-focused and the only reachable failure is an obviously-too-short single char, an edge a user rarely hits; a visible cue is a nice-to-have._
 
-- [ ] **🟡 LOW / poor-copy** Car-facts share modal header 'Disagree?' is confusing when the user just saved a value
+- [x] **🟡 LOW / poor-copy** Car-facts share modal header 'Disagree?' is confusing when the user just saved a value
   - **Problem:** The Alternative-state dialog leads with the bare question 'Disagree?' as its header. The user has already saved a setting that diverges from the community pick; they are not being asked whether they disagree, they are being asked whether to submit their already-chosen value. The interrogative header reads like the app is challenging the user rather than offering to record their input, and pairs awkwardly with the 'Share anyway' button (which implies they are doing something contrarian/risky).
   - **Evidence:** CarFactsShareWindow.cs:93-97 "leadHeader = \"Disagree?\"; ... bodyText = $\"Community currently says ...\" ... \" Yours joins as a counter.\"" and affirm button line 169 "affirmText = \"Share anyway\"".
   - **Fix:** Use a declarative header that matches the other states' tone, e.g. "Add your version" or "Record a different setup", and relabel the button "Add mine" / "Submit mine" instead of "Share anyway" so contributing an alternative does not feel like overriding or fighting the community.
@@ -595,7 +611,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Fix:** Add an explicit affordance: either an edit/pencil button per editable row (mirroring the Delete button column already present), or a tooltip/placeholder cue on the Label cell, so rename is discoverable without relying on the help paragraph.
   - _verifier adjusted medium->low: Verified: Label column is a TwoWay DataGridTextColumn (177-184) sitting beside columns that are all IsReadOnly=true (186-200); the only rename cue is prose at 91-92. No pencil/edit affordance, so the editable cell is visually indistinguishable from read-only ones. Real discoverability gap. Downgraded to low: rename is explicitly described as 'cosmetic, stays local' and the row's primary action (Delete) already has a visible button, so the feature is non-critical and the help paragraph does document it._
 
-- [ ] **🟡 LOW / layout** Manage-variants window has a fixed height that can crowd the grid behind a 4-line help paragraph
+- [x] **🟡 LOW / layout** Manage-variants window has a fixed height that can crowd the grid behind a 4-line help paragraph
   - **Problem:** The variants window is locked to Height=380 while the header carries a four-sentence wrapping help paragraph plus title and subtitle. On the long-car-name case the subtitle and help block consume a large share of the fixed height, leaving the DataGrid (the actual content) cramped with few visible rows before scrolling. Unlike the other modals here, this one does not size to content.
   - **Evidence:** CarFactsVariantsWindow.cs:59-60 "Width = 600; Height = 380;" (fixed) with the multi-line help TextBlock at lines 89-98 and subtitle at 80-88. Other windows in this surface use SizeToContent.Height (e.g. CarNameInputWindow.cs:37, CarFactsShareWindow.cs:60).
   - **Fix:** Either raise the default height or make the help text collapsible/shorter so the grid gets more vertical room. Since the window is CanResize, also consider a larger default (e.g. 460) so a few rows are visible without scrolling on first open.
@@ -605,12 +621,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** WelcomeWindow.cs:69-71 MakeBullet("Crowd-sourced car data", "Engine layouts, redlines, and car names other drivers have confirmed for the cars you load. Right values appear automatically; no setup.")
   - **Fix:** Lead with the feel/benefit: e.g. title 'Cars feel right automatically', body 'Your wheel matches each car the moment you load it, using settings other drivers have already dialed in. No setup.' Keep the data nouns as supporting detail, not the headline.
 
-- [ ] **🟡 LOW / consistency** TwoLineEdit modal accepts a blank first field on Save while sibling modals validate; inconsistent input handling
+- [x] **🟡 LOW / consistency** TwoLineEdit modal accepts a blank first field on Save while sibling modals validate; inconsistent input handling
   - **Problem:** The generic two-line edit modal (used for editing a shared preset's name + description) commits whatever is in the fields on Save, including an empty name, with no validation. Sibling modals in the same family enforce minimums (car-name requires 2 chars, custom-engine requires a name, variant rename rejects blank). The user can blank out a preset name and save it, producing an unnamed entry, with no guard or feedback.
   - **Evidence:** TwoLineEditWindow.cs:92-98 saveBtn click handler sets "Line1Result = input1.Text; Line2Result = input2.Text; DialogResult = true; Close();" with no length/empty check. Compare CarNameInputWindow.cs:115 (rejects <2 chars) and CarFactsVariantsWindow.cs:261-265 (rejects blank rename).
   - **Fix:** Reject an empty/whitespace Line1 (the name) on Save with a visible hint, mirroring CarNameInputWindow, so the shared family validates input consistently.
 
-- [ ] **🟡 LOW / accessibility** Backup conflict dialog has no keyboard/Esc path to cancel and no default action
+- [x] **🟡 LOW / accessibility** Backup conflict dialog has no keyboard/Esc path to cancel and no default action
   - **Problem:** The backup-conflict chooser presents three large action buttons plus a Cancel, but unlike the other modals in this surface the Cancel button is not marked IsCancel, so pressing Escape does not dismiss the dialog, and no button is IsDefault so Enter does nothing. A keyboard user has no quick way to back out of a destructive-capable choice (two of the three options can lose presets). It is mouse-only by default.
   - **Evidence:** BackupConflictWindow.cs:74-81 the Cancel button is constructed without IsCancel=true (contrast TrueforceDialog.cs:122 and CarNameInputWindow.cs:98 which set IsCancel). No button sets IsDefault. The destructive options 'Use this PC' / 'Use cloud' note data loss at lines 66-72.
   - **Fix:** Set IsCancel=true on the Cancel button so Esc dismisses, and consider making 'Smart merge (recommended)' the IsDefault button so Enter triggers the safe, recommended path.
@@ -624,12 +640,12 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Systemic / cross-cutting  `systemic`
 
-- [ ] **🔴 HIGH / consistency** Two competing dialog systems: ~120 raw Windows MessageBox vs ~28 dark-themed TrueforceDialog
+- [x] **🔴 HIGH / consistency** Two competing dialog systems: ~120 raw Windows MessageBox vs ~28 dark-themed TrueforceDialog
   - **Problem:** The plugin ships a purpose-built dark-themed modal (TrueforceDialog) explicitly created so prompts 'match the dark themed UI instead of rendering as stock Windows alerts' (TrueforceDialog.cs:1-6), yet the overwhelming majority of prompts still call System.Windows.MessageBox.Show, which renders as a bright stock Windows alert against SimHub's dark chrome. Counting the grep results, MessageBox.Show appears roughly 120 times across the plugin while TrueforceDialog.Show appears only ~28 times. Within a single screen a user can get a dark themed dialog for one action and a jarring white system dialog for the next, which reads as broken/unpolished and inconsistent.
   - **Evidence:** Grep of src/TrueforceForAll.Plugin: ~120 hits for 'MessageBox.Show' (e.g. SettingsControl.xaml.cs:10365, PresetManagerControl.xaml.cs:2456) vs ~28 hits for 'TrueforceDialog.Show'. TrueforceDialog.cs:1-6 header: "Replacement for System.Windows.MessageBox across the plugin so confirms / info / warning prompts match the dark themed UI instead of rendering as stock Windows alerts."
   - **Fix:** Pick one system. Route all confirm/info/warning/error prompts through TrueforceDialog (it already covers Info/Warning/Error/Confirm/Destructive). Mechanically replace the MessageBox.Show call sites that map cleanly (single OK; YesNo confirm). Reserve raw MessageBox only for the YesNoCancel three-option case until TrueforceDialog gains a third button. Add a lint/grep CI check that fails on new MessageBox.Show outside an allowlist.
 
-- [ ] **🔴 HIGH / confirmation** Destructive deletes use stock Yes/No alerts instead of the red 'Destructive' dialog that exists for exactly this
+- [x] **🔴 HIGH / confirmation** Destructive deletes use stock Yes/No alerts instead of the red 'Destructive' dialog that exists for exactly this
   - **Problem:** TrueforceDialog has a Destructive kind that paints the affirmative button red and supports custom verb labels (okLabel), and the codebase even demonstrates the correct pattern once. But every preset/car/bulk delete confirmation uses a stock MessageBox with MessageBoxButton.YesNo, giving a generic blue 'Yes/No' with no red affirmative and no verb labels. There are 21 'MessageBoxButton.YesNo' call sites but only 1 'DialogKind.Destructive'. Generic Yes/No on a delete is more error-prone than explicit verbs (Delete/Keep) and the destructive action is not visually distinguished from a benign confirm.
   - **Evidence:** PresetManagerControl.xaml.cs:2468 `MessageBox.Show(Window.GetWindow(this), warning, "Delete preset", MessageBoxButton.YesNo, MessageBoxImage.Question)`; PresetManagerControl.xaml.cs:3100 "Delete car preset" YesNo; SettingsControl.xaml.cs:5616 confirm YesNo. Counts: 21x 'MessageBoxButton.YesNo' vs 1x 'DialogKind.Destructive'. Correct pattern shown in CarFactsVariantsWindow.cs:284-287 `TrueforceDialog.Show(this, "Delete variant?", ..., DialogKind.Destructive)`.
   - **Fix:** Convert all delete/destructive confirmations to `TrueforceDialog.Show(owner, title, body, DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Keep")`. This gives the red affirmative + explicit verb labels and removes the stock-alert mismatch in one change.
@@ -649,17 +665,17 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
   - **Evidence:** Titles: SettingsControl.xaml.cs:9946 `"Trueforce"`; :10524 `"Trueforce For All"`; :4289 `"Trueforce: Include logs?"`; PresetManagerControl.xaml.cs:2468 `"Delete preset"`. Affirmative labels: PickUsernameWindow.cs:102 `Content = "Save"`; PresetMetadataDialog (OK); PresetManagerControl.xaml.cs:2468 YesNo. Grep: 49 occurrences of "Trueforce"/"Trueforce For All" title strings across 8 files.
   - **Fix:** Standardize: one app title string ('Trueforce For All') used everywhere a generic title is needed, or a short action-specific title (e.g. 'Delete preset') with no brand prefix. Standardize the affirmative verb per action class (Save for editors, Delete for destructive, OK for info). Centralizing on TrueforceDialog (systemic-01) makes this enforceable in one place.
 
-- [ ] **🟠 MED / poor-copy** Yes/No/Cancel button meaning is buried in body text instead of on verb buttons
+- [x] **🟠 MED / poor-copy** Yes/No/Cancel button meaning is buried in body text instead of on verb buttons
   - **Problem:** The Report-an-issue prompt asks 'Include your SimHub logs with this bug report?' with a YesNoCancel button set, then has to spend three body sentences explaining what Yes, No, and Cancel each do ('Click Yes to...', 'Click No to...'). When the user has to read a paragraph to learn what the buttons mean, the buttons are mislabeled. Stock Yes/No/Cancel can't carry the meaning, which is a recurring consequence of using raw MessageBox.
   - **Evidence:** SettingsControl.xaml.cs:4283-4291 `MessageBox.Show("Include your SimHub logs with this bug report?\n\nClick Yes to first export your logs to a zip on your Desktop. ... Click No to open the form without exporting logs.", "Trueforce: Include logs?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question)`.
   - **Fix:** Use a dialog with self-describing buttons: 'Export logs and continue' / 'Continue without logs' / 'Cancel'. The one-line question then needs no Click-Yes/Click-No explanation. Requires extending TrueforceDialog to a three-button variant or a small custom window.
 
-- [ ] **🟡 LOW / consistency** User-facing LED-test status uses em-dashes, violating the no-em-dash copy rule
+- [x] **🟡 LOW / consistency** User-facing LED-test status uses em-dashes, violating the no-em-dash copy rule
   - **Problem:** The owner copy rule forbids em-dashes and '--' in user-facing prose. The RPM LED self-test status string, which is surfaced live in the panel (RpmLedStatusText.Text = _plugin.RpmLedStatus), uses em-dashes. This is the one place the rule leaks into text the user actually reads (the many em-dashes elsewhere are in code comments, which users never see).
   - **Evidence:** RpmLedController.cs:184 `_testStatus = $"▶ rev sweep — level {lvl}/..."`; :190 same; :208 `_testStatus = "test finished — LEDs off"`. Surfaced to UI at SettingsControl.xaml.cs:9223 `RpmLedStatusText.Text = _plugin.RpmLedStatus;`.
   - **Fix:** Replace the em-dashes with a colon or restructure: 'rev sweep, level {lvl}/{n}' and 'Test finished. LEDs off.'.
 
-- [ ] **🟡 LOW / consistency** Stale 'None — using game default' comment vs the no-em-dash rule (code-hygiene, not yet user-facing)
+- [x] **🟡 LOW / consistency** Stale 'None — using game default' comment vs the no-em-dash rule (code-hygiene, not yet user-facing)
   - **Problem:** A comment documents a 'None — using game default' display row with an em-dash, while the actually-rendered string is `$"None ({inherit})"` (no em-dash). The shipped UI is fine, but the comment is both stale and contains an em-dash, so a future edit that copies the comment text into the visible label would silently reintroduce a copy-rule violation. Flagging as low-severity drift to keep the comment in sync with the rule.
   - **Evidence:** SettingsControl.xaml.cs:2917 comment `// ...A display-only "None — using game default" row shows when...`; actual rendered string at :2981 `Content = $"None ({inherit})"`.
   - **Fix:** Update the comment to match the real string and drop the em-dash, e.g. describe it as the 'None (using game default)' row.

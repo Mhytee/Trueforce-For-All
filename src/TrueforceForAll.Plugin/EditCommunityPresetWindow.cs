@@ -29,6 +29,16 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush MutedFg  = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A));
         private static readonly Brush HeaderFg = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
         private static readonly Brush BorderFg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
+        // Action-button palette (matches the rest of the plugin): Save = the
+        // amber primary (SharePrimaryButton), Cancel = destructive red
+        // (TrueforceDialog's DestructiveBg - backing out discards unapplied
+        // edits), Add = green (additive action; PillGreen family).
+        private static readonly Brush PrimaryBg   = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
+        private static readonly Brush PrimaryFg   = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
+        private static readonly Brush CancelBg    = new SolidColorBrush(Color.FromRgb(0x8B, 0x2E, 0x2E));
+        private static readonly Brush CancelFg    = new SolidColorBrush(Color.FromRgb(0xFF, 0xE0, 0xE0));
+        private static readonly Brush AddBg       = new SolidColorBrush(Color.FromRgb(0x3D, 0x8B, 0x40));
+        private static readonly Brush AddFg       = new SolidColorBrush(Color.FromRgb(0xE8, 0xF5, 0xE9));
 
         // Same well-known SimHub games list as PresetShareWindow uses.
         // Strings match what SimHub emits as ActiveGame. Native-Trueforce
@@ -158,14 +168,15 @@ namespace TrueforceForAll.Plugin
             var cancelBtn = new Button {
                 Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
-                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+                Foreground = CancelFg, Background = CancelBg, IsCancel = true,
             };
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);
 
             var saveBtn = new Button {
                 Content = "Save", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                Foreground = PrimaryFg, Background = PrimaryBg, IsDefault = true,
+                FontWeight = FontWeights.Bold,
             };
             saveBtn.Click += (s, e) =>
             {
@@ -401,7 +412,7 @@ namespace TrueforceForAll.Plugin
             var addGameBtn = new Button
             {
                 Content = "Add", Padding = new Thickness(10, 3, 10, 3),
-                Foreground = TextFg, Background = PanelBg,
+                Foreground = AddFg, Background = AddBg,
             };
             addRow.Children.Add(addGameInput);
             addRow.Children.Add(addGameBtn);
@@ -439,21 +450,22 @@ namespace TrueforceForAll.Plugin
             var cancelBtn = new Button {
                 Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
-                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+                Foreground = CancelFg, Background = CancelBg, IsCancel = true,
             };
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);
 
             var saveBtn = new Button {
                 Content = "Save", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+                Foreground = PrimaryFg, Background = PrimaryBg, IsDefault = true,
+                FontWeight = FontWeights.Bold,
             };
             saveBtn.Click += (s, e) =>
             {
                 string n = (nameInput.Text ?? "").Trim();
                 if (n.Length < 2 || n.Length > 96)
                 {
-                    TrueforceDialog.Show(this, "Edit preset", "Name must be 2 to 96 characters.",
+                    TrueforceDialog.Show(this, "Edit preset", "Name must be 2-96 characters.",
                         DialogKind.Warning);
                     return;
                 }

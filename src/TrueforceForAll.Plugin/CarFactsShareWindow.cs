@@ -102,7 +102,7 @@ namespace TrueforceForAll.Plugin
                     bodyText   = "Yours strengthens the existing record.";
                     break;
                 default: // Alternative
-                    leadHeader = "Disagree?";
+                    leadHeader = "Share a different value?";
                     leadColor  = AlternativeFg;
                     bodyText   = $"Community currently says \"{consensusLayoutDisplay}\""
                                + (supportingSubmissions > 0 ? $" ({supportingSubmissions} {driverWord})." : ".")

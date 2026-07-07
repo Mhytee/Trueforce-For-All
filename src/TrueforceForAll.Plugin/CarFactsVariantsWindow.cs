@@ -58,7 +58,11 @@ namespace TrueforceForAll.Plugin
 
             Title         = "Manage engine variants";
             Width         = 600;
-            Height        = 380;
+            // Grow to fit the variants, but cap the height and let the grid
+            // scroll past that so many variants don't stretch the window off-screen.
+            SizeToContent = SizeToContent.Height;
+            MinHeight     = 320;
+            MaxHeight     = 620;
             Background    = WindowBg;
             Foreground    = TextFg;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -89,10 +93,10 @@ namespace TrueforceForAll.Plugin
             });
             header.Children.Add(new TextBlock
             {
-                Text = "Variants are auto-created from telemetry on each new engine signature for this car. "
+                Text = "Variants are created automatically the first time this car shows a new engine. "
                      + "Rename a row by clicking its label (cosmetic, stays local). Delete drops the row; "
-                     + "if telemetry observes that same engine again, a fresh row gets created. "
-                     + "Built-in (Baked) rows come from the car list and can't be edited.",
+                     + "if that engine turns up again, a fresh row is created. "
+                     + "Built-in rows come from the car list and can't be edited.",
                 Foreground = MutedFg, FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
@@ -119,7 +123,7 @@ namespace TrueforceForAll.Plugin
 
             _emptyHint = new TextBlock
             {
-                Text = "No saved variants. Register one from the 'New engine variant' prompt next time it pops.",
+                Text = "No saved variants yet. One is added automatically the next time this car shows a new engine.",
                 Foreground = MutedFg, FontSize = 12, FontStyle = FontStyles.Italic,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment   = VerticalAlignment.Center,
@@ -255,7 +259,8 @@ namespace TrueforceForAll.Plugin
                     {
                         Id          = v.Id,
                         Label       = string.IsNullOrEmpty(v.Label) ? "(unnamed)" : v.Label,
-                        SourceLabel = v.Source.ToString(),
+                        SourceLabel = string.Equals(v.Source.ToString(), "Baked", StringComparison.OrdinalIgnoreCase)
+                                        ? "Built-in" : v.Source.ToString(),
                         Cylinders   = v.Cylinders,
                         Redline     = redlineText,
                         // Built-in (Baked) baselines are synthesized at
@@ -307,7 +312,7 @@ namespace TrueforceForAll.Plugin
             if (!row.CanDelete) return;
             if (TrueforceDialog.Show(this,
                     "Delete variant?",
-                    "Remove the variant \"" + row.Label + "\"? The resolver will fall back to the next-best source for this car.",
+                    "Remove the variant \"" + row.Label + "\"? This car falls back to its next-best engine guess.",
                     DialogKind.Destructive) != true) return;
             if (_plugin.DeleteActiveCarVariant(row.Id))
                 Reload();

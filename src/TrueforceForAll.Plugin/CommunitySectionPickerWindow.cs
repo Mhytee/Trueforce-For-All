@@ -130,6 +130,22 @@ namespace TrueforceForAll.Plugin
                 Close();
             };
             btnRow.Children.Add(applyBtn);
+
+            // Keep Apply disabled while nothing is checked, so unchecking
+            // everything and clicking Apply can't silently close as a cancel.
+            void SyncApplyEnabled()
+            {
+                bool any = false;
+                foreach (var cb in checkboxes) if (cb.IsChecked == true) { any = true; break; }
+                applyBtn.IsEnabled = any;
+            }
+            foreach (var cb in checkboxes)
+            {
+                cb.Checked   += (s, e) => SyncApplyEnabled();
+                cb.Unchecked += (s, e) => SyncApplyEnabled();
+            }
+            SyncApplyEnabled();
+
             root.Children.Add(btnRow);
         }
 

@@ -500,9 +500,16 @@ namespace TrueforceForAll.Plugin
             SelectTab(initialTab);
             // Restore the global Library|Community view mode before the first
             // ApplyView, otherwise the strip is on its XAML "Library" default
-            // and the user's last choice is lost on plugin restart. Gated by
-            // _initializing so the Mode_Checked write-back doesn't re-save the
-            // same value during hydration.
+            // and the user's last choice is lost on plugin restart. NOTE:
+            // _initializing is already false here (reset in the finally
+            // above), so the Mode_Checked this raises runs a REAL ApplyView
+            // pass, and the explicit Segment_Checked below then runs a second
+            // one. Benign today: the write-back no-ops on value equality and
+            // the in-flight guard stops a duplicate fetch - but it is a
+            // known double-apply, not gated as previously claimed. If it ever
+            // needs fixing, use a dedicated Init-scoped hydration flag; do
+            // NOT suppress Mode_Checked/Segment_Checked globally (the host's
+            // SelectTab / OpenCarCommunity rely on them at runtime).
             HydrateModeToggles();
             // XAML's IsChecked="True" on the default segment doesn't fire
             // Checked during construction, so force the first ApplyView now or
@@ -981,6 +988,16 @@ namespace TrueforceForAll.Plugin
             // game filter to the active game (preserving them across an
             // unchanged re-entry so returning to the tab keeps your browse).
             if (changed) ResetCommunityFilters();
+            // Gate on every view ENTRY, not just on fetch: community may have
+            // been disabled (or the user signed out) while this panel was
+            // hidden, where RefreshCommunityGate deliberately no-ops. Without
+            // this, re-entering an unchanged view with cached rows skips the
+            // fetch below - and with it the gate check at the top of
+            // CommunityRefreshAsync - leaving the full browser (Download /
+            // vote) live behind a cleared consent. Before the chrome
+            // housekeeping so ConfigureCommunityFilterVisibility can't re-show
+            // the search row over the gate.
+            if (ApplyCommunityGate()) return;
             ConfigureCommunityFilterVisibility();
             if (CommunityScopeLabel != null)
                 CommunityScopeLabel.Text = mode == "mine"
@@ -1064,6 +1081,11 @@ namespace TrueforceForAll.Plugin
         // mode switch and when the active game changes under a default scope.
         private void ResetCommunityFilters()
         {
+            // Kill any armed search debounce: _suppressSearchEvent only stops
+            // the programmatic text-clear below from (re)starting the timer, it
+            // does NOT stop one already armed by prior typing, which would
+            // otherwise fire a redundant fetch ~350ms after the view switch.
+            _communitySearchDebounce?.Stop();
             _suppressSearchEvent = true;
             try { if (CommunitySearchBox != null) CommunitySearchBox.Text = ""; }
             finally { _suppressSearchEvent = false; }
@@ -1150,6 +1172,15 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressSearchEvent) return;
             string q = CommunitySearchBox?.Text?.Trim() ?? "";
+            // Minimum useful query: a 1-char term substring-matches a huge
+            // slice of the car catalog (hundreds of resolved ids into the
+            // request URL) for near-random results. Under 2 chars, treat as
+            // no search. This single choke point keeps every consumer of
+            // _communitySearch consistent (broaden check, list key, status
+            // label, fetch capture, stale-fetch compare): a 1-char term
+            // simply never broadens and no fetch fires (the == compare below
+            // also suppresses the redundant 0->1-char refresh).
+            if (q.Length < 2) q = "";
             if (q == _communitySearch) return;
             _communitySearch = q;
             // Debounce so a network search fires once after typing settles,
@@ -2311,13 +2342,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _gameShareIsPackMode = gameBulkPackEligible;
                 if (gameBulkPackEligible)
                 {
-                    GameShareBtn.Content   = "★ Share pack";
+                    GameShareBtn.Content   = "Share pack";
                     GameShareBtn.IsEnabled = true;
                     GameShareBtn.ToolTip   = $"Bundle these {checkedCount} presets into a community pack.";
                 }
                 else
                 {
-                    GameShareBtn.Content = "★ Share";
+                    GameShareBtn.Content = "Share";
                     GameShareBtn.IsEnabled = anySelected && checkedCount <= 1
                         && !sel.Builtin && !gShareMatchesUpload;
                     if (anySelected && sel.Builtin)
@@ -2414,12 +2445,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _carShareIsPackMode = carBulkPackEligible;
             if (carBulkPackEligible)
             {
-                CarShareBtn.Content   = "★ Share pack";
+                CarShareBtn.Content   = "Share pack";
                 CarShareBtn.IsEnabled = true;
                 CarShareBtn.ToolTip   = $"Bundle these {checkedCount} presets into a community pack.";
                 return;
             }
-            CarShareBtn.Content = "★ Share";
+            CarShareBtn.Content = "Share";
             CarShareBtn.IsEnabled = anySelected && checkedCount <= 1
                 && !isCommunitySourced && !isBuiltinSel
                 && !carShareMatchesUpload;
@@ -3198,7 +3229,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (string.IsNullOrEmpty(activeName)) return;
                 if (_plugin.IsBuiltinPreset(activeName)) return;
                 payload = new EmptyShareCtaPayload { Kind = "game", PresetName = activeName };
-                label = "★ Share your '" + ShortenForCta(activeName) + "' tune";
+                label = "Share your '" + ShortenForCta(activeName) + "' tune";
             }
             else if (kind == "car")
             {
@@ -3220,7 +3251,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     Kind = "car", PresetName = activeName,
                     CarId = activeCar, GameName = activeGame,
                 };
-                label = "★ Share your '" + ShortenForCta(activeName) + "' tune";
+                label = "Share your '" + ShortenForCta(activeName) + "' tune";
             }
             else return;
 
@@ -4070,9 +4101,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
         private void CommunityShowMore_Click(object sender, RoutedEventArgs e)
         {
-            // Load the next page (offset = currently-loaded rows). Appends to the
-            // list and grows the browse cache for this view.
-            _ = CommunityRefreshAsync(offset: _communityRows.Count);
+            // Load the next page. Appends to the list and grows the browse
+            // cache for this view. Offset = rows the server has returned so
+            // far (NOT _communityRows.Count, which is post-dedup and drifts
+            // low whenever a page overlap was deduped away).
+            _ = CommunityRefreshAsync(offset: _communityServerOffset);
         }
 
         // (Community refresh is now driven by the shared context-aware
@@ -4092,9 +4125,16 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         }
 
         // Browse page size. Entering a view pulls the first page; "Show more"
-        // pulls another page (offset = currently-loaded count) and the browse
-        // cache grows to hold the accumulated list.
+        // pulls another page and the browse cache grows to hold the
+        // accumulated list.
         private const int CommunityPageSize = 25;
+
+        // Rows the SERVER has handed us for the current view (accumulated raw
+        // page sizes). "Show more" must page by this, not _communityRows.Count:
+        // the rendered rows are post-dedup, so after any dedup drop the row
+        // count under-counts the true server offset and the next page
+        // re-requests rows that dedup away again ("Show more does nothing").
+        private int _communityServerOffset;
 
         // A scope/segment/search/game-filter switch while a fetch is in flight
         // suppresses the switch's own fetch (the in-flight guard at the top of
@@ -4280,6 +4320,19 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 ReissueCommunityFetchAfterUnwind(force);
                 return;
             }
+            // Gate re-check: community may have been disabled or the user
+            // signed out while the fetch was in flight (RefreshCommunityGate
+            // raised the gate under us). The entry check at the top can't see
+            // that, and committing here would repopulate the rows and re-show
+            // the Show-more button OVER the gate. Discard instead - no
+            // reissue, there's nothing to fetch while gated. ApplyCommunityGate
+            // (rather than a raw flag check) also renders the gate for any
+            // path where the state flipped without the host hook firing.
+            if (ApplyCommunityGate())
+            {
+                _communityFetchInFlight = false;
+                return;
+            }
 
             // Persist trending-vs-scoped for label state (the radio /
             // scope label is repainted synchronously from segment
@@ -4313,6 +4366,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // on an offset-0 cache hit) drives the Show-more affordance below. Capture
             // it before game-kind re-ranking reassigns 'results' to the full set.
             int pageCount = results.Count;
+            // Track the true server-side row count for paging (see field note).
+            // On an offset-0 cache hit results is the accumulated list, so the
+            // assignment (not +=) is still the correct next-page offset.
+            if (offset == 0) _communityServerOffset = pageCount;
+            else             _communityServerOffset += pageCount;
             // Game-kind: the target_games tier ranking (tier 0 = matches the active
             // game) must order the WHOLE accumulated list, not just the new page, or
             // a tier-0 row from page 2 would sit below tier-2 rows from page 1. So on
@@ -4740,13 +4798,33 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             var sel = SelectedCommunity;
             if (sel?.Summary == null || _plugin == null) return;
             if (!_plugin.AuthIsSignedIn) return;
+            // Mirror ToggleVote's guard: a refresh mid-flight risks acting on a
+            // row the completion is about to replace, AND the in-flight fetch's
+            // late cache write is the other half of the delete-resurrection
+            // race the store's generation token closes. Friendly no-op instead.
+            // (Safe: the try/finally in CommunityRefreshAsync means the latch
+            // can't wedge true, so Delete can't be disabled permanently.)
+            if (_communityFetchInFlight)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Refresh in progress. Try deleting again in a moment.";
+                return;
+            }
 
             var confirm = TrueforceDialog.Show(Window.GetWindow(this),
                 "Delete preset",
-                $"Delete '{sel.Summary.Name}'? Other drivers won't see it anymore. Vote history stays for moderation review.",
+                $"Delete '{sel.Summary.Name}'? Other drivers won't see it anymore.",
                 DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel");
             if (confirm != true) return;
 
+            // Outer guard: this is an async void handler, so anything escaping
+            // it goes to the WPF dispatcher (no handler installed = potential
+            // SimHub crash). The success path below touches disk (cache
+            // invalidation) and host code (CarCommunityListRefreshed), both of
+            // which can throw. The confirm-cancel above stays outside so a
+            // cancel is never logged as an error.
+            try
+            {
             if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Deleting...";
             bool success;
             string delKind = sel.Summary.Kind ?? _communityKind ?? "car";
@@ -4774,6 +4852,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CarCommunityListRefreshed?.Invoke();
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = "Deleted.";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Delete post-processing failed: " + ex.Message);
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Deleted, but the local list may be stale. Refresh to resync.";
+            }
         }
 
         // Reddit-style per-row arrow handlers. Clicking the up arrow when
@@ -4821,6 +4906,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 return;
             }
 
+            // Outer guard (same reason as CommunityDelete_Click): async void
+            // handler whose success path hits disk (cache invalidation) and
+            // host code (CarCommunityListRefreshed) outside the inner RPC
+            // try/catch; an escaped exception could tear down SimHub.
+            try
+            {
             int prev = row.MyVote;
             int next = (prev == clicked) ? 0 : clicked;  // toggle off or flip/set
             // Optimistic counter adjustment based on prev->next transition.
@@ -4880,6 +4971,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // so its in-memory copy re-reads the new Wilson order.
             if (string.IsNullOrEmpty(kind) || kind == "car")
                 CarCommunityListRefreshed?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Vote post-processing failed: " + ex.Message);
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = "Vote hit a local error. Refresh to resync the list.";
+            }
         }
 
         // Force the grid to rebuild the row so WPF re-resolves arrow
@@ -5397,9 +5495,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 // Register the pack in the Library -> Packs grid whenever we
                 // wrote at least one entry, full take or partial. Merges by
                 // CommunitySourceId so a repeat / partial download folds into the
-                // existing row instead of duplicating it. Custom engines aren't
-                // listed here (InstalledPackEntry has no engine kind, matching
-                // the .tfpack disk-import path); they still land in the library.
+                // existing row instead of duplicating it. Custom engines ARE
+                // listed (KindEngine entries added above, with EngineId +
+                // BaselineHash) so "N other packs contain this engine" is
+                // meaningful on removal; removal still only deletes an engine
+                // nothing else references.
                 if (packEntries.Count > 0)
                     _plugin.RegisterCommunityPack(new InstalledPack
                     {

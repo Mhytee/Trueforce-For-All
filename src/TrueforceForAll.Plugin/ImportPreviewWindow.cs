@@ -326,19 +326,34 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private TextBlock MakeLink(string text, Action onClick)
+        // A focusable, keyboard-activatable link (Space/Enter) with a real hit
+        // target, built as a chromeless Button so it reads as an underlined link
+        // but is reachable by keyboard and shows a focus rect (unlike the old
+        // bare TextBlock + MouseLeftButtonUp).
+        private Button MakeLink(string text, Action onClick)
         {
-            var tb = new TextBlock
+            var tmpl = new ControlTemplate(typeof(Button));
+            var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+            cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            tmpl.VisualTree = cp;
+
+            var btn = new Button
             {
-                Text       = text,
-                Foreground = HeaderFg,
-                FontSize   = 11,
-                Cursor     = System.Windows.Input.Cursors.Hand,
+                Template = tmpl,
+                Background = System.Windows.Media.Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Padding = new Thickness(4, 1, 4, 1),
                 VerticalAlignment = VerticalAlignment.Center,
-                TextDecorations = TextDecorations.Underline,
+                Content = new TextBlock
+                {
+                    Text = text, Foreground = HeaderFg, FontSize = 11,
+                    TextDecorations = TextDecorations.Underline,
+                },
             };
-            tb.MouseLeftButtonUp += (s, e) => onClick();
-            return tb;
+            btn.Click += (s, e) => onClick();
+            return btn;
         }
 
         // One row per item:
@@ -402,7 +417,7 @@ namespace TrueforceForAll.Plugin
                     Foreground        = TextFg,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin            = new Thickness(8, 0, 0, 0),
-                    ToolTip           = "Bind as the default preset for this car (CarDefaults).",
+                    ToolTip           = "Make this the default preset for this car.",
                 };
             }
             else

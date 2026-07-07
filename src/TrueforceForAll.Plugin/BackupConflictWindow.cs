@@ -27,6 +27,7 @@ namespace TrueforceForAll.Plugin
             Width = 500;
             SizeToContent = SizeToContent.Height;
             Background = WindowBg;
+            Foreground = FgText;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
             ResizeMode = ResizeMode.NoResize;
@@ -56,10 +57,12 @@ namespace TrueforceForAll.Plugin
             };
             root.Children.Add(keepCloud);
 
-            root.Children.Add(MakeChoiceButton(
+            var smartBtn = MakeChoiceButton(
                 "Smart merge (recommended)",
                 "Keep every preset (the newest version of each wins) and pick one side's global settings.",
-                () => { KeepCloudSettings = keepCloud.IsChecked == true; Choice = BackupConflictChoice.SmartMerge; }));
+                () => { KeepCloudSettings = keepCloud.IsChecked == true; Choice = BackupConflictChoice.SmartMerge; });
+            smartBtn.IsDefault = true;   // Enter = the recommended, non-destructive choice
+            root.Children.Add(smartBtn);
 
             root.Children.Add(MakeChoiceButton(
                 "Use this PC (overwrite cloud)",
@@ -75,7 +78,7 @@ namespace TrueforceForAll.Plugin
             {
                 Content = "Cancel", Width = 90, HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 6, 0, 0), Padding = new Thickness(10, 4, 10, 4),
-                Background = PanelBg, Foreground = FgText,
+                Background = PanelBg, Foreground = FgText, IsCancel = true,
             };
             cancel.Click += (s, e) => { Choice = BackupConflictChoice.Cancel; DialogResult = false; Close(); };
             root.Children.Add(cancel);

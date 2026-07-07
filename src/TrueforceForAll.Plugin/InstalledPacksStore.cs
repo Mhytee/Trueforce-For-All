@@ -85,6 +85,23 @@ namespace TrueforceForAll.Plugin
         public int GameDefaultsOverwritten { get; set; }
         public int CarDefaultsOverwritten  { get; set; }
         public int GamePresetsSkipped      { get; set; }
+        // Entries left alone because the game/car already had a default and the
+        // user chose "Skip existing" instead of overwriting.
+        public int GameDefaultsSkippedConflict { get; set; }
+        public int CarDefaultsSkippedConflict  { get; set; }
+    }
+
+    // How SetPackAsDefaults treats an entry whose game/car already has a default:
+    // OverwriteAll replaces it; SkipConflicts keeps the existing default and only
+    // fills in the ones the user hasn't bound yet.
+    public enum SetDefaultsConflictPolicy { OverwriteAll, SkipConflicts }
+
+    /// <summary>Read-only count of what SetPackAsDefaults would do, so the UI can
+    /// warn before overwriting: Fresh = no existing default, Conflict = would replace one.</summary>
+    public sealed class SetDefaultsPreview
+    {
+        public int FreshCount    { get; set; }
+        public int ConflictCount { get; set; }
     }
 
     /// <summary>Result of destructive "Remove pack". Deleted counts the
@@ -251,7 +268,17 @@ namespace TrueforceForAll.Plugin
             foreach (var e in pack.Entries)
             {
                 if (e == null) continue;
-                if (!existing.Entries.Exists(x => SameEntry(x, e))) existing.Entries.Add(e);
+                var match = existing.Entries.Find(x => SameEntry(x, e));
+                if (match == null) { existing.Entries.Add(e); continue; }
+                // Identity match = this download just REWROTE the entry's file,
+                // so refresh the baseline to the newly-written content. Keeping
+                // the first install's hash misclassified a re-downloaded updated
+                // entry as "user-edited" (file = v2, recorded baseline = v1),
+                // which made pack removal conservatively keep files the user
+                // never touched. Direction-safe: worst case is same-hash no-op.
+                match.BaselineHash = e.BaselineHash ?? match.BaselineHash;
+                match.GameName     = e.GameName     ?? match.GameName;
+                if (e.DefaultForGames != null) match.DefaultForGames = e.DefaultForGames;
             }
             // Refresh light metadata so a later download updates the label /
             // version / description; keep the original ImportedAt.

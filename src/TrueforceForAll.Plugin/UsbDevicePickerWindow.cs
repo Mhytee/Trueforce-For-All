@@ -245,6 +245,9 @@ namespace TrueforceForAll.Plugin
             var selTrigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
             selTrigger.Setters.Add(new Setter(Control.BackgroundProperty, (Brush)new BrushConverter().ConvertFromString("#FFB300")));
             selTrigger.Setters.Add(new Setter(Control.ForegroundProperty, (Brush)new BrushConverter().ConvertFromString("#1A1A1A")));
+            // Non-colour cue too (bold text), so the selected device is
+            // distinguishable without relying on the amber highlight alone.
+            selTrigger.Setters.Add(new Setter(Control.FontWeightProperty, System.Windows.FontWeights.Bold));
             style.Triggers.Add(selTrigger);
 
             return style;

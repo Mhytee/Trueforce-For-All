@@ -58,20 +58,34 @@ namespace TrueforceForAll.Plugin
             input1.Loaded += (s, e) => { input1.Focus(); input1.SelectAll(); };
             root.Children.Add(input1);
 
-            root.Children.Add(new TextBlock {
-                Text = line2Label ?? "", Foreground = MutedFg, FontSize = 11,
-                Margin = new Thickness(0, 0, 0, 2),
-            });
-            var input2 = new TextBox {
-                Text = line2Init ?? "",
-                Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
-                Padding = new Thickness(6, 4, 6, 4),
-                FontSize = 12, MaxLength = 1024,
-                AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
-                MinHeight = 20 * line2Lines,
-                Margin = new Thickness(0, 0, 0, 12),
+            // Inline validation message for a blank required first field.
+            var line1Error = new TextBlock {
+                Text = "", Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x6C, 0x6C)),
+                FontSize = 11, Margin = new Thickness(0, 0, 0, 8),
+                Visibility = Visibility.Collapsed,
             };
-            root.Children.Add(input2);
+            root.Children.Add(line1Error);
+
+            // Line 2 is optional: pass a null/empty line2Label for a single-line
+            // dialog (flows that don't need a second field, e.g. change email).
+            TextBox input2 = null;
+            if (!string.IsNullOrEmpty(line2Label))
+            {
+                root.Children.Add(new TextBlock {
+                    Text = line2Label, Foreground = MutedFg, FontSize = 11,
+                    Margin = new Thickness(0, 0, 0, 2),
+                });
+                input2 = new TextBox {
+                    Text = line2Init ?? "",
+                    Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                    Padding = new Thickness(6, 4, 6, 4),
+                    FontSize = 12, MaxLength = 1024,
+                    AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+                    MinHeight = 20 * line2Lines,
+                    Margin = new Thickness(0, 0, 0, 12),
+                };
+                root.Children.Add(input2);
+            }
 
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
@@ -91,8 +105,15 @@ namespace TrueforceForAll.Plugin
             };
             saveBtn.Click += (s, e) =>
             {
+                if (string.IsNullOrWhiteSpace(input1.Text))
+                {
+                    line1Error.Text = "This can't be empty.";
+                    line1Error.Visibility = Visibility.Visible;
+                    input1.Focus();
+                    return;   // keep the dialog open
+                }
                 Line1Result = input1.Text;
-                Line2Result = input2.Text;
+                Line2Result = input2?.Text ?? "";
                 DialogResult = true;
                 Close();
             };

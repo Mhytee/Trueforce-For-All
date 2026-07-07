@@ -212,6 +212,42 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Prominent amber "Update available" CTA in the header. Needs its own
+             template because the stock Button chrome paints the theme's grey
+             mouse-over brush over the amber Background on hover; the triggers
+             below keep the amber and shift it for hover/press instead. -->
+        <Style x:Key="UpdateCtaButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#222"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="#FFB300" BorderBrush="#FFA000"
+                                BorderThickness="1" CornerRadius="4" SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FFC233"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#FFB300"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E6A100"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A3A3A"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4A4A4A"/>
+                                <Setter Property="Foreground" Value="#888"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- Quiet action button for info-tier banners (Forza fallback /
              discovery). Their translucent fills composite to near-grey over
              the dark panel, so SimHub's default button chrome reads as
@@ -570,10 +606,8 @@
                      RefreshFromPlugin. Click opens the same modal that the
                      legacy banner used to open. -->
                 <Button x:Name="UpdateAvailableButton" Visibility="Collapsed"
+                        Style="{StaticResource UpdateCtaButton}"
                         Margin="12,0,0,3" VerticalAlignment="Bottom"
-                        Padding="10,4,10,4" FontSize="12" FontWeight="SemiBold"
-                        Background="#FFB300" Foreground="#222" BorderBrush="#FFA000"
-                        BorderThickness="1" Cursor="Hand"
                         Click="UpdateAvailableButton_Click"
                         ToolTip="Open the update dialog (release notes + Update now button).">
                     <TextBlock x:Name="UpdateAvailableButtonText" Text="Update available"/>
@@ -915,9 +949,9 @@
                                       MinWidth="220" MaxWidth="340" VerticalAlignment="Center"
                                       MaxDropDownHeight="420" IsTextSearchEnabled="True"
                                       ToolTip="The active game preset. Start typing to jump to a name. Confirms first if you have unsaved tuning."/>
-                            <Button x:Name="HeaderGameSaveAllBtn" Content="★ Save all"
+                            <Button x:Name="HeaderGameSaveAllBtn" Content="★ Save"
                                     Style="{StaticResource HeaderSaveAllButton}" Click="HeaderGameSaveAll_Click"
-                                    ToolTip="You have unsaved tuning. Save every changed section at once. Opens a chooser to save to the game default, this car, or both."/>
+                                    ToolTip="Save your current tuning to this game's preset."/>
                             <!-- Conditional: only shown when the active preset is
                                  not already this game's auto-load default (see
                                  UpdateSetDefaultButton). Replaces the old bottom
@@ -941,6 +975,11 @@
                                     Click="HeaderGameShare_Click"
                                     ToolTipService.ShowOnDisabled="True"
                                     ToolTip="Share this game preset with the community."/>
+                            <!-- Transient "Saved ✓" flash after a header save, in place of
+                                 the old blocking success dialog. Cleared on a timer. -->
+                            <TextBlock x:Name="HeaderGameSaveStatus" Text="" FontSize="11"
+                                       Foreground="#7FC77F" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
                         </StackPanel>
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="Car preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
@@ -949,9 +988,9 @@
                                       VerticalAlignment="Center"
                                       MaxDropDownHeight="420" IsTextSearchEnabled="True"
                                       ToolTip="The preset for the current car. Pick this car's preset, or another car's to load its tuning onto the current car. Save in the Active car section saves it to this car. Confirms first if you have unsaved tuning."/>
-                            <Button x:Name="HeaderCarSaveAllBtn" Content="★ Save all"
+                            <Button x:Name="HeaderCarSaveAllBtn" Content="★ Save"
                                     Style="{StaticResource HeaderSaveAllButton}" Click="HeaderCarSaveAll_Click"
-                                    ToolTip="You have unsaved tuning for this car. Save every changed section at once. Opens a chooser that leads with this car (or the game default, or both)."/>
+                                    ToolTip="Save your current tuning to this car's preset."/>
                             <!-- Conditional: shown alongside the car ★ Save all
                                  (i.e. when this car has unsaved tuning), see
                                  UpdateGlobalDirtyFromEffects. -->
@@ -968,6 +1007,9 @@
                                     Click="HeaderCarShare_Click"
                                     ToolTipService.ShowOnDisabled="True"
                                     ToolTip="Share this car preset with the community."/>
+                            <TextBlock x:Name="HeaderCarSaveStatus" Text="" FontSize="11"
+                                       Foreground="#7FC77F" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
                         </StackPanel>
                     </Grid>
 
@@ -1270,8 +1312,10 @@
             </Border>
             <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Master gain:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="0" Text="Master gain:" Style="{StaticResource LabelText}"
+                           ToolTip="Overall strength of the plugin's effects. Doesn't change the game's own force feedback."/>
                 <Slider     Grid.Column="1" x:Name="MasterGainSlider"
+                            ToolTip="Overall strength of the plugin's effects. Doesn't change the game's own force feedback."
                             Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                             TickFrequency="0.25" ValueChanged="MasterGainSlider_ValueChanged" VerticalAlignment="Center"/>
                 <TextBox Grid.Column="2" x:Name="MasterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
@@ -1364,7 +1408,7 @@
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Spring strength:" Style="{StaticResource LabelText}"
-                                           ToolTip="How much centering weight to add when fully parked, as a fraction of full FFB. Start low; a strong spring snaps a direct-drive rim to center hard."/>
+                                           ToolTip="How much centering weight to add when fully parked, as a fraction of full FFB. Start low; a strong spring can snap the wheel to center hard."/>
                                 <Slider     Grid.Column="1" x:Name="StationarySpringStrengthSlider"
                                             Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.25"
                                             TickFrequency="0.25" ValueChanged="StationarySpringStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -2633,8 +2677,18 @@
                     <CheckBox x:Name="ForzaForwardEnabledCheck" Content="Also forward to SimHub (dashboards, ShakeIt / Buttkicker, etc.)" Click="ForzaForwardEnabled_Changed" Margin="0,0,0,4"
                               FontWeight="SemiBold"
                               ToolTip="Enable when you also use SimHub for Forza (dashboards, ShakeIt bass shakers / Buttkicker, anything SimHub drives). Forza can only send telemetry to one place, so this plugin receives it and re-broadcasts every packet verbatim to SimHub."/>
+                    <!-- Intro on its own line; the numbered setup steps render as
+                         separate rows below so the option isn't a wall of text. -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="11"
-                               Text="This plugin passes a copy of Forza's telemetry on to SimHub, so anything SimHub drives (dashboards, bass shakers, Buttkicker) keeps working too. The setup above already points Forza at this plugin; this just adds the relay to SimHub.&#10;1. In SimHub, click the Home button at the top of the left sidebar. It should show Forza Horizon as the active game (if not, click Change game). Click Game config and note the UDP port it shows (often 8000). Just read it, do not change anything here.&#10;2. Enable this box, set the forward host to 127.0.0.1, and set the forward port to that SimHub port.&#10;3. Drive for a moment and check the &quot;Forwarded:&quot; line below. Once it shows packets, SimHub's dashboards and bass shakers are back."/>
+                               Text="Also passes Forza's telemetry to SimHub so its dashboards, bass shakers, and Buttkicker keep working. Forza already points at this plugin; this just relays a copy on to SimHub. Setup:"/>
+                    <StackPanel Margin="10,0,0,6">
+                        <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,0,0,3"
+                                   Text="1. In SimHub, click the Home button at the top of the left sidebar. It should show Forza Horizon as the active game (if not, click Change game). Click Game config and note the UDP port it shows (often 8000). Just read it, do not change anything here."/>
+                        <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,0,0,3"
+                                   Text="2. Enable this box, set the forward host to 127.0.0.1, and set the forward port to that SimHub port."/>
+                        <TextBlock Style="{StaticResource HelpText}" FontSize="11"
+                                   Text="3. Drive for a moment and check the &quot;Forwarded:&quot; line below. Once it shows packets, SimHub's dashboards and bass shakers are back."/>
+                    </StackPanel>
                     <Grid Margin="0,0,0,4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
@@ -2877,7 +2931,7 @@
                                 Content="Run self-test"
                                 HorizontalAlignment="Left" Margin="0,14,0,0"
                                 Padding="10,3" Click="SelfTest_Click"
-                                ToolTip="Checks USBPcap, G HUB, wheel, stream, FFB pass-through and telemetry, then sends a short test buzz so you can confirm the wheel responds."/>
+                                ToolTip="Checks USBPcap, the wheel, stream, FFB pass-through and telemetry (and whether G HUB is open, since it can hold the wheel), then sends a short test buzz so you can confirm the wheel responds."/>
                         <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
                                    x:Name="SelfTestResultText"
                                    Visibility="Collapsed"
@@ -3162,7 +3216,7 @@
                              VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="4,0"
                              Background="#FF2D2D30" Foreground="White" CaretBrush="White"
                              BorderBrush="#FF7A7A7A" BorderThickness="1"
-                             ToolTip="If you don't know what this is for, you don't need it."
+                             ToolTip="Enter a code to unlock test or recovery features. Type HELP to list valid codes."
                              LostFocus="AccessCode_Changed" KeyDown="AccessCode_KeyDown"/>
                     <TextBlock x:Name="AccessCodeStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -3265,7 +3319,7 @@
 
             <!-- Account details: the rarely-needed bits (your stats, active sessions, data
                  export, delete), collapsed by default so they don't clutter the account view. -->
-            <Expander x:Name="AccountDetailsExpander" Header="Account details" IsExpanded="False" Margin="0,12,0,4">
+            <Expander x:Name="AccountDetailsExpander" Header="Account settings" IsExpanded="False" Margin="0,12,0,4">
                 <StackPanel Margin="0,8,0,0">
                     <!-- Your stats. Refreshed from get_account_stats when the Account tab is shown. -->
                     <TextBlock Text="Your stats" Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>

@@ -187,13 +187,13 @@ namespace TrueforceForAll.Plugin
                     {
                         for (int lvl = 0; lvl <= WheelLedChannel.LedCount && _channel.IsReady; lvl++)
                         {
-                            _testStatus = $"▶ rev sweep — level {lvl}/{WheelLedChannel.LedCount}";
+                            _testStatus = $"▶ rev sweep - level {lvl}/{WheelLedChannel.LedCount}";
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
                         for (int lvl = WheelLedChannel.LedCount - 1; lvl >= 0 && _channel.IsReady; lvl--)
                         {
-                            _testStatus = $"▶ rev sweep — level {lvl}/{WheelLedChannel.LedCount}";
+                            _testStatus = $"▶ rev sweep - level {lvl}/{WheelLedChannel.LedCount}";
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
@@ -215,7 +215,7 @@ namespace TrueforceForAll.Plugin
                     {
                         try { _channel.TurnOff(); } catch { }
                         _lastBucket = -1;
-                        _testStatus = "test finished — LEDs off";
+                        _testStatus = "test finished - LEDs off";
                         _log("[RPM-LED] Test: finished, LEDs off (level 0).");
                     }
                     _testing = false;

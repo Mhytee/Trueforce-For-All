@@ -53,11 +53,10 @@ namespace TrueforceForAll.Plugin
             ShowInTaskbar = false;
             ResizeMode    = ResizeMode.NoResize;
 
-            // Start with a value-prop preview so the user understands
-            // what sign-in unlocks BEFORE typing an email address.
-            // "Use a different email" on the verify step calls
-            // ShowEmailStep directly, so re-entry skips this preview.
-            ShowPreviewStep();
+            // Open straight on the email step. Entering an email either signs
+            // the user in or creates their account via the emailed code (there's
+            // no separate sign-up), so a value-prop preview just added a click.
+            ShowEmailStep();
         }
 
         // Once the modal has closed, any in-flight AuthSendOtpAsync /
@@ -74,48 +73,6 @@ namespace TrueforceForAll.Plugin
             base.OnClosed(e);
         }
 
-        // ---- Stage 0: value-prop preview ---------------------------------
-
-        private void ShowPreviewStep()
-        {
-            var root = new StackPanel { Margin = new Thickness(18, 16, 18, 14) };
-            Content = root;
-
-            root.Children.Add(new TextBlock {
-                Text = "Sign in",
-                Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
-                Margin = new Thickness(0, 0, 0, 4),
-            });
-            root.Children.Add(new TextBlock {
-                Text = "Sign in to use community features: browse and share presets, vote, and help fill in car data. We email a 6-digit code (no password).",
-                Foreground = MutedFg, FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 18),
-                TextWrapping = TextWrapping.Wrap,
-            });
-
-            var btnRow = new StackPanel {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right,
-            };
-            var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
-                Margin = new Thickness(0, 0, 8, 0),
-                IsCancel = true,
-            };
-            ModalButtonTheme.Secondary(cancelBtn);
-            cancelBtn.Click += (s, e) => DialogResult = false;  // setting DialogResult closes the dialog
-            btnRow.Children.Add(cancelBtn);
-
-            var continueBtn = new Button {
-                Content = "Continue", Padding = new Thickness(16, 5, 16, 5),
-                FontWeight = FontWeights.SemiBold, IsDefault = true,
-            };
-            ModalButtonTheme.Primary(continueBtn);
-            continueBtn.Click += (s, e) => ShowEmailStep();
-            btnRow.Children.Add(continueBtn);
-            root.Children.Add(btnRow);
-        }
-
         // ---- Stage A: email entry ----------------------------------------
 
         private void ShowEmailStep(string prefilledEmail = null, string errorMessage = null)
@@ -128,12 +85,12 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Sign in",
+                Text = "Sign in or create your account",
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "We'll email a 6-digit code. No password to remember. Signing in lets you use community features.",
+                Text = "New here? There's no separate sign-up. Enter your email and we'll send a 6-digit code that signs you in or creates your account. No password. You can then browse and share presets, vote, and help fill in car data.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,
@@ -255,7 +212,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "We sent a 6-digit code to " + email + ". Paste it below.",
+                Text = "We sent a 6-digit code to " + email + ". Enter the code below.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,

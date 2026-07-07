@@ -9,7 +9,7 @@
     <UserControl.Resources>
         <Style x:Key="HelpText" TargetType="TextBlock">
             <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="Opacity" Value="0.75"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
         <!-- Custom-templated row button. SimHub's stock theme greys every
@@ -260,7 +260,7 @@
                         Width="28" Height="28" Padding="0"
                         Background="#3A3A3A" BorderBrush="#3A3A3A" Foreground="#CFCFCF"
                         Cursor="Hand" Click="RefreshLibrary_Click"
-                        Focusable="False" FocusVisualStyle="{x:Null}"
+                        AutomationProperties.Name="Refresh library"
                         ToolTip="Refresh. In a Library view, reloads presets from disk (use after dropping JSON files into the library folders). When browsing Community or My uploads, re-fetches the latest list from the server.">
                     <TextBlock Text="&#x21BB;" FontSize="16" FontWeight="Bold"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -469,7 +469,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Default"     Width="70"  MinWidth="95"  Binding="{Binding ActiveLabel}"/>
+                            <DataGridTextColumn Header="Default"     Width="60"  MinWidth="60"  Binding="{Binding ActiveLabel}"/>
                             <DataGridTextColumn Header="Game"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
                             <DataGridTextColumn Header="Car name"    Width="*"   MinWidth="160" Binding="{Binding CarName}"/>
                             <DataGridTextColumn Header="Preset name" Width="190" MinWidth="130" Binding="{Binding DisplayName}"/>
@@ -488,7 +488,7 @@
             <!-- ===================== Custom engines ===================== -->
             <DockPanel x:Name="CustomPanel" Visibility="Collapsed">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Your saved custom engines. Edit or delete them here; presets that referenced a deleted engine fall back to silence until repicked. Built-in layouts (V8, Rotary, etc.) aren't listed."/>
+                               Text="Your saved custom engines. Edit or delete them here; if you delete one a preset uses, that preset falls back to the Auto engine mode until you pick a new one. Built-in layouts (V8, Rotary, etc.) aren't listed."/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>

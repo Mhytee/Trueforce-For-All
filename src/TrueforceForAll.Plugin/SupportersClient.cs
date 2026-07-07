@@ -42,11 +42,12 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Read the public supporters roster (list_supporters RPC), best-pledge first.
-        /// Returns an empty list when not configured / unreachable / nobody has pledged yet.</summary>
+        /// Returns null when not configured / unreachable / the read fails (so the caller can
+        /// tell a load failure from a genuinely empty roster); an empty list when nobody has pledged yet.</summary>
         public async Task<List<SupporterRow>> GetSupportersAsync(CancellationToken ct)
         {
             var result = new List<SupporterRow>();
-            if (!TryResolve(out string baseUrl, out string anonKey)) return result;
+            if (!TryResolve(out string baseUrl, out string anonKey)) return null;
 
             // Public read: prefer the signed-in token if we have one, else fall back to the
             // anon key as the bearer (the RPC is granted to anon).
@@ -66,7 +67,7 @@ namespace TrueforceForAll.Plugin
                         if (!resp.IsSuccessStatusCode)
                         {
                             _log?.Invoke($"[TF4ALL] Supporters read failed: {(int)resp.StatusCode} {Trunc(body)}");
-                            return result;
+                            return null;
                         }
                         var arr = JArray.Parse(body);
                         foreach (var item in arr)
@@ -81,7 +82,7 @@ namespace TrueforceForAll.Plugin
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Supporters read exception: {ex.Message}"); return result; }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Supporters read exception: {ex.Message}"); return null; }
         }
 
         private async Task<string> GetBearerAsync()

@@ -40,7 +40,8 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush DangerFg    = new SolidColorBrush(Color.FromRgb(0xC8, 0x6A, 0x6A));
 
         private readonly Func<InstalledPacksFile> _loadPacks;
-        private readonly Func<InstalledPack, SetDefaultsSummary> _setAsDefaults;
+        private readonly Func<InstalledPack, SetDefaultsConflictPolicy, SetDefaultsSummary> _setAsDefaults;
+        private readonly Func<InstalledPack, SetDefaultsPreview> _previewDefaults;
         private readonly Func<InstalledPack, RemovePackSummary>  _removePack;
 
         private readonly ListBox _packList;
@@ -51,12 +52,14 @@ namespace TrueforceForAll.Plugin
 
         public PackManagerWindow(
             Func<InstalledPacksFile> loadPacks,
-            Func<InstalledPack, SetDefaultsSummary> setAsDefaults,
+            Func<InstalledPack, SetDefaultsConflictPolicy, SetDefaultsSummary> setAsDefaults,
+            Func<InstalledPack, SetDefaultsPreview> previewDefaults,
             Func<InstalledPack, RemovePackSummary>  removePack)
         {
-            _loadPacks     = loadPacks     ?? throw new ArgumentNullException(nameof(loadPacks));
-            _setAsDefaults = setAsDefaults ?? throw new ArgumentNullException(nameof(setAsDefaults));
-            _removePack    = removePack    ?? throw new ArgumentNullException(nameof(removePack));
+            _loadPacks       = loadPacks       ?? throw new ArgumentNullException(nameof(loadPacks));
+            _setAsDefaults   = setAsDefaults   ?? throw new ArgumentNullException(nameof(setAsDefaults));
+            _previewDefaults = previewDefaults ?? throw new ArgumentNullException(nameof(previewDefaults));
+            _removePack      = removePack      ?? throw new ArgumentNullException(nameof(removePack));
 
             Title = "Manage installed packs";
             Width = 820;
@@ -155,7 +158,7 @@ namespace TrueforceForAll.Plugin
                 Foreground = TextFg,
                 BorderBrush = BorderFg,
                 IsEnabled = false,
-                ToolTip = "Walk every preset in the selected pack and set it as the default for its game / car. Overwrites existing defaults silently.",
+                ToolTip = "Walk every preset in the selected pack and set it as the default for its game / car. If any already have a default, you'll be asked whether to overwrite or keep them.",
             };
             _setDefaultsButton.Click += (s, e) => OnSetDefaultsClicked();
 
@@ -369,9 +372,30 @@ namespace TrueforceForAll.Plugin
         {
             var p = SelectedPack();
             if (p == null) return;
+
+            // Warn before clobbering existing defaults: overwrite all, skip only
+            // the conflicting ones, or cancel. No prompt when nothing conflicts.
+            var preview = _previewDefaults(p);
+            SetDefaultsConflictPolicy policy = SetDefaultsConflictPolicy.OverwriteAll;
+            if (preview.ConflictCount > 0)
+            {
+                int total = preview.FreshCount + preview.ConflictCount;
+                var choice = TrueforceDialog.ShowChoice(this,
+                    "Set pack as defaults",
+                    $"This pack sets {total} default binding(s). {preview.ConflictCount} of them already have a default for that game or car.\n\n"
+                    + "\"Overwrite all\" replaces every existing default. \"Skip existing\" keeps your current defaults and only fills in the ones you haven't set yet.",
+                    primaryLabel:   "Overwrite all",
+                    secondaryLabel: "Skip existing",
+                    cancelLabel:    "Cancel");
+                if (choice == DialogChoice.Cancel) return;
+                policy = choice == DialogChoice.Primary
+                    ? SetDefaultsConflictPolicy.OverwriteAll
+                    : SetDefaultsConflictPolicy.SkipConflicts;
+            }
+
             try
             {
-                var summary = _setAsDefaults(p);
+                var summary = _setAsDefaults(p, policy);
                 _statusText.Text = FormatSetDefaultsSummary(summary);
                 _statusText.Foreground = TextFg;
                 RefreshList(selectAfter: p);
@@ -421,10 +445,12 @@ namespace TrueforceForAll.Plugin
             int gOver = s.GameDefaultsOverwritten;
             int cOver = s.CarDefaultsOverwritten;
             string overText = (gOver + cOver) > 0 ? $" (overwrote {gOver + cOver} existing)" : "";
+            int kept = s.GameDefaultsSkippedConflict + s.CarDefaultsSkippedConflict;
+            string keptText = kept > 0 ? $" · kept {kept} existing default(s)" : "";
             string skipText = s.GamePresetsSkipped > 0
                 ? $" · skipped {s.GamePresetsSkipped} game preset(s) without a game mapping"
                 : "";
-            return $"Set defaults: {s.GameDefaultsSet} game, {s.CarDefaultsSet} car{overText}{skipText}.";
+            return $"Set defaults: {s.GameDefaultsSet} game, {s.CarDefaultsSet} car{overText}{keptText}{skipText}.";
         }
 
         private static string FormatRemoveSummary(InstalledPack p, RemovePackSummary s)

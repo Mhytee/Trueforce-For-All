@@ -7076,8 +7076,16 @@ namespace TrueforceForAll.Plugin
             }
 
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
-            _carStore.Save(_activeCarId, presetName, _activeGame ?? "", ovr, isBuiltin: false,
-                defaultAuthor: CurrentAuthorForStamp());
+            try
+            {
+                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", ovr, isBuiltin: false,
+                    defaultAuthor: CurrentAuthorForStamp());
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[TF4ALL] Save of car preset '{presetName}' for '{_activeCarId}' failed: {ex.Message}");
+                return false;   // real write failure -> logged, and the caller shows "couldn't save"
+            }
             if (ovr == null || ovr.IsEmpty)
                 _lastPersistedCarOverrides.Remove(_activeCarId);
             else
@@ -7098,8 +7106,16 @@ namespace TrueforceForAll.Plugin
             // strip so the on-disk filename and CarDefaults binding are clean.
             string newDisk = ToDiskName(newPresetName);
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
-            _carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false,
-                defaultAuthor: CurrentAuthorForStamp());
+            try
+            {
+                _carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false,
+                    defaultAuthor: CurrentAuthorForStamp());
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[TF4ALL] Save of car preset '{newDisk}' for '{_activeCarId}' failed: {ex.Message}");
+                return false;
+            }
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             Settings.CarDefaults[_activeCarId] = newDisk;
             if (ovr == null || ovr.IsEmpty)
@@ -9917,8 +9933,13 @@ namespace TrueforceForAll.Plugin
                 // "Load more" (Show more): fetch the next page and GROW the cached
                 // accumulated list for this view, so a return visit shows everything
                 // the user had loaded. Returns just the new page (the UI appends).
+                // Generation captured BEFORE the network read: if a delete/vote
+                // invalidates while the fetch is in flight, the store drops this
+                // write instead of re-caching the pre-delete list (which would
+                // resurrect the deleted row from cache for up to the TTL).
+                int gen = _browseCache.CurrentGeneration;
                 var more = fetch();
-                if (more != null && more.Count > 0) _browseCache.Append(key, more);
+                if (more != null && more.Count > 0) _browseCache.Append(key, more, gen);
                 return more;
             }
             if (!force)
@@ -9926,8 +9947,9 @@ namespace TrueforceForAll.Plugin
                 var cached = _browseCache.TryGet(key, out bool fresh);
                 if (fresh && cached != null) return cached;
             }
+            int gen0 = _browseCache.CurrentGeneration;   // pre-read capture, same reason
             var result = fetch();
-            if (result != null) { _browseCache.Put(key, result); return result; }
+            if (result != null) { _browseCache.Put(key, result, gen0); return result; }
             // Fetch failed (offline / signed out): serve the stale cache rather than
             // nothing, and never overwrite a good entry with a null.
             return _browseCache.TryGet(key, out _);
@@ -9987,7 +10009,10 @@ namespace TrueforceForAll.Plugin
         {
             var set = new HashSet<string>(StringComparer.Ordinal);
             if (string.IsNullOrWhiteSpace(query)) return new List<string>();
-            string q = query.Trim();
+            // Folded so accented and plain-ASCII spellings match either way
+            // (FindCarIdsByDisplayName folds internally; the CarFacts loop
+            // below matches folded-vs-folded with the same helper).
+            string q = BuiltinCarCylinders.FoldDiacritics(query.Trim());
             var scopeGames = (games != null && games.Count > 0) ? games : null;
 
             // Built-in catalogs (Forza ordinal names, FH5 curated names, AC
@@ -10015,7 +10040,8 @@ namespace TrueforceForAll.Plugin
                         if (set.Count >= 300) break;
                         var bundle = kv.Value;
                         if (bundle == null || string.IsNullOrEmpty(bundle.CarName)) continue;
-                        if (bundle.CarName.IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        if (BuiltinCarCylinders.FoldDiacritics(bundle.CarName)
+                                .IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
                         string key = kv.Key ?? "";
                         int slash = key.IndexOf('/');
                         if (slash <= 0 || slash >= key.Length - 1) continue;
@@ -12769,15 +12795,15 @@ namespace TrueforceForAll.Plugin
         /// given name. Overwrites any existing preset with that name. Sets it
         /// as the active preset. Refuses to overwrite built-in presets, the
         /// UI must fork to a user-named preset for those.</summary>
-        public void SavePresetAs(string presetName)
+        public bool SavePresetAs(string presetName)
         {
-            if (Settings == null || string.IsNullOrEmpty(presetName)) return;
+            if (Settings == null || string.IsNullOrEmpty(presetName)) return false;
             // Non-dev: built-ins are read-only (caller forks). DEV authoring
             // mode may overwrite a built-in in place; user presets always save.
             if (IsBuiltinPreset(presetName) && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to overwrite built-in preset '{presetName}'.");
-                return;
+                return false;
             }
             // Skip the active-preset rename + log on disk failure so the
             // UI's "Saved as X" status doesn't drift from the on-disk
@@ -12802,11 +12828,12 @@ namespace TrueforceForAll.Plugin
                 fresh.CommunityUploadedBodyHash  = prior.CommunityUploadedBodyHash;
                 fresh.CommunityUploadedVersion   = prior.CommunityUploadedVersion;
             }
-            if (!PersistGamePresetToFolder(presetName, fresh)) return;
+            if (!PersistGamePresetToFolder(presetName, fresh)) return false;
             _activePresetName = presetName;
             PersistSettingsCore();
             RequestAutoBackup();   // preset file changed: arm auto-sync (no-op unless enabled)
             SimHub.Logging.Current.Info($"[TF4ALL] Saved preset '{presetName}'.");
+            return true;
         }
 
         /// <summary>Save ONLY the targeted section into the active preset's
@@ -12939,8 +12966,16 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
-                    defaultAuthor: CurrentAuthorForStamp());
+                try
+                {
+                    _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
+                        defaultAuthor: CurrentAuthorForStamp());
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Save of section {kind} into car preset '{presetName}' for '{_activeCarId}' failed: {ex.Message}");
+                    return false;
+                }
                 if (patched.IsEmpty)
                     _lastPersistedCarOverrides.Remove(_activeCarId);
                 else
@@ -13259,7 +13294,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[TF4ALL] Can't overwrite built-in preset '{name}' on edit-mode save; fork via Save as new.");
                 return false;
             }
-            SavePresetAs(name);            // persist edits to the edited preset
+            if (!SavePresetAs(name)) return false;   // write failed (logged) -> caller shows the dialog
             RestorePreEditGameState();     // return to the previously-active preset
             SimHub.Logging.Current.Info($"[TF4ALL] Saved '{name}' and exited offline edit (restored prior preset).");
             return true;
@@ -13272,7 +13307,7 @@ namespace TrueforceForAll.Plugin
         {
             if (!IsOfflineEditing || string.IsNullOrEmpty(newName)) return false;
             if (Settings.Presets != null && Settings.Presets.ContainsKey(newName)) return false;
-            SavePresetAs(newName);
+            if (!SavePresetAs(newName)) return false;
             RestorePreEditGameState();
             SimHub.Logging.Current.Info($"[TF4ALL] Saved as new '{newName}' and exited offline edit (restored prior preset).");
             return true;
@@ -13290,7 +13325,7 @@ namespace TrueforceForAll.Plugin
             if (!IsOfflineEditing || string.IsNullOrEmpty(newName)) return false;
             if (Settings.Presets != null && Settings.Presets.ContainsKey(newName)) return false;
 
-            SavePresetAs(newName);   // sets _activePresetName = newName + persists
+            if (!SavePresetAs(newName)) return false;   // write failed (logged) -> caller shows the dialog
 
             // Clear offline-edit state but do NOT restore the prior live
             // state; the new preset stays the active one.
@@ -13479,7 +13514,9 @@ namespace TrueforceForAll.Plugin
                 return true;
             }
             if (IsActiveCarPresetBuiltin()) return false;   // non-dev: fork
-            PersistActiveCarOverride();
+            // Propagate a real write failure so the caller shows "couldn't save"
+            // and we DON'T restore/clear (which would drop the unsaved edit).
+            if (!PersistActiveCarOverride()) return false;
             RestorePreEditCarState();
             return true;
         }
@@ -14946,12 +14983,45 @@ namespace TrueforceForAll.Plugin
             };
         }
 
+        /// <summary>Read-only count of how many of a pack's default bindings are
+        /// fresh (no existing default) vs conflicts (would replace one). No mutation;
+        /// used to warn before "Set pack as defaults" clobbers existing bindings.</summary>
+        public SetDefaultsPreview PreviewPackDefaults(InstalledPack pack)
+        {
+            var preview = new SetDefaultsPreview();
+            if (pack?.Entries == null) return preview;
+            var carDefaults  = Settings?.CarDefaults;
+            var gameDefaults = Settings?.GameDefaults;
+            foreach (var e in pack.Entries)
+            {
+                if (e == null) continue;
+                if (e.Kind == InstalledPackEntry.KindCar)
+                {
+                    if (string.IsNullOrEmpty(e.CarId) || string.IsNullOrEmpty(e.PresetName)) continue;
+                    if (carDefaults != null && carDefaults.ContainsKey(e.CarId)) preview.ConflictCount++;
+                    else preview.FreshCount++;
+                }
+                else if (e.Kind == InstalledPackEntry.KindGame)
+                {
+                    if (e.DefaultForGames == null || e.DefaultForGames.Count == 0 || string.IsNullOrEmpty(e.Name)) continue;
+                    foreach (var gameKey in e.DefaultForGames)
+                    {
+                        if (string.IsNullOrEmpty(gameKey)) continue;
+                        if (gameDefaults != null && gameDefaults.ContainsKey(gameKey)) preview.ConflictCount++;
+                        else preview.FreshCount++;
+                    }
+                }
+            }
+            return preview;
+        }
+
         /// <summary>Walk an installed pack's entries and bind each one as the
         /// active default (game preset for its game key(s), car preset for its
         /// carId). Game entries without a DefaultForGames hint are counted as
-        /// skipped. existing defaults are overwritten silently and tallied so
-        /// the caller's summary toast can surface what changed.</summary>
-        public SetDefaultsSummary SetPackAsDefaults(InstalledPack pack)
+        /// skipped. With OverwriteAll, existing defaults are replaced and tallied;
+        /// with SkipConflicts, an entry whose game/car already has a default is
+        /// kept and counted in the *SkippedConflict tallies.</summary>
+        public SetDefaultsSummary SetPackAsDefaults(InstalledPack pack, SetDefaultsConflictPolicy policy = SetDefaultsConflictPolicy.OverwriteAll)
         {
             var summary = new SetDefaultsSummary();
             if (pack?.Entries == null) return summary;
@@ -14968,8 +15038,13 @@ namespace TrueforceForAll.Plugin
                 if (e.Kind == InstalledPackEntry.KindCar)
                 {
                     if (string.IsNullOrEmpty(e.CarId) || string.IsNullOrEmpty(e.PresetName)) continue;
-                    if (Settings.CarDefaults.TryGetValue(e.CarId, out string prev)
-                        && !string.Equals(prev, e.PresetName, StringComparison.Ordinal))
+                    bool carExists = Settings.CarDefaults.TryGetValue(e.CarId, out string prev);
+                    if (policy == SetDefaultsConflictPolicy.SkipConflicts && carExists)
+                    {
+                        summary.CarDefaultsSkippedConflict++;
+                        continue;
+                    }
+                    if (carExists && !string.Equals(prev, e.PresetName, StringComparison.Ordinal))
                         summary.CarDefaultsOverwritten++;
                     Settings.CarDefaults[e.CarId] = e.PresetName;
                     BuiltinPresetWriter.SetCarDefault(folder, e.CarId, e.PresetName);
@@ -14994,8 +15069,13 @@ namespace TrueforceForAll.Plugin
                     foreach (var gameKey in e.DefaultForGames)
                     {
                         if (string.IsNullOrEmpty(gameKey)) continue;
-                        if (Settings.GameDefaults.TryGetValue(gameKey, out string prev)
-                            && !string.Equals(prev, e.Name, StringComparison.Ordinal))
+                        bool gameExists = Settings.GameDefaults.TryGetValue(gameKey, out string prev);
+                        if (policy == SetDefaultsConflictPolicy.SkipConflicts && gameExists)
+                        {
+                            summary.GameDefaultsSkippedConflict++;
+                            continue;
+                        }
+                        if (gameExists && !string.Equals(prev, e.Name, StringComparison.Ordinal))
                             summary.GameDefaultsOverwritten++;
                         Settings.GameDefaults[gameKey] = e.Name;
                         BuiltinPresetWriter.SetGameDefault(folder, gameKey, e.Name);
@@ -16183,7 +16263,7 @@ namespace TrueforceForAll.Plugin
         /// Patreon server-side; no sign-in required (the read RPC is public recognition).</summary>
         internal async Task<System.Collections.Generic.List<SupportersClient.SupporterRow>> GetSupportersAsync(System.Threading.CancellationToken ct)
         {
-            if (_supportersClient == null) return new System.Collections.Generic.List<SupportersClient.SupporterRow>();
+            if (_supportersClient == null) return null;   // not configured -> "couldn't load", not an empty roster
             return await _supportersClient.GetSupportersAsync(ct).ConfigureAwait(false);
         }
 

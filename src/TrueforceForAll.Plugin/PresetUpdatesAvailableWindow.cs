@@ -161,7 +161,7 @@ namespace TrueforceForAll.Plugin
                 Text = UiContentSanitizer.SafeDisplayText(server.Name, 128) ?? "(unnamed)", Foreground = TextFg, FontSize = 13, FontWeight = FontWeights.SemiBold,
             });
             string by = string.IsNullOrEmpty(server.Author) ? "(anonymous)" : "by " + UiContentSanitizer.SafeDisplayText(server.Author, 96);
-            string ver = "v" + local.SeenContentVersion + " -> v" + server.ContentVersion;
+            string ver = "v" + local.SeenContentVersion + " → v" + server.ContentVersion;
             info.Children.Add(new TextBlock {
                 Text = by + "   |   " + server.Game + "   " + server.CarId + "   |   " + ver,
                 Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 2, 0, 0),

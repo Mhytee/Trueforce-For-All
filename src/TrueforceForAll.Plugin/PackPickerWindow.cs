@@ -99,7 +99,7 @@ namespace TrueforceForAll.Plugin
 
             var header = new TextBlock
             {
-                Text = "Pick the presets to bundle into the pack. Recipients can import the whole pack at once.",
+                Text = "Pick what to export. One item saves as a single file; pick two or more to bundle them into a pack that imports at once.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10),
                 Foreground = TextFg,
