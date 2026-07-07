@@ -468,6 +468,19 @@ namespace TrueforceForAll.Plugin
             };
             root.Children.Add(statusText);
 
+            // Indeterminate bar shown only while an upload is in flight, so a slow
+            // connection shows motion instead of a frozen "Uploading..." line.
+            var uploadProgress = new ProgressBar {
+                IsIndeterminate = false,
+                Height = 3,
+                Margin = new Thickness(0, 0, 0, 8),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x6F, 0xB1, 0xFF)),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(uploadProgress);
+
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -493,6 +506,18 @@ namespace TrueforceForAll.Plugin
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);
 
+            // Retry affordance for the "signed in but no username" case: rather than
+            // telling the user to reopen the whole dialog (losing their typed
+            // description), this re-runs the username picker in place. Hidden until
+            // that case is hit; wired below once the fields it flips exist.
+            var pickUsernameBtn = new Button {
+                Content = "Pick username…", Padding = new Thickness(12, 5, 12, 5),
+                Margin = new Thickness(0, 0, 8, 0),
+                Foreground = TextFg, Background = PanelBg,
+                Visibility = Visibility.Collapsed,
+            };
+            btnRow.Children.Add(pickUsernameBtn);
+
             // Empty-preset gate: car + game presets with no effect
             // sections selected would otherwise upload an empty body
             // that adds nothing for downloaders. Engines have no
@@ -515,6 +540,56 @@ namespace TrueforceForAll.Plugin
                 System.Windows.Controls.ToolTipService.SetShowOnDisabled(uploadBtn, true);
             }
 
+            // Flip the form from signed-out to signed-in without reopening the
+            // window: enable the inputs, drop the Sign in button, refresh the
+            // "Sharing as" line. Shared by the sign-in success path and the
+            // "Pick username" retry.
+            void FlipToSignedIn()
+            {
+                descInput.IsEnabled = true;
+                uploadBtn.IsEnabled = hasSections;
+                allowInPacksCheck.IsEnabled = true;
+                if (universalCheck != null) universalCheck.IsEnabled = true;
+                statusText.Foreground = MutedFg;
+                statusText.Text = "Uploads are credited to your username.";
+                if (signInBtn != null) btnRow.Children.Remove(signInBtn);
+                // Rebuild the Sharing-as line in place. Cheap since the parent
+                // StackPanel preserves order.
+                for (int i = 0; i < root.Children.Count; i++)
+                {
+                    if (root.Children[i] is Grid g
+                        && g.Children.Count >= 1
+                        && g.Children[0] is TextBlock label
+                        && label.Text == "Sharing as")
+                    {
+                        root.Children.RemoveAt(i);
+                        root.Children.Insert(i, MakeFactLine(
+                            "Sharing as",
+                            _plugin?.Settings?.SharingAuthor ?? "(your username)"));
+                        break;
+                    }
+                }
+            }
+
+            // Bootstrap the username (new accounts have none yet) then either flip
+            // to signed-in or, if the picker was cancelled / failed, keep the form
+            // open with a "Pick username" retry so the in-progress share survives.
+            async System.Threading.Tasks.Task EnsureUsernameThenFlip()
+            {
+                try { await PickUsernameWindow.EnsureUsernameAsync(_plugin, this); }
+                catch { /* cancelled / network blip; handled just below */ }
+                if (string.IsNullOrWhiteSpace(_plugin?.Settings?.SharingAuthor))
+                {
+                    statusText.Foreground = ErrFg;
+                    statusText.Text = "Signed in, but no username yet. Pick one to finish sharing.";
+                    pickUsernameBtn.Visibility = Visibility.Visible;
+                    return;
+                }
+                pickUsernameBtn.Visibility = Visibility.Collapsed;
+                FlipToSignedIn();
+            }
+            pickUsernameBtn.Click += async (s, e) => { await EnsureUsernameThenFlip(); };
+
             // Wire up the sign-in click after uploadBtn exists so we
             // can re-enable Upload + flip status when sign-in succeeds.
             if (signInBtn != null)
@@ -531,55 +606,9 @@ namespace TrueforceForAll.Plugin
                     // future drift between dialog result and auth state.
                     if (ok == true && _plugin?.AuthIsSignedIn == true)
                     {
-                        // Brand-new accounts have no profile.username
-                        // yet; uploading would error out as "set a
-                        // username first" from the server. Bootstrap
-                        // it here so the inline sign-in stays parity
-                        // with Settings panel sign-in.
-                        try { await PickUsernameWindow.EnsureUsernameAsync(_plugin, this); }
-                        catch { /* user cancelled / network blip; checked below */ }
-                        // If the bootstrap couldn't populate a
-                        // SharingAuthor (cancelled picker / network),
-                        // surface a clear status and KEEP Upload
-                        // disabled - otherwise the user clicks Upload
-                        // and gets a raw "set a username first" from
-                        // the server.
-                        if (string.IsNullOrWhiteSpace(_plugin?.Settings?.SharingAuthor))
-                        {
-                            statusText.Foreground = ErrFg;
-                            statusText.Text =
-                                "Signed in, but no username yet. Pick one on the Account tab, then re-open this dialog.";
-                            return;
-                        }
-                        // Flip into signed-in state without re-opening
-                        // the window. Update the readout, enable the
-                        // form, drop the Sign in button. Re-apply the
-                        // empty-preset gate so a fresh sign-in on a
-                        // car/game preset with no sections doesn't
-                        // suddenly enable Upload past that check.
-                        descInput.IsEnabled = true;
-                        uploadBtn.IsEnabled = hasSections;
-                        allowInPacksCheck.IsEnabled = true;
-                        if (universalCheck != null) universalCheck.IsEnabled = true;
-                        statusText.Foreground = MutedFg;
-                        statusText.Text = "Uploads are credited to your username.";
-                        btnRow.Children.Remove(signInBtn);
-                        // Rebuild the Sharing-as line in place. Cheap
-                        // since the parent StackPanel preserves order.
-                        for (int i = 0; i < root.Children.Count; i++)
-                        {
-                            if (root.Children[i] is Grid g
-                                && g.Children.Count >= 1
-                                && g.Children[0] is TextBlock label
-                                && label.Text == "Sharing as")
-                            {
-                                root.Children.RemoveAt(i);
-                                root.Children.Insert(i, MakeFactLine(
-                                    "Sharing as",
-                                    _plugin?.Settings?.SharingAuthor ?? "(your username)"));
-                                break;
-                            }
-                        }
+                        // New accounts have no profile.username yet; bootstrap it
+                        // (or offer an inline retry) then flip the form to signed-in.
+                        await EnsureUsernameThenFlip();
                     }
                 };
             }
@@ -590,6 +619,8 @@ namespace TrueforceForAll.Plugin
                 statusText.Foreground = MutedFg;
                 bool isUpdatePath = IsUpdate && !string.IsNullOrEmpty(ExistingUploadId);
                 statusText.Text = isUpdatePath ? "Updating..." : "Uploading...";
+                uploadProgress.IsIndeterminate = true;
+                uploadProgress.Visibility = Visibility.Visible;
 
                 string desc = (descInput.Text ?? "").Trim();
                 // Author is server-authoritative now: profile.username if
@@ -652,6 +683,8 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
+                    uploadProgress.IsIndeterminate = false;
+                    uploadProgress.Visibility = Visibility.Collapsed;
                     statusText.Foreground = ErrFg;
                     statusText.Text = "Couldn't upload. Check your connection and try again.";
                     TrueforceDialog.LogError("Share upload", ex);
@@ -659,6 +692,11 @@ namespace TrueforceForAll.Plugin
                     cancelBtn.IsEnabled = true;
                     return;
                 }
+
+                // Upload finished (success, or a soft failure with no exception);
+                // stop the busy bar before branching on the result.
+                uploadProgress.IsIndeterminate = false;
+                uploadProgress.Visibility = Visibility.Collapsed;
 
                 if (string.IsNullOrEmpty(newId))
                 {

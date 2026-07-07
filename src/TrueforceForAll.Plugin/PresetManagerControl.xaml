@@ -333,9 +333,10 @@
                          ExpandableRow ItemContainerStyle, not as a separate
                          panel here, so the list never has to shrink. -->
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <WrapPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <!-- Order mirrors the Car action bar: apply, edit,
-                                 share, destructive last, DEV trailing. -->
+                                 share, destructive last, DEV trailing. Wraps to a
+                                 second row instead of clipping on a narrow panel. -->
                             <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource SharePrimaryButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
                                     ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding. Replaces the older Set / Clear pair."/>
                             <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
@@ -348,7 +349,7 @@
                             <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource DangerButton}" Click="GameDelete_Click"     IsEnabled="False"/>
                             <Button x:Name="GamePromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
-                        </StackPanel>
+                        </WrapPanel>
                         <!-- Inline result line for rename / duplicate / delete /
                              set-default, mirroring the Community pane's status. -->
                         <TextBlock x:Name="GameLibStatus" DockPanel.Dock="Left" VerticalAlignment="Center"
@@ -425,7 +426,7 @@
                          BEFORE the ListView so the list (LastChild) gets
                          whatever space is left. -->
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <WrapPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <!-- Order: apply (Set as default, Edit) -> edit
                                  (Duplicate, Rename) -> share -> destructive
                                  (Delete) -> DEV. Groups read left-to-right by
@@ -446,7 +447,7 @@
                             <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource DangerButton}" Click="CarDelete_Click"    IsEnabled="False"/>
                             <Button x:Name="CarPromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this car preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
-                        </StackPanel>
+                        </WrapPanel>
                         <TextBlock x:Name="CarLibStatus" DockPanel.Dock="Left" VerticalAlignment="Center"
                                    Foreground="#7FC77F" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" Text=""/>
                         <TextBlock x:Name="CarCheckedLabel" VerticalAlignment="Center"

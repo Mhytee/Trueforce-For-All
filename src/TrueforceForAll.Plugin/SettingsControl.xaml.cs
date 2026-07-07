@@ -5626,9 +5626,14 @@ namespace TrueforceForAll.Plugin
                     });
                 }
             }
-            _engineItems.Add(new EngineDropdownItem { Kind = EngineDropdownKind.ActionNew,    Display = "Custom… (create new)" });
-            if (customs != null && customs.Count > 0)
-                _engineItems.Add(new EngineDropdownItem { Kind = EngineDropdownKind.ActionManage, Display = "Manage customs…" });
+            // The "Create custom" / "Manage customs" actions live in adjacent links
+            // (EngineCustomNew_Click / EngineCustomManage_Click) rather than as fake
+            // combo entries, so the dropdown lists only real engine values. Show the
+            // Manage link only when there is something to manage.
+            if (EngineCustomManageLink != null)
+                EngineCustomManageLink.Visibility = (customs != null && customs.Count > 0)
+                    ? System.Windows.Visibility.Visible
+                    : System.Windows.Visibility.Collapsed;
 
             int idx = FindEngineDropdownIndex(targetLayout, targetCustomId);
             bool old = _suppressEvents;
@@ -5716,6 +5721,19 @@ namespace TrueforceForAll.Plugin
                     OpenManageCustomEnginesDialog();
                     break;
             }
+        }
+
+        // Adjacent-link entry points for creating / managing custom engines. These
+        // replace the old "Custom..." / "Manage customs..." combo action entries so
+        // the engine-type dropdown lists only real values.
+        private void EngineCustomNew_Click(object sender, RoutedEventArgs e)
+        {
+            OpenCustomEngineEditorForNew();
+        }
+
+        private void EngineCustomManage_Click(object sender, RoutedEventArgs e)
+        {
+            OpenManageCustomEnginesDialog();
         }
 
         // Open the editor with a fresh entry. On Save, append to the library,

@@ -267,6 +267,7 @@ namespace TrueforceForAll.Plugin
                 Padding = new Thickness(0), Margin = new Thickness(0),
                 Background = Brushes.Transparent, BorderBrush = Brushes.Transparent,
                 Cursor = Cursors.Hand,
+                FocusVisualStyle = MakeLinkFocusVisual(),
             };
             // A code was just sent to reach this step, but the resend link
             // stays available (classic pattern). If the user taps too soon,
@@ -419,6 +420,26 @@ namespace TrueforceForAll.Plugin
                 Foreground = MutedFg, FontSize = 11,
                 TextDecorations = TextDecorations.Underline,
             };
+        }
+
+        // A visible keyboard-focus ring for transparent link-style buttons, which
+        // otherwise show no focus cue on the dark theme. Draws a thin dashed accent
+        // rectangle just outside the link when it is tabbed to (not on mouse click).
+        private static Style MakeLinkFocusVisual()
+        {
+            var style = new Style(typeof(Control));
+            var template = new ControlTemplate(typeof(Control));
+            var rect = new FrameworkElementFactory(typeof(System.Windows.Shapes.Rectangle));
+            rect.SetValue(System.Windows.Shapes.Shape.StrokeProperty,
+                new SolidColorBrush(Color.FromRgb(0x6F, 0xB1, 0xFF)));
+            rect.SetValue(System.Windows.Shapes.Shape.StrokeThicknessProperty, 1.0);
+            rect.SetValue(System.Windows.Shapes.Shape.StrokeDashArrayProperty,
+                new DoubleCollection(new double[] { 2.0, 2.0 }));
+            rect.SetValue(FrameworkElement.MarginProperty, new Thickness(-2));
+            rect.SetValue(FrameworkElement.SnapsToDevicePixelsProperty, true);
+            template.VisualTree = rect;
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
+            return style;
         }
 
         // Disable the resend link and count down live to the moment the next

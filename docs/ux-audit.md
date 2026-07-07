@@ -19,7 +19,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Re-verification (2026-07-07)
 
-Full re-audit of all 104 findings against current code. **~93 fixed, ~6 partial, ~5 still open.** The systemic dialog levers are fully done (A1: zero `MessageBox.Show` remain; A4: zero `MessageBoxButton.YesNo`, all destructive confirms use `DialogKind.Destructive` with verb labels). This session also inlined the header save-success feedback (A2 slice) and knocked out a batch of copy / accessibility fixes. Boxes below are checked for fixed items.
+Full re-audit of all 104 findings against current code. **~99 fixed, ~2 partial, ~3 still open.** The systemic dialog levers are fully done (A1: zero `MessageBox.Show` remain; A4: zero `MessageBoxButton.YesNo`, all destructive confirms use `DialogKind.Destructive` with verb labels). This session also inlined the header save-success feedback (A2 slice) and knocked out a batch of copy / accessibility fixes. Boxes below are checked for fixed items.
 
 **Still partial (themed but the deeper issue remains — mostly "still a modal where it should be inline"):**
 - Manual device picker: banner auto-appears now, but the picker button stays gated behind MANUALPIN.
@@ -77,7 +77,7 @@ Full re-audit of all 104 findings against current code. **~93 fixed, ~6 partial,
   - **Evidence:** SettingsControl.xaml:1335 Content="Engine pulse (RPM-driven)"; 1254 Content="Audio capture (game audio → wheel)"; 1448-1451 "Load layer" with DSP tooltip; 1462-1465 "High-RPM boost" / "Pre-emphasis: extra firing-pulse gain...".
   - **Fix:** Lead with the feel and demote the mechanism. e.g. 'Engine rumble' (tooltip: driven by RPM), keep 'Audio capture' but describe it as 'Feel the game's audio through the wheel'. Rename 'Load layer' / 'High-RPM boost' to feel-first labels like 'Keep engine present at high RPM' with the pre-emphasis detail in the tooltip.
 
-- [ ] **🟡 LOW / consistency** Action items ('Custom...', 'Manage customs...') are mixed into the data Engine-type dropdown
+- [x] **🟡 LOW / consistency** Action items ('Custom...', 'Manage customs...') are mixed into the data Engine-type dropdown
   - **Problem:** The Engine type ComboBox is populated in code with the user's selectable engine values AND action entries ('Custom...' and 'Manage customs...') that open dialogs rather than select a value. Selecting an action from a value picker is a discoverability/consistency anti-pattern: the list mixes 'choose this' items with 'do this' items, and a user scanning the list cannot tell which entries are selectable engines.
   - **Evidence:** SettingsControl.xaml:1400-1403 comment "\"Custom...\" / \"Manage customs...\" action entries reach their dialogs" on EngineLayoutCombo populated by RebuildEngineLayoutDropdown.
   - **Fix:** Keep the dropdown to selectable engine values and move the actions to adjacent affordances (a small 'Custom...' button and a 'Manage variants...' hyperlink, matching the EngineVariantManageLink pattern already used at line 1426-1428). If they must stay in the menu, visually separate them with a divider and a distinct style.
@@ -196,7 +196,7 @@ Full re-audit of all 104 findings against current code. **~93 fixed, ~6 partial,
   - **Evidence:** SettingsControl.xaml.cs:6868-6869 Change email: `line2Label: "Notes (not sent anywhere)"`; SettingsControl.xaml.cs:6308-6309 [delete] `line2Label: "Notes (optional, not sent anywhere)"`. Neither dlg.Line2Result is read anywhere in the handlers.
   - **Fix:** Use a single-line input dialog for these flows so there is no orphan Notes field, or drop the line2 field entirely. If TwoLineEditWindow must be reused, support a one-line mode rather than showing an input that does nothing.
 
-- [ ] **🟡 LOW / accessibility** Resend 'Send a new code' is a transparent link-style button with color-only affordance and no focus styling
+- [x] **🟡 LOW / accessibility** Resend 'Send a new code' is a transparent link-style button with color-only affordance and no focus styling
   - **Problem:** The resend control is a borderless, transparent-background button colored only by InfoFg (light blue) with a hand cursor. It is signaled purely by color against the muted-gray sibling text, with no underline, border, or visible focus state. Color-only affordance is hard to perceive for low-vision/colorblind users, and there is no keyboard-visible focus ring, making the link easy to miss as an actionable control.
   - **Evidence:** SignInWindow.cs:261-267 `new Button { Content = "Send a new code", ... Background = Brushes.Transparent, BorderBrush = Brushes.Transparent, Foreground = InfoFg, FontSize = 11, Cursor = Cursors.Hand }` placed inline after a MutedFg 'Didn't get it?' TextBlock.
   - **Fix:** Give the resend link an underline (TextDecorations) or a subtle border so it reads as actionable without relying on color, and ensure it shows a visible focus state for keyboard users.
@@ -270,7 +270,7 @@ Full re-audit of all 104 findings against current code. **~93 fixed, ~6 partial,
   - **Evidence:** PresetManagerControl.xaml:453-454 `Text="Your saved custom engines. Edit or delete them here; presets that referenced a deleted engine fall back to silence until repicked. ..."`
   - **Fix:** Reword to name the affected effect and the recovery plainly, e.g. "If you delete an engine that a preset uses, that preset's engine pulse turns off until you pick a new engine for it." Surface the warning in the delete-confirmation flow, not as standing help copy.
 
-- [ ] **🟠 MED / layout** Action bar holds up to 8 buttons in one fixed-width StackPanel with no wrapping; right-side actions can be clipped on narrow panels
+- [x] **🟠 MED / layout** Action bar holds up to 8 buttons in one fixed-width StackPanel with no wrapping; right-side actions can be clipped on narrow panels
   - **Problem:** The Car action bar is a horizontal StackPanel docked Right containing Set as default (120), Edit (92), Duplicate (92), Rename (92), Rename car (92), Share (100), Delete (92), and Set as built-in (120 when DEV). That is roughly 720-840px of fixed-width buttons plus margins in a single non-wrapping row. On a narrower SimHub settings panel the leftmost buttons (Set as default / Edit) get pushed off or overlap the checked-count label, and there is no WrapPanel fallback. The Game bar (Set default games 160 + 5 more) has the same risk.
   - **Evidence:** PresetManagerControl.xaml:383-403 (`<StackPanel DockPanel.Dock="Right" Orientation="Horizontal">` with 8 fixed-width RowButtons) and the same pattern at :296-310
   - **Fix:** Wrap the action buttons in a WrapPanel (or a right-aligned WrapPanel) so they flow to a second row when width is constrained, or collapse less-frequent actions (Rename car, Set as built-in) into an overflow "More" menu. At minimum verify the row fits at SimHub's minimum panel width.
@@ -467,7 +467,7 @@ Full re-audit of all 104 findings against current code. **~93 fixed, ~6 partial,
   - **Evidence:** PresetShareWindow.cs:210-211 `root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0 ? "(none)" : string.Join(", ", _effectTags)));` where _effectTags come from BuildEffectTags (PresetManagerControl.xaml.cs:4247-4257: `tags.Add("engine")`, `tags.Add("revlimiter")`, `tags.Add("abs")`, etc.). Compare CommunitySectionPickerWindow.cs:25-38 which maps each tag to a label like ("engine","Engine pulse"), ("abs","ABS click").
   - **Fix:** Map the raw tags to their display labels before joining (reuse the same (tag,label) table CommunitySectionPickerWindow already defines, factored into a shared helper). Show 'Engine pulse, Rev limiter, Road bumps, Traction loss, ABS click' in the Sections row.
 
-- [ ] **🟠 MED / flow** Inline sign-in dead-ends when username bootstrap is cancelled, forcing a reopen
+- [x] **🟠 MED / flow** Inline sign-in dead-ends when username bootstrap is cancelled, forcing a reopen
   - **Problem:** If the user signs in from inside the share modal but the username picker is cancelled or fails, the modal sets an error and tells them to go to the Account tab and 're-open this dialog'. This abandons everything they were about to share (description typed, sections, target games) and forces them to restart the whole share flow. The happy path flips into signed-in state in place, so this fallback is an unnecessarily punishing dead end.
   - **Evidence:** PresetShareWindow.cs:546-552 `if (string.IsNullOrWhiteSpace(_plugin?.Settings?.SharingAuthor)) { statusText.Foreground = ErrFg; statusText.Text = "Signed in, but no username yet. Pick one on the Account tab, then re-open this dialog."; return; }`
   - **Fix:** Offer an inline retry of the username picker (a 'Pick username' button on the status line) instead of sending the user away, so the in-progress share survives. Only fall back to the Account-tab message if the inline pick keeps failing.
@@ -477,7 +477,7 @@ Full re-audit of all 104 findings against current code. **~93 fixed, ~6 partial,
   - **Evidence:** CommunityForCarPopover.cs:161-162 `if (p.EffectTags != null && p.EffectTags.Count > 0) subParts.Add(string.Join(", ", p.EffectTags));`
   - **Fix:** Translate tags to display labels before joining (shared label map), or drop the tag list from the compact popover row entirely and keep it for the full preview.
 
-- [ ] **🟡 LOW / feedback** Network upload shows only a static 'Uploading...' label, no progress indicator
+- [x] **🟡 LOW / feedback** Network upload shows only a static 'Uploading...' label, no progress indicator
   - **Problem:** When the user clicks Upload, the only feedback for the entire round-trip to the community backend is the static text 'Uploading...' (or 'Updating...'). On a slow connection there is no spinner or animated indicator, so the modal looks frozen and the user may click again or assume it hung. The buttons are disabled, which is good, but there is no positive 'work in progress' signal.
   - **Evidence:** PresetShareWindow.cs:587-591 `uploadBtn.IsEnabled = false; cancelBtn.IsEnabled = false; ... statusText.Text = isUpdatePath ? "Updating..." : "Uploading...";` with no spinner control anywhere in the modal.
   - **Fix:** Add a small indeterminate ProgressBar or animated spinner next to the status text while the await is in flight, and remove it on completion/error. Even an ellipsis animation is better than a frozen string.
@@ -547,7 +547,7 @@ Full re-audit of all 104 findings against current code. **~93 fixed, ~6 partial,
   - **Evidence:** CreatePackWindow.cs:200 `"Turn on 'Use community car data' on the Account tab first."` and CreatePackWindow.cs:206 `"Sign in first (Settings -> Account)."`
   - **Fix:** Use one consistent reference. Since the tab is named 'Account', standardize on 'the Account tab' in both messages (drop the 'Settings ->' framing), so both gates point to the same visible label.
 
-- [ ] **🟡 LOW / poor-copy** Ineligible community items explained tersely with no path to make them eligible
+- [x] **🟡 LOW / poor-copy** Ineligible community items explained tersely with no path to make them eligible
   - **Problem:** Library items that cannot be bundled render as greyed rows tagged '(community item, not redistributable)'. This explains the state but gives the user no idea why or what (if anything) they could do. A user who downloaded the item themselves and wants to re-share it has no hint that re-distribution is controlled by the original author's opt-in, so the rule reads as an arbitrary block.
   - **Evidence:** CreatePackWindow.cs:366 `MakeIneligibleRow(... + "  (community item, not redistributable)")` (and the car/engine variants at lines 417, 464).
   - **Fix:** Lengthen the tag to convey the cause, e.g. '(its author did not allow re-bundling)'. Optionally add one line of muted helper text at the top of the section explaining that only your own items and community items whose author allowed re-bundling can be included.

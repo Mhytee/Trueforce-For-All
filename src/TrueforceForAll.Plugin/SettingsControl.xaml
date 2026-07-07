@@ -1648,10 +1648,18 @@
                             <TextBlock Grid.Column="0" Text="Engine type:" Style="{StaticResource LabelText}"
                                        ToolTip="Pick the engine that best matches the active car. Auto defers to detection; Electric uses the EV behavior above; Custom uses the firing pattern below."/>
                             <!-- Items are populated dynamically in SettingsControl.RebuildEngineLayoutDropdown
-                                 so the user's saved customs can appear alongside built-ins, and
-                                 "Custom..." / "Manage customs..." action entries reach their dialogs. -->
+                                 so the user's saved customs appear alongside built-ins. The
+                                 create / manage actions live in the links below, not in the list. -->
                             <ComboBox  Grid.Column="1" x:Name="EngineLayoutCombo" SelectionChanged="EngineLayout_Changed"/>
                         </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="140,2,0,6">
+                            <TextBlock Style="{StaticResource HelpText}">
+                                <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
+                            </TextBlock>
+                            <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" Margin="14,0,0,0" Visibility="Collapsed">
+                                <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
                         <!-- Auto-detect indicator: shows the layout the resolver
                              chose for the active car when the user has Auto
                              selected. Empty otherwise. The Community context

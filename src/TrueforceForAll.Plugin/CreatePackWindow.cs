@@ -381,7 +381,7 @@ namespace TrueforceForAll.Plugin
                 if (_plugin.IsBuiltinPreset(name)) continue;
                 if (!IsRedistributable(snap?.CommunitySourceId, snap?.CommunityAllowInPacks, snap?.CommunityUploadedByUserId))
                 {
-                    list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(name, 128) + "  (community item, not redistributable)"));
+                    list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(name, 128) + "  (community item, author didn't allow re-bundling)"));
                     continue;
                 }
                 var cb = new CheckBox
@@ -432,7 +432,7 @@ namespace TrueforceForAll.Plugin
                     string gameName = carEntry.GameName ?? "";
                     if (!IsRedistributable(carEntry.Override?.CommunitySourceId, carEntry.Override?.CommunityAllowInPacks, carEntry.Override?.CommunityUploadedByUserId))
                     {
-                        list.Children.Add(MakeIneligibleRow($"{UiContentSanitizer.SafeDisplayText(carId, 96)} :: {UiContentSanitizer.SafeDisplayText(presetName, 96)}  (community item, not redistributable)"));
+                        list.Children.Add(MakeIneligibleRow($"{UiContentSanitizer.SafeDisplayText(carId, 96)} :: {UiContentSanitizer.SafeDisplayText(presetName, 96)}  (community item, author didn't allow re-bundling)"));
                         continue;
                     }
                     var cb = new CheckBox
@@ -479,7 +479,7 @@ namespace TrueforceForAll.Plugin
                 if (def == null || string.IsNullOrWhiteSpace(def.Name)) continue;
                 if (!IsRedistributable(def.CommunitySourceId, def.CommunityAllowInPacks, def.CommunityUploadedByUserId))
                 {
-                    list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(def.Name, 128) + "  (community engine, not redistributable)"));
+                    list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(def.Name, 128) + "  (community engine, author didn't allow re-bundling)"));
                     continue;
                 }
                 var cb = new CheckBox
