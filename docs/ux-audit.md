@@ -19,9 +19,11 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Re-verification (2026-07-07)
 
-Full re-audit of all 104 findings against current code. **~99 fixed, ~2 partial, ~3 still open.** The systemic dialog levers are fully done (A1: zero `MessageBox.Show` remain; A4: zero `MessageBoxButton.YesNo`, all destructive confirms use `DialogKind.Destructive` with verb labels). This session also inlined the header save-success feedback (A2 slice) and knocked out a batch of copy / accessibility fixes. Boxes below are checked for fixed items.
+Full re-audit of all 104 findings against current code. **100 fixed, 4 won't-fix (by design), 0 open.** The systemic dialog levers are fully done (A1: zero `MessageBox.Show` remain; A4: zero `MessageBoxButton.YesNo`, all destructive confirms use `DialogKind.Destructive` with verb labels). This session also inlined the header save-success feedback (A2 slice) and knocked out a batch of copy / accessibility fixes. Boxes below are checked for fixed items.
 
-**Still partial (themed but the deeper issue remains — mostly "still a modal where it should be inline"):**
+The four remaining open findings were closed as won't-fix by design: manual device picker (the MANUALPIN gate is deliberate; a forgotten pin silently broke FFB, and the auto-banner routes to reboot + report), mixed dialog construction (the user-facing native-MessageBox foreignness is gone; the rest is code tidiness), the "Set as default" phrasing trio (each button acts differently: bind one car / open a multi-game picker / bind many), and the preview vote glyphs (bare glyphs kept by decision).
+
+**Previously partial (all now fixed or closed above), for the record:**
 - Manual device picker: banner auto-appears now, but the picker button stays gated behind MANUALPIN.
 - Sign-out: verb-labeled now, but still confirms a reversible action.
 - Resend link: underlined now, but no keyboard focus ring.
@@ -116,7 +118,7 @@ Full re-audit of all 104 findings against current code. **~99 fixed, ~2 partial,
   - **Evidence:** SettingsControl.xaml.cs:9127-9129 `bool ok = code.Equals("MAIRA", ...) || code.Equals("TEST", ...); if (!ok) return;` returns silently. Contrast: every recognized code sets AccessCodeStatus.Text and clears AccessCodeBox.Text. AccessCode_Changed fires CommitAccessCode on every focus-loss (SettingsControl.xaml.cs:8450), so partial/typo input routinely hits this silent path.
   - **Fix:** On a non-empty, unrecognized code set AccessCodeStatus.Text to something like 'Code not recognized. Type HELP to list valid codes.' (only when the box is non-empty, so blanking it stays silent). Leave the typed text in place so the user can correct it, or clear it; either is fine as long as there is a visible result.
 
-- [ ] **🟠 MED / discoverability** Manual device picker is gated behind a hidden access code with no in-UI path to discover it
+- [x] **🟠 MED / discoverability** Manual device picker is gated behind a hidden access code with no in-UI path to discover it  *(won't fix, by design)*
   - **Problem:** The 'Pick device manually...' control in Diagnostics is Visibility=Collapsed by default and is only revealed by typing the secret string MANUALPIN into the access code box. The only place that tells the user MANUALPIN exists is the tooltip ON the button that is itself hidden. So a user whose FFB tap genuinely can't find their wheel (multi-wheel rig, USBPcap interface mismatch) has no discoverable way to reach the manual picker from the UI. The contextual FfbTapPicker banner is the intended escape hatch, but it is also gated by the same ShowManualOverrideUi flag (SettingsControl.xaml.cs:9119), so when MANUALPIN is off there is no path at all.
   - **Evidence:** SettingsControl.xaml:2625-2629 button `UsbPcapPickDeviceButton` `Visibility="Collapsed"` with ToolTip ending 'Type MANUALPIN in the access code box to reveal this control.' (tooltip on a hidden control is unreachable). SettingsControl.xaml.cs:9118-9119 toggles both UsbPcapPickDeviceButton and FfbTapPickerBannerButton visibility together off ShowManualOverrideUi.
   - **Fix:** Keep auto-discovery primary, but surface the manual picker through the contextual banner whenever the FFB tap reports it cannot locate the wheel, independent of the MANUALPIN flag (the comment at SettingsControl.xaml:2620-2624 even claims the banner 'stays available' but the code gates it). The MANUALPIN code can remain for force-revealing the always-on Diagnostics button; just don't gate the genuine can't-find-wheel recovery path behind a secret string.
@@ -304,7 +306,7 @@ Full re-audit of all 104 findings against current code. **~99 fixed, ~2 partial,
   - **Evidence:** PresetManagerControl.xaml:299 `Content="Set default games…"`, :303 `Content="Duplicate…"`, :389 `Content="Set as default"` (no ellipsis), :401 `Content="Set as built-in"` (no ellipsis), :525 `Content="Set as defaults"`
   - **Fix:** Apply the ellipsis rule consistently: add "…" to any button that opens a dialog/picker before completing (Set as built-in if it prompts), and remove it from any that act immediately. Audit each handler to confirm whether it prompts.
 
-- [ ] **🟡 LOW / consistency** "Set as default" (Car) vs "Set default games…" (Game) vs "Set as defaults" (Packs) use three different phrasings for the same concept
+- [x] **🟡 LOW / consistency** "Set as default" (Car) vs "Set default games…" (Game) vs "Set as defaults" (Packs) use three different phrasings for the same concept  *(won't fix, by design)*
   - **Problem:** The three default-binding actions are worded differently across the panels: Car uses "Set as default", Game uses "Set default games…", and Packs uses "Set as defaults". A user moving between segments has to re-learn that these all mean "make this auto-load." Consistent verb phrasing reduces relearning.
   - **Evidence:** PresetManagerControl.xaml:389 `Content="Set as default"`, :299 `Content="Set default games…"`, :525 `Content="Set as defaults"`
   - **Fix:** Standardize on one verb pattern, e.g. "Set as default…" (singular) everywhere a single binding is set, and reserve plural only where it genuinely binds multiple (Packs). Align the Game button to match if it sets one preset's game bindings.
@@ -376,7 +378,7 @@ Full re-audit of all 104 findings against current code. **~99 fixed, ~2 partial,
   - **Evidence:** PresetManagerControl.xaml.cs:2467-2468 `string warning = ... $"Delete preset '{sel.Name}'?"; if (MessageBox.Show(... warning, "Delete preset", MessageBoxButton.YesNo, MessageBoxImage.Question) ...)`; car equivalent line 3099-3101.
   - **Fix:** Keep the confirm for deletes but use a custom dialog with explicit verb buttons (Delete / Cancel) via the existing TrueforceDialog/UpdateVsNewChooserWindow styling, rather than generic Yes/No, for consistency with the styled dialogs used elsewhere in this file.
 
-- [ ] **🟡 LOW / consistency** Mixed dialog systems: native MessageBox, styled TrueforceDialog, and hand-built Window dialogs coexist
+- [x] **🟡 LOW / consistency** Mixed dialog systems: native MessageBox, styled TrueforceDialog, and hand-built Window dialogs coexist  *(won't fix, by design)*
   - **Problem:** Confirmations and prompts in this one file are built three different ways: Windows-native MessageBox (un-themed, light), the styled TrueforceDialog (dark theme), and hand-rolled Window instances (PromptForName/PickFromList/PickMultipleFromList). The native MessageBoxes do not match the dark plugin theme, so a delete/rename popup looks visually foreign next to the share-gate TrueforceDialog popups, breaking the consistent look the rest of the panel maintains.
   - **Evidence:** PresetManagerControl.xaml.cs: native `MessageBox.Show` at 2252/2468/3100/etc.; styled `TrueforceDialog.Show(... DialogKind.Info)` at 717/2321/2747/3222; hand-built `new Window { ... }; SettingsControl.ApplyDarkTheme(win)` at 3406 (PromptForName) and 3442/3499 (pickers).
   - **Fix:** Standardize destructive confirms and validation messages on TrueforceDialog (already themed) so the whole panel shares one dialog look. Reserve native MessageBox only for the dev-only Validate-built-ins output if at all.
@@ -448,7 +450,7 @@ Full re-audit of all 104 findings against current code. **~99 fixed, ~2 partial,
   - **Evidence:** SettingsControl.xaml.cs:975 'MessageBox.Show("Save failed.", "Trueforce", MessageBoxButton.OK, MessageBoxImage.Warning);' (also :1006, :901, :913, :930, :942). Better variant at :9708 'MessageBox.Show("Save failed (see SimHub log for details).", "Trueforce");'.
   - **Fix:** Standardize on actionable copy: 'Couldn't save. See the SimHub log for details, then try again.' Apply the same string to all the bare 'Save failed.' sites.
 
-- [ ] **🟡 LOW / unnecessary-dialog** Per-link status text AND a modal both report some link/unlink outcomes
+- [x] **🟡 LOW / unnecessary-dialog** Per-link status text AND a modal both report some link/unlink outcomes
   - **Problem:** Patreon/Discord link and unlink flows write the outcome to an inline status label (SetPatreonStatus / SetDiscordStatus) which is the right pattern, but the broader account area still mixes in modal popups for adjacent outcomes (e.g. change-email confirmation modal, achievements-load failure modal). The result is the user sometimes gets quiet inline status and sometimes a blocking popup for conceptually similar 'network action finished' events, with no clear rule.
   - **Evidence:** Inline: SettingsControl.xaml.cs:6359 'SetPatreonStatus(res.Message);', :5662 'SetDiscordStatus(res.Message);'. Modal for similar account events: :6903 change-email 'We sent a confirmation link to ...' MessageBox; :6059 achievements load failure MessageBox.
   - **Fix:** Decide one feedback channel for account/network outcomes (prefer the existing inline status labels for routine success/info; reserve modals for actions that truly need acknowledgement) and apply it consistently across the Account tab.
@@ -493,7 +495,7 @@ Full re-audit of all 104 findings against current code. **~99 fixed, ~2 partial,
   - **Evidence:** EditCommunityPresetWindow.cs:175 `MessageBox.Show(this, "Name must be 2-96 characters.", ...)` vs EditCommunityPresetWindow.cs:456 `MessageBox.Show(this, "Name must be 2 to 96 characters.", ...)`
   - **Fix:** Use one shared constant/message for the name-length rule across both ctors.
 
-- [ ] **🟡 LOW / poor-copy** Preview window uses bare unicode triangle glyphs for vote score
+- [x] **🟡 LOW / poor-copy** Preview window uses bare unicode triangle glyphs for vote score  *(won't fix, by design)*
   - **Problem:** The preview header renders the vote breakdown with raw unicode triangles and a pipe: 'Score 3 (▲ 5 / ▼ 2)   |   40 downloads'. The triangles are unlabeled glyphs; without color or text it is not obvious which is up vs down, and bare ▲/▼ can render as tofu boxes on systems missing the glyph. Other surfaces (the popover) express score as a signed number with color, so this is also inconsistent.
   - **Evidence:** PresetPreviewWindow.cs:87 `Text = $"Score {score} (▲ {summary?.Upvotes ?? 0} / ▼ {summary?.Downvotes ?? 0})   |   {summary?.Downloads ?? 0} downloads",` (rendered as 'Score N (▲ U / ▼ D)').
   - **Fix:** Label the counts in words ('Score 3, 5 up / 2 down, 40 downloads') or reuse the colored signed-score style from the popover so up/down is unambiguous and font-independent.

@@ -7419,6 +7419,25 @@ namespace TrueforceForAll.Plugin
                 AccountAuthor_Changed(sender, null);
         }
 
+        // Inline status for routine change-email outcomes (validation / errors), so
+        // account feedback stays on the inline channel like Patreon / Discord link
+        // and unlink. Red for errors, muted for neutral info; hidden when empty.
+        private void SetChangeEmailStatus(string msg, bool isError)
+        {
+            if (AccountChangeEmailStatus == null) return;
+            if (string.IsNullOrEmpty(msg))
+            {
+                AccountChangeEmailStatus.Text = "";
+                AccountChangeEmailStatus.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+            AccountChangeEmailStatus.Text = msg;
+            AccountChangeEmailStatus.Foreground = new System.Windows.Media.SolidColorBrush(isError
+                ? System.Windows.Media.Color.FromRgb(0xE0, 0x8A, 0x8A)
+                : System.Windows.Media.Color.FromRgb(0xB0, 0xB0, 0xB0));
+            AccountChangeEmailStatus.Visibility = System.Windows.Visibility.Visible;
+        }
+
         // Change-email button. Real flow now: prompt for the new
         // address, PUT it to Supabase Auth, server sends a confirmation
         // link to the new inbox. Old address keeps working until they
@@ -7438,29 +7457,25 @@ namespace TrueforceForAll.Plugin
             };
             bool? ok = dlg.ShowDialog();
             if (ok != true) return;
+            SetChangeEmailStatus(null, false);
             string newEmail = (dlg.Line1Result ?? "").Trim();
             if (!newEmail.Contains("@") || newEmail.IndexOf('.', newEmail.IndexOf('@')) <= newEmail.IndexOf('@'))
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Change email", "Enter a valid email address.",
-                    DialogKind.Warning);
+                SetChangeEmailStatus("Enter a valid email address.", true);
                 return;
             }
             if (string.Equals(newEmail.ToLowerInvariant(), current.ToLowerInvariant(),
                               StringComparison.Ordinal))
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Change email", "That's already your email.",
-                    DialogKind.Info);
+                SetChangeEmailStatus("That's already your email.", false);
                 return;
             }
             AuthCallResult result;
             try { result = await _plugin.AuthUpdateEmailAsync(newEmail); }
             catch (Exception ex)
             {
-                TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't update your email. Check your connection and try again.",
-                    ex);
+                SetChangeEmailStatus("Couldn't update your email. Check your connection and try again.", true);
+                TrueforceDialog.LogError("Change email", ex);
                 return;
             }
             if (result == AuthCallResult.Ok)
@@ -7485,8 +7500,7 @@ namespace TrueforceForAll.Plugin
                 default:
                     copy = "Could not update your email. The address may already be taken."; break;
             }
-            TrueforceDialog.Show(Window.GetWindow(this), "Change email", copy,
-                DialogKind.Warning);
+            SetChangeEmailStatus(copy, true);
         }
 
         // The Backup & sync expander (Settings) holds the cloud-backup controls; refresh their
@@ -7786,9 +7800,7 @@ namespace TrueforceForAll.Plugin
                 else
                 {
                     if (btn != null) { btn.IsEnabled = true; btn.Content = "Revoke"; }
-                    TrueforceDialog.Show(null, "Revoke session",
-                        "Couldn't revoke that session. It may have already ended.",
-                        DialogKind.Info);
+                    SetSessionsStatus("Couldn't revoke that session. It may have already ended.");
                 }
             }
             catch (Exception ex)
@@ -7798,9 +7810,7 @@ namespace TrueforceForAll.Plugin
                 // tell the user it didn't go through. (btn is scoped to the try,
                 // so re-derive it from sender here.)
                 if (sender is Button b) { b.IsEnabled = true; b.Content = "Revoke"; }
-                TrueforceDialog.Show(null, "Revoke session",
-                    "Couldn't revoke that session. Check your connection and try again.",
-                    DialogKind.Info);
+                SetSessionsStatus("Couldn't revoke that session. Check your connection and try again.");
             }
         }
 
@@ -7824,18 +7834,14 @@ namespace TrueforceForAll.Plugin
                 else
                 {
                     if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
-                    TrueforceDialog.Show(null, "Sign out everywhere else",
-                        "Couldn't sign out the other devices. Check your connection and try again.",
-                        DialogKind.Info);
+                    SetSessionsStatus("Couldn't sign out the other devices. Check your connection and try again.");
                 }
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Sign-out-others failed: " + ex.Message);
                 if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
-                TrueforceDialog.Show(null, "Sign out everywhere else",
-                    "Couldn't sign out the other devices. Check your connection and try again.",
-                    DialogKind.Info);
+                SetSessionsStatus("Couldn't sign out the other devices. Check your connection and try again.");
             }
         }
 

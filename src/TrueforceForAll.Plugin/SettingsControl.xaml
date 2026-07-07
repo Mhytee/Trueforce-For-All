@@ -3293,6 +3293,11 @@
                         Click="AccountChangeEmail_Click"
                         ToolTip="Send a confirmation link to a new address. The current address keeps working until you confirm the new one."/>
             </StackPanel>
+            <!-- Inline outcome for routine change-email feedback (validation / errors);
+                 the "check your inbox" success stays a modal since it needs a deliberate
+                 read. Keeps account outcomes on the inline channel like link / unlink. -->
+            <TextBlock x:Name="AccountChangeEmailStatus" FontSize="11" Margin="100,0,0,4"
+                       TextWrapping="Wrap" Foreground="#FFB0B0B0" Text="" Visibility="Collapsed"/>
 
             <!-- Connections: external-account links (Discord, Patreon). One header so future
                  link types have a home. -->
