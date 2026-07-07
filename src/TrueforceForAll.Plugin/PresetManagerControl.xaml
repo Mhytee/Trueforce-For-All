@@ -344,6 +344,10 @@
                             <Button x:Name="GamePromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>
+                        <!-- Inline result line for rename / duplicate / delete /
+                             set-default, mirroring the Community pane's status. -->
+                        <TextBlock x:Name="GameLibStatus" DockPanel.Dock="Left" VerticalAlignment="Center"
+                                   Foreground="#7FC77F" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" Text=""/>
                         <TextBlock x:Name="GameCheckedLabel" VerticalAlignment="Center"
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>
@@ -438,6 +442,8 @@
                             <Button x:Name="CarPromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="DEV: promote this car preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
                         </StackPanel>
+                        <TextBlock x:Name="CarLibStatus" DockPanel.Dock="Left" VerticalAlignment="Center"
+                                   Foreground="#7FC77F" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" Text=""/>
                         <TextBlock x:Name="CarCheckedLabel" VerticalAlignment="Center"
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
                     </DockPanel>

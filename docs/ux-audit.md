@@ -19,7 +19,7 @@ This is the working backlog. Each item is a checkbox with Problem / Evidence / F
 
 ## Re-verification (2026-07-07)
 
-Full re-audit of all 104 findings against current code. **~67 fixed, ~13 partial, ~24 still open.** The systemic dialog levers are fully done (A1: zero `MessageBox.Show` remain; A4: zero `MessageBoxButton.YesNo`, all destructive confirms use `DialogKind.Destructive` with verb labels). This session also inlined the header save-success feedback (A2 slice) and knocked out a batch of copy / accessibility fixes. Boxes below are checked for fixed items.
+Full re-audit of all 104 findings against current code. **~71 fixed, ~10 partial, ~23 still open.** The systemic dialog levers are fully done (A1: zero `MessageBox.Show` remain; A4: zero `MessageBoxButton.YesNo`, all destructive confirms use `DialogKind.Destructive` with verb labels). This session also inlined the header save-success feedback (A2 slice) and knocked out a batch of copy / accessibility fixes. Boxes below are checked for fixed items.
 
 **Still partial (themed but the deeper issue remains — mostly "still a modal where it should be inline"):**
 - Manual device picker: banner auto-appears now, but the picker button stays gated behind MANUALPIN.
@@ -330,7 +330,7 @@ Full re-audit of all 104 findings against current code. **~67 fixed, ~13 partial
 
 ## Preset Manager flows & confirmations  `preset-flows`
 
-- [ ] **🔴 HIGH / consistency** Same control uses two opposite feedback paradigms: inline status for Community, blocking modals for Library
+- [x] **🔴 HIGH / consistency** Same control uses two opposite feedback paradigms: inline status for Community, blocking modals for Library
   - **Problem:** The Community sub-pane gives every result through a non-blocking inline CommunityStatusLabel ('Downloading...', 'Saved as ...', 'Delete failed...', 'Upvote recorded.'). The Library sub-panes (Games/Cars/Custom engines) do the equivalent operations (rename/duplicate/delete/set-default) through blocking MessageBox.Show popups. A user manages presets in one place but gets two completely different interaction models depending on which sub-pill is selected. The modal path forces a click-to-dismiss on every success and error, which the inline path proves is unnecessary.
   - **Evidence:** PresetManagerControl.xaml.cs: inline pattern e.g. line 4591 `CommunityStatusLabel.Text = $"Saved as '{gpName}'.";` and line 4388 `CommunityStatusLabel.Text = ... "Upvote recorded."`. Blocking pattern e.g. line 2252 `MessageBox.Show(... "A preset named '{newName}' already exists." ...)` and line 2824 set-default success modal.
   - **Fix:** Add a status label to each Library sub-pane (mirroring CommunityStatusLabel) and route name-collision warnings, rename/duplicate/delete failures, and bulk-success messages there instead of MessageBox. Reserve modals for the genuinely destructive confirmations only.
@@ -356,17 +356,17 @@ Full re-audit of all 104 findings against current code. **~67 fixed, ~13 partial
   - **Evidence:** PresetManagerControl.xaml.cs:719 (Create pack) `"Turn on 'Use community car data' on the Account tab to share packs."`; line 2323 (game preset) `"Turn on 'Use community car data' ... to share presets."`; line 3224 (custom engine) `"Turn on 'Use community car data' ... to share custom engines."`; also tooltips at lines 2028 and 2224.
   - **Fix:** Either rename the underlying toggle to something kind-neutral (e.g. 'Use community features' / 'Connect to the community library') and update these strings to match, or have each gate reference the toggle by a neutral phrase rather than 'car data'. Keep the wording identical to whatever the Account-tab label actually reads.
 
-- [ ] **🟠 MED / feedback** Successful rename and duplicate give no confirmation
+- [x] **🟠 MED / feedback** Successful rename and duplicate give no confirmation
   - **Problem:** Rename and Duplicate succeed silently: on success they call ReloadGames/ReloadCars and re-select the row but show no status text, while their FAILURE paths pop a MessageBox. This is backwards from the rest of the control: the user gets a loud popup only when something goes wrong, and zero acknowledgement when it works. For Duplicate especially, the new row can scroll out of view, so the user may not notice anything happened.
   - **Evidence:** PresetManagerControl.xaml.cs:2261-2262 (GameRename success path) `ReloadGames(); SelectGameByName(newName);` with no status; line 2284-2285 (GameDuplicate) same; contrast failure path line 2258 `MessageBox.Show(... "Rename failed." ...)`. Car equivalents at 3043-3044 and 3074-3075.
   - **Fix:** On success, write an inline status ('Renamed to X' / 'Duplicated as X') in the new per-pane status label and ensure ScrollIntoView brings the new/renamed row into view (SelectGameByName already scrolls; add the matching feedback line).
 
-- [ ] **🟠 MED / unnecessary-dialog** Name-collision and 'rename failed' validation errors use blocking modals
+- [x] **🟠 MED / unnecessary-dialog** Name-collision and 'rename failed' validation errors use blocking modals
   - **Problem:** Inline-validatable conditions (a name already exists, rename/duplicate failed) interrupt the user with a modal they must dismiss before retrying, instead of showing the message next to the field/list. The duplicate-name case is the most common and most annoying: the user types a name, hits OK in PromptForName, then gets a separate popup, then has to reopen the prompt and retype.
   - **Evidence:** PresetManagerControl.xaml.cs:2252, 2258 (game rename), 2275, 2281 (game duplicate), 3038 (car rename), 3064, 3070 (car duplicate). E.g. line 3064 `MessageBox.Show(... $"A preset named '{newName}' already exists for this car." ...)`.
   - **Fix:** Validate the name inside PromptForName itself (reject and show the reason inline so the user stays in the same dialog), or surface the collision in the pane's status label rather than a separate modal.
 
-- [ ] **🟡 LOW / unnecessary-dialog** 'No games seen yet' guidance shown as a modal
+- [x] **🟡 LOW / unnecessary-dialog** 'No games seen yet' guidance shown as a modal
   - **Problem:** When the user clicks Set default and SimHub has not registered any games, an informational MessageBox blocks the UI to deliver guidance ('Launch a game once...'). This is a non-error, non-destructive informational state that an inline message or disabled-button tooltip would communicate without an interrupt.
   - **Evidence:** PresetManagerControl.xaml.cs:2519 `MessageBox.Show(... "No games seen yet. Launch a game once so SimHub registers it, then come back to bind a default preset.", "Set default for game", MessageBoxButton.OK, MessageBoxImage.Information)`.
   - **Fix:** Show this as an inline status line in the Games pane, or disable the Set-default button and put the same guidance in its tooltip, so the user is not interrupted by a modal.

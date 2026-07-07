@@ -2537,23 +2537,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedGame;
             if (sel == null || (sel.Builtin && !_devMode)) return;   // DEV may rename built-ins
-            string newName = PromptForName("Rename preset", "New name:", sel.Name);
-            if (string.IsNullOrWhiteSpace(newName)) return;
+            string newName = PromptForName("Rename preset", "New name:", sel.Name, name =>
+                string.IsNullOrWhiteSpace(name) ? "Enter a name."
+                : (name != sel.Name && _plugin.Settings?.Presets?.ContainsKey(name) == true)
+                    ? $"A preset named '{name}' already exists." : null);
+            if (newName == null) return;   // cancelled
             newName = newName.Trim();
             if (newName == sel.Name) return;
-            if (_plugin.Settings?.Presets?.ContainsKey(newName) == true)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Rename preset", $"A preset named '{newName}' already exists.",
-                    DialogKind.Warning);
-                return;
-            }
             if (!_plugin.RenamePreset(sel.Name, newName))
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Rename preset", "Rename failed.", DialogKind.Warning);
+                SetLib(GameLibStatus, "Couldn't rename. See the SimHub log.");
                 return;
             }
             ReloadGames();
             SelectGameByName(newName);
+            SetLib(GameLibStatus, $"Renamed to '{newName}'.");
         }
 
         private void GameDuplicate_Click(object sender, RoutedEventArgs e)
@@ -2561,22 +2559,20 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             var sel = SelectedGame;
             if (sel == null) return;
             string suggested = SuggestCopyName(sel.Name, n => _plugin.Settings?.Presets?.ContainsKey(n) == true);
-            string newName = PromptForName("Duplicate preset", "New preset name:", suggested);
-            if (string.IsNullOrWhiteSpace(newName)) return;
+            string newName = PromptForName("Duplicate preset", "New preset name:", suggested, name =>
+                string.IsNullOrWhiteSpace(name) ? "Enter a name."
+                : (_plugin.Settings?.Presets?.ContainsKey(name) == true)
+                    ? $"A preset named '{name}' already exists." : null);
+            if (newName == null) return;   // cancelled
             newName = newName.Trim();
-            if (_plugin.Settings?.Presets?.ContainsKey(newName) == true)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Duplicate preset", $"A preset named '{newName}' already exists.",
-                    DialogKind.Warning);
-                return;
-            }
             if (!_plugin.DuplicatePreset(sel.Name, newName))
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Duplicate preset", "Duplicate failed.", DialogKind.Warning);
+                SetLib(GameLibStatus, "Couldn't duplicate. See the SimHub log.");
                 return;
             }
             ReloadGames();
             SelectGameByName(newName);
+            SetLib(GameLibStatus, $"Duplicated as '{newName}'.");
         }
 
         // Share a game preset selected in the manager. Mirrors
@@ -2759,6 +2755,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
                 foreach (var r in bulk) _plugin.DeletePreset(r.Name);
                 ReloadGames();
+                SetLib(GameLibStatus, $"Deleted {bulk.Count} preset(s).");
                 return;
             }
 
@@ -2769,8 +2766,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 : $"Delete preset '{sel.Name}'?";
             if (TrueforceDialog.Show(Window.GetWindow(this), "Delete preset", warning, DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel")
                 != true) return;
+            string deleted = sel.Name;
             _plugin.DeletePreset(sel.Name);
             ReloadGames();
+            SetLib(GameLibStatus, $"Deleted '{deleted}'.");
         }
 
         // Export / Import: routed through SettingsControl's shared flow so this
@@ -2820,10 +2819,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             var known = CollectKnownGames();
             if (known.Count == 0)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Set default for game",
-                    "No games seen yet. Launch a game once so SimHub registers it, then come back to bind a default preset.",
-                    DialogKind.Info);
+                SetLib(GameLibStatus, "No games seen yet. Launch a game once so SimHub registers it, then bind a default.");
                 return;
             }
             var before = new HashSet<string>(sel.Defaults ?? new List<string>(),
@@ -2854,6 +2850,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             ReloadGames();
             SelectGameByName(sel.Name);
+            SetLib(GameLibStatus, $"Updated default games for '{sel.Name}'.");
         }
 
         private void GameEdit_Click(object sender, RoutedEventArgs e)
@@ -3266,21 +3263,26 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (sel == null) return;
             // Built-in rename is DEV-only; the plugin write-throughs to factory.
             if (sel.Builtin && !_devMode) return;
+            var existing = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var r in _carRows)
+                if (string.Equals(r.CarId, sel.CarId, StringComparison.Ordinal))
+                    existing.Add(r.PresetName);
             string newName = PromptForName("Rename car preset",
-                $"New name for '{sel.CarId}' preset:", sel.PresetName);
-            if (string.IsNullOrWhiteSpace(newName)) return;
+                $"New name for '{sel.CarId}' preset:", sel.PresetName, name =>
+                    string.IsNullOrWhiteSpace(name) ? "Enter a name."
+                    : (name != sel.PresetName && existing.Contains(name))
+                        ? $"A preset named '{name}' already exists for this car." : null);
+            if (newName == null) return;   // cancelled
             newName = newName.Trim();
             if (newName == sel.PresetName) return;
             if (!_plugin.RenameCarPreset(sel.CarId, sel.PresetName, newName))
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Rename car preset",
-                    "Rename failed. A preset with that name may already exist for this car, or the source preset is a built-in.",
-                    DialogKind.Warning);
+                SetLib(CarLibStatus, "Couldn't rename. See the SimHub log.");
                 return;
             }
             ReloadCars();
             SelectCarRow(sel.CarId, newName);
+            SetLib(CarLibStatus, $"Renamed to '{newName}'.");
         }
 
         private void CarDuplicate_Click(object sender, RoutedEventArgs e)
@@ -3295,23 +3297,20 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     existing.Add(r.PresetName);
             string suggested = SuggestCopyName(sel.PresetName, n => existing.Contains(n));
             string newName = PromptForName("Duplicate car preset",
-                $"New preset name for '{sel.CarId}':", suggested);
-            if (string.IsNullOrWhiteSpace(newName)) return;
+                $"New preset name for '{sel.CarId}':", suggested, name =>
+                    string.IsNullOrWhiteSpace(name) ? "Enter a name."
+                    : existing.Contains(name)
+                        ? $"A preset named '{name}' already exists for this car." : null);
+            if (newName == null) return;   // cancelled
             newName = newName.Trim();
-            if (existing.Contains(newName))
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Duplicate car preset", $"A preset named '{newName}' already exists for this car.",
-                    DialogKind.Warning);
-                return;
-            }
             if (!_plugin.DuplicateCarPreset(sel.CarId, sel.PresetName, newName))
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Duplicate car preset", "Duplicate failed.",
-                    DialogKind.Warning);
+                SetLib(CarLibStatus, "Couldn't duplicate. See the SimHub log.");
                 return;
             }
             ReloadCars();
             SelectCarRow(sel.CarId, newName);
+            SetLib(CarLibStatus, $"Duplicated as '{newName}'.");
         }
 
         private void CarDelete_Click(object sender, RoutedEventArgs e)
@@ -3334,6 +3333,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
                 foreach (var r in bulk) _plugin.DeleteCarPreset(r.CarId, r.PresetName);
                 ReloadCars();
+                SetLib(CarLibStatus, $"Deleted {bulk.Count} car preset(s).");
                 return;
             }
 
@@ -3344,8 +3344,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 : $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?";
             if (TrueforceDialog.Show(Window.GetWindow(this), "Delete car preset", warning,
                 DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
+            string deleted = sel.PresetName;
             _plugin.DeleteCarPreset(sel.CarId, sel.PresetName);
             ReloadCars();
+            SetLib(CarLibStatus, $"Deleted '{deleted}'.");
         }
 
         private void CarSetActive_Click(object sender, RoutedEventArgs e)
@@ -3358,6 +3360,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _plugin.SetCarDefaultPreset(sel.CarId, sel.PresetName);
                 ReloadCars();
                 SelectCarRow(sel.CarId, sel.PresetName);
+                SetLib(CarLibStatus, $"Set '{sel.PresetName}' as this car's default.");
                 return;
             }
 
@@ -3370,12 +3373,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 .ToList();
             if (collisions.Count > 0)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Set as default",
-                    "Each car can only have one default preset. The selection includes more than one row for:\n\n  " +
-                        string.Join(", ", collisions) +
-                        "\n\nUncheck the duplicates and try again.",
-                    DialogKind.Warning);
+                SetLib(CarLibStatus, "Each car can have one default. Uncheck the extra rows for: " + string.Join(", ", collisions));
                 return;
             }
 
@@ -3392,14 +3390,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             SelectCarRow(last.CarId, last.PresetName);
             if (applied + alreadyActive > 1)
             {
-                string suffix = alreadyActive > 0 ? $" ({alreadyActive} were already the default)" : "";
-                Window.GetWindow(this)?.Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    TrueforceDialog.Show(Window.GetWindow(this),
-                        "Set as default",
-                        $"Set {applied} preset(s) as their car's default{suffix}.",
-                        DialogKind.Info);
-                }));
+                string suffix = alreadyActive > 0 ? $" ({alreadyActive} already the default)" : "";
+                SetLib(CarLibStatus, $"Set {applied} preset(s) as their car's default{suffix}.");
             }
         }
 
@@ -3657,13 +3649,18 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             return "v" + (n + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        internal string PromptForName(string title, string label, string defaultValue)
+        // validate: optional. Given the trimmed input, returns an error string to
+        // show inline (dialog stays open) or null if the name is acceptable. Used
+        // to reject a blank/colliding name in-place instead of a follow-up modal.
+        internal string PromptForName(string title, string label, string defaultValue,
+            Func<string, string> validate = null)
         {
             var win = new Window
             {
                 Title = title,
                 Width = 380,
-                Height = 160,
+                SizeToContent = SizeToContent.Height,
+                MinHeight = 150,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode = ResizeMode.NoResize,
                 ShowInTaskbar = false,
@@ -3674,6 +3671,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             sp.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 0, 0, 6) });
             var tb = new TextBox { Text = defaultValue ?? "" };
             sp.Children.Add(tb);
+            var err = new TextBlock
+            {
+                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0x6C, 0x6C)),
+                FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed,
+            };
+            sp.Children.Add(err);
             var btnRow = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -3687,10 +3691,24 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             sp.Children.Add(btnRow);
             win.Content = sp;
             string result = null;
-            ok.Click += (s, args) => { result = tb.Text; win.DialogResult = true; };
+            ok.Click += (s, args) =>
+            {
+                string error = validate != null ? validate((tb.Text ?? "").Trim()) : null;
+                if (error != null)
+                {
+                    err.Text = error;
+                    err.Visibility = Visibility.Visible;
+                    tb.Focus(); tb.SelectAll();
+                    return;   // keep the dialog open so the user can fix the name
+                }
+                result = tb.Text;
+                win.DialogResult = true;
+            };
             win.Loaded += (s, args) => { tb.Focus(); tb.SelectAll(); };
             return win.ShowDialog() == true ? result : null;
         }
+
+        private static void SetLib(TextBlock label, string msg) { if (label != null) label.Text = msg; }
 
         // Modal list picker. Returns the selected item or null on Cancel.
         private string PickFromList(string title, string helpText, IList<string> items)
