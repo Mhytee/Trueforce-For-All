@@ -653,7 +653,8 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = (isUpdatePath ? "Update" : "Upload") + " exception: " + ex.Message;
+                    statusText.Text = "Couldn't upload. Check your connection and try again.";
+                    TrueforceDialog.LogError("Share upload", ex);
                     uploadBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     return;

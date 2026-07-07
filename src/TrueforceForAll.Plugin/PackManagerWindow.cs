@@ -402,7 +402,8 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _statusText.Text = $"Set as defaults failed: {ex.Message}";
+                _statusText.Text = "Couldn't set the defaults. See the SimHub log, then try again.";
+                TrueforceDialog.LogError("Set pack defaults", ex);
                 _statusText.Foreground = DangerFg;
             }
         }
@@ -434,7 +435,8 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _statusText.Text = $"Remove failed: {ex.Message}";
+                _statusText.Text = "Couldn't remove the pack. See the SimHub log, then try again.";
+                TrueforceDialog.LogError("Remove pack", ex);
                 _statusText.Foreground = DangerFg;
             }
         }

@@ -334,7 +334,8 @@ namespace TrueforceForAll.Plugin
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Upload exception: " + ex.Message;
+                    statusText.Text = "Couldn't upload. Check your connection and try again.";
+                    TrueforceDialog.LogError("Pack upload", ex);
                     uploadBtn.IsEnabled = true; cancelBtn.IsEnabled = true;
                     return;
                 }

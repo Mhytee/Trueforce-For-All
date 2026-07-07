@@ -708,10 +708,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Create pack failed: " + ex.Message);
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Create pack",
-                    "Create pack failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't upload. Check your connection and try again.", ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -2732,10 +2730,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Share game preset failed: " + ex.Message);
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share preset",
-                    "Share preset failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't share that preset. Check your connection and try again.", ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3003,10 +2999,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Share pack (car bulk) failed: " + ex.Message);
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share pack",
-                    "Share pack failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't share that pack. Check your connection and try again.", ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3036,10 +3030,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Share pack (game bulk) failed: " + ex.Message);
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share pack",
-                    "Share pack failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't share that pack. Check your connection and try again.", ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3173,10 +3165,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share preset",
-                    "Share preset failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't share that preset. Check your connection and try again.", ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3551,10 +3541,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Share custom engine failed: " + ex.Message);
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share custom engine",
-                    "Share custom engine failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't share that custom engine. Check your connection and try again.", ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -4267,7 +4255,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Fetch failed: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't load the community list. Check your connection, then Refresh.";
+                TrueforceDialog.LogError("Community fetch", ex);
                 _communityFetchInFlight = false;
                 return;
             }
@@ -4556,7 +4545,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Community list error: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't load the community list. Check your connection, then Refresh.";
+                TrueforceDialog.LogError("Community list", ex);
             }
             finally
             {
@@ -4736,7 +4726,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Update exception: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't save your changes. Check your connection and try again.";
+                TrueforceDialog.LogError("Community update", ex);
                 return;
             }
             if (!success)
@@ -4769,7 +4760,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 SimHub.Logging.Current.Info("[TF4ALL] CommunityEdit failed: " + ex.Message);
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Edit failed: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't save your changes. Check your connection and try again.";
+                TrueforceDialog.LogError("Community edit", ex);
             }
         }
 
@@ -4832,7 +4824,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Delete exception: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't delete that. Check your connection and try again.";
+                TrueforceDialog.LogError("Community delete", ex);
                 return;
             }
             if (!success)
@@ -5056,7 +5049,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Preview failed: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't open the preview. Check your connection and try again.";
+                TrueforceDialog.LogError("Community preview", ex);
                 return;
             }
             if (full?.Body == null)
@@ -5089,7 +5083,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't open preview: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't open the preview. Check your connection and try again.";
+                TrueforceDialog.LogError("Community preview", ex);
             }
         }
 
@@ -5132,7 +5127,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Download failed: " + ex.Message;
+                    CommunityStatusLabel.Text = "Couldn't download that preset. Check your connection and try again.";
+                TrueforceDialog.LogError("Community download", ex);
                 return;
             }
             if (full?.Body == null || full.Summary == null)
@@ -5166,7 +5162,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 catch (Exception ex)
                 {
                     if (CommunityStatusLabel != null)
-                        CommunityStatusLabel.Text = "Body parse failed: " + ex.Message;
+                        CommunityStatusLabel.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                    TrueforceDialog.LogError("Community body parse", ex);
                     return;
                 }
                 if (snap == null)
@@ -5548,7 +5545,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 catch (Exception ex)
                 {
                     if (CommunityStatusLabel != null)
-                        CommunityStatusLabel.Text = "Body parse failed: " + ex.Message;
+                        CommunityStatusLabel.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                    TrueforceDialog.LogError("Community body parse", ex);
                     return;
                 }
                 if (def == null || string.IsNullOrWhiteSpace(def.Name))
@@ -5602,7 +5600,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Body parse failed: " + ex.Message;
+                    CommunityStatusLabel.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                TrueforceDialog.LogError("Community body parse", ex);
                 return;
             }
             if (ovr == null)

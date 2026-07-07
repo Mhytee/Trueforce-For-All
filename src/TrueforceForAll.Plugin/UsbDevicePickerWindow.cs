@@ -366,7 +366,8 @@ namespace TrueforceForAll.Plugin
                 {
                     Dispatcher.Invoke(() =>
                     {
-                        _statusText.Text = $"Scan failed: {ex.Message}";
+                        _statusText.Text = "Couldn't scan for devices. If G HUB is open, close it and try again.";
+                        TrueforceDialog.LogError("USB scan", ex);
                         _rescanButton.IsEnabled = true;
                     });
                 }

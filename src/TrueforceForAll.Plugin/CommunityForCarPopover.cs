@@ -245,7 +245,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 statusText.Foreground = ErrFg;
-                statusText.Text = "Download failed: " + ex.Message;
+                statusText.Text = "Couldn't download that preset. Check your connection and try again.";
+                TrueforceDialog.LogError("Popover download", ex);
                 return false;
             }
             if (full?.Body == null || full.Summary == null)
@@ -269,7 +270,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 statusText.Foreground = ErrFg;
-                statusText.Text = "Body parse failed: " + ex.Message;
+                statusText.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                TrueforceDialog.LogError("Popover body parse", ex);
                 return false;
             }
             if (ovr == null)

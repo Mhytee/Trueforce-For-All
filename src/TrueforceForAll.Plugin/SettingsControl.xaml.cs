@@ -2659,10 +2659,9 @@ namespace TrueforceForAll.Plugin
                 // plugin. Show the user a recoverable error instead.
                 SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
                 var owner = Window.GetWindow(this);
-                TrueforceDialog.Show(owner,
-                    "Share preset",
-                    "Share preset failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(owner,
+                    "Couldn't share that preset. Check your connection and try again.",
+                    ex);
             }
             finally { _headerShareInProgress = false; }
         }
@@ -2821,10 +2820,9 @@ namespace TrueforceForAll.Plugin
                 // the WPF dispatcher. Show a recoverable error instead.
                 SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
                 var ownerWnd = Window.GetWindow(this);
-                TrueforceDialog.Show(ownerWnd,
-                    "Share preset",
-                    "Share preset failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(ownerWnd,
+                    "Couldn't share that preset. Check your connection and try again.",
+                    ex);
             }
             finally { _headerShareInProgress = false; }
         }
@@ -4716,10 +4714,9 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(null,
-                    "Trueforce For All",
-                    $"Couldn't export logs:\n{ex.Message}",
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(null,
+                    "Couldn't export the logs. Make sure the folder is writable, then try again.",
+                    ex);
                 return null;
             }
         }
@@ -4793,9 +4790,9 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(null, "Trueforce For All",
-                    $"Couldn't open browser:\n{ex.Message}\n\nURL: {url}",
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(null,
+                    $"Couldn't open your browser. Copy this link into it instead:\n\n{url}",
+                    ex);
             }
         }
 
@@ -6075,7 +6072,7 @@ namespace TrueforceForAll.Plugin
                     SetBackupStatus(outcome.Message);
                 }
             }
-            catch (Exception ex) { SetBackupStatus("Backup error: " + ex.Message); }
+            catch (Exception ex) { SetBackupStatus("Couldn't back up. Check the folder and your connection, then try again."); TrueforceDialog.LogError("Backup", ex); }
             finally { if (BackupNowBtn != null) BackupNowBtn.IsEnabled = true; }
         }
 
@@ -6094,7 +6091,7 @@ namespace TrueforceForAll.Plugin
                 var outcome = await _plugin.RestoreFromCloudAsync();
                 SetBackupStatus(outcome.Message);
             }
-            catch (Exception ex) { SetBackupStatus("Restore error: " + ex.Message); }
+            catch (Exception ex) { SetBackupStatus("Couldn't restore. Check the folder and your connection, then try again."); TrueforceDialog.LogError("Restore", ex); }
             finally { if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = true; }
         }
 
@@ -6136,7 +6133,7 @@ namespace TrueforceForAll.Plugin
                     _ = RefreshAchievementsAndNotifyAsync();
                 }
             }
-            catch (Exception ex) { SetDiscordStatus("Discord link error: " + ex.Message); }
+            catch (Exception ex) { SetDiscordStatus("Couldn't link Discord. Check your connection and try again."); TrueforceDialog.LogError("Discord link", ex); }
             finally
             {
                 _discordLinkInProgress = false;
@@ -6163,7 +6160,7 @@ namespace TrueforceForAll.Plugin
                 SetDiscordStatus(res.Message);
                 await RefreshDiscordRowAsync();
             }
-            catch (Exception ex) { SetDiscordStatus("Unlink error: " + ex.Message); }
+            catch (Exception ex) { SetDiscordStatus("Couldn't unlink Discord. Check your connection and try again."); TrueforceDialog.LogError("Discord unlink", ex); }
             finally { if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = true; }
         }
 
@@ -6608,7 +6605,7 @@ namespace TrueforceForAll.Plugin
                     _ = RefreshAchievementsAndNotifyAsync();
                 }
             }
-            catch (Exception ex) { SetDiscordStatus("Discord link error: " + ex.Message); ok = false; }
+            catch (Exception ex) { SetDiscordStatus("Couldn't link Discord. Check your connection and try again."); TrueforceDialog.LogError("Discord link", ex); ok = false; }
             finally
             {
                 _discordLinkInProgress = false;
@@ -6754,7 +6751,7 @@ namespace TrueforceForAll.Plugin
                 var (ok, message) = await _plugin.SendWarnEmailPreviewAsync(stage, System.Threading.CancellationToken.None);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = message;
             }
-            catch (Exception ex) { if (AccessCodeStatus != null) AccessCodeStatus.Text = "Warning email error: " + ex.Message; }
+            catch (Exception ex) { if (AccessCodeStatus != null) AccessCodeStatus.Text = "Couldn't send the email. Check your connection and try again."; TrueforceDialog.LogError("Warning email", ex); }
         }
 
         // Reflect the current link state. Signed out -> prompt + disabled; signed in -> query
@@ -6826,7 +6823,7 @@ namespace TrueforceForAll.Plugin
                     _ = RefreshDiscordRowAsync();
                 }
             }
-            catch (Exception ex) { SetPatreonStatus("Patreon link error: " + ex.Message); }
+            catch (Exception ex) { SetPatreonStatus("Couldn't link Patreon. Check your connection and try again."); TrueforceDialog.LogError("Patreon link", ex); }
             finally
             {
                 _patreonLinkInProgress = false;
@@ -6853,7 +6850,7 @@ namespace TrueforceForAll.Plugin
                 SetPatreonStatus(res.Message);
                 await RefreshPatreonRowAsync();
             }
-            catch (Exception ex) { SetPatreonStatus("Unlink error: " + ex.Message); }
+            catch (Exception ex) { SetPatreonStatus("Couldn't unlink Patreon. Check your connection and try again."); TrueforceDialog.LogError("Patreon unlink", ex); }
             finally { if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = true; }
         }
 
@@ -7278,8 +7275,9 @@ namespace TrueforceForAll.Plugin
                 if (AccountAuthorStatus != null)
                 {
                     AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
-                    AccountAuthorStatus.Text = "Save failed: " + ex.Message;
+                    AccountAuthorStatus.Text = "Couldn't save your username. Check your connection and try again.";
                 }
+                TrueforceDialog.LogError("Username save", ex);
                 AccountAuthorBox.Text = oldAuthor;
                 return;
             }
@@ -7345,8 +7343,9 @@ namespace TrueforceForAll.Plugin
                 if (AccountAuthorStatus != null)
                 {
                     AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
-                    AccountAuthorStatus.Text = "Save failed. " + ex.Message;
+                    AccountAuthorStatus.Text = "Couldn't save your username. Check your connection and try again.";
                 }
+                TrueforceDialog.LogError("Username save", ex);
             }
         }
 
@@ -7395,10 +7394,9 @@ namespace TrueforceForAll.Plugin
             try { result = await _plugin.AuthUpdateEmailAsync(newEmail); }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Change email",
-                    "Email update failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't update your email. Check your connection and try again.",
+                    ex);
                 return;
             }
             if (result == AuthCallResult.Ok)
@@ -7786,9 +7784,9 @@ namespace TrueforceForAll.Plugin
             try { json = await _plugin.ExportMyDataRawAsync(); }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Export my data", "Export failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't export your data. Make sure the file isn't open and you can write to that folder, then try again.",
+                    ex);
                 return;
             }
             if (string.IsNullOrEmpty(json))
@@ -7801,9 +7799,9 @@ namespace TrueforceForAll.Plugin
             try { System.IO.File.WriteAllText(dlg.FileName, json); }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Export my data", "Could not save file: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't export your data. Make sure the file isn't open and you can write to that folder, then try again.",
+                    ex);
                 return;
             }
             TrueforceDialog.Show(Window.GetWindow(this),
@@ -7851,9 +7849,9 @@ namespace TrueforceForAll.Plugin
             try { ok = await _plugin.DeleteMyAccountAsync(); }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Delete account", "Delete failed: " + ex.Message,
-                    DialogKind.Warning);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't delete your account. Check your connection and try again.",
+                    ex);
                 return;
             }
             if (!ok)
@@ -10006,9 +10004,9 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        TrueforceDialog.Show(Window.GetWindow(this), "Trueforce For All",
-                            "Couldn't launch: " + ex.Message,
-                            DialogKind.Error);
+                        TrueforceDialog.ShowError(Window.GetWindow(this),
+                            "Couldn't launch. See the SimHub log, then try again.",
+                            ex);
                     }
                 }
                 return;
@@ -11790,9 +11788,9 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Trueforce For All", $"Backup failed:\n{ex.Message}",
-                    DialogKind.Error);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't back up. Check the folder and your connection, then try again.",
+                    ex);
             }
         }
 
@@ -11829,9 +11827,9 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Trueforce For All", $"Restore failed:\n{ex.Message}",
-                    DialogKind.Error);
+                TrueforceDialog.ShowError(Window.GetWindow(this),
+                    "Couldn't restore. Check the folder and your connection, then try again.",
+                    ex);
             }
         }
 
@@ -11953,9 +11951,9 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        TrueforceDialog.Show(owner, "Trueforce For All",
-                            $"Export failed:\n{ex.Message}",
-                            DialogKind.Error);
+                        TrueforceDialog.ShowError(owner,
+                            "Couldn't export. Make sure the file isn't open and you can write to that folder, then try again.",
+                            ex);
                     }
                 }
                 else if (pickedCars.Count == 1)
@@ -11978,9 +11976,9 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        TrueforceDialog.Show(owner, "Trueforce For All",
-                            $"Export failed:\n{ex.Message}",
-                            DialogKind.Error);
+                        TrueforceDialog.ShowError(owner,
+                            "Couldn't export. Make sure the file isn't open and you can write to that folder, then try again.",
+                            ex);
                     }
                 }
                 return;
@@ -12010,7 +12008,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(owner, "Trueforce For All", $"Export failed:\n{ex.Message}", DialogKind.Error);
+                TrueforceDialog.ShowError(owner, "Couldn't export. Make sure the file isn't open and you can write to that folder, then try again.", ex);
             }
         }
 
@@ -13266,7 +13264,8 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    status.Text = $"Update failed: {ex.Message}";
+                    status.Text = "Couldn't apply the update. See the SimHub log, then try again.";
+                    TrueforceDialog.LogError("Update", ex);
                     progress.Visibility = Visibility.Collapsed;
                     updateBtn.IsEnabled = true;
                     dismissBtn.IsEnabled = true;

@@ -120,7 +120,8 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     hint.Foreground = ErrFg;
-                    hint.Text = "Check failed: " + ex.Message;
+                    hint.Text = "Couldn't check that name. Check your connection and try again.";
+                    TrueforceDialog.LogError("Username check", ex);
                     saveBtn.IsEnabled = false;
                 }
             };
@@ -146,7 +147,8 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     hint.Foreground = ErrFg;
-                    hint.Text = "Save failed: " + ex.Message;
+                    hint.Text = "Couldn't save your username. Check your connection and try again.";
+                    TrueforceDialog.LogError("Username save", ex);
                     saveBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     return;
@@ -176,7 +178,8 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     hint.Foreground = ErrFg;
-                    hint.Text = "Check failed: " + ex.Message;
+                    hint.Text = "Couldn't check that name. Check your connection and try again.";
+                    TrueforceDialog.LogError("Username check", ex);
                     saveBtn.IsEnabled = false;
                 }
             }), DispatcherPriority.Background);

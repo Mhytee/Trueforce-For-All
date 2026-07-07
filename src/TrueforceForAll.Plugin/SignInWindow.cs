@@ -181,7 +181,8 @@ namespace TrueforceForAll.Plugin
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Could not send the code: " + ex.Message;
+                    statusText.Text = "Couldn't reach the sign-in server. Check your internet and try again.";
+                    TrueforceDialog.LogError("Sign-in send", ex);
                     sendBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     return;
@@ -324,7 +325,8 @@ namespace TrueforceForAll.Plugin
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Verify failed: " + ex.Message;
+                    statusText.Text = "Couldn't reach the sign-in server. Check your internet and try again.";
+                    TrueforceDialog.LogError("Sign-in verify", ex);
                     signInBtn.IsEnabled = true;
                     restartBtn.IsEnabled = true;
                     return;
@@ -355,7 +357,8 @@ namespace TrueforceForAll.Plugin
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Could not resend: " + ex.Message;
+                    statusText.Text = "Couldn't reach the sign-in server. Check your internet and try again.";
+                    TrueforceDialog.LogError("Sign-in resend", ex);
                     SetResendIdle(resendBtn);
                     return;
                 }

@@ -68,6 +68,23 @@ namespace TrueforceForAll.Plugin
             return dlg.ShowDialog();
         }
 
+        /// <summary>Show a themed error dialog with a plain, action-oriented
+        /// message, and write the exception detail to the SimHub log so the raw
+        /// text lands where a bug report can find it instead of on screen.</summary>
+        public static void ShowError(Window owner, string friendly, System.Exception ex)
+        {
+            if (ex != null)
+                SimHub.Logging.Current.Warn("[TF4ALL] " + friendly + " :: " + ex.Message);
+            Show(owner, "Trueforce For All", friendly, DialogKind.Error);
+        }
+
+        /// <summary>Companion for inline status-label errors: the caller sets the
+        /// friendly text on its label; this keeps the exception detail in the log.</summary>
+        public static void LogError(string context, System.Exception ex)
+        {
+            SimHub.Logging.Current.Warn("[TF4ALL] " + context + ": " + (ex != null ? ex.Message : "(null)"));
+        }
+
         private DialogChoice _choice = DialogChoice.Cancel;
 
         /// <summary>Show a modal with three buttons: a primary affirmative, a

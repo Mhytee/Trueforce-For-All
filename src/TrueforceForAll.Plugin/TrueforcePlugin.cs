@@ -16451,7 +16451,7 @@ namespace TrueforceForAll.Plugin
                     BuildEnvelopeLocked())).ConfigureAwait(false);
             }
             catch (BackupTooLargeException ex) { return Fail(BackupStatus.TooLarge, ex.Message); }   // permanent: caller won't retry-spin
-            catch (Exception ex) { return Fail(BackupStatus.Failed, "Couldn't build the backup: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Build backup failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't back up. Check the folder and your connection, then try again."); }
 
             var up = await _backupClient.UploadAsync(json).ConfigureAwait(false);
             if (up != BackupTransfer.Success) return FromTransfer(up, "Backup upload failed");
@@ -16539,7 +16539,7 @@ namespace TrueforceForAll.Plugin
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
                 return new BackupOutcome { Status = BackupStatus.Success, Message = "Merged and backed up." };
             }
-            catch (Exception ex) { return Fail(BackupStatus.Failed, "Conflict resolution failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup conflict resolution failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't resolve the backup conflict. See the SimHub log, then try again."); }
             finally { ClearPendingConflict(); _backupOp.Release(); }
         }
 
@@ -16567,7 +16567,7 @@ namespace TrueforceForAll.Plugin
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
                 return new BackupOutcome { Status = BackupStatus.Success, Message = "Restored from the cloud and applied." };
             }
-            catch (Exception ex) { return Fail(BackupStatus.Failed, "Restore failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Restore failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't restore. Check your connection, then try again."); }
             finally { _backupOp.Release(); }
         }
 
