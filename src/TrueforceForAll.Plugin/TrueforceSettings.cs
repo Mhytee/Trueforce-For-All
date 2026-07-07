@@ -757,6 +757,14 @@ namespace TrueforceForAll.Plugin
         // stable string IDs that match EffectChangelog.KnownEffectIds.
         public List<string> SeenEffects { get; set; } = new List<string>();
 
+        // Auto-retire of "NEW" effect badges the user keeps ignoring. NewEffectViewCount
+        // counts Effects-tab opens while at least one badge is showing; at the dismiss
+        // threshold the still-unseen effects are marked seen. NewEffectBadgeUnseenBaseline
+        // records the unseen count the counter is tracking, so a newly shipped effect
+        // (which grows the unseen set) restarts the countdown and gets its full run of views.
+        public int NewEffectViewCount { get; set; } = 0;
+        public int NewEffectBadgeUnseenBaseline { get; set; } = 0;
+
         // Last assembly version whose changelog banner the user has seen
         // (or, on fresh install, the version at the time of install).
         // ToString(3) format ("X.Y.Z"). Null/empty until first Init stamps

@@ -70,7 +70,7 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(MakeBullet(
                 "Crowd-sourced car data",
-                "Some effects need to know things about each car, like its engine layout or redline. Games don't always report them, and a few don't even give the car a real name, just a code like car_123. Now, drivers can fill in the gaps, building a shared pool everyone benefits from. Saved per tune, so a swapped engine keeps its own redline."));
+                "Effects like the engine pulse and rev limiter feel best when they know a car's engine and redline. Games don't always report that data in telemetry, and a few don't even give the car a real name, just a code like \"car_123\". Now, drivers can fill in the gaps, building a shared pool everyone benefits from. Saved per tune, so a swapped engine keeps its own redline."));
             root.Children.Add(MakeBullet(
                 "Community presets",
                 "Browse and download presets other drivers have shared, for the car you're driving or the game you're playing. Vote on the ones you've tried so the best rise to the top."));

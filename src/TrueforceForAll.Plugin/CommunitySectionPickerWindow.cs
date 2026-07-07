@@ -33,7 +33,7 @@ namespace TrueforceForAll.Plugin
             ("pitlimiter",   "Pit limiter"),
             ("drs",          "DRS"),
             ("collision",    "Collision"),
-            ("audio",        "Audio capture"),
+            ("audio",        "Audio rumble"),
             ("airborne",     "Airborne ducking"),
         };
 

@@ -208,7 +208,7 @@ namespace TrueforceForAll.Plugin
                     root.Children.Add(carNameInput);
                 }
                 root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0
-                    ? "(none)" : string.Join(", ", _effectTags)));
+                    ? "(none)" : EffectTagLabels.JoinLabels(_effectTags)));
             }
 
             // Identity is server-authoritative: the server stamps

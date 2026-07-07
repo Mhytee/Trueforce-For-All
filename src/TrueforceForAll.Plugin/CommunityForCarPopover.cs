@@ -159,7 +159,7 @@ namespace TrueforceForAll.Plugin
             if (!string.IsNullOrEmpty(p.Author)) subParts.Add("by " + UiContentSanitizer.SafeDisplayText(p.Author, 96));
             if (p.Downloads > 0)                  subParts.Add(p.Downloads + " downloads");
             if (p.EffectTags != null && p.EffectTags.Count > 0)
-                subParts.Add(string.Join(", ", p.EffectTags));
+                subParts.Add(EffectTagLabels.JoinLabels(p.EffectTags));
             if (subParts.Count > 0)
             {
                 meta.Children.Add(new TextBlock

@@ -240,6 +240,11 @@ namespace TrueforceForAll.Plugin
             else if (c >= 500)        LastUploadError = UploadError.ServerError;
             else                       LastUploadError = UploadError.NetworkFailure;
             LastUploadDetail = detail;
+            // Keep the raw server detail out of the user-facing message but in the
+            // log, so support can still see the backend reason (duplicate key,
+            // validation constraint, etc.) without showing the user jargon.
+            if (!string.IsNullOrEmpty(detail))
+                SimHub.Logging.Current.Info("[TF4ALL] Upload rejected (" + LastUploadError + "): " + detail);
         }
 
         // ---- Upload --------------------------------------------------------

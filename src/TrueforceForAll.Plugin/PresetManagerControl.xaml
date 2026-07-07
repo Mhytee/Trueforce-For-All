@@ -262,8 +262,13 @@
                         Cursor="Hand" Click="RefreshLibrary_Click"
                         AutomationProperties.Name="Refresh library"
                         ToolTip="Refresh. In a Library view, reloads presets from disk (use after dropping JSON files into the library folders). When browsing Community or My uploads, re-fetches the latest list from the server.">
-                    <TextBlock Text="&#x21BB;" FontSize="16" FontWeight="Bold"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="RefreshGlyph" Text="&#x21BB;" FontSize="16" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               RenderTransformOrigin="0.5,0.5">
+                        <TextBlock.RenderTransform>
+                            <RotateTransform x:Name="RefreshGlyphRotate" Angle="0"/>
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
                 </Button>
                 <!-- Persistent gold chip surfacing pending community preset
                      updates (rows the user hasn't yet acted on). Hidden when
@@ -315,7 +320,7 @@
                  buttons, then details above them. LastChildFill: list. -->
             <DockPanel x:Name="GamePanel">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Rename, duplicate, or delete any preset, and set which games auto-load it. Select a preset to see what it contains; Edit loads it on the Effects tab to change values. Built-in presets can't be renamed or deleted (saving over one forks a copy)."/>
+                               Text="Select a preset to see what it contains; or Edit to open it on the Effects tab. You can rename, duplicate, delete, and choose which games auto-load each preset. Built-ins can't be renamed or deleted; saving over one forks a copy."/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
@@ -429,7 +434,7 @@
                                  (vs the preset) lives on the header card during
                                  Edit, so there's no second "name" button here. -->
                             <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource SharePrimaryButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
-                                    ToolTip="Make this the preset that loads for this car (its default). The matching CarDefaults entry is rewritten. With multiple rows checked, sets each as its corresponding car's default (one default per car; the operation refuses if two rows target the same car)."/>
+                                    ToolTip="Make this the preset that loads for this car by default. With multiple rows checked, sets each as its own car's default (one per car; it won't apply if two rows target the same car)."/>
                             <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
                                     ToolTip="Open this car preset on the Effects tab to change its values. Saving over a built-in makes a copy."/>
                             <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
@@ -571,6 +576,8 @@
                         <Button x:Name="PacksRemoveBtn"      Content="Remove pack"      Style="{StaticResource DangerButton}" Width="100" Click="PacksRemove_Click" IsEnabled="False"
                                 ToolTip="Delete every preset this pack installed that you haven't edited. User-edited entries are preserved."/>
                     </StackPanel>
+                    <TextBlock x:Name="PacksStatusLabel" VerticalAlignment="Center"
+                               Foreground="#FFB0B0B0" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" Text=""/>
                 </DockPanel>
                 <DataGrid x:Name="PacksList"
                           AutoGenerateColumns="False" CanUserAddRows="False"
@@ -762,6 +769,9 @@
                 <Button Content="Installed packs…" Width="140" Height="28" Click="ManagePacks_Click"
                         ToolTip="View installed community packs. Set a pack's contents as defaults in bulk, or remove a pack (deletes its presets; entries you have edited are kept)."/>
             </StackPanel>
+
+            <TextBlock x:Name="IoStatusLabel" FontSize="11" Foreground="#FFB0B0B0"
+                       Margin="0,6,0,0" TextWrapping="Wrap" Text=""/>
 
             <!-- Developer tools (built-in folder maintenance). Hidden unless the
                  DEV access code is entered (Settings.DevModeUnlocked). -->

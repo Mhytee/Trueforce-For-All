@@ -2613,6 +2613,65 @@ namespace TrueforceForAll.Plugin
             PersistSettingsCore();
         }
 
+        // How many times the Effects view is opened (while NEW badges are showing)
+        // before the still-unseen effects auto-retire their badges. Chosen so a badge
+        // the user keeps ignoring fades on its own instead of lingering forever.
+        private const int NewEffectViewDismissThreshold = 4;
+
+        /// <summary>Call when the Effects view is opened. While any NEW badge is
+        /// showing, advances a counter; once the user has opened the view
+        /// NewEffectViewDismissThreshold times without interacting, the remaining
+        /// unseen effects are marked seen so their badges clear on their own. A newly
+        /// shipped effect grows the unseen set and restarts the countdown, so it still
+        /// gets its full run of views. Returns true if the seen set changed (the caller
+        /// should refresh the visible badges).</summary>
+        public bool NoteEffectsViewOpened()
+        {
+            if (Settings == null) return false;
+
+            int unseen = 0;
+            foreach (var id in EffectChangelog.KnownEffectIds)
+                if (IsEffectUnseen(id)) unseen++;
+
+            // No badges showing: hold the counter at zero so the next new effect starts clean.
+            if (unseen == 0)
+            {
+                if (Settings.NewEffectViewCount != 0 || Settings.NewEffectBadgeUnseenBaseline != 0)
+                {
+                    Settings.NewEffectViewCount = 0;
+                    Settings.NewEffectBadgeUnseenBaseline = 0;
+                    PersistSettingsCore();
+                }
+                return false;
+            }
+
+            // A new effect appeared since the last open -> restart the countdown so the
+            // fresh badge gets its full run of views before auto-dismiss.
+            if (unseen > Settings.NewEffectBadgeUnseenBaseline)
+                Settings.NewEffectViewCount = 0;
+            Settings.NewEffectBadgeUnseenBaseline = unseen;
+
+            Settings.NewEffectViewCount++;
+
+            bool changed = false;
+            if (Settings.NewEffectViewCount >= NewEffectViewDismissThreshold)
+            {
+                if (Settings.SeenEffects == null) Settings.SeenEffects = new List<string>();
+                foreach (var id in EffectChangelog.KnownEffectIds)
+                {
+                    if (IsEffectUnseen(id))
+                    {
+                        Settings.SeenEffects.Add(id);
+                        changed = true;
+                    }
+                }
+                Settings.NewEffectViewCount = 0;
+                Settings.NewEffectBadgeUnseenBaseline = 0;
+            }
+            PersistSettingsCore();
+            return changed;
+        }
+
         /// <summary>Returns every changelog version strictly newer than the
         /// user's stamped LastSeenVersion. Empty = nothing to surface; the
         /// banner stays hidden.</summary>
@@ -9869,30 +9928,30 @@ namespace TrueforceForAll.Plugin
         // Specific copy for the last upload failure so modals can
         // show "Slow down a moment..." / "Sign in expired..." instead
         // of one generic "network or rate limit" fallback.
+        // Friendly, self-sufficient copy for the last upload failure. The raw
+        // server/exception detail is NOT appended here (it leaks backend jargon
+        // the user can't act on); it's logged where the error is stamped
+        // (PresetSharingClient.StampUploadErrorFromStatus) for support instead.
         internal string DescribeLastUploadError()
         {
             if (_presetSharing == null) return "Upload failed.";
-            string detail = _presetSharing.LastUploadDetail;
-            string prefix;
             switch (_presetSharing.LastUploadError)
             {
                 case UploadError.Blocked:
-                    prefix = "Your account is restricted from uploading."; break;
+                    return "Your account is restricted from uploading.";
                 case UploadError.NotAuthenticated:
-                    prefix = "Sign-in expired. Sign in again and retry."; break;
+                    return "Sign-in expired. Sign in again and retry.";
                 case UploadError.RateLimited:
-                    prefix = "Slow down a moment, then try again."; break;
+                    return "Slow down a moment, then try again.";
                 case UploadError.ValidationFailed:
-                    prefix = "Server rejected the upload."; break;
+                    return "The server rejected this upload. If you've already shared a preset with this name, rename it and try again.";
                 case UploadError.ServerError:
-                    prefix = "Community backend hit an error. Try again in a minute."; break;
+                    return "Community backend hit an error. Try again in a minute.";
                 case UploadError.NetworkFailure:
-                    prefix = "Couldn't reach the community backend."; break;
+                    return "Couldn't reach the community backend. Check your connection, then retry.";
                 default:
-                    prefix = "Upload failed."; break;
+                    return "Upload failed.";
             }
-            return string.IsNullOrEmpty(detail) ? prefix : prefix + " (" + Trim(detail) + ")";
-            string Trim(string s) => s.Length > 120 ? s.Substring(0, 120) + "..." : s;
         }
 
         // True when the last upload was rejected because the account/device is

@@ -121,6 +121,7 @@ namespace TrueforceForAll.Plugin
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
             "IRacingTrueforceNoticeDismissed",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
+            "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed",
             // MOTD client state: re-fetchable cache + transient per-message dismiss bookkeeping.
             "MotdCache", "MotdDismissedIds", "MotdPoolDismissedOn", "MotdRecurringDismissedOcc",

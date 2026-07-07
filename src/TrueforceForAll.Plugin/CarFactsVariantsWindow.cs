@@ -181,7 +181,7 @@ namespace TrueforceForAll.Plugin
             // below so we can plumb the rename into the plugin.
             var labelCol = new DataGridTextColumn
             {
-                Header = "Label",
+                Header = "Label (click to rename)",
                 Binding = new Binding("Label") { Mode = BindingMode.TwoWay },
                 Width = new DataGridLength(1, DataGridLengthUnitType.Star),
                 MinWidth = 160,

@@ -776,20 +776,56 @@ namespace TrueforceForAll.Plugin
         private void PacksSetDefaults_Click(object sender, RoutedEventArgs e)
         {
             if (!(PacksList?.SelectedItem is PackRow row) || row.Pack == null || _plugin == null) return;
-            var summary = _plugin.SetPackAsDefaults(row.Pack);
-            if (summary == null) return;
-            int total = summary.GameDefaultsSet + summary.CarDefaultsSet
-                + summary.GameDefaultsOverwritten + summary.CarDefaultsOverwritten;
-            string copy = total == 0
-                ? "No default bindings changed."
-                : $"Set {summary.GameDefaultsSet + summary.GameDefaultsOverwritten} game default(s) and "
-                  + $"{summary.CarDefaultsSet + summary.CarDefaultsOverwritten} car default(s).";
-            if (summary.GamePresetsSkipped > 0)
-                copy += $"\nSkipped {summary.GamePresetsSkipped} game preset(s) the pack didn't tag with a target game.";
-            TrueforceDialog.Show(Window.GetWindow(this),
-                "Set pack as defaults", copy,
-                DialogKind.Info);
-            LibraryChanged?.Invoke();
+            var pack = row.Pack;
+            var owner = Window.GetWindow(this);
+
+            // Warn before clobbering existing defaults: overwrite all, skip only
+            // the conflicting ones, or cancel. No prompt when nothing conflicts.
+            var preview = _plugin.PreviewPackDefaults(pack);
+            SetDefaultsConflictPolicy policy = SetDefaultsConflictPolicy.OverwriteAll;
+            if (preview.ConflictCount > 0)
+            {
+                int total = preview.FreshCount + preview.ConflictCount;
+                var choice = TrueforceDialog.ShowChoice(owner,
+                    "Set pack as defaults",
+                    $"This pack sets {total} default binding(s). {preview.ConflictCount} of them already have a default for that game or car.\n\n"
+                    + "\"Overwrite all\" replaces every existing default. \"Skip existing\" keeps your current defaults and only fills in the ones you haven't set yet.",
+                    primaryLabel:   "Overwrite all",
+                    secondaryLabel: "Skip existing",
+                    cancelLabel:    "Cancel");
+                if (choice == DialogChoice.Cancel) return;
+                policy = choice == DialogChoice.Primary
+                    ? SetDefaultsConflictPolicy.OverwriteAll
+                    : SetDefaultsConflictPolicy.SkipConflicts;
+            }
+
+            try
+            {
+                var summary = _plugin.SetPackAsDefaults(pack, policy);
+                if (PacksStatusLabel != null) PacksStatusLabel.Text = FormatSetDefaultsSummary(summary);
+                LibraryChanged?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                if (PacksStatusLabel != null) PacksStatusLabel.Text = "Couldn't set the defaults. See the SimHub log, then try again.";
+                TrueforceDialog.LogError("Set pack defaults", ex);
+            }
+        }
+
+        // Mirrors PackManagerWindow.FormatSetDefaultsSummary so the inline Packs
+        // pane produces the same result string as the standalone manager.
+        private static string FormatSetDefaultsSummary(SetDefaultsSummary s)
+        {
+            if (s == null) return "";
+            int gOver = s.GameDefaultsOverwritten;
+            int cOver = s.CarDefaultsOverwritten;
+            string overText = (gOver + cOver) > 0 ? $" (overwrote {gOver + cOver} existing)" : "";
+            int kept = s.GameDefaultsSkippedConflict + s.CarDefaultsSkippedConflict;
+            string keptText = kept > 0 ? $" · kept {kept} existing default(s)" : "";
+            string skipText = s.GamePresetsSkipped > 0
+                ? $" · skipped {s.GamePresetsSkipped} game preset(s) without a game mapping"
+                : "";
+            return $"Set defaults: {s.GameDefaultsSet} game, {s.CarDefaultsSet} car{overText}{keptText}{skipText}.";
         }
 
         private void PacksRemove_Click(object sender, RoutedEventArgs e)
@@ -840,13 +876,21 @@ namespace TrueforceForAll.Plugin
                 options.DeleteSharedEngines = choice == DialogChoice.Secondary;
             }
 
-            var summary = _plugin.RemovePack(row.Pack, options);
+            RemovePackSummary summary;
+            try
+            {
+                summary = _plugin.RemovePack(row.Pack, options);
+            }
+            catch (Exception ex)
+            {
+                if (PacksStatusLabel != null) PacksStatusLabel.Text = "Couldn't remove the pack. See the SimHub log, then try again.";
+                TrueforceDialog.LogError("Remove pack", ex);
+                return;
+            }
             if (summary == null) return;
-            TrueforceDialog.Show(owner,
-                "Remove pack",
-                $"Removed pack. Deleted {summary.EntriesDeleted} entr{(summary.EntriesDeleted == 1 ? "y" : "ies")}; "
-                + $"kept {summary.EntriesKept} entr{(summary.EntriesKept == 1 ? "y" : "ies")}.",
-                DialogKind.Info);
+            if (PacksStatusLabel != null)
+                PacksStatusLabel.Text = $"Removed pack. Deleted {summary.EntriesDeleted} entr{(summary.EntriesDeleted == 1 ? "y" : "ies")}; "
+                    + $"kept {summary.EntriesKept} entr{(summary.EntriesKept == 1 ? "y" : "ies")}.";
             ReloadPacks();
             ReloadGames();
             ReloadCars();
@@ -1559,7 +1603,7 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine($"FFB spike reduction: {(snap.FfbSpikeTamingEnabled ? "on" : "off")}");
             if (snap.StationarySpringEnabled.HasValue)
                 sb.AppendLine($"Stationary spring: {(snap.StationarySpringEnabled.Value ? "on" : "off")} (strength {(snap.StationarySpringStrength ?? 0):0.##})");
-            AppendEffectLine(sb, "Audio capture",    snap.AudioCapture);
+            AppendEffectLine(sb, "Audio rumble",    snap.AudioCapture);
             AppendEffectLine(sb, "Engine pulse",     snap.EnginePulse);
             AppendEffectLine(sb, "Road bumps",       snap.RoadBumps);
             AppendEffectLine(sb, "Traction loss",    snap.TractionLoss);
@@ -1613,7 +1657,7 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine($"Source: {(entry.IsBuiltin ? "Built-in" : "User preset")}");
 
             var sections = new System.Text.StringBuilder();
-            AppendOverrideSection(sections, "Audio capture",    ov.AudioCapture, baseline?.AudioCapture);
+            AppendOverrideSection(sections, "Audio rumble",    ov.AudioCapture, baseline?.AudioCapture);
             AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  baseline?.EnginePulse);
             AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    baseline?.RoadBumps);
             AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, baseline?.TractionLoss);
@@ -1764,7 +1808,7 @@ namespace TrueforceForAll.Plugin
                     sb.AppendLine($"Pack version: {p.AuthorVersion}");
             }
             if (p.EffectTags != null && p.EffectTags.Count > 0)
-                sb.AppendLine($"Tags: {string.Join(", ", p.EffectTags)}");
+                sb.AppendLine($"Tags: {EffectTagLabels.JoinLabels(p.EffectTags)}");
             if (!string.IsNullOrWhiteSpace(p.Description))
             {
                 sb.AppendLine();
@@ -1828,7 +1872,7 @@ namespace TrueforceForAll.Plugin
                         if (ov == null) return "";
                         var sb = new System.Text.StringBuilder();
                         var sections = new System.Text.StringBuilder();
-                        AppendOverrideSection(sections, "Audio capture",    ov.AudioCapture, null);
+                        AppendOverrideSection(sections, "Audio rumble",    ov.AudioCapture, null);
                         AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  null);
                         AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    null);
                         AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, null);
@@ -2777,7 +2821,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // pack picker / metadata dialog / file pickers sit above the panel.
         private void DialogExport_Click(object sender, RoutedEventArgs e)
         {
-            SettingsControl.RunExportFlow(Window.GetWindow(this), _plugin);
+            var saved = SettingsControl.RunExportFlow(Window.GetWindow(this), _plugin);
+            if (!string.IsNullOrEmpty(saved))
+                SettingsControl.ShowSavedStatus(IoStatusLabel,
+                    "Exported to " + System.IO.Path.GetFileName(saved) + ".", saved);
         }
 
         private void DialogImport_Click(object sender, RoutedEventArgs e)
@@ -3858,7 +3905,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             public string ScoreLabel  => (((Summary?.Upvotes ?? 0) - (Summary?.Downvotes ?? 0))).ToString();
             public int    Downloads   => Summary?.Downloads ?? 0;
             public string TagsLabel   => Summary?.EffectTags == null || Summary.EffectTags.Count == 0
-                                          ? "" : string.Join(", ", Summary.EffectTags);
+                                          ? "" : EffectTagLabels.JoinLabels(Summary.EffectTags);
             // Pack-only: bundled item count (presets + custom engines) for the
             // "Items" column. Blank for non-pack rows (column hidden anyway).
             public string PackItemCount =>
@@ -4207,6 +4254,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = "Loading...";
+            StartRefreshSpin();
 
             string capturedMode = _communityMode;
             string capturedKind = _communityKind;
@@ -4569,7 +4617,29 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             finally
             {
                 _communityFetchInFlight = false;
+                StopRefreshSpin();
             }
+        }
+
+        // Continuous rotation of the Refresh glyph while a community fetch is in
+        // flight, so a slow load shows visible motion instead of looking frozen.
+        // (Library refreshes are synchronous disk reloads, so they never spin.)
+        private void StartRefreshSpin()
+        {
+            if (RefreshGlyphRotate == null) return;
+            var anim = new System.Windows.Media.Animation.DoubleAnimation(0, 360,
+                new System.Windows.Duration(TimeSpan.FromSeconds(0.9)))
+            {
+                RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
+            };
+            RefreshGlyphRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, anim);
+        }
+
+        private void StopRefreshSpin()
+        {
+            if (RefreshGlyphRotate == null) return;
+            RefreshGlyphRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
+            RefreshGlyphRotate.Angle = 0;
         }
 
         // Grey out moderated own-upload rows by dimming the realized row container

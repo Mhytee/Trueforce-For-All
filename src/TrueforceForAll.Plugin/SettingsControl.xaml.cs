@@ -159,7 +159,7 @@ namespace TrueforceForAll.Plugin
             {
                 case EffectKind.Master:         return "Master";
                 case EffectKind.Ducking:        return "Sidechain ducking";
-                case EffectKind.Audio:          return "Audio capture";
+                case EffectKind.Audio:          return "Audio rumble";
                 case EffectKind.Engine:         return "Engine pulse";
                 case EffectKind.Bumps:          return "Road bumps";
                 case EffectKind.Traction:       return "Traction loss";
@@ -4057,7 +4057,7 @@ namespace TrueforceForAll.Plugin
                     ? "Slew-rate limiter (iRacing-style): caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
                     : "Transient detector: soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
             if (FfbSpikeLimitLabel != null)
-                FfbSpikeLimitLabel.Text = slew ? "Slew rate (LSB/ms):" : "Spike threshold (LSB):";
+                FfbSpikeLimitLabel.Text = slew ? "Slew rate:" : "Spike threshold:";
             if (FfbSpikeLimitHelp != null)
                 FfbSpikeLimitHelp.Text = slew
                     ? "Maximum change in force per millisecond. Lower spreads harsh spikes over more time (softer); higher lets force move faster (sharper)."
@@ -6100,6 +6100,43 @@ namespace TrueforceForAll.Plugin
             if (BackupStatusText != null) BackupStatusText.Text = msg ?? "";
         }
 
+        // Open Explorer with the just-saved file selected. Invoked by the
+        // "Show in folder" link on an inline success line, so revealing is now a
+        // user choice rather than an automatic window pop after every export.
+        private static void RevealInExplorer(string path)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+            }
+            catch { }
+        }
+
+        // Inline success line for exports / backups: a plain message plus, when a
+        // saved file path is given, a "Show in folder" link that reveals it in
+        // Explorer only if clicked. Replaces the old OK-to-dismiss success dialogs
+        // and the earlier auto-open-Explorer-on-every-export behavior.
+        internal static void ShowSavedStatus(System.Windows.Controls.TextBlock block, string message, string savedPath)
+        {
+            if (block == null) return;
+            block.Inlines.Clear();
+            block.Inlines.Add(new System.Windows.Documents.Run(message ?? ""));
+            if (!string.IsNullOrEmpty(savedPath) && System.IO.File.Exists(savedPath))
+            {
+                block.Inlines.Add(new System.Windows.Documents.Run("   "));
+                var link = new System.Windows.Documents.Hyperlink(
+                    new System.Windows.Documents.Run("Show in folder"))
+                {
+                    Foreground = new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0x6F, 0xB1, 0xFF)),
+                };
+                string p = savedPath;
+                link.Click += (s, e) => RevealInExplorer(p);
+                block.Inlines.Add(link);
+            }
+        }
+
         // ---- Discord link (Phase 2, M5) ----
 
         // Cancels the in-flight link (browser/loopback wait) on re-click, panel teardown, or
@@ -6361,7 +6398,10 @@ namespace TrueforceForAll.Plugin
                 // below repopulate the cache, and the single-flight coalesces the entitlement double-read
                 // (supporter badge + cloud-gating) into one network call.
                 _plugin.InvalidateAccountStatusCache();
-                RefreshAccountStats();
+                // Only fetch stats when the section that shows them is open, so the
+                // "Loading..." feedback and any error are actually visible. When it's
+                // collapsed, AccountDetails_Expanded fetches on first open instead.
+                if (AccountDetailsExpander?.IsExpanded == true) RefreshAccountStats();
                 _ = RefreshDiscordRowAsync();
                 _ = RefreshPatreonRowAsync();
                 _ = RefreshSupporterBadgeAsync();
@@ -6370,6 +6410,12 @@ namespace TrueforceForAll.Plugin
             else if (SupportTab != null && ReferenceEquals(MainTabs.SelectedItem, SupportTab))
             {
                 _ = RefreshSupportersWallAsync();
+            }
+            else if (EffectsTab != null && ReferenceEquals(MainTabs.SelectedItem, EffectsTab))
+            {
+                // Opening the Effects view counts toward auto-retiring NEW badges the
+                // user keeps ignoring; refresh the chrome if any badge just cleared.
+                if (_plugin.NoteEffectsViewOpened()) RefreshNewBadges();
             }
         }
 
@@ -7432,6 +7478,15 @@ namespace TrueforceForAll.Plugin
             _ = RefreshCloudBackupGatingAsync();
         }
 
+        // Account stats + sessions render inside this collapsible section, so fetch
+        // them when it opens (mirrors BackupExpander_Expanded). The tab-open path
+        // only fetches when this is already expanded, so the "Loading..." feedback
+        // is never stranded behind a collapsed header.
+        private void AccountDetails_Expanded(object sender, RoutedEventArgs e)
+        {
+            RefreshAccountStats();
+        }
+
         // Pull account stats on demand. Cheap RPC; no caching here so
         // edits made elsewhere (a fresh upload, a new vote) show up next
         // time the expander opens.
@@ -7804,10 +7859,9 @@ namespace TrueforceForAll.Plugin
                     ex);
                 return;
             }
-            TrueforceDialog.Show(Window.GetWindow(this),
-                "Export my data",
-                "Saved to:\n" + dlg.FileName,
-                DialogKind.Info);
+            ShowSavedStatus(AccountExportStatus,
+                "Exported to " + System.IO.Path.GetFileName(dlg.FileName) + ".",
+                dlg.FileName);
         }
 
         // Delete-account button. Two-step confirm because it's irreversible
@@ -7873,7 +7927,7 @@ namespace TrueforceForAll.Plugin
             if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
             if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
             RefreshAccountRow();
-            RefreshAccountStats();
+            if (AccountDetailsExpander?.IsExpanded == true) RefreshAccountStats();
             TrueforceDialog.Show(Window.GetWindow(this),
                 "Delete account",
                 "Account deleted.",
@@ -11780,11 +11834,10 @@ namespace TrueforceForAll.Plugin
             if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
             try
             {
-                var (count, bytes) = _plugin.BackupAllToZip(dlg.FileName);
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Trueforce For All",
-                    $"Backed up {count} file(s) ({bytes:N0} bytes) to:\n{dlg.FileName}",
-                    DialogKind.Info);
+                _plugin.BackupAllToZip(dlg.FileName);
+                ShowSavedStatus(BackupFileStatus,
+                    "Backed up to " + System.IO.Path.GetFileName(dlg.FileName) + ".",
+                    dlg.FileName);
             }
             catch (Exception ex)
             {
@@ -11818,12 +11871,9 @@ namespace TrueforceForAll.Plugin
                 int n = _plugin.RestoreAllFromZip(open.FileName);
                 ClearDirty();
                 RefreshFromPlugin();
-                TrueforceDialog.Show(Window.GetWindow(this),
-                    "Trueforce For All",
-                    n == 0
-                        ? "Restore completed but the archive contained no user files. The settings JSON (if any) was applied."
-                        : $"Restored {n} file(s) from:\n{open.FileName}\n\nThe previous user library has been preserved at user.pre-restore-<timestamp> next to it.",
-                    DialogKind.Info);
+                ShowSavedStatus(BackupFileStatus, n == 0
+                    ? "Restore finished. The archive had no user files; settings were applied."
+                    : $"Restored {n} file(s). Your previous library is kept alongside as a safety net.", null);
             }
             catch (Exception ex)
             {
@@ -11860,9 +11910,12 @@ namespace TrueforceForAll.Plugin
         // Static body of Export_Click so ManagePresetsDialog can run the
         // same flow with itself as the owner Window (otherwise nested modals
         // appear behind the manage dialog).
-        internal static void RunExportFlow(Window owner, TrueforcePlugin plugin)
+        // Returns the path of the file just saved (so the caller can show an
+        // inline "Show in folder" line), or null if the flow was cancelled or
+        // failed. No longer opens Explorer itself.
+        internal static string RunExportFlow(Window owner, TrueforcePlugin plugin)
         {
-            if (plugin == null) return;
+            if (plugin == null) return null;
 
             var presets = plugin.GetExportablePresetNames()
                 .Where(n => !plugin.IsBuiltinPreset(n))
@@ -11875,7 +11928,7 @@ namespace TrueforceForAll.Plugin
                 TrueforceDialog.Show(owner, "Trueforce For All",
                                 "Nothing to share yet. Save a preset (or a per-car tuning) first.",
                                 DialogKind.Info);
-                return;
+                return null;
             }
 
             string preferCarId = plugin.ActiveCarId;
@@ -11904,11 +11957,11 @@ namespace TrueforceForAll.Plugin
                 Owner = owner,
             };
             if (picker.Owner == null) picker.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            if (picker.ShowDialog() != true) return;
+            if (picker.ShowDialog() != true) return null;
 
             var pickedPresets = picker.SelectedPresetNames;
             var pickedCars    = picker.SelectedCarPresets;
-            if (pickedPresets.Count == 0 && pickedCars.Count == 0) return;
+            if (pickedPresets.Count == 0 && pickedCars.Count == 0) return null;
 
             // Output type is decided by the count of picked items:
             //   1 picked → single loose .tfpreset.json / .tfcar.json file
@@ -11924,7 +11977,7 @@ namespace TrueforceForAll.Plugin
                 isPack ? "pack" : "preset",
                 out string author, out string desc, out string ver,
                 out string packName, out bool allowInPacks,
-                includePackName: isPack)) return;
+                includePackName: isPack)) return null;
 
             if (!isPack)
             {
@@ -11941,13 +11994,11 @@ namespace TrueforceForAll.Plugin
                         DefaultExt = "tfpreset.json",
                         Title      = "Export preset",
                     };
-                    if (dlg1.ShowDialog(owner) != true) return;
+                    if (dlg1.ShowDialog(owner) != true) return null;
                     try
                     {
                         plugin.ExportSinglePreset(dlg1.FileName, nm, author, desc, ver, allowInPacks);
-                        TrueforceDialog.Show(owner, "Trueforce For All",
-                            $"Exported preset '{nm}' to:\n{dlg1.FileName}",
-                            DialogKind.Info);
+                        return dlg1.FileName;
                     }
                     catch (Exception ex)
                     {
@@ -11966,13 +12017,11 @@ namespace TrueforceForAll.Plugin
                         DefaultExt = "tfcar.json",
                         Title      = "Export car preset",
                     };
-                    if (dlg2.ShowDialog(owner) != true) return;
+                    if (dlg2.ShowDialog(owner) != true) return null;
                     try
                     {
                         plugin.ExportSingleCarPreset(dlg2.FileName, car.CarId, car.PresetName, author, desc, ver, allowInPacks);
-                        TrueforceDialog.Show(owner, "Trueforce For All",
-                            $"Exported car preset '{car.PresetName}' for '{car.CarId}' to:\n{dlg2.FileName}",
-                            DialogKind.Info);
+                        return dlg2.FileName;
                     }
                     catch (Exception ex)
                     {
@@ -11981,7 +12030,7 @@ namespace TrueforceForAll.Plugin
                             ex);
                     }
                 }
-                return;
+                return null;
             }
 
             // Pack: archive output. Pack-level author = the user (curator);
@@ -11994,22 +12043,21 @@ namespace TrueforceForAll.Plugin
                 FileName = defaultName,
                 Title    = "Export pack",
             };
-            if (dlg.ShowDialog(owner) != true) return;
+            if (dlg.ShowDialog(owner) != true) return null;
             try
             {
-                var (p, c) = plugin.ExportPack(
+                plugin.ExportPack(
                     dlg.FileName,
                     pickedPresets,
                     pickedCars.ConvertAll(e2 => (e2.CarId, e2.PresetName)),
                     author, desc, ver, packName, allowInPacks);
-                TrueforceDialog.Show(owner, "Trueforce For All",
-                                $"Exported {p} preset(s) and {c} car preset(s) to:\n{dlg.FileName}",
-                                DialogKind.Info);
+                return dlg.FileName;
             }
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(owner, "Couldn't export. Make sure the file isn't open and you can write to that folder, then try again.", ex);
             }
+            return null;
         }
 
         // Static body of Import_Click. Returns true if anything was imported

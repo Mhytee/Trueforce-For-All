@@ -1298,7 +1298,7 @@
 
         <sh:SHTabControl x:Name="MainTabs" Grid.Row="2" Margin="20,4,20,12" SelectionChanged="MainTabs_SelectionChanged">
             <!-- ============================ EFFECTS (main) ============================ -->
-            <sh:SHTabItem Header="Effects">
+            <sh:SHTabItem x:Name="EffectsTab" Header="Effects">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
@@ -1465,7 +1465,7 @@
                             <TextBlock x:Name="SpikeModeDescription" Style="{StaticResource HelpText}" Margin="0,0,0,8"/>
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" x:Name="FfbSpikeLimitLabel" Text="Slew rate (LSB/ms):" Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Column="0" x:Name="FfbSpikeLimitLabel" Text="Slew rate:" Style="{StaticResource LabelText}"/>
                                 <Slider     Grid.Column="1" x:Name="FfbSpikeLimitSlider"
                                             Minimum="0" Maximum="30000" SmallChange="500" LargeChange="2000"
                                             TickFrequency="2500" ValueChanged="FfbSpikeLimitSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -1475,7 +1475,7 @@
                             <StackPanel x:Name="SpikeCapSoftnessRow">
                                 <Grid Margin="0,0,0,2">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Cap softness (LSB):" Style="{StaticResource LabelText}"/>
+                                    <TextBlock Grid.Column="0" Text="Cap softness:" Style="{StaticResource LabelText}"/>
                                     <Slider     Grid.Column="1" x:Name="FfbPeakLimitSlider"
                                                 Minimum="0" Maximum="20000" SmallChange="500" LargeChange="2000"
                                                 TickFrequency="2000" ValueChanged="FfbPeakLimitSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -1499,8 +1499,9 @@
             <Expander x:Name="AudioExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                 <Expander.Header>
                     <StackPanel Orientation="Horizontal">
-                        <CheckBox x:Name="AudioEnabledCheck" Content="Audio capture (game audio → wheel)"
+                        <CheckBox x:Name="AudioEnabledCheck" Content="Audio rumble"
                                   FontWeight="SemiBold" VerticalAlignment="Center"
+                                  ToolTip="Turns the game's sound (engine, tyres, impacts) into wheel vibration. Works even when a game sends no useful telemetry."
                                   Checked="AudioEnabled_Changed" Unchecked="AudioEnabled_Changed"/>
                         <Border x:Name="AudioNewBadge" Style="{StaticResource NewEffectBadge}">
                             <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
@@ -1580,8 +1581,9 @@
                 <Expander x:Name="EngineExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="EngineEnabledCheck" Content="Engine pulse (RPM-driven)"
+                            <CheckBox x:Name="EngineEnabledCheck" Content="Engine pulse"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                      ToolTip="The engine's firing pulse through the wheel, rising with RPM."
                                       Checked="EngineEnabled_Changed" Unchecked="EngineEnabled_Changed"/>
                             <Border x:Name="EngineNewBadge" Style="{StaticResource NewEffectBadge}">
                                 <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
@@ -1694,7 +1696,7 @@
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="EngineLoadLayerCheck"
-                                      Content="Load layer" VerticalAlignment="Center"
+                                      Content="Low-end body" VerticalAlignment="Center"
                                       Checked="EngineLoadLayer_Changed" Unchecked="EngineLoadLayer_Changed"
                                       ToolTip="Adds a low-frequency oscillation at the engine's cycle rate (RPM/120 Hz) alongside the firing pulse. Sits in the band the wheel actually moves at, so the engine keeps feeling present as the firing pulse rolls off at high RPM."/>
                         </Grid>
@@ -3150,6 +3152,8 @@
                         <Button x:Name="RestoreButton" Content="Restore…" Width="140" Height="28" Click="Restore_Click"
                                 ToolTip="Replace all current Trueforce For All settings, presets, defaults, and car tunings with a backup archive's contents. Destructive: confirm before running."/>
                     </StackPanel>
+                    <TextBlock x:Name="BackupFileStatus" FontSize="11" Foreground="#FFB0B0B0"
+                               Margin="0,0,0,4" TextWrapping="Wrap" Text=""/>
                     <!-- Dev-only: backup round-trip + classification self-test. Lives with the
                          backup tools it validates. Hidden unless DevModeUnlocked (ApplyDevModeVisibility). -->
                     <Button x:Name="BackupSelfTestButton" Content="Run backup self-test (dev)"
@@ -3319,7 +3323,8 @@
 
             <!-- Account details: the rarely-needed bits (your stats, active sessions, data
                  export, delete), collapsed by default so they don't clutter the account view. -->
-            <Expander x:Name="AccountDetailsExpander" Header="Account settings" IsExpanded="False" Margin="0,12,0,4">
+            <Expander x:Name="AccountDetailsExpander" Header="Account settings" IsExpanded="False" Margin="0,12,0,4"
+                      Expanded="AccountDetails_Expanded">
                 <StackPanel Margin="0,8,0,0">
                     <!-- Your stats. Refreshed from get_account_stats when the Account tab is shown. -->
                     <TextBlock Text="Your stats" Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>
@@ -3372,6 +3377,8 @@
                                 Click="AccountDelete_Click"
                                 ToolTip="Permanently remove your account. Presets you uploaded stay available for people who downloaded them but lose your name."/>
                     </StackPanel>
+                    <TextBlock x:Name="AccountExportStatus" FontSize="11" Foreground="#FFB0B0B0"
+                               Margin="0,4,0,0" TextWrapping="Wrap" Text=""/>
                 </StackPanel>
             </Expander>
 

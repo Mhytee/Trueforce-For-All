@@ -130,14 +130,15 @@ namespace TrueforceForAll.Plugin
             Grid.SetRow(split, 1);
             root.Children.Add(split);
 
-            // Status line for the last action's summary toast. Single line so
-            // it doesn't push the button row around.
+            // Status line for the last action's summary. Wraps so a long
+            // overwrote / kept / skipped summary stays fully readable instead of
+            // being clipped with an ellipsis on a narrow window; the row is
+            // Auto-height so it grows to fit.
             _statusText = new TextBlock
             {
                 Foreground = MutedFg,
                 Margin = new Thickness(0, 8, 0, 0),
-                TextWrapping = TextWrapping.NoWrap,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.Wrap,
             };
             Grid.SetRow(_statusText, 2);
             root.Children.Add(_statusText);

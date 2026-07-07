@@ -484,7 +484,7 @@ namespace TrueforceForAll.Plugin
             AddSection(host, ovr, "PitLimiter",   "Pit limiter");
             AddSection(host, ovr, "Drs",          "DRS");
             AddSection(host, ovr, "Collision",    "Collision");
-            AddSection(host, ovr, "AudioCapture", "Audio capture");
+            AddSection(host, ovr, "AudioCapture", "Audio rumble");
             AddSection(host, ovr, "Airborne",     "Airborne ducking");
         }
 
