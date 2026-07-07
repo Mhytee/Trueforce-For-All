@@ -1,13 +1,13 @@
-// Baked carId ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ effective-cylinder-count lookup for known cars. Used by
+﻿// Baked carId → effective-cylinder-count lookup for known cars. Used by
 // CarCylinderResolver to seed EnginePulseEffect.AutoCylinders (and the
 // EV gain scale) without waiting for the user to configure each car.
 //
 // "Effective cylinders" = the value we feed the firing-frequency formula
-// (RPM/60 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â cyl/2). This is a real cylinder count for piston engines and
-// a rotor-equivalent for Wankels (2-rotor ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ 4, 3-rotor ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ 6, 4-rotor ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ 8).
+// (RPM/60 × cyl/2). This is a real cylinder count for piston engines and
+// a rotor-equivalent for Wankels (2-rotor → 4, 3-rotor → 6, 4-rotor → 8).
 // See EnginePulseEffect.cs for the math derivation.
 //
-// Coverage today: Assetto Corsa Kunos lineup ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â 55 pre-DLC + 123 ks_* DLC
+// Coverage today: Assetto Corsa Kunos lineup — 55 pre-DLC + 123 ks_* DLC
 // = 178 entries. Mods are handled by the heuristic fallback in
 // CarCylinderResolver. Engine-swapped mods that share a Kunos carId are
 // rare; users override per-car via the existing car-preset system, which
@@ -26,18 +26,18 @@ namespace TrueforceForAll.Plugin
     /// <summary>Per-car spec used by CarCylinderResolver. Cylinder count is
     /// 1..12 (12 covers all common engines, including Mazda 4-rotor mapped
     /// to 8). IsElectric flags pure-EV cars whose firing frequency math
-    /// doesn't apply ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â the resolver leaves cylinders alone but tells
+    /// doesn't apply — the resolver leaves cylinders alone but tells
     /// EnginePulse to halve its amplitude (real EVs aren't silent; many
     /// pump synthetic engine sound, so "muted hum" reads more correctly
     /// than "off"). Hybrids with a real combustion engine are NOT marked
-    /// electric ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â their cylinder count is the engine's cylinder count.</summary>
+    /// electric — their cylinder count is the engine's cylinder count.</summary>
     public readonly struct BuiltinCarSpec
     {
         public int          Cylinders    { get; }
         public bool         IsElectric   { get; }
         /// <summary>Engine layout for firing-order pattern synthesis. Auto
         /// (default) means "let FiringPatternDb pick the modern default
-        /// from cyl count", V6 60Â° / V8 cross-plane / V12 60Â°. Explicit
+        /// from cyl count", V6 60° / V8 cross-plane / V12 60°. Explicit
         /// values capture the characterful exceptions: V8 flat-plane
         /// (Ferrari / Lotus / GT350), Boxer (Subaru / Porsche flat),
         /// Rotary (Mazda RX), V-twin variants (Ducati / Harley), etc.</summary>
@@ -102,7 +102,11 @@ namespace TrueforceForAll.Plugin
         {
             var hits = new List<string>();
             if (string.IsNullOrWhiteSpace(query)) return hits;
-            string q = query.Trim();
+            // Diacritic-folded matching: "huracan" finds "Huracán" and vice
+            // versa (OrdinalIgnoreCase folds case only, not accents). The
+            // haystack fold is a no-op allocation-wise for the overwhelmingly
+            // ASCII catalog (FoldDiacritics has an ASCII fast path).
+            string q = FoldDiacritics(query.Trim());
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
             void ScanSpecs(IReadOnlyDictionary<string, BuiltinCarSpec> specs)
@@ -113,7 +117,7 @@ namespace TrueforceForAll.Plugin
                     if (hits.Count >= max) return;
                     string dn = kv.Value.DisplayName;
                     if (!string.IsNullOrEmpty(dn)
-                        && dn.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
+                        && FoldDiacritics(dn).IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
                         && seen.Add(kv.Key))
                         hits.Add(kv.Key);
                 }
@@ -125,7 +129,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (hits.Count >= max) return;
                     if (!string.IsNullOrEmpty(kv.Value)
-                        && kv.Value.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
+                        && FoldDiacritics(kv.Value).IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
                         && seen.Add(kv.Key))
                         hits.Add(kv.Key);
                 }
@@ -144,6 +148,28 @@ namespace TrueforceForAll.Plugin
             return hits;
         }
 
+        /// <summary>Fold diacritics for search matching ("Huracán" -> "Huracan")
+        /// so plain-ASCII typing and accented names hit each other. FormD splits
+        /// base char + combining mark; dropping NonSpacingMark leaves the base;
+        /// FormC re-composes whatever remains. ASCII fast path: the catalog is
+        /// overwhelmingly ASCII, so most calls return the input string untouched
+        /// with no allocation. Shared with the CarFacts name fallback.</summary>
+        internal static string FoldDiacritics(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s ?? "";
+            bool ascii = true;
+            for (int i = 0; i < s.Length; i++)
+                if (s[i] > 0x7F) { ascii = false; break; }
+            if (ascii) return s;
+            string d = s.Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder(d.Length);
+            foreach (char c in d)
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                        != System.Globalization.UnicodeCategory.NonSpacingMark)
+                    sb.Append(c);
+            return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+        }
+
         /// <summary>Every game with a built-in car catalog (cylinder specs or
         /// a name-only ordinal table). Used to seed the community browser's
         /// game filter alongside games the user has local presets for.</summary>
@@ -158,11 +184,11 @@ namespace TrueforceForAll.Plugin
         // ---- Assetto Corsa: full Kunos lineup (vanilla + every DLC) ----
         //
         // Cylinder count is the firing-frequency-equivalent count.
-        // Rotary engines (Mazda RX-7 13B 2-rotor ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ 4 effective; 787B 4-rotor
-        // ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ 8 effective) match the math derivation in EnginePulseEffect.
+        // Rotary engines (Mazda RX-7 13B 2-rotor → 4 effective; 787B 4-rotor
+        // → 8 effective) match the math derivation in EnginePulseEffect.
         //
         // NOTE: AssettoCorsa is declared before ByGame because C# initializes
-        // static fields in declaration order ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ByGame's initializer references
+        // static fields in declaration order — ByGame's initializer references
         // AssettoCorsa, so the inner dict must exist first.
 
         private static readonly IReadOnlyDictionary<string, BuiltinCarSpec> AssettoCorsa
@@ -187,23 +213,23 @@ namespace TrueforceForAll.Plugin
             ["bmw_z4_drift"]                   = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["bmw_z4_s1"]                      = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["bmw_z4_gt3"]                     = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // P65 V8 race engine (BMW V8s are cross-plane)
-            ["ferrari_312t"]                   = new BuiltinCarSpec(12, EngineConfig.Boxer),         // 1975 F1 flat-12 (180Â° V12 = boxer-12)
+            ["ferrari_312t"]                   = new BuiltinCarSpec(12, EngineConfig.Boxer),         // 1975 F1 flat-12 (180° V12 = boxer-12)
             ["ferrari_458"]                    = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F136FB V8 flat-plane
             ["ferrari_458_gt2"]                = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
             ["ferrari_458_s3"]                 = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
-            ["ferrari_599xxevo"]               = new BuiltinCarSpec(12, EngineConfig.V60),           // F140-derived V12 60Â°
+            ["ferrari_599xxevo"]               = new BuiltinCarSpec(12, EngineConfig.V60),           // F140-derived V12 60°
             ["ferrari_f40"]                    = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F120A 2.9L V8 twin-turbo flat-plane
             ["ferrari_f40_s3"]                 = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
-            ["ferrari_laferrari"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 60Â°
+            ["ferrari_laferrari"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 60°
             ["ktm_xbow_r"]                     = new BuiltinCarSpec(4, EngineConfig.Inline),         // Audi 2.0 TFSI EA113
             ["lotus_2_eleven"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),         // Toyota 2ZZ-GE supercharged I4
             ["lotus_2_eleven_gt4"]             = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["lotus_49"]                       = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // Cosworth DFV (flat-plane)
-            ["lotus_98t"]                      = new BuiltinCarSpec(6, EngineConfig.V60),            // Renault EF15B V6 turbo (90Â° but even-fire, V60 close enough for haptics)
+            ["lotus_98t"]                      = new BuiltinCarSpec(6, EngineConfig.V60),            // Renault EF15B V6 turbo (90° but even-fire, V60 close enough for haptics)
             ["lotus_elise_sc"]                 = new BuiltinCarSpec(4, EngineConfig.Inline),         // Toyota 2ZZ-GE
             ["lotus_elise_sc_s1"]              = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["lotus_elise_sc_s2"]              = new BuiltinCarSpec(4, EngineConfig.Inline),
-            ["lotus_evora_gtc"]                = new BuiltinCarSpec(6, EngineConfig.V60),            // Toyota 2GR-FE V6 60Â°
+            ["lotus_evora_gtc"]                = new BuiltinCarSpec(6, EngineConfig.V60),            // Toyota 2GR-FE V6 60°
             ["lotus_evora_gte"]                = new BuiltinCarSpec(6, EngineConfig.V60),
             ["lotus_evora_gte_carbon"]         = new BuiltinCarSpec(6, EngineConfig.V60),
             ["lotus_evora_gx"]                 = new BuiltinCarSpec(6, EngineConfig.V60),
@@ -219,8 +245,8 @@ namespace TrueforceForAll.Plugin
             ["mercedes_sls"]                   = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // M159 V8 cross-plane
             ["mercedes_sls_gt3"]               = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["p4-5_2011"]                      = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // Glickenhaus P4/5 Comp - F430-derived V8 flat-plane
-            ["pagani_huayra"]                  = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M158 V12 BiTurbo 60Â°
-            ["pagani_zonda_r"]                 = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M120 V12 60Â°
+            ["pagani_huayra"]                  = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M158 V12 BiTurbo 60°
+            ["pagani_zonda_r"]                 = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M120 V12 60°
             ["ruf_yellowbird"]                 = new BuiltinCarSpec(6, EngineConfig.Boxer),          // 930-derived flat-6 twin-turbo
             ["shelby_cobra_427sc"]             = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // Ford 427 V8 cross-plane
             ["tatuusfa1"]                      = new BuiltinCarSpec(4, EngineConfig.Inline),         // Abarth 1.4L turbo I4
@@ -239,7 +265,7 @@ namespace TrueforceForAll.Plugin
             ["ks_alfa_romeo_gta"]              = new BuiltinCarSpec(4, EngineConfig.Inline),         // Giulia Sprint GTA Twin Cam I4
             ["ks_audi_a1s1"]                   = new BuiltinCarSpec(4, EngineConfig.Inline),         // S1 quattro 2.0 TFSI
             ["ks_audi_r18_etron_quattro"]      = new BuiltinCarSpec(6, EngineConfig.V60),            // V6 TDI hybrid (engine cyl)
-            ["ks_audi_r8_lms"]                 = new BuiltinCarSpec(10, EngineConfig.V90Even),       // 5.2L V10 90Â° (Lambo/Audi shared)
+            ["ks_audi_r8_lms"]                 = new BuiltinCarSpec(10, EngineConfig.V90Even),       // 5.2L V10 90° (Lambo/Audi shared)
             ["ks_audi_r8_lms_2016"]            = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["ks_audi_r8_plus"]                = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["ks_audi_s4_97_tuned"]            = new BuiltinCarSpec(6, EngineConfig.V60),            // B5 S4 2.7L biturbo V6
@@ -256,33 +282,33 @@ namespace TrueforceForAll.Plugin
             // fallback handles it.
             ["ks_corvette_c7_stingray"]        = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // LT1 V8 cross-plane
             ["ks_corvette_c7r"]                = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // LS5.5R V8 cross-plane
-            ["ks_ferrari_250_gto"]             = new BuiltinCarSpec(12, EngineConfig.V60),           // Colombo V12 60Â°
+            ["ks_ferrari_250_gto"]             = new BuiltinCarSpec(12, EngineConfig.V60),           // Colombo V12 60°
             ["ks_ferrari_288_gto"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F114B V8 twin-turbo flat-plane
-            ["ks_ferrari_312_67"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // 1967 F1 V12 60Â°
-            ["ks_ferrari_330_p4"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // 4.0L V12 60Â° sports prototype
+            ["ks_ferrari_312_67"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // 1967 F1 V12 60°
+            ["ks_ferrari_330_p4"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // 4.0L V12 60° sports prototype
             ["ks_ferrari_488_challenge_evo"]   = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // F154 V8 twin-turbo flat-plane
             ["ks_ferrari_488_gt3"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
             ["ks_ferrari_488_gt3_2020"]        = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
             ["ks_ferrari_488_gtb"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
-            ["ks_ferrari_812_superfast"]       = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 60Â°
+            ["ks_ferrari_812_superfast"]       = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 60°
             ["ks_ferrari_f138"]                = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // 2013 F1 V8 flat-plane
-            ["ks_ferrari_f2004"]               = new BuiltinCarSpec(10, EngineConfig.V90Even),       // 2004 F1 V10 053 (Ferrari V10 was 90Â°)
-            ["ks_ferrari_fxx_k"]               = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 hybrid 60Â°
+            ["ks_ferrari_f2004"]               = new BuiltinCarSpec(10, EngineConfig.V90Even),       // 2004 F1 V10 053 (Ferrari V10 was 90°)
+            ["ks_ferrari_fxx_k"]               = new BuiltinCarSpec(12, EngineConfig.V60),           // F140 V12 hybrid 60°
             ["ks_ferrari_sf15t"]               = new BuiltinCarSpec(6, EngineConfig.V60),            // 2015 F1 V6 turbo hybrid
             ["ks_ferrari_sf70h"]               = new BuiltinCarSpec(6, EngineConfig.V60),            // 2017 F1 V6 turbo hybrid
             ["ks_ford_escort_mk1"]             = new BuiltinCarSpec(4, EngineConfig.Inline),         // Lotus Twin Cam I4
             ["ks_ford_gt40"]                   = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // Ford V8 cross-plane
             ["ks_ford_mustang_2015"]           = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // Coyote 5.0 V8 cross-plane
             ["ks_glickenhaus_scg003"]          = new BuiltinCarSpec(6, EngineConfig.V60),            // HPD 3.5L V6 twin-turbo (race)
-            ["ks_lamborghini_aventador_sv"]    = new BuiltinCarSpec(12, EngineConfig.V60),           // L539 V12 60Â°
-            ["ks_lamborghini_countach"]        = new BuiltinCarSpec(12, EngineConfig.V60),           // L502 V12 60Â°
+            ["ks_lamborghini_aventador_sv"]    = new BuiltinCarSpec(12, EngineConfig.V60),           // L539 V12 60°
+            ["ks_lamborghini_countach"]        = new BuiltinCarSpec(12, EngineConfig.V60),           // L502 V12 60°
             ["ks_lamborghini_countach_s1"]     = new BuiltinCarSpec(12, EngineConfig.V60),
-            ["ks_lamborghini_gallardo_sl"]     = new BuiltinCarSpec(10, EngineConfig.V90Even),       // V10 90Â°
+            ["ks_lamborghini_gallardo_sl"]     = new BuiltinCarSpec(10, EngineConfig.V90Even),       // V10 90°
             ["ks_lamborghini_gallardo_sl_s3"]  = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["ks_lamborghini_huracan_gt3"]     = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["ks_lamborghini_huracan_performante"] = new BuiltinCarSpec(10, EngineConfig.V90Even),
             ["ks_lamborghini_huracan_st"]      = new BuiltinCarSpec(10, EngineConfig.V90Even),
-            ["ks_lamborghini_miura_sv"]        = new BuiltinCarSpec(12, EngineConfig.V60),           // V12 60Â°
+            ["ks_lamborghini_miura_sv"]        = new BuiltinCarSpec(12, EngineConfig.V60),           // V12 60°
             ["ks_lamborghini_sesto_elemento"]  = new BuiltinCarSpec(10, EngineConfig.V90Even),       // Gallardo-derived V10
             ["ks_lotus_25"]                    = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // 1962 F1 Coventry Climax V8 (race = flat-plane)
             ["ks_lotus_3_eleven"]              = new BuiltinCarSpec(6, EngineConfig.V60),            // Toyota 2GR-FE V6 supercharged
@@ -302,17 +328,17 @@ namespace TrueforceForAll.Plugin
             ["ks_mazda_rx7_tuned"]             = new BuiltinCarSpec(4, EngineConfig.Rotary),
             ["ks_mclaren_570s"]                = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M838TE V8 flat-plane
             ["ks_mclaren_650_gt3"]             = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M838T V8 flat-plane
-            ["ks_mclaren_f1_gtr"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // BMW S70 V12 60Â°
+            ["ks_mclaren_f1_gtr"]              = new BuiltinCarSpec(12, EngineConfig.V60),           // BMW S70 V12 60°
             ["ks_mclaren_p1"]                  = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // M838TQ V8 hybrid flat-plane
             ["ks_mclaren_p1_gtr"]              = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),
             ["ks_mercedes_190_evo2"]           = new BuiltinCarSpec(4, EngineConfig.Inline),         // M102 Cosworth 2.5 I4
             ["ks_mercedes_amg_gt3"]            = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // M159 V8 cross-plane
             ["ks_mercedes_c9"]                 = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),   // M119 V8 turbo (Group C) cross-plane
-            ["ks_nissan_370z"]                 = new BuiltinCarSpec(6, EngineConfig.V60),            // VQ37VHR V6 60Â°
-            ["ks_nissan_gtr"]                  = new BuiltinCarSpec(6, EngineConfig.V60),            // VR38DETT V6 60Â°
+            ["ks_nissan_370z"]                 = new BuiltinCarSpec(6, EngineConfig.V60),            // VQ37VHR V6 60°
+            ["ks_nissan_gtr"]                  = new BuiltinCarSpec(6, EngineConfig.V60),            // VR38DETT V6 60°
             ["ks_nissan_gtr_gt3"]              = new BuiltinCarSpec(6, EngineConfig.V60),
             ["ks_nissan_skyline_r34"]          = new BuiltinCarSpec(6, EngineConfig.Inline),         // RB26DETT I6
-            ["ks_pagani_huayra_bc"]            = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M158 V12 60Â°
+            ["ks_pagani_huayra_bc"]            = new BuiltinCarSpec(12, EngineConfig.V60),           // AMG M158 V12 60°
             ["ks_porsche_718_boxster_s"]       = new BuiltinCarSpec(4, EngineConfig.Boxer),          // MA1.41 flat-4 turbo
             ["ks_porsche_718_boxster_s_pdk"]   = new BuiltinCarSpec(4, EngineConfig.Boxer),
             ["ks_porsche_718_cayman_s"]        = new BuiltinCarSpec(4, EngineConfig.Boxer),          // flat-4 turbo
@@ -325,10 +351,10 @@ namespace TrueforceForAll.Plugin
             ["ks_porsche_911_gt3_rs"]          = new BuiltinCarSpec(6, EngineConfig.Boxer),
             ["ks_porsche_911_r"]               = new BuiltinCarSpec(6, EngineConfig.Boxer),
             ["ks_porsche_911_rsr_2017"]        = new BuiltinCarSpec(6, EngineConfig.Boxer),          // mid-engined flat-6
-            ["ks_porsche_917_30"]              = new BuiltinCarSpec(12, EngineConfig.Boxer),         // flat-12 turbo (180Â° = boxer-12)
+            ["ks_porsche_917_30"]              = new BuiltinCarSpec(12, EngineConfig.Boxer),         // flat-12 turbo (180° = boxer-12)
             ["ks_porsche_917_k"]               = new BuiltinCarSpec(12, EngineConfig.Boxer),         // flat-12
             ["ks_porsche_918_spyder"]          = new BuiltinCarSpec(8, EngineConfig.V8FlatPlane),    // 4.6L V8 hybrid (Porsche flat-plane V8)
-            ["ks_porsche_919_hybrid_2015"]     = new BuiltinCarSpec(4, EngineConfig.V90Even),        // 2.0L V4 turbo hybrid (LMP1, 90Â° V4)
+            ["ks_porsche_919_hybrid_2015"]     = new BuiltinCarSpec(4, EngineConfig.V90Even),        // 2.0L V4 turbo hybrid (LMP1, 90° V4)
             ["ks_porsche_919_hybrid_2016"]     = new BuiltinCarSpec(4, EngineConfig.V90Even),
             ["ks_porsche_935_78_moby_dick"]    = new BuiltinCarSpec(6, EngineConfig.Boxer),          // flat-6 twin-turbo
             ["ks_porsche_962c_longtail"]       = new BuiltinCarSpec(6, EngineConfig.Boxer),          // flat-6 twin-turbo
@@ -371,7 +397,7 @@ namespace TrueforceForAll.Plugin
             // ----- tag (72 entries) -----
             ["ace_charger"]                                     = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["ace_lt1"]                                         = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
-            ["ad_am_one77"]                                     = new BuiltinCarSpec(12, EngineConfig.V60),       // Aston Martin One-77, 7.3L V12 60Â° (probe matched stray "V8" in description)
+            ["ad_am_one77"]                                     = new BuiltinCarSpec(12, EngineConfig.V60),       // Aston Martin One-77, 7.3L V12 60° (probe matched stray "V8" in description)
             ["art_diablo_gtr"]                                  = new BuiltinCarSpec(12, EngineConfig.V60),
             ["as_aston_martin_victor"]                          = new BuiltinCarSpec(12, EngineConfig.V60),
             ["BigRedStuntsCat"]                                 = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
@@ -908,7 +934,7 @@ namespace TrueforceForAll.Plugin
             ["kc_tbss"]                                         = new BuiltinCarSpec(8, EngineConfig.V8CrossPlane),
             ["ks_bmw_m4_g_power_V1_Modified_By_VincToreto_Drift"] = new BuiltinCarSpec(6, EngineConfig.Inline),
             ["lamborghini_gallardo_superleggera_nasher_Ju"]     = new BuiltinCarSpec(10, EngineConfig.V90Even),
-            ["lamborghini_murcielago_lp640"]                    = new BuiltinCarSpec(12, EngineConfig.V60),       // Murcielago LP640, L539 V12 60Â° (probe matched "V2" / "640" tail)
+            ["lamborghini_murcielago_lp640"]                    = new BuiltinCarSpec(12, EngineConfig.V60),       // Murcielago LP640, L539 V12 60° (probe matched "V2" / "640" tail)
             ["lotus_elise_sport_190_99"]                        = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["lotus_exos_125"]                                  = new BuiltinCarSpec(4, EngineConfig.Inline),
             ["lotus_exos_125_s1"]                               = new BuiltinCarSpec(4, EngineConfig.Inline),
@@ -1053,7 +1079,7 @@ namespace TrueforceForAll.Plugin
         // per-car presets.
         //
         // Credit: ManteoMax (https://www.manteomax.com/), the spreadsheet
-        // is the canonical source for Forza ordinal â†’ car metadata.
+        // is the canonical source for Forza ordinal → car metadata.
 
         private static readonly IReadOnlyDictionary<string, BuiltinCarSpec> ForzaHorizon5
             = new Dictionary<string, BuiltinCarSpec>(StringComparer.OrdinalIgnoreCase)
@@ -1280,7 +1306,7 @@ namespace TrueforceForAll.Plugin
             ["Car_1398"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2012 Lamborghini Gallardo LP 570-4 Spyder Performante"),
             ["Car_1417"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2011 Audi RS 5 Coupe"),
             ["Car_1418"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "1995 BMW M5"),
-            ["Car_1426"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.V8FlatPlane, displayName: "2011 McLaren 12C CoupÃ©"),
+            ["Car_1426"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.V8FlatPlane, displayName: "2011 McLaren 12C Coupé"),
             ["Car_1427"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Boxer, displayName: "2012 Porsche 911 GT2 RS"),
             ["Car_1428"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2012 Ascari KZ1R"),
             ["Car_1429"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "1969 Chevrolet Nova Super Sport 396"),
@@ -1385,7 +1411,7 @@ namespace TrueforceForAll.Plugin
             ["Car_2161"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1965 Alfa Romeo Giulia TZ2"),
             ["Car_2162"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2015 Jaguar F-TYPE R Coupe"),
             ["Car_2163"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2016 Honda Civic Type R"),
-            ["Car_2164"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2014 Lamborghini HuracÃ¡n LP 610-4"),
+            ["Car_2164"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2014 Lamborghini Huracán LP 610-4"),
             ["Car_2168"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Boxer, displayName: "2015 SUBARU WRX STI"),
             ["Car_2171"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2005 Mazda Mazdaspeed MX-5"),
             ["Car_2173"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2015 MG MG3"),
@@ -1447,7 +1473,7 @@ namespace TrueforceForAll.Plugin
             ["Car_2473"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2016 Audi R8 V10 plus"),
             ["Car_2474"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2016 Zenvo ST1"),
             ["Car_2475"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2016 Spania GTA GTA Spano"),
-            ["Car_2477"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "2016 BMW M2 CoupÃ©"),
+            ["Car_2477"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "2016 BMW M2 Coupé"),
             ["Car_2479"]    = new BuiltinCarSpec(12, electric: false, config: EngineConfig.V60, displayName: "2016 Lamborghini Aventador Superveloce"),
             ["Car_2486"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2015 Radical RXC Turbo"),
             ["Car_2489"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2016 Abarth 695 Biposto"),
@@ -1623,7 +1649,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3125"]    = new BuiltinCarSpec(12, electric: false, config: EngineConfig.V60, displayName: "2017 Aston Martin Vanquish Zagato Coupe"),
             ["Car_3126"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Auto, displayName: "1965 Ford Transit"),
             ["Car_3128"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2017 Ford #25 'Brocky' Ultra4 Bronco RTR"),
-            ["Car_3129"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2008 Renault MÃ©gane R26.R"),
+            ["Car_3129"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2008 Renault Mégane R26.R"),
             ["Car_3131"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2018 MINI John Cooper Works Countryman ALL4"),
             ["Car_3132"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "2018 MINI X-Raid John Cooper Works Buggy"),
             ["Car_3134"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2018 Renault Megane R.S."),
@@ -1672,7 +1698,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3212"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2019 Zenvo TSR-S"),
             ["Car_3214"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Boxer, displayName: "2019 Porsche #70 Porsche Motorsport 935"),
             ["Car_3215"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Boxer, displayName: "2019 Porsche 911 Speedster"),
-            ["Car_3217"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2018 Lamborghini HuracÃ¡n Performante"),
+            ["Car_3217"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2018 Lamborghini Huracán Performante"),
             ["Car_3218"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Boxer, displayName: "2018 Porsche 911 GT3 R"),
             ["Car_3225"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.V8FlatPlane, displayName: "2018 Ferrari Portofino"),
             ["Car_3226"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.V8FlatPlane, displayName: "2017 Ferrari J50"),
@@ -1680,7 +1706,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3228"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1999 Ford Racing Puma"),
             ["Car_3232"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2013 Ford Shelby GT500"),
             ["Car_3235"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1982 Volkswagen Pickup LX"),
-            ["Car_3239"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2018 Lamborghini #63 Squadra Corse HuracÃ¡n Super Trofeo Evo"),
+            ["Car_3239"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2018 Lamborghini #63 Squadra Corse Huracán Super Trofeo Evo"),
             ["Car_3241"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Boxer, displayName: "2018 SUBARU WRX STI ARX Supercar"),
             ["Car_3242"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2014 Cadillac CTS-V Sport Wagon"),
             ["Car_3244"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "1964 Plymouth Belvedere"),
@@ -1692,7 +1718,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3255"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2020 Jeep Gladiator Rubicon"),
             ["Car_3257"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1990 Nissan Pulsar GTi-R"),
             ["Car_3261"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1968 Renault 4L Export"),
-            ["Car_3264"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2018 Audi RS 5 CoupÃ©"),
+            ["Car_3264"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2018 Audi RS 5 Coupé"),
             ["Car_3271"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2005 MG XPower SV-R"),
             ["Car_3274"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "1990 Aston Martin Lagonda"),
             ["Car_3276"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2018 Saleen S1"),
@@ -1720,7 +1746,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3367"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.V8FlatPlane, displayName: "2019 Ferrari F8 Tributo"),
             ["Car_3369"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2020 Chevrolet Corvette Stingray Coupe"),
             ["Car_3370"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1994 Hoonigan Ford Escort RS Cosworth WRC 'Cossie V2'"),
-            ["Car_3371"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2020 Lamborghini HuracÃ¡n EVO"),
+            ["Car_3371"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2020 Lamborghini Huracán EVO"),
             ["Car_3373"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2019 Toyota 4Runner TRD Pro"),
             ["Car_3374"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2019 Toyota Tacoma TRD Pro"),
             ["Car_3395"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1967 Renault 8 Gordini"),
@@ -1757,7 +1783,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3495"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2006 Mosler MT900 GT3"),
             ["Car_3498"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2017 Saleen S7 LM"),
             ["Car_3499"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2020 Saleen Sportruck XR Black Label"),
-            ["Car_3508"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1986 CitroÃ«n BX4TC"),
+            ["Car_3508"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "1986 Citroën BX4TC"),
             ["Car_3518"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2020 BMW M8 Competition Coupe"),
             ["Car_3520"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2021 Lexus LC 500"),
             ["Car_3523"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "2020 Formula Drift #151 Toyota GR Supra"),
@@ -1805,7 +1831,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3604"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2020 Jimco #179 Hammerhead Class 1"),
             ["Car_3605"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2019 Jimco #240 Fastball Racing Spec Trophy Truck"),
             ["Car_3606"]    = new BuiltinCarSpec(12, electric: false, config: EngineConfig.V60, displayName: "2020 Lamborghini Essenza SCV12"),
-            ["Car_3608"]    = new BuiltinCarSpec(12, electric: false, config: EngineConfig.V60, displayName: "2020 Lamborghini SiÃ¡n Roadster"),
+            ["Car_3608"]    = new BuiltinCarSpec(12, electric: false, config: EngineConfig.V60, displayName: "2020 Lamborghini Sián Roadster"),
             ["Car_3616"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2021 Mercedes-AMG GT Black Series"),
             ["Car_3617"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2021 Mercedes-AMG SL 63"),
             ["Car_3620"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2023 Nissan Z"),
@@ -1814,7 +1840,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3629"]    = new BuiltinCarSpec(3, electric: false, config: EngineConfig.Inline, displayName: "2021 Toyota GR Yaris"),
             ["Car_3631"]    = new BuiltinCarSpec(12, electric: false, config: EngineConfig.V60, displayName: "2022 Aston Martin Valkyrie AMR Pro"),
             ["Car_3644"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "2021 BMW M3 Competition Sedan"),
-            ["Car_3645"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "2021 BMW M4 Competition CoupÃ©"),
+            ["Car_3645"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Inline, displayName: "2021 BMW M4 Competition Coupé"),
             ["Car_3650"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2021 Mercedes-AMG Mercedes-AMG ONE"),
             ["Car_3655"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.V8FlatPlane, displayName: "2021 McLaren 620R"),
             ["Car_3657"]    = new BuiltinCarSpec(0, electric: true, config: EngineConfig.Auto, displayName: "2022 Rivian R1T"),
@@ -1824,7 +1850,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3667"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Boxer, displayName: "2021 Porsche 911 GT3"),
             ["Car_3668"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2023 McLaren Artura"),
             ["Car_3670"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2001 Ford #4 Ford Focus RS"),
-            ["Car_3672"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2020 Lamborghini HuracÃ¡n STO"),
+            ["Car_3672"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2020 Lamborghini Huracán STO"),
             ["Car_3673"]    = new BuiltinCarSpec(12, electric: false, config: EngineConfig.V60, displayName: "2020 Lamborghini SC20"),
             ["Car_3676"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2021 Hyundai #98 Bryan Herta Autosport Elantra N"),
             ["Car_3677"]    = new BuiltinCarSpec(4, electric: false, config: EngineConfig.Inline, displayName: "2021 Lynk & Co 03+"),
@@ -1879,7 +1905,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3747"]    = new BuiltinCarSpec(0, electric: true, config: EngineConfig.Auto, displayName: "2022 CUPRA Tavascan Concept"),
             ["Car_3748"]    = new BuiltinCarSpec(0, electric: true, config: EngineConfig.Auto, displayName: "2022 CUPRA UrbanRebel Concept"),
             ["Car_3749"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2013 Dodge SRT Viper GTS"),
-            ["Car_3753"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2023 Lamborghini HuracÃ¡n Tecnica"),
+            ["Car_3753"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2023 Lamborghini Huracán Tecnica"),
             ["Car_3755"]    = new BuiltinCarSpec(0, electric: true, config: EngineConfig.Auto, displayName: "2022 Ford Supervan 4"),
             ["Car_3757"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2024 Czinger 21C"),
             ["Car_3760"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.Boxer, displayName: "2022 Porsche 718 Cayman GT4 RS"),
@@ -1916,7 +1942,7 @@ namespace TrueforceForAll.Plugin
             ["Car_3836"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2022 Fast and Furious Dodge Charger SRT Hellcat Redeye Widebody 'Fast X'"),
             ["Car_3837"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "1970 Fast and Furious Dodge Charger 'Fast X'"),
             ["Car_3838"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2022 Fast and Furious Flip Car 2.0 'Fast X'"),
-            ["Car_3840"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2023 Lamborghini HuracÃ¡n Sterrato"),
+            ["Car_3840"]    = new BuiltinCarSpec(10, electric: false, config: EngineConfig.Auto, displayName: "2023 Lamborghini Huracán Sterrato"),
             ["Car_3846"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2024 Ford Mustang GT"),
             ["Car_3847"]    = new BuiltinCarSpec(8, electric: false, config: EngineConfig.Auto, displayName: "2024 Ford Mustang Dark Horse"),
             ["Car_3848"]    = new BuiltinCarSpec(6, electric: false, config: EngineConfig.V60, displayName: "2023 Toyota Camry TRD"),
@@ -2604,7 +2630,7 @@ namespace TrueforceForAll.Plugin
             ["Car_4342"] = "1965 Toyota Sports 800 Fanta",
         };
         /// <summary>Lookup keyed first by SimHub GameName, then by carId
-        /// (case-insensitive on the inner key ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â AC carIds are filesystem
+        /// (case-insensitive on the inner key — AC carIds are filesystem
         /// folders so case can vary slightly across Steam vs CM installs).</summary>
         public static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, BuiltinCarSpec>> ByGame
             = new Dictionary<string, IReadOnlyDictionary<string, BuiltinCarSpec>>(StringComparer.OrdinalIgnoreCase)

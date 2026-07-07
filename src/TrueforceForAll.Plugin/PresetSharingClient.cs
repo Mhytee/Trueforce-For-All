@@ -1022,23 +1022,40 @@ namespace TrueforceForAll.Plugin
             return conds.Count == 0 ? "" : "&or=(" + string.Join(",", conds) + ")";
         }
 
-        // Strip characters significant to the PostgREST filter grammar so the
-        // user's text stays a literal contains-match: , ( ) . delimit the
-        // filter, and % _ * \ are ilike / escape metacharacters. Interior
-        // whitespace maps to the ilike wildcard so multi-word queries match
-        // across gaps ("wet drift" -> *wet*drift*).
+        // Make the user's text a literal contains-match for the PostgREST
+        // filter grammar. Two treatments, deliberately different:
+        //  - STRIP what the or=() grammar itself eats: , ( ) . delimit the
+        //    logic tree, " ' would need value-quoting, and * is PostgREST's
+        //    own wildcard alias (unconditionally rewritten to %, no escape
+        //    exists for it).
+        //  - ESCAPE the ilike metacharacters \ % _ (backslash is Postgres
+        //    LIKE/ILIKE's default escape char) so they match LITERALLY.
+        //    Stripping them broke underscore car_id searches: "bmw_m3"
+        //    became "bmwm3" and matched nothing, and car_id.ilike is the
+        //    ONLY search path for AC's underscore-delimited ids (AC builtins
+        //    carry no display name). Verified against PostgREST + Postgres
+        //    live 2026-06-28: *bmw\_m3* parses in or=() and matches
+        //    bmw_m3_e30 but not bmwXm3.
+        // Interior whitespace maps to the ilike wildcard so multi-word
+        // queries match across gaps ("wet drift" -> *wet*drift*).
         private static string SanitizeSearchTerm(string query)
         {
             if (string.IsNullOrWhiteSpace(query)) return "";
-            var sb = new System.Text.StringBuilder(query.Length);
+            var sb = new System.Text.StringBuilder(query.Length + 8);
             foreach (char c in query.Trim())
             {
                 if (c == ',' || c == '(' || c == ')' || c == '.'
-                    || c == '%' || c == '_' || c == '*' || c == '\\'
-                    || c == '"' || c == '\'')
+                    || c == '*' || c == '"' || c == '\'')
                     continue;
+                if (c == '\\' || c == '%' || c == '_')
+                {
+                    sb.Append('\\').Append(c);
+                    continue;
+                }
                 sb.Append(char.IsWhiteSpace(c) ? '*' : c);
             }
+            // Trimming stray leading/trailing wildcards can't orphan an escape:
+            // a lone user backslash was emitted as \\ above.
             return sb.ToString().Trim('*');
         }
 

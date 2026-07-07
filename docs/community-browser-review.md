@@ -2,6 +2,28 @@
 
 Static review of the ui-tabs community browser (PresetManagerControl + CommunityClient + CommunityBrowseCacheStore + pack/edit dialogs). Every finding below was adversarially verified against the code by a second pass; 2 reported bugs were rejected as not-real. Nothing here is runtime-confirmed, so the race-condition items in particular want a real-hardware check (see the test checklist).
 
+## Re-verification + fix order (2026-06-28, later session)
+
+The tree moved a lot after the original review (gate/empty-state, pack registration incl. a new KindEngine entry kind, delete/edit batch), so every open finding was re-verified against the current code and the changed regions swept for regressions. Line numbers below in older sections are stale; the re-verification carries current ones.
+
+**Verdict on the open backlog:** still valid = underscore-strip (S1, medium; worse than first thought: car_id.ilike is the ONLY search path for AC cars since AC builtins have no DisplayName), diacritic folding (S2, medium), mojibake (S3, medium; byte-confirmed, **14 literals** not 1: Coupe x3/Megane/Huracan x7/Sian/Citroen, all FH5, plus 10 garbage comment lines; only this file repo-wide), min query length (S4, low), delete-resurrection cache race (C1, medium; fix = in-flight guard AND a cache generation token), show-more offset drift (C2, low), init double-ApplyView (U1, low), debounce-stop (U3, low), delete/vote async-void hardening (U4, low sev / crash blast radius). **No longer bugs:** 500-row cache cap (intentional, documented bound); OnActiveCarChanged churn (resolved by the gating rework; "fixing" it now would risk stale-filter regressions).
+
+**New regressions found in the recent work:**
+- **R1 (medium, CONFIRMED): the gate can be bypassed.** RefreshCommunityGate early-returns when CommunityPanel isn't visible, and the two SettingsControl call sites are the only way the manager learns of a disable/sign-out. Disable community (or sign out) while the manager sits in Library view, then switch back to Community: cached rows render with Download/vote live, no gate. Fix: EnterCommunity/ApplyView's community branch must run ApplyCommunityGate on entry.
+- R2 (low): gate raised mid-fetch is ignored by CommunityRefreshAsync's completion; rows repopulate behind the gate and Show-more reappears. Fix: re-check the gate after the awaits.
+- R3 (comment-only): stale comment says engines aren't registered as pack entries directly above the loop that now registers them (KindEngine exists now).
+- R4 (low): AddOrMergePack keeps the FIRST download's BaselineHash on identity match, so a re-downloaded updated pack entry is misclassified as user-edited.
+Clean: no re-entrancy loop through RefreshCommunityGate; no reissue-fetch ping-pong; delete bulk-mode changes regression-free.
+
+**Fix order (batches sized for one build+deploy+test cycle):**
+1. **Gate regressions + refresh completion:** R1 + R2 + C2 (same method section) + R3 comment. Test: disable/sign-out while in Library then re-enter Community (gate must show, both paths); sign out mid-fetch; Show more appends without dupes. **DONE 2026-06-28 (build clean + deployed, untested at runtime):** R1 = ApplyCommunityGate() in EnterCommunity after ResetCommunityFilters / before ConfigureCommunityFilterVisibility (gates every view entry incl. the cached-rows re-entry); R2 = ApplyCommunityGate() re-check in CommunityRefreshAsync's completion, after the mode/kind/search stale guard, discard-no-reissue when gated; C2 = _communityServerOffset field (assign on offset==0 incl. cache-hit accumulated list, += on load-more, set right after the pageCount capture) + CommunityShowMore_Click passes it; R3 comment rewritten (engines ARE registered with KindEngine).
+2. **Delete/vote + cache token:** C1a in-flight guard on delete (copy ToggleVote's) + C1b generation token in CommunityBrowseCacheStore (increment in InvalidatePrefix/Clear, NOT MarkAllStale; late Puts stamped pre-invalidation are dropped) + Append skip-save-when-zero-added polish + U4 try/catch the post-confirm delete/vote bodies. Test: delete during Loading... (friendly no-op); delete then revisit within TTL (no resurrection); edit then revisit (no stale name). **DONE 2026-06-28 (build clean + deployed, untested at runtime):** C1b = `_generation` int + `CurrentGeneration` (read under lock) + nullable `asOfGeneration` on Put/Append (nullable, not -1, so wraparound can't collide with the sentinel); the bump in InvalidatePrefix/Clear happens BEFORE the no-match early-return (the race's invalidation usually precedes the in-flight fetch's first write, so there's nothing to drop yet - the bump alone dooms the late write); BrowseCacheReadThrough captures the generation BEFORE each fetch() and passes it to Put/Append. C3 polish = Append tracks `added`, skips re-stamp+Save when 0. C1a = in-flight guard after sign-in check / before confirm. U4 = outer try/catch on delete + vote post-confirm bodies (confirm-cancel outside the try), log + friendly status on failure.
+3. **Search pipeline:** S1 escape (backslash-escape _/%/\\, keep stripping or-grammar chars; PRE-DEPLOY curl probe: car_id=ilike.*bmw%5C_m3* must match bmw_m3 not bmwXm3) + S4 2-char minimum (single choke point: blank q under 2 chars in CommunitySearchBox_TextChanged before the compare). Test: 'bmw_m3' matches; '%'/'\\' don't explode; 1 char = stays on default view. **DONE 2026-06-28 (build clean + deployed, untested at runtime). Probe PASSED first:** SQL layer via execute_sql ('%bmw\\_m3%' matches bmw_m3_e30, NOT bmwXm3_e30; \\% and \\\\ literal; unescaped _ still wildcard) + PostgREST parse layer via curl (the exact client or=() shape with %5C_ returned 401 permission-denied = parsed fine and reached the grant check; a control with bad syntax returned 400 PGRST100, proving rejection would've been visible). S1 = SanitizeSearchTerm now ESCAPES \\ % _ (append backslash+char) and still STRIPS , ( ) . \" ' * (or-grammar + the unescapable PostgREST * alias); Trim('*') can't orphan an escape since a lone backslash becomes \\\\. S4 = `if (q.Length < 2) q = \"\";` after the Trim, before the ==-compare (0->1-char transition fires nothing).
+4. **Car-name data (ship together):** S3 repair the 14 literals (bytes c3 83 c2 xx -> c3 xx; write as UTF-8, add BOM; verify bytes post-edit) + S2 FoldDiacritics (FormD, strip NonSpacingMark, FormC; fold q + haystacks in ScanSpecs/ScanNames + the CarFacts loop). S2 without S3 is useless ('Huracán' folds to 'HuracA<n>', not 'Huracan'). Test: 'huracan'/'citroen'/'megane'/'coupe'/'sian' hit builtins; rows render the accented names correctly. **DONE 2026-06-28 (build clean + deployed, untested at runtime).** Repair found MORE than audited: 61 lines total, not 24 -- the audit's grep marker (c3 83) missed single-round degree signs 'Â°' (~21 AC comment lines), one '→' comment at L1056, and the arrow/em-dash lines were TWO markers deep ('â†’'/'â€”' have no Ã/Â, so the first pass stopped one round early on them; caught by widening the marker set + per-char sloppy-cp1252 encoding for the 5 undefined cp1252 bytes). Console output lies about encoding -- all verification done at BYTE level (ascii()/hexdump). Final state verified: BOM added, zero U+FFFD, zero c3 83/c3 82, unique non-ASCII = exactly {° × á é ë — →}, compiles. S2 = internal BuiltinCarCylinders.FoldDiacritics w/ ASCII fast path; applied in ScanSpecs+ScanNames+q (FindCarIdsByDisplayName) and pre-fold + CarName fold in ResolveCarIdsByName (double-fold is idempotent, safe).
+5. **Polish:** R4 refresh BaselineHash on re-merge + U1 _hydratingView flag around Init hydration (must NOT suppress host SelectTab/OpenCarCommunity at runtime) + U3 debounce-stop in ResetCommunityFilters. Test: restart with community latch set (one load, correct gate); host tab-switching still works; no ghost refetch after search-then-switch. **R4 + U3 DONE 2026-06-28 (build clean + deployed, untested at runtime):** R4 = AddOrMergePack's identity-match now refreshes match.BaselineHash/GameName/DefaultForGames from the incoming entry (null-coalesced) instead of dropping it; U3 = `_communitySearchDebounce?.Stop();` at the top of ResetCommunityFilters. **U1 DEFERRED by owner (low priority)** - the double-apply stays, but the factually-wrong "Gated by _initializing" comment in Init was rewritten to document the real behavior + the safe fix shape (Init-scoped flag only; never suppress the Checked handlers globally).
+
+**Deliberately not fixing:** 500-row cap (intentional); OnActiveCarChanged call-site check (now a regression risk); cross-game id cap + "type 2 chars" hint (owner call, only if testing says needed); server-side unaccent for preset names (server migration, separate track); in-flight guard on Edit (theater; the generation token covers it); per-prefix generations (escalate only if batch-2 testing shows cache misses that matter).
+
 ## Fix before trusting it
 
 These are reachable by ordinary use and break the browser in ways a user will notice. **All three FIXED 2026-06-28 (PresetManagerControl.xaml.cs, ui-tabs-layout, build clean + deployed; not yet runtime-confirmed):** #1 try/catch/finally wraps CommunityRefreshAsync so the latch always releases; #2 try/catch around the post-await PresetPreviewWindow ctor and the hover-body render; #3 a ReissueCommunityFetchAfterUnwind helper re-fires (via Dispatcher.BeginInvoke, after the finally clears the latch) at the three mid-flight stale bails. The runtime checklist below still applies as confirmation.
@@ -28,35 +50,55 @@ Low (polish):
 
 Rejected (not real): "OnLocalLibraryChanged doesn't refresh the packs grid" (the stated trigger chain doesn't exist); "Items column born Visible in XAML" (it's toggled correctly at runtime).
 
-## Runtime test checklist
+## Runtime test checklist (rewritten 2026-06-28 after all fix batches; every item should now PASS)
 
-### Scope / nav
-- [ ] Load a car with community data. Click Community (watch "Loading..."), then within ~1s click My uploads. Expect: My uploads loads. Watch for: stuck empty + "Loading..." forever (bug #3).
-- [ ] First switch into each scope after a plugin restart (Library -> Community -> My uploads -> Community). Each first entry should auto-load without a manual Refresh.
-- [ ] Rapidly fan Library -> Community -> My uploads -> Community -> Library several times. Final mode shows correct, freshly-loaded list; no scope shows another scope's rows.
-- [ ] My uploads across segments (Game/Car/Engine/Pack) without leaving My uploads: each shows only your uploads of that kind.
-- [ ] Open Community for car A, switch to Library, change to car B in-game, switch back to Community: reloads for car B (not car A rows under a "car B" label).
-- [ ] Leave manager in Community mode, restart SimHub, reopen Presets: restores to Community and auto-loads once.
+**Results (owner runtime pass, 2026-07-05):** PASS = A1 A2 A3 A4 A5, B2, B3, D1, D4, D5. Untestable-accepted (race window too small to hit by hand; code-trace verified) = A6, B1, D6. Deferred = B4 (owner floated queue-instead-of-rollback, under discussion), D2 (guidance given), D3, C1-C7 (blocked on seeding search test data - no bmw_m3/accent-car presets exist on the server yet), E*, F*, G*. Found during pass, FIXED same day: delete-dialog copy dropped the "Vote history stays for moderation review" sentence; EditCommunityPresetWindow buttons colored (Save = amber primary + bold, Cancel = destructive red per owner, Add = green).
 
-### Search / filter
-- [ ] Type "mx5": MX-5 presets resolve via name tables (not just literal car_id).
-- [ ] Search "Citroen" / "Citroen"(accent) / "Megane" / "Megane"(accent): all four should surface the same cars. Watch for: accented variants and even plain "Citroen" for Car_3508 returning no matches (bug).
-- [ ] AC selected, search "bmw_m3" then "m3": both should find bmw_m3_e30. Watch for: "bmw_m3" returns nothing (underscore strip) while "m3" works.
-- [ ] Multi-game filter: uncheck All games, check two games, empty search: union of both games; unchecking one removes only that game's rows.
-- [ ] Type "mx5" (results), change to "zzzznomatch" (no leftover rows), then clear (returns to default).
-- [ ] Type "mazda" fast: one Loading then results ~350ms after last keystroke (not per-char). Then type + immediately switch segment: watch for a redundant late fetch.
-- [ ] Broad browse >25 rows, click "Show more" to the end: each click appends unique rows; no dupes; button hides on short page.
+Prereqs: restart SimHub (fresh DLLs deployed), a signed-in account, some community data (a couple of your own uploads incl. one you can delete), AC + an FH title available for search tests. A throttled/slow connection makes the race tests (A2, B1) much easier to hit.
 
-### Packs
-- [ ] Community Items count vs post-install Entries count on a pack that contains custom engines: note if the two numbers differ.
-- [ ] In My uploads, view one of your moderated/removed packs: Items count (currently shows 0).
-- [ ] Remove a pack via the "Installed packs..." dialog while on the Packs segment: the inline grid should drop it (currently stale until you re-enter the segment).
+### A. Gate + consent (Batch 1 fixes: R1/R2 + earlier gate work)
+- [x] A1 Cold gate: Settings -> community OFF -> open Presets -> Community: gate panel ("Community presets are off" + Enable button), no search row/list/actions visible, no network call.
+- [x] A2 Gate button funnel: click Enable -> sign-in window appears (if signed out); complete it -> browser loads. Cancel it instead -> "Sign in to browse" gate shows (browse is account-required).
+- [x] A3 R1 bypass (toggle): browse Community rows -> switch to Library -> Settings: community OFF -> back to Community: GATE shows (not the cached rows). This was the consent-bypass regression.
+- [x] A4 R1 bypass (sign-out): same but sign out from the Account tab instead of toggling: gate shows on re-entry.
+- [x] A5 Live flip: with the Community panel open and rows loaded, sign out (Account tab) -> panel flips to the gate without re-entering; sign back in -> browser reloads.
+- [ ] A6 R2 mid-fetch: trigger a refresh and sign out (or toggle off) while "Loading...": gate stays; no rows or Show-more button appear behind/over it.
 
-### Threading / gating / robustness
-- [ ] Watch the UI during a fetch on a slow connection: stays responsive (no freeze).
-- [ ] Settings: turn OFF Enable community features, then open Community: empty + "off" message, no network call.
-- [ ] With the Community panel open and rows loaded, turn community OFF, return and try Download/Vote: panel should reflect disabled state (currently rows stay clickable and silently no-op).
-- [ ] Preview + Download across game/car/engine/pack kinds: opens / imports / clear failure message, no crash (bug #2 watch).
-- [ ] Voting: optimistic update then confirm; on failure the counter rolls back; "Refresh in progress" if mid-fetch; "download first to rate" when not downloaded.
-- [ ] My uploads while signed out: "Sign in to see your uploads", no network call.
-- [ ] If the panel ever sticks on "Loading...", confirm whether Refresh/segment-switch recover it or only a restart does (bug #1 watch).
+### B. Delete / vote / cache (Batch 2: guard + generation token + hardening)
+- [ ] B1 Delete during load: click Delete while the list shows "Loading...": status "Refresh in progress. Try deleting again in a moment.", nothing deleted; works after it settles.
+- [x] B2 No resurrection: delete one of your uploads -> leave the view (switch segment/mode) -> come back WITHOUT clicking Refresh: the deleted row must NOT reappear (this is the cache-race fix; before, it could linger up to 72h).
+- [x] B3 Edit freshness: edit one of your uploads (rename) -> leave + return without Refresh: new name shows (edit now invalidates the cache).
+- [ ] B4 Voting round-trip: upvote/downvote/retract a downloaded preset: optimistic counter, then "recorded"; on a forced failure (offline) the counter rolls back; "download first to rate" when not downloaded; "Refresh in progress..." when mid-fetch.
+
+### C. Search (Batch 3: escape + 2-char min; Batch 4: mojibake + folding)
+- [ ] C1 Underscore ids: AC selected, search "bmw_m3": presets for bmw_m3_* now match (was a total miss). "bmw m3" and "m3" still work.
+- [ ] C2 Metacharacters: search terms containing % and \ return sensibly (no error, no match-everything explosion).
+- [ ] C3 2-char minimum: type a single character: list stays on the active-car default, no fetch fires; second character triggers the search; deleting back to 1 char returns to the default view.
+- [ ] C4 Accents (folding): "huracan", "citroen", "megane", "coupe", "sian" (plain ASCII) each surface the FH5 cars; pasting the accented forms ("Huracán", "Citroën") matches the same cars.
+- [ ] C5 Names render: a Huracán/Citroën row shows the accented name correctly in the list + details popup (no "HuracÃ¡n").
+- [ ] C6 Name resolution: "mx5" resolves MX-5 presets via the name tables (not just literal car_id text match).
+- [ ] C7 Hygiene: multi-game filter = union of checked games (unchecking one removes only its rows); "zzzznomatch" shows no leftover rows; clearing returns to default; fast typing = one Loading ~350ms after the last keystroke, not per-char.
+
+### D. Scope / nav (Batch 1 strand fix + earlier auto-load work)
+- [x] D1 Fast switch mid-load: click Community ("Loading...") then My uploads within ~1s: My uploads loads (no permanent "Loading..." strand); repeat fanning all three modes quickly - final mode always shows its own fresh list.
+- [ ] D2 First-entry auto-load: after restart, first switch into Community and into My uploads each auto-loads without manual Refresh.
+- [ ] D3 Car-change staleness: Community open for car A -> Library -> change to car B in-game -> back to Community: loads car B's list.
+- [x] D4 Restart latch: leave manager in Community, restart SimHub, reopen Presets: restores to Community, loads once, gate state correct.
+- [x] D5 My uploads kinds: across Game/Car/Engine/Pack segments, My uploads shows only your uploads of that kind.
+- [ ] D6 Debounce leak (Batch 5): type into search then immediately switch segment: exactly one fetch for the new view, no ghost re-load ~350ms later.
+
+### E. Robustness (Batch 1 latch + preview hardening)
+- [ ] E1 No permanent freeze: if the panel EVER sticks on "Loading...", Refresh or a segment switch must recover it (restart should never be needed). Report immediately if not.
+- [ ] E2 Preview/Download: across game/car/engine/pack kinds: preview opens, download imports (or clear failure message); no SimHub crash. Hover rows for the details popup while lists load.
+- [ ] E3 UI responsiveness: panel stays interactive during fetches on a slow connection.
+- [ ] E4 Show more: broad browse >25 rows, click Show more to the end: each click appends new unique rows (no dupes, no do-nothing clicks); button hides on a short page.
+
+### F. Packs (Batch 5 R4 + earlier fixes)
+- [ ] F1 Dialog removal: remove a pack via "Installed packs..." while on the Packs segment: inline grid drops it immediately.
+- [ ] F2 Moderated Items count: in My uploads, a suppressed/removed pack of yours shows its real Items count (was 0).
+- [ ] F3 Re-download baseline (R4): download a community pack, re-download it (or a newer version), then Remove pack: entries you never edited are cleanly deleted (not conservatively kept as "user-edited").
+- [ ] F4 Known mismatch (parked, informational): a pack with custom engines shows a higher "Items" in Community than "Entries" locally - expected for now, owner decision pending.
+
+### G. Library delete precedence (earlier batch)
+- [ ] G1 Any checkbox ticked = bulk delete of the checked set only (label shows count); the highlighted row is never deleted in bulk mode.
+- [ ] G2 Dev mode: checking only built-ins offers "Delete (N)" and deletes them; outside dev mode the same click is a silent no-op (never falls through to the highlighted row).

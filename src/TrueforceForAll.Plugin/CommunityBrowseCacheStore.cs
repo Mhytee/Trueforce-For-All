@@ -49,6 +49,14 @@ namespace TrueforceForAll.Plugin
             = new Dictionary<string, BrowseCacheEntry>(StringComparer.Ordinal);
         private string _loadedSlotKey;   // the slot the in-memory dict belongs to; null = not loaded
         private bool _loaded;
+        // Invalidation generation. Bumped by InvalidatePrefix/Clear (NOT
+        // MarkAllStale: that's a staleness hint, not a correctness barrier).
+        // A writer captures it BEFORE its network read and hands it back to
+        // Put/Append; a mismatch means an invalidation ran while the fetch was
+        // in flight, so the (pre-invalidation) result must not be cached or a
+        // just-deleted/voted row resurrects from cache for up to the TTL.
+        // In-memory only: a process restart can't have an in-flight fetch.
+        private int _generation;
 
         public CommunityBrowseCacheStore(Func<string> slotKeyProvider, Action<string> log = null)
         {
@@ -71,6 +79,14 @@ namespace TrueforceForAll.Plugin
 
         // ---------- public API ----------
 
+        /// <summary>Snapshot the invalidation generation. Capture BEFORE starting
+        /// the network read and pass to <see cref="Put"/>/<see cref="Append"/> so a
+        /// result read before an invalidation can't be cached after it.</summary>
+        public int CurrentGeneration
+        {
+            get { lock (_lock) return _generation; }
+        }
+
         /// <summary>Return the cached list for the key (a copy), and whether it is
         /// still fresh (within the TTL). Returns null when there is no entry. A
         /// stale entry is still returned (with fresh=false) so callers can fall
@@ -92,12 +108,19 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Store (or replace) the list for the key, stamp it now, prune to
         /// the cap, and persist. No-op for a null list (never cache a failed fetch
-        /// as a fresh empty - that would suppress the next refresh).</summary>
-        public void Put(string key, List<PresetSummary> list)
+        /// as a fresh empty - that would suppress the next refresh). Pass the
+        /// pre-fetch <see cref="CurrentGeneration"/> as asOfGeneration; the write is
+        /// dropped if an invalidation ran since (null skips the check).</summary>
+        public void Put(string key, List<PresetSummary> list, int? asOfGeneration = null)
         {
             if (string.IsNullOrEmpty(key) || list == null) return;
             lock (_lock)
             {
+                if (asOfGeneration.HasValue && asOfGeneration.Value != _generation)
+                {
+                    _log?.Invoke("[TF4ALL] Browse-cache Put dropped (invalidated mid-fetch): " + key);
+                    return;
+                }
                 EnsureLoaded_Locked();
                 _entries[key] = new BrowseCacheEntry
                 {
@@ -115,12 +138,18 @@ namespace TrueforceForAll.Plugin
         /// <summary>Append a freshly-pulled page to the accumulated list for this
         /// view (the "Show more" path) and re-stamp it fresh. If no base entry
         /// exists (e.g. invalidated between page 1 and the page), the page becomes
-        /// the new entry. Deep-copies so the cache owns isolated objects.</summary>
-        public void Append(string key, List<PresetSummary> more)
+        /// the new entry. Deep-copies so the cache owns isolated objects. Same
+        /// asOfGeneration contract as <see cref="Put"/>.</summary>
+        public void Append(string key, List<PresetSummary> more, int? asOfGeneration = null)
         {
             if (string.IsNullOrEmpty(key) || more == null || more.Count == 0) return;
             lock (_lock)
             {
+                if (asOfGeneration.HasValue && asOfGeneration.Value != _generation)
+                {
+                    _log?.Invoke("[TF4ALL] Browse-cache Append dropped (invalidated mid-fetch): " + key);
+                    return;
+                }
                 EnsureLoaded_Locked();
                 if (!_entries.TryGetValue(key, out var e) || e?.Summaries == null)
                 {
@@ -132,12 +161,19 @@ namespace TrueforceForAll.Plugin
                 // and stop at the per-entry cap (the UI still got the live page).
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var s in e.Summaries) if (s?.Id != null) seen.Add(s.Id);
+                int added = 0;
                 foreach (var s in more)
                 {
                     if (e.Summaries.Count >= MaxSummariesPerEntry) break;
                     if (s == null || (s.Id != null && !seen.Add(s.Id))) continue;
                     e.Summaries.Add(s.Clone());
+                    added++;
                 }
+                // Nothing landed (all deduped away, or the entry is at cap):
+                // skip the re-stamp + full-file rewrite. Re-stamping a no-op
+                // append would phantom-extend the TTL of rows this page didn't
+                // actually refresh, and the atomic rewrite isn't free.
+                if (added == 0) return;
                 e.FetchedAtUtc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture);
                 Prune_Locked();
                 Save_Locked();
@@ -153,6 +189,11 @@ namespace TrueforceForAll.Plugin
             lock (_lock)
             {
                 EnsureLoaded_Locked();
+                // Bump BEFORE the no-match early-return: in the delete/vote race
+                // the in-flight fetch usually hasn't written its entry yet, so
+                // there's nothing to drop here - the bump is what dooms that
+                // fetch's late Put/Append.
+                unchecked { _generation++; }
                 var doomed = _entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList();
                 if (doomed.Count == 0) return;
                 foreach (var k in doomed) _entries.Remove(k);
@@ -166,6 +207,7 @@ namespace TrueforceForAll.Plugin
             lock (_lock)
             {
                 EnsureLoaded_Locked();
+                unchecked { _generation++; }   // same pre-return bump as InvalidatePrefix
                 if (_entries.Count == 0) return;
                 _entries.Clear();
                 Save_Locked();
