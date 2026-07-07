@@ -405,7 +405,7 @@ namespace TrueforceForAll.Plugin
             {
                 var result = TrueforceDialog.Show(
                     this,
-                    "Trueforce",
+                    "Trueforce For All",
                     $"This device isn't a Logitech wheel ({row.VidPid}). The FFB tap won't get any data from it. Apply anyway?",
                     DialogKind.Confirm, "Apply anyway", "Cancel");
                 if (result != true) return;

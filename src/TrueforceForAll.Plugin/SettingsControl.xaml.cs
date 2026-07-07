@@ -976,7 +976,7 @@ namespace TrueforceForAll.Plugin
                         // as the car's default (built into SaveActiveCarPresetAs).
                         if (!_plugin.ExitOfflineEditCarSaveAsAndApply(carClean))
                         {
-                            TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                            TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                             return;
                         }
                     }
@@ -988,7 +988,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditCarSave())
                 {
-                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                     return;
                 }
             }
@@ -1005,7 +1005,7 @@ namespace TrueforceForAll.Plugin
                         // the game default.
                         if (!_plugin.ExitOfflineEditSaveAsAndApply(clean))
                         {
-                            TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                            TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                             return;
                         }
                     }
@@ -1017,7 +1017,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditSave())
                 {
-                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                     return;
                 }
             }
@@ -1050,7 +1050,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.ExitOfflineEditCarSaveAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -1081,7 +1081,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.ExitOfflineEditSaveAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -3731,7 +3731,7 @@ namespace TrueforceForAll.Plugin
 
             if (!_plugin.ApplyPreset(pick.Name))
             {
-                TrueforceDialog.Show(null, "Trueforce", $"Could not apply '{pick.Name}' (preset missing).", DialogKind.Error);
+                TrueforceDialog.Show(null, "Trueforce For All", $"Could not apply '{pick.Name}' (preset missing).", DialogKind.Error);
                 return;
             }
             ClearDirty();
@@ -4717,7 +4717,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.Show(null,
-                    "Trueforce",
+                    "Trueforce For All",
                     $"Couldn't export logs:\n{ex.Message}",
                     DialogKind.Warning);
                 return null;
@@ -4793,7 +4793,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(null, "Trueforce",
+                TrueforceDialog.Show(null, "Trueforce For All",
                     $"Couldn't open browser:\n{ex.Message}\n\nURL: {url}",
                     DialogKind.Warning);
             }
@@ -10856,7 +10856,7 @@ namespace TrueforceForAll.Plugin
             string activeP = _plugin.ActivePresetName;
             if (string.IsNullOrEmpty(activeP)) return;  // nothing to revert to
             string label = EffectLabel(which);
-            if (TrueforceDialog.Show(null, "Trueforce",
+            if (TrueforceDialog.Show(null, "Trueforce For All",
                     $"Revert {label} to the saved values in preset '{activeP}'? Your unsaved {label} changes will be discarded.",
                     DialogKind.Destructive, okLabel: "Revert", cancelLabel: "Cancel") != true)
                 return;
@@ -11095,7 +11095,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (!_plugin.SaveSectionToBoth((TrueforcePlugin.SectionKind)(int)which))
                     {
-                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                         return;   // leave the popover open + dirty bit set
                     }
                     ClearEffectDirty(which);
@@ -11133,7 +11133,7 @@ namespace TrueforceForAll.Plugin
                 _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
                 if (!_plugin.SaveSectionToActivePreset((TrueforcePlugin.SectionKind)(int)which))
                 {
-                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                     return;   // don't clear the dirty bit on a failed write
                 }
                 ClearEffectDirty(which);
@@ -11197,7 +11197,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
                     {
-                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                         return;
                     }
                 }
@@ -11213,7 +11213,7 @@ namespace TrueforceForAll.Plugin
                     if (string.IsNullOrEmpty(newName)) return;
                     if (!_plugin.SaveActiveCarPresetAs(newName))
                     {
-                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                         return;
                     }
                 }
@@ -11230,7 +11230,7 @@ namespace TrueforceForAll.Plugin
                     (TrueforcePlugin.SectionKind)(int)which);
                 if (!ok)
                 {
-                    TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Info);
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Info);
                     return;
                 }
             }
@@ -11267,7 +11267,7 @@ namespace TrueforceForAll.Plugin
                 return;
             if (!_plugin.SavePresetAs(name))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             // Bind it as this game's default so the save actually sticks across
@@ -11374,7 +11374,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.SavePresetAs(activeP))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             if (bindAsDefault && !string.IsNullOrEmpty(_plugin.ActiveGame))
@@ -11442,7 +11442,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
                     {
-                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                         return false;
                     }
                 }
@@ -11458,7 +11458,7 @@ namespace TrueforceForAll.Plugin
                     if (string.IsNullOrEmpty(newName)) return false; // cancelled
                     if (!_plugin.SaveActiveCarPresetAs(newName))
                     {
-                        TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                         return false;
                     }
                 }
@@ -11511,7 +11511,7 @@ namespace TrueforceForAll.Plugin
 
             if (!_plugin.SavePresetAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             // Auto-bind as game's default if a game is loaded.
@@ -11542,7 +11542,7 @@ namespace TrueforceForAll.Plugin
 
             if (!_plugin.SavePresetAs(name))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -11581,7 +11581,7 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(newName)) return;   // cancelled
             if (!_plugin.SaveActiveCarPresetAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -13552,7 +13552,7 @@ namespace TrueforceForAll.Plugin
             string leaf = System.IO.Path.GetFileName(path);
             if (!string.Equals(leaf, "USBPcapCMD.exe", StringComparison.OrdinalIgnoreCase))
             {
-                TrueforceDialog.Show(null, "Trueforce",
+                TrueforceDialog.Show(null, "Trueforce For All",
                     "That file isn't USBPcapCMD.exe. Pick USBPcapCMD.exe from your USBPcap install folder.",
                     DialogKind.Warning);
                 return;
@@ -13568,7 +13568,7 @@ namespace TrueforceForAll.Plugin
         private void UsbPcapReinstall_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            if (TrueforceDialog.Show(null, "Trueforce",
+            if (TrueforceDialog.Show(null, "Trueforce For All",
                     "Run the bundled USBPcap installer? This needs admin (UAC prompt) and reinstalls the USB capture driver. SimHub doesn't need to restart afterwards.",
                     DialogKind.Confirm, okLabel: "Run installer", cancelLabel: "Cancel") != true)
                 return;
