@@ -3,12 +3,14 @@
 // malicious preset can't push the wheel motor (or audio path) into a damaging
 // state. Called from every ApplyXxx site in TrueforcePlugin that pulls user
 // numbers off a deserialized preset, and from FiringPatterns.ParseCustom on
-// each parsed amplitude.
+// each parsed amplitude. Lives in Core (public, original namespace kept)
+// because FiringPatterns moved to the Engine assembly with the rest of the
+// effects and both assemblies need it.
 using System;
 
 namespace TrueforceForAll.Plugin
 {
-    internal static class SafeMath
+    public static class SafeMath
     {
         public static float SafeFloat(float v, float min, float max, float fallback)
         {

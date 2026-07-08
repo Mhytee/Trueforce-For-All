@@ -3,8 +3,52 @@
 // Forza UDP) into this struct; see ITelemetrySource.cs for the source
 // abstraction and threading notes.
 
+using System;
+
 namespace TrueforceForAll.Core
 {
+    /// <summary>Per-tire value quad (FL/FR/RL/RR). Non-nullable doubles;
+    /// validity is group-level (per game these channels are all-or-nothing,
+    /// never per-corner) via TelemetryFrame.HasTireQuads today and the
+    /// capability flags once the CTM grows them. Rollup helpers live here so
+    /// effects and the capture log never re-derive them inconsistently.</summary>
+    public struct TireQuad
+    {
+        public double FL, FR, RL, RR;
+
+        public double FrontAvg => (FL + FR) * 0.5;
+        public double RearAvg  => (RL + RR) * 0.5;
+
+        public double MaxAbs
+        {
+            get
+            {
+                double f = Math.Max(Math.Abs(FL), Math.Abs(FR));
+                double r = Math.Max(Math.Abs(RL), Math.Abs(RR));
+                return Math.Max(f, r);
+            }
+        }
+
+        /// <summary>0=FL, 1=FR, 2=RL, 3=RR, matching Forza / AC array order.</summary>
+        public double this[int i]
+        {
+            get
+            {
+                switch (i)
+                {
+                    case 0: return FL;
+                    case 1: return FR;
+                    case 2: return RL;
+                    case 3: return RR;
+                    default: throw new ArgumentOutOfRangeException(nameof(i));
+                }
+            }
+        }
+
+        public static TireQuad Of(double fl, double fr, double rl, double rr)
+            => new TireQuad { FL = fl, FR = fr, RL = rl, RR = rr };
+    }
+
     /// <summary>Snapshot of the physics-rate signals every effect consumes.
     /// Sources translate from their native data shape into this struct and
     /// emit one per native-source tick.</summary>
@@ -55,6 +99,13 @@ namespace TrueforceForAll.Core
         /// null when the source can't read it (most non-F1 games).</summary>
         public int? DrsActive;
 
+        /// <summary>0 = KERS / energy-recovery deployment off, &gt;0 = deploying.
+        /// F1 / hybrid-era sims only; null otherwise. No effect consumes it
+        /// today; it stays because the tfcap capture format (CsvFrameReader /
+        /// GoldenCaptureLog column "kers") records it and the frozen fixture
+        /// CSVs carry the column.</summary>
+        public int? KersActive;
+
         // ---- Tire grip ----
         /// <summary>Direct slip-ratio reading from a sim that exposes one
         /// (e.g. AC's wheelSlip[], Forza's TireCombinedSlip[]), max-abs across
@@ -63,6 +114,62 @@ namespace TrueforceForAll.Core
         /// TractionLossEffect falls back to its yaw-rate / RPM-derivative
         /// heuristic in that case.</summary>
         public double? WheelSlip;
+
+        /// <summary>Front-axle slip angle in radians, signed (sign follows the
+        /// slip direction), averaged across the front-left/right tires. Forza's
+        /// TireSlipAngle[] (packet offset 164), front pair only. This is the
+        /// primary input to a self-aligning-torque (SAT) steering-force model:
+        /// |force| rises with slip angle, peaks near the tire's optimal angle,
+        /// then falls as the front saturates, the cue that tells you the front
+        /// is washing into understeer. Null when the source can't provide it
+        /// (AC native today, SimHub fallback); 0 during the spawn settle window
+        /// so a placement transient can't jolt the wheel through the model.</summary>
+        public double? FrontSlipAngleRad;
+
+        /// <summary>Front-axle suspension travel in meters, averaged across the
+        /// front-left/right tires. Forza's SuspensionTravelMeters[] (packet
+        /// offset 196), front pair only. A vertical-load proxy for the SAT
+        /// model (more compression = more load on the contact patch = more
+        /// steering force). Null when the source can't provide it; 0 during the
+        /// spawn settle window.</summary>
+        public double? FrontSuspTravelMeters;
+
+        // ---- Per-tire quads (CTM growth, additive) ----
+        /// <summary>True when the source populated the per-tire quads below.
+        /// Group-level validity: sources that carry per-wheel data (Forza's
+        /// sled block, AC's physics page) set it every live frame; the SimHub
+        /// fallback never does. Interim marker until the CTM capability flags
+        /// land; consumers must not read the quads when this is false.</summary>
+        public bool HasTireQuads;
+
+        /// <summary>Longitudinal slip ratio per tire, signed (+ = wheelspin,
+        /// - = lockup). Forza TireSlipRatio[4] @84.</summary>
+        public TireQuad TireSlipRatio;
+
+        /// <summary>Slip angle per tire in radians, signed. Forza
+        /// TireSlipAngle[4] @164. The front pair average is what
+        /// FrontSlipAngleRad carries today.</summary>
+        public TireQuad TireSlipAngleRad;
+
+        /// <summary>Combined slip per tire (lateral+longitudinal magnitude,
+        /// ~1.0 = at the limit in Forza's normalization, calibrated to grip
+        /// utilization later). Forza TireCombinedSlip[4] @180. WheelSlip
+        /// carries this quad's MaxAbs today.</summary>
+        public TireQuad TireCombinedSlip;
+
+        /// <summary>Suspension travel per wheel in meters (vertical-load
+        /// proxy). Forza SuspensionTravelMeters[4] @196.</summary>
+        public TireQuad SuspTravelM;
+
+        /// <summary>Surface-rumble magnitude per wheel, [0..1]-ish. Forza
+        /// SurfaceRumble[4] @148. SurfaceRumble (scalar) carries this quad's
+        /// MaxAbs today.</summary>
+        public TireQuad SurfaceRumbleQ;
+
+        /// <summary>Wheel rotation speed per wheel in rad/s. Forza
+        /// WheelRotationSpeed[4] @100. Feeds the rear rotation-pulse texture
+        /// (frequency tracks wheel revs) and wheelspin/lock detection.</summary>
+        public TireQuad WheelRotRadS;
 
         /// <summary>True when the car is off the ground (all wheels unloaded):
         /// Forza when suspension travel collapses to full droop on all four,
@@ -145,8 +252,115 @@ namespace TrueforceForAll.Core
         /// shifting through the gearbox doesn't spawn a new variant per gear.</summary>
         public bool RedlineRpmPerGear;
 
+        // ---- CTM rollups (phase 2, stamped by CtmComposer) ----
+        /// <summary>Front-axle grip utilization in combined-slip units
+        /// (~1.0 = at the limit), LOAD-WEIGHTED across the pair: the tire
+        /// carrying the cornering load dominates the reading instead of the
+        /// unloaded inside tire diluting it. Null until CtmComposer ran on a
+        /// frame with tire quads.</summary>
+        public double? FrontGrip01;
+
+        /// <summary>Rear-axle grip utilization, same convention.</summary>
+        public double? RearGrip01;
+
+        /// <summary>RearGrip01 - FrontGrip01. Positive = the rear is closer
+        /// to (or further past) its limit than the front — the oversteer
+        /// direction. Null when the rollups are null.</summary>
+        public double? GripBalance;
+
+        /// <summary>Edge events derived by EventDeriver from frame-to-frame
+        /// transitions (breakaway, lockup, wheelspin, gear, kerb, airborne).
+        /// None on sources/paths that don't run the deriver — check
+        /// <see cref="Caps"/> for <see cref="SignalGroups.DerivedEvents"/> to
+        /// tell that apart from "no edge this frame".</summary>
+        public FrameEvents Events;
+
+        /// <summary>Capability flags: which signal groups this frame actually
+        /// carries (Native, inferred from field presence) and which engine
+        /// stages ran on it (Derived, stamped by the stage). Stamped on the
+        /// engine thread's CTM stage; None on paths that bypass it.</summary>
+        public SignalGroups Caps;
+
         // ---- Diagnostics ----
         /// <summary>Stopwatch ticks at which the source captured this frame. Set by EmitFrame.</summary>
         public long CapturedAtTicks;
+    }
+
+    /// <summary>Frame-to-frame edge events (phase 2 EventDeriver). Start/End
+    /// pairs are hysteresis-gated in the deriver so a value hovering at a
+    /// threshold can't machine-gun events.</summary>
+    [Flags]
+    public enum FrameEvents
+    {
+        None                = 0,
+        FrontBreakawayStart = 1 << 0,   // front axle crossed past its grip limit
+        FrontBreakawayEnd   = 1 << 1,
+        RearBreakawayStart  = 1 << 2,   // rear stepped out
+        RearBreakawayEnd    = 1 << 3,
+        LockupStart         = 1 << 4,   // braking slip ratio collapsed negative
+        LockupEnd           = 1 << 5,
+        WheelspinStart      = 1 << 6,   // drive-wheel slip ratio ran away positive
+        WheelspinEnd        = 1 << 7,
+        GearChanged         = 1 << 8,
+        RumbleStripStart    = 1 << 9,
+        RumbleStripEnd      = 1 << 10,
+        AirborneStart       = 1 << 11,
+        AirborneEnd         = 1 << 12,
+    }
+
+    /// <summary>CTM capability flags (phase 2). One bit per signal GROUP, so
+    /// consumers ask "does this frame carry X" once instead of null-checking
+    /// individual fields — and, for the Derived bits, so effects know whether
+    /// an engine stage ran on this frame at all. That second question is the
+    /// one null checks cannot answer: <c>Events == None</c> means either "no
+    /// edge this frame" or "nobody derived events", and an effect that guesses
+    /// wrong either misses every shift or double-triggers. Native bits are
+    /// inferred from field presence (SignalCaps.InferNative); Derived bits are
+    /// stamped by the stage that computed the data (CtmComposer, EngineLoop's
+    /// deriver step).</summary>
+    [Flags]
+    public enum SignalGroups
+    {
+        None = 0,
+
+        // ---- Native: measured by the telemetry source ----
+        Gear        = 1 << 0,   // Gear string present
+        Steering    = 1 << 1,   // SteeringAngle
+        AccelG      = 1 << 2,   // surge / sway / heave, any of them
+        SlipScalars = 1 << 3,   // WheelSlip / FrontSlipAngleRad
+        TireQuads   = 1 << 4,   // per-tire quads (HasTireQuads)
+        SurfaceFeel = 1 << 5,   // SurfaceRumble / OnRumbleStrip
+        Airborne    = 1 << 6,
+        Collision   = 1 << 7,   // CollisionMagnitude
+
+        // ---- Derived: computed by engine stages, not the source ----
+        AxleRollups   = 1 << 16,  // CtmComposer ran (FrontGrip01/RearGrip01/GripBalance)
+        DerivedEvents = 1 << 17,  // EventDeriver ran (Events field is authoritative)
+    }
+
+    /// <summary>Stamps the Native half of <see cref="SignalGroups"/> from
+    /// field presence. Called on the engine thread on the RESAMPLED frame
+    /// (EngineLoop's CTM stage) so the caps always describe exactly the frame
+    /// the effects receive — no per-source stamping to keep in sync, and
+    /// nothing for the resampler to carry through interpolation.</summary>
+    public static class SignalCaps
+    {
+        public static SignalGroups InferNative(in TelemetryFrame f)
+        {
+            var caps = SignalGroups.None;
+            if (!string.IsNullOrEmpty(f.Gear))            caps |= SignalGroups.Gear;
+            if (f.SteeringAngle.HasValue)                 caps |= SignalGroups.Steering;
+            if (f.AccelerationSurge.HasValue
+                || f.AccelerationSway.HasValue
+                || f.AccelerationHeave.HasValue)          caps |= SignalGroups.AccelG;
+            if (f.WheelSlip.HasValue
+                || f.FrontSlipAngleRad.HasValue)          caps |= SignalGroups.SlipScalars;
+            if (f.HasTireQuads)                           caps |= SignalGroups.TireQuads;
+            if (f.SurfaceRumble.HasValue
+                || f.OnRumbleStrip.HasValue)              caps |= SignalGroups.SurfaceFeel;
+            if (f.Airborne.HasValue)                      caps |= SignalGroups.Airborne;
+            if (f.CollisionMagnitude.HasValue)            caps |= SignalGroups.Collision;
+            return caps;
+        }
     }
 }

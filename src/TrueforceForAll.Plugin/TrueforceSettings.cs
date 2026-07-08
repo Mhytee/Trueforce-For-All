@@ -1,4 +1,4 @@
-// Persisted plugin settings. SimHub serializes this to JSON via
+﻿// Persisted plugin settings. SimHub serializes this to JSON via
 // PluginManager.GetCommonSettings / SaveCommonSettings.
 //
 // The same shape is also written/read by the Export / Import buttons in the
@@ -1382,22 +1382,8 @@ namespace TrueforceForAll.Plugin
         public int AudioRingSize { get; set; } = 16;
     }
 
-    /// <summary>What EnginePulse should do when the resolver flags the
-    /// active car as a pure EV. Combustion cars ignore this entirely.</summary>
-    public enum ElectricCarMode
-    {
-        /// <summary>Play the same firing-frequency hum as a combustion car
-        /// but at half amplitude. Real EVs aren't silent, many pump
-        /// synthetic engine sound, so a muted hum reads more correctly
-        /// than dead silence. Default.</summary>
-        MutedHum,
-
-        /// <summary>EnginePulse is fully muted on EVs. For users who want
-        /// authentic silence (or just don't like the synthetic-engine
-        /// approach). Other effects (RoadBumps, TractionLoss, etc.) still
-        /// run normally, only the firing-rate hum is suppressed.</summary>
-        Silent,
-    }
+    // ElectricCarMode moved to the Engine assembly with EnginePulseEffect
+    // (Engine/Effects/ElectricCarMode.cs), same namespace, phase-0b move.
 
     public sealed class EnginePulseSettings
     {

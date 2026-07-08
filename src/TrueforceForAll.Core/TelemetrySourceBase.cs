@@ -27,6 +27,14 @@ namespace TrueforceForAll.Core
 
         public virtual void Dispose() { Stop(); }
 
+        // Virtual-time hooks (phase 0c). Production sources run on the shared
+        // Stopwatch; the replay source overrides these to drive frames on a
+        // deterministic virtual clock, so the harness replays a 60 s capture
+        // in ~1 s with identical rate/staleness math. Everything time-related
+        // in this base class MUST go through these two members.
+        protected virtual long TimestampTicks => _sw.ElapsedTicks;
+        protected virtual long TicksPerSecond => Stopwatch.Frequency;
+
         // We smooth the inter-frame INTERVAL (an EMA on dt), then report its
         // reciprocal. Averaging 1/dt directly (the old approach) is biased
         // high: 1/x is convex, so mean(1/dt) >= 1/mean(dt) by Jensen's
@@ -51,7 +59,7 @@ namespace TrueforceForAll.Core
             {
                 long last = System.Threading.Interlocked.Read(ref _lastFrameTicks);
                 if (last == 0) return 0;
-                double sinceSec = (_sw.ElapsedTicks - last) / (double)Stopwatch.Frequency;
+                double sinceSec = (TimestampTicks - last) / (double)TicksPerSecond;
                 if (sinceSec > IdleTimeoutSec) return 0;
                 double interval = _emaIntervalSec;
                 return interval > 0 ? 1.0 / interval : 0;
@@ -64,17 +72,17 @@ namespace TrueforceForAll.Core
             {
                 long last = System.Threading.Interlocked.Read(ref _lastFrameTicks);
                 if (last == 0) return double.PositiveInfinity;
-                return (_sw.ElapsedTicks - last) * 1000.0 / Stopwatch.Frequency;
+                return (TimestampTicks - last) * 1000.0 / TicksPerSecond;
             }
         }
 
         protected void EmitFrame(TelemetryFrame frame)
         {
-            long now = _sw.ElapsedTicks;
+            long now = TimestampTicks;
             long last = _lastFrameTicks;
             if (last != 0)
             {
-                double dtSec = (now - last) / (double)Stopwatch.Frequency;
+                double dtSec = (now - last) / (double)TicksPerSecond;
                 if (dtSec > 0)
                 {
                     _emaIntervalSec = _emaIntervalSec > 0
