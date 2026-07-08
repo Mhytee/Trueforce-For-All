@@ -2783,6 +2783,19 @@
                                   ToolTip="Off by default. When the game pauses (menu, fast travel, race start) the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center instead of holding the last force. Turn this on if your wheel jerks or runs to full lock when you pause (seen on the G923 in Forza Horizon 6)."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
                                    Text="Try this if the wheel pulls to one side or locks up when you pause the game."/>
+
+                        <!-- Driver testing mode. Hidden by default (Collapsed); revealed
+                             only after the DRIVER access code is entered, and kept revealed
+                             across restarts via Settings.DriverTestingUnlocked (mirrors the
+                             MANUALPIN unlock pattern). Routes FFB through the kernel filter
+                             driver; needs the TFFA filter driver installed. -->
+                        <CheckBox x:Name="DriverInterceptCheck" Visibility="Collapsed"
+                                  Content="Driver testing mode: route FFB through the kernel filter driver (claims sole wheel ownership). Experimental."
+                                  Margin="0,4,0,2" Checked="DriverIntercept_Changed" Unchecked="DriverIntercept_Changed"
+                                  ToolTip="Experimental. Claims sole ownership of the wheel through the TFFA kernel filter driver and routes the game's force feedback through the Trueforce stream. Needs the TFFA filter driver installed. Takes effect on the next plugin start (restart SimHub or re-detect)."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
+                                   x:Name="DriverInterceptHelp" Visibility="Collapsed"
+                                   Text="Restart SimHub or re-detect the wheel after changing this."/>
                     </StackPanel>
                 </Expander>
 

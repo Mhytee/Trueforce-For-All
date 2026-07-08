@@ -52,6 +52,7 @@ namespace TrueforceForAll.Plugin
             "UpdateCheckIntervalHours",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
+            "ExperimentalDriverIntercept", "DriverTestingUnlocked",
             "DevModeUnlocked", "ImportPreviewBypass",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
