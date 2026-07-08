@@ -8271,6 +8271,14 @@ namespace TrueforceForAll.Plugin
         //      tokenizer / telemetry paths.
         // (Telemetry-based "unambiguous match" disambiguation is Stage 3.)
         private bool TryResolveActiveVariant(string game, string carId, out EngineVariant variant)
+            => TryResolveVariantCore(game, carId, includeCommunity: true, out variant);
+
+        // Shared cascade body for TryResolveActiveVariant (community rung
+        // included) and TryResolveNonCommunityVariant (community rung
+        // skipped). ONE copy of the stored-pick / bake-synthesis /
+        // last-resort ladder so the two resolvers can never drift.
+        private bool TryResolveVariantCore(string game, string carId,
+            bool includeCommunity, out EngineVariant variant)
         {
             variant = null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
@@ -8280,7 +8288,7 @@ namespace TrueforceForAll.Plugin
             // the in-memory consensus (set by NotifyCommunityConsensus) so
             // the rest of the apply path treats it like any other variant.
             // Not persisted - re-fetched every session.
-            if (TrySynthesizeCommunityVariant(game, carId, out var commVar))
+            if (includeCommunity && TrySynthesizeCommunityVariant(game, carId, out var commVar))
             {
                 variant = commVar;
                 return true;
@@ -8361,6 +8369,23 @@ namespace TrueforceForAll.Plugin
         // (Confirmations=0) would lose to anything pre-existing - which
         // silently no-ops the entire Correct... flow on any car that already
         // had a bundle.
+        // THE signature-compatibility rule, single-sourced (was hand-repeated
+        // in PickStoredVariant, EnsureVariantForLiveSignatureCore_Locked, and
+        // FindActiveStoredVariant). A variant matches live telemetry when
+        // every field present on BOTH sides agrees: Cylinders exactly, MaxRpm
+        // and RedlineRpm by band. A field missing on the variant is an
+        // under-specified legacy row and matches anything; a field missing on
+        // telemetry can't discriminate, so it's a free pass.
+        private static bool VariantMatchesSignature(EngineVariant v,
+            int? telCyl, int telMaxBand, int telRedBand)
+        {
+            if (v == null) return false;
+            if (v.Cylinders >= 1 && telCyl.HasValue && v.Cylinders != telCyl.Value) return false;
+            if (v.MaxRpm.HasValue && telMaxBand > 0 && BandMaxRpm(v.MaxRpm.Value) != telMaxBand) return false;
+            if (v.RedlineRpm.HasValue && telRedBand > 0 && BandRpm(v.RedlineRpm.Value) != telRedBand) return false;
+            return true;
+        }
+
         private EngineVariant PickStoredVariant(string game, string carId)
         {
             if (Settings?.CarFacts == null) return null;
@@ -8433,16 +8458,7 @@ namespace TrueforceForAll.Plugin
                 for (int i = 0; i < pool.Count; i++)
                 {
                     var cand = pool[i];
-                    if (cand.Cylinders >= 1 && telCyl.HasValue
-                        && cand.Cylinders != telCyl.Value) continue;
-                    if (cand.MaxRpm.HasValue
-                        && telMaxBand > 0
-                        && BandMaxRpm(cand.MaxRpm.Value) != telMaxBand)
-                        continue;
-                    if (cand.RedlineRpm.HasValue
-                        && telRedBand > 0
-                        && BandRpm(cand.RedlineRpm.Value) != telRedBand)
-                        continue;
+                    if (!VariantMatchesSignature(cand, telCyl, telMaxBand, telRedBand)) continue;
                     int prio = SourcePriority(cand.Source);
                     if (prio > sigPriority
                         || (prio == sigPriority && cand.Confirmations > sigConf))
@@ -9185,13 +9201,7 @@ namespace TrueforceForAll.Plugin
             for (int i = 0; i < bundle.EngineVariants.Count; i++)
             {
                 var v = bundle.EngineVariants[i];
-                if (v == null) continue;
-                if (v.Cylinders >= 1 && telCyl.HasValue
-                    && v.Cylinders != telCyl.Value) continue;
-                if (v.MaxRpm.HasValue && telMaxBand > 0
-                    && BandMaxRpm(v.MaxRpm.Value) != telMaxBand) continue;
-                if (v.RedlineRpm.HasValue && telRedBand > 0
-                    && BandRpm(v.RedlineRpm.Value) != telRedBand) continue;
+                if (!VariantMatchesSignature(v, telCyl, telMaxBand, telRedBand)) continue;
                 match = v;
                 break;
             }
@@ -9306,10 +9316,7 @@ namespace TrueforceForAll.Plugin
                 for (int i = 0; i < bundle.EngineVariants.Count; i++)
                 {
                     var v = bundle.EngineVariants[i];
-                    if (v == null) continue;
-                    if (v.Cylinders >= 1 && telCyl.HasValue && v.Cylinders != telCyl.Value) continue;
-                    if (v.MaxRpm.HasValue && telMaxBand > 0 && BandMaxRpm(v.MaxRpm.Value) != telMaxBand) continue;
-                    if (v.RedlineRpm.HasValue && telRedBand > 0 && BandRpm(v.RedlineRpm.Value) != telRedBand) continue;
+                    if (!VariantMatchesSignature(v, telCyl, telMaxBand, telRedBand)) continue;
                     _lastActiveVariantIdByCar[key] = v.Id;   // remember "last used" for the empty-signature fallback
                     return v;
                 }
@@ -9912,52 +9919,7 @@ namespace TrueforceForAll.Plugin
         // user-action's downstream re-resolution.
         private bool TryResolveNonCommunityVariant(
             string game, string carId, out EngineVariant variant)
-        {
-            variant = null;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
-
-            EngineVariant storedPick = PickStoredVariant(game, carId);
-            bool storedIsAuthoritative = storedPick != null
-                && !(storedPick.Source == CarFactSource.Scanner && storedPick.Confirmations == 0);
-            if (storedIsAuthoritative)
-            {
-                variant = storedPick;
-                return true;
-            }
-
-            if (BuiltinCarCylinders.TryGet(game, carId, out var rawBake))
-            {
-                if (rawBake.IsElectric) return false;
-                if (CarCylinderResolver.TryResolve(game, carId, out var refined)
-                    && refined != null
-                    && !refined.IsElectric
-                    && refined.Cylinders >= 1 && refined.Cylinders <= 16)
-                {
-                    var resolvedSource = string.Equals(refined.Source,
-                        "swap-override", StringComparison.OrdinalIgnoreCase)
-                        ? CarFactSource.SwapOverride
-                        : CarFactSource.Baked;
-                    variant = new EngineVariant
-                    {
-                        Id            = "baked:" + game + "/" + carId,
-                        Label         = "Stock",
-                        Cylinders     = refined.Cylinders,
-                        EngineConfig  = refined.EngineConfig,
-                        RedlineRpm    = null,
-                        Source        = resolvedSource,
-                        Confirmations = 0,
-                    };
-                    return true;
-                }
-            }
-
-            if (storedPick != null)
-            {
-                variant = storedPick;
-                return true;
-            }
-            return false;
-        }
+            => TryResolveVariantCore(game, carId, includeCommunity: false, out variant);
 
 /// <summary>Persist the community-data toggle. Off = submissions are
         /// suppressed inside CommunityClient + (post Backend Phase 2) the
