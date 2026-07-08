@@ -16,6 +16,17 @@ using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
 {
+    /// <summary>Priority class for the phase-6 band arbiter. Ordering is the
+    /// ducking hierarchy: a class ducks everything below it (band-gated).
+    /// GripState is top because what the tire is doing is the highest-value
+    /// signal a steering wheel can carry.</summary>
+    public enum EffectClass
+    {
+        Ambience  = 0,   // engine pulse, road texture, DRS hum, captured audio
+        Transient = 1,   // gear, ABS, kerb thump, collision, rev/pit alerts
+        GripState = 2,   // slip scrub, lockup judder, traction loss
+    }
+
     public abstract class TelemetryEffect : ISampleSource
     {
         public bool  Enabled { get; set; } = true;
@@ -30,6 +41,12 @@ namespace TrueforceForAll.Plugin.Effects
         // Default is no-op; effects with edge-detected or last-value state
         // (gear tracking, ABS rising-edge) override.
         public virtual void Reset() { }
+
+        /// <summary>Reseed any noise oscillators this effect owns. Production
+        /// never calls it; the replay harness does before a run so two replays
+        /// of the same fixture are byte-identical and golden metrics aren't
+        /// chasing RNG. Default no-op (most effects are deterministic).</summary>
+        public virtual void SeedNoise(int seed) { }
 
         // The telemetry feed went stale: the active source stopped emitting
         // frames entirely (game closed mid-session, crashed, or its shared-
@@ -81,5 +98,24 @@ namespace TrueforceForAll.Plugin.Effects
         /// by the plugin per-Mixer-tick before Render so transient effects
         /// can duck continuous ones.</summary>
         public float DuckMultiplier { get; set; } = 1.0f;
+
+        // ---- Phase 6 effect contract (band arbiter) ----
+
+        /// <summary>Ducking priority class. Default Ambience (bottom:
+        /// ducked by everything above); grip-information and alert effects
+        /// override.</summary>
+        public virtual EffectClass PriorityClass => EffectClass.Ambience;
+
+        /// <summary>Instantaneous frequency band of this effect's content in
+        /// Hz. The arbiter only ducks where bands actually overlap, so a
+        /// tight honest band buys an effect immunity from unrelated voices.
+        /// Default is broadband (20..400 = "assume it masks everything"),
+        /// which is the conservative choice for effects that don't
+        /// override.</summary>
+        public virtual void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = 20.0;
+            hiHz = 400.0;
+        }
     }
 }

@@ -163,6 +163,24 @@ namespace TrueforceForAll.Core
         public float FfbSmoothTimeConstantMs { get; set; } = 0.0f;
         private float _smoothedFfb;
 
+        // FFB band-split (Forza road-feel fix). Some games (Forza especially)
+        // bake road/surface texture into the steering force as high-frequency
+        // content. Streamed straight to cur it jerks the wheel (jitter) instead
+        // of being felt as rumble. When enabled, the FFB target is split: a
+        // one-pole low-pass (FfbTextureCutoffMs time constant) keeps the smooth
+        // low-frequency steering weight in cur; the high-frequency remainder is
+        // the road texture, injected into the Trueforce window (the audio-haptic
+        // overlay) scaled by FfbTextureGain, so it's felt as rumble where it
+        // belongs. Off (default) => byte-identical to the pre-split behaviour.
+        public bool  FfbBandSplitEnabled { get; set; } = false;
+        public float FfbTextureGain      { get; set; } = 1.0f;
+        public float FfbTextureCutoffMs  { get; set; } = 12.0f;
+        private float _bandLow;    // LPF stage 1 of the split; stream thread only
+        private float _bandLow2;   // LPF stage 2, cascaded for a steeper (~-12 dB/oct)
+                                   // rolloff so cur keeps only the smooth steering
+                                   // force; one pole left enough high-frequency road
+                                   // texture in cur to still jitter the wheel.
+
         // FFB spike taming: gates both the slew-rate limiter
         // (FfbSpikeMaxLsbPerMs) and the spike-attenuation cap
         // (FfbPeakSoftLimitLsb). When the gate is off, both are bypassed
@@ -434,6 +452,8 @@ namespace TrueforceForAll.Core
             _sumAbsDeltas    = 0f;
             _spikeSlewEnv    = 0f;
             _sustainedFfbEnv = 0f;
+            _bandLow         = 0f;
+            _bandLow2        = 0f;
         }
 
         // Protocol-level mode commands. Per mescon's protocol doc:
@@ -718,7 +738,47 @@ namespace TrueforceForAll.Core
 
             if (sendActive)
             {
-                if (hasAudio)
+                // FFB band-split. When enabled, pull the high-frequency road
+                // texture out of the FFB target: _bandLow (one-pole LPF) is the
+                // smooth low-frequency steering weight that drives cur; the
+                // remainder is the texture, injected into the window below as
+                // rumble. OFF => bandTexture stays 0, the original window branches
+                // run, and cur uses the raw target (byte-identical to before).
+                int bandTexture = 0;
+                bool splitActive = FfbBandSplitEnabled && ffbTargetMaybe.HasValue;
+                if (splitActive)
+                {
+                    float r = ffbTargetMaybe.Value;
+                    float a = 1f / (FfbTextureCutoffMs + 1f);
+                    // Two cascaded one-pole low-passes (~-12 dB/oct) so cur keeps
+                    // only the smooth steering force; a single pole left enough
+                    // high-frequency road texture in cur to jitter the wheel.
+                    _bandLow  += (r - _bandLow) * a;
+                    _bandLow2 += (_bandLow - _bandLow2) * a;
+                    int tex = (int)((r - _bandLow2) * FfbTextureGain);
+                    if (tex > 32767) tex = 32767; else if (tex < -32768) tex = -32768;
+                    bandTexture = tex;
+                }
+
+                if (splitActive)
+                {
+                    // Shift the window and append new samples = audio (if any) plus
+                    // the road texture, summed in signed space and re-centred at
+                    // 0x8000. With no audio this carries the texture alone.
+                    const int shift = NewPerPacket;
+                    Array.Copy(_window, shift, _window, 0, Window - shift);
+                    ushort last = _window[Window - shift - 1];
+                    for (int i = 0; i < shift; i++)
+                    {
+                        int audioSigned = hasAudio ? ((i < n ? newSamples[i] : last) - 0x8000) : 0;
+                        int mixed = audioSigned + bandTexture;
+                        if (mixed > 32767) mixed = 32767; else if (mixed < -32768) mixed = -32768;
+                        ushort v = (ushort)(mixed + 0x8000);
+                        _window[Window - shift + i] = v;
+                        last = v;
+                    }
+                }
+                else if (hasAudio)
                 {
                     // Shift the window left by NewPerPacket and append new audio samples.
                     const int shift = NewPerPacket;
@@ -749,7 +809,10 @@ namespace TrueforceForAll.Core
                 ushort ffbCur = (ushort)0x8000;
                 if (ffbTargetMaybe.HasValue)
                 {
-                    float raw = ffbTargetMaybe.Value;
+                    // When band-splitting, cur is driven by the smooth low-
+                    // frequency part only (the texture went to the window above);
+                    // otherwise by the raw target, exactly as before.
+                    float raw = splitActive ? _bandLow2 : (float)ffbTargetMaybe.Value;
 
                     // Update slew-rate sidechain. Peak-follow on rise (instant
                     // latch) + slow exponential decay (70 ms half-life) on

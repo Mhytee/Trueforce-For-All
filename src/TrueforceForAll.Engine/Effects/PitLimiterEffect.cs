@@ -25,6 +25,14 @@ namespace TrueforceForAll.Plugin.Effects
         /// engine being cut at idle.</summary>
         public float Freq { get; set; } = 50.0f;
 
+        // Phase 6 contract: a mode alert around its carrier frequency.
+        public override EffectClass PriorityClass => EffectClass.Transient;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Freq * 0.7;
+            hiHz = Freq * 1.5;
+        }
+
         /// <summary>How fast the pulse modulator opens and closes the carrier
         /// (Hz). 6 Hz matches the audible cadence of most factory pit
         /// limiters when you hold throttle against them.</summary>

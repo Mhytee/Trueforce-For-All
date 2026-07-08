@@ -47,6 +47,14 @@ namespace TrueforceForAll.Plugin.Effects
         /// engine-cut pulse.</summary>
         public float Freq { get; set; } = 90.0f;
 
+        // Phase 6 contract: an urgent alert buzz around its carrier.
+        public override EffectClass PriorityClass => EffectClass.Transient;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Freq * 0.7;
+            hiHz = Freq * 1.5;
+        }
+
         /// <summary>How fast the pulse modulator stutters the carrier (Hz).
         /// 20 Hz is a fast, aggressive flutter matching a soft-cut limiter
         /// hammering the engine.</summary>

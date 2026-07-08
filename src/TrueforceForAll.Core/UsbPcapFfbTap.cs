@@ -248,6 +248,48 @@ namespace TrueforceForAll.Core
         // SetFfbFeatureIndexSeed below.
         private volatile byte _ffbSeed = FfbFeatureIndexSeed;
         private volatile byte _ffbFeatureIndex = FfbFeatureIndexSeed;
+
+        // Hardware-confirmed FFB feature indices, pinned per wheel so the
+        // statistical resolver can never wander onto non-FFB traffic. Field
+        // lesson (FM8, 2026-07-03): with the game's real FFB silent, FM8 still
+        // streams high-rate func-0x20 writes on feat 0x12 (LED/aux), the
+        // resolver latched them, "extracted" their payload bytes as force and
+        // CONFIRMED itself — the wheel buzzed on rendered LED data. The
+        // "wrong indices never produce extracted samples" assumption in the
+        // confirm-gate comment below is simply false for that traffic shape,
+        // so for wheels whose index we have proven on hardware we don't vote,
+        // we pin. Unlisted wheels keep the auto-resolver unchanged.
+        //   C26D/C26E (G923 Xbox/PC): 0x0B — proven 2026-07-02, TFFA driver
+        //     harness (FFB_LEAK_PASS at 0x0B + selective-intercept validation).
+        //   C276 (RS50): 0x10 — issue #5 woTF Windows capture.
+        //   C266/C267 (G923 PS): predicted 0x08 but NOT hardware-confirmed,
+        //     deliberately unpinned until someone proves it.
+        private volatile bool _ffbIndexPinned;
+        public bool IsFfbFeatureIndexPinned => _ffbIndexPinned;
+
+        private static byte? KnownFfbIndexForWheel(ushort vid, ushort pid)
+        {
+            if (vid != 0x046D) return null;
+            switch (pid)
+            {
+                case 0xC26D:
+                case 0xC26E: return 0x0B;   // G923 Xbox/PC
+                case 0xC276: return 0x10;   // RS50
+                default:     return null;
+            }
+        }
+
+        private void MaybePinKnownFfbIndex(ushort vid, ushort pid)
+        {
+            if (_ffbIndexPinned) return;
+            byte? known = KnownFfbIndexForWheel(vid, pid);
+            if (!known.HasValue) return;
+            _ffbFeatureIndex  = known.Value;
+            _ffbIndexResolved = true;
+            _ffbIndexPinned   = true;
+            Log($"FFB feature index PINNED to 0x{known.Value:X2} for wheel {vid:X4}:{pid:X4} " +
+                "(hardware-confirmed; statistical resolution disabled for this wheel).");
+        }
         private bool _ffbIndexResolved;                 // parser-thread only
         // Set true the first time real FFB is actually extracted on the
         // currently-selected index (i.e. force flowed, not just "an index hit
@@ -354,8 +396,15 @@ namespace TrueforceForAll.Core
         /// already seen the re-resolve to the real index is immediate.</summary>
         public void ResetFeatureIndexResolution()
         {
-            _ffbFeatureIndex       = _ffbSeed;
-            _ffbIndexResolved      = false;
+            // A hardware-pinned index survives re-arms: the pin exists because
+            // the statistical path proved unsafe for this wheel, and toggling
+            // FFBX must not reopen that hole. Confirmation/fingerprint state
+            // still resets below so the new rules re-record what worked.
+            if (!_ffbIndexPinned)
+            {
+                _ffbFeatureIndex   = _ffbSeed;
+                _ffbIndexResolved  = false;
+            }
             _ffbIndexConfirmed     = false;
             _nextFfbResolveTicks   = 0;
             _captureFingerprint     = null;   // let the new rules re-record what worked
@@ -745,6 +794,12 @@ namespace TrueforceForAll.Core
                 healVid = _hidFoundVid; healPid = _hidFoundPid;
             }
 
+            // Pin the FFB feature index as soon as the wheel identity is
+            // known — the pin is about the HID++ feature layout, not the bus
+            // address, so it doesn't need the scan below to succeed.
+            if (healVid.HasValue && healPid.HasValue)
+                MaybePinKnownFfbIndex(healVid.Value, healPid.Value);
+
             if (healVid.HasValue && healPid.HasValue
                 && (forceRevalidate || !haveTarget || !_ffbIndexConfirmed))
             {
@@ -791,6 +846,7 @@ namespace TrueforceForAll.Core
                 {
                     _usbPcapInterface = hit.Interface;
                     _deviceAddress = hit.DeviceAddress;
+                    MaybePinKnownFfbIndex(hit.Vid, hit.Pid);
                     Log($"Auto-discovered: {hit}");
                     return true;
                 }
@@ -1071,6 +1127,10 @@ namespace TrueforceForAll.Core
             };
             _proc = Process.Start(psi);
             if (_proc == null) throw new InvalidOperationException("Process.Start returned null");
+            // Kill-on-close job: the capture child must die with SimHub, or it
+            // survives taskkill /F holding the USBPcap device + inherited
+            // sockets and poisons the next session (see ChildProcessJob).
+            ChildProcessJob.TryAssign(_proc, Log);
             // Baselines for the watchdog: FFB count at the start of this capture
             // session, and the next watchdog tick.
             _ffbAtCaptureStart = FfbSamplesCaptured;
@@ -1361,6 +1421,7 @@ namespace TrueforceForAll.Core
         // driving, we switch to it, force flows, and only then do we lock.
         private void MaybeResolveFfbFeatureIndex()
         {
+            if (_ffbIndexPinned) return;      // hardware-confirmed; never vote
             if (_ffbIndexConfirmed) return;
             // No per-wheel gate: RS50 (C276) resolves to feat 0x10 by the same
             // dominant-tuple rule that resolves G PRO to 0x0e (issue #5 woTF

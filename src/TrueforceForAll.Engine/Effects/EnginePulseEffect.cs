@@ -252,6 +252,20 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override bool IsActive => IsTesting || (Enabled && (_wavetableAmp > 0 || _loadLayerAmp > 0));
 
+        // Phase 6 contract: the signature Ambience voice (base class
+        // default). Band spans the load layer's cycle frequency up through
+        // the firing rate's low harmonics — 8x covers a V8's pulses per
+        // cycle with headroom, and overstating the top only makes ducking
+        // more conservative. Falls back to broadband before the first
+        // telemetry sets a cycle rate.
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            double cyc = _cyclesPerSec;
+            if (cyc < 2.0) { base.GetCurrentBand(out loHz, out hiHz); return; }
+            loHz = Math.Max(5.0, cyc * 0.8);
+            hiHz = Math.Min(400.0, Math.Max(loHz + 10.0, cyc * 8.0));
+        }
+
         public override void RenderAdd(float[] buffer, int count)
         {
             if (!Enabled && !IsTesting) return;

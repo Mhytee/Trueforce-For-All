@@ -55,6 +55,18 @@ namespace TrueforceForAll.Plugin.Effects
             set => _heave.Freq = value;
         }
 
+        // Phase 6 contract: road texture is Ambience (base class default);
+        // band spans the heave thump up through the surface channel's noise
+        // window, capped at the wheel-relevant 400 Hz.
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Math.Max(10.0, Freq * 0.7);
+            double hiSurface = SurfaceEnabled
+                ? Math.Max(SurfaceFreq * 1.4, SurfaceLowpassHz)
+                : Freq * 1.4;
+            hiHz = Math.Min(400.0, Math.Max(loHz + 10.0, hiSurface));
+        }
+
         // ---- Surface channel (Forza) ----
 
         /// <summary>Master toggle for the Forza-only surface-texture channel.
@@ -244,9 +256,15 @@ namespace TrueforceForAll.Plugin.Effects
                     && !double.IsNaN(sr) && !double.IsInfinity(sr))
                     surfaceNorm = Math.Min(1.0, Math.Abs(sr) * SurfaceRumbleScale);
 
+                // Phase 2: the deriver's RumbleStripStart edge is authoritative
+                // when the CTM stage ran (Caps carries DerivedEvents); the
+                // local edge detector remains for paths that bypass it.
                 bool onStrip = f.OnRumbleStrip ?? false;
                 long nowSw = Stopwatch.GetTimestamp();
-                if (onStrip && !_prevOnRumbleStrip) _rsPulseStartTicks = nowSw;
+                bool kerbEdge = (f.Caps & SignalGroups.DerivedEvents) != 0
+                    ? (f.Events & FrameEvents.RumbleStripStart) != 0
+                    : onStrip && !_prevOnRumbleStrip;
+                if (kerbEdge) _rsPulseStartTicks = nowSw;
                 _prevOnRumbleStrip = onStrip;
 
                 double pulseNorm = 0;
@@ -278,6 +296,12 @@ namespace TrueforceForAll.Plugin.Effects
         {
             _heave.Amp = 0;
             _surface.Amp = 0;
+        }
+
+        public override void SeedNoise(int seed)
+        {
+            _heave.SeedNoise(seed);
+            _surface.SeedNoise(unchecked(seed * 31 + 7));   // decorrelated from _heave
         }
 
         public override void Reset()

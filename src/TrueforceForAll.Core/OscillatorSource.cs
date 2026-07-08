@@ -59,7 +59,13 @@ namespace TrueforceForAll.Core
 
         // Synth-thread state.
         private double _phase;
-        private readonly Random _rng = new Random();
+        private Random _rng = new Random();
+
+        /// <summary>Reseed the noise generator. Production never calls this
+        /// (time-seeded noise is fine on a wheel); the replay harness does, so
+        /// two runs of the same fixture produce byte-identical noise and the
+        /// golden-metric comparison isn't chasing RNG. Synth-thread only.</summary>
+        public void SeedNoise(int seed) => _rng = new Random(seed);
         private float _noiseLpY;
         // 1-pole highpass state. y[n] = α·(y[n-1] + x[n] - x[n-1]).
         private float _noiseHpY;

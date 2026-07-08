@@ -50,6 +50,14 @@ namespace TrueforceForAll.Plugin.Effects
         /// the sustained component (chirp-only mode).</summary>
         public float SustainedAmp { get; set; } = 0.05f;
 
+        // Phase 6 contract: Ambience (the sustained hum is background
+        // texture); band spans the sustained tone up through the chirp.
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Math.Min(SustainedFreq, ActivationFreq) * 0.7;
+            hiHz = Math.Max(SustainedFreq, ActivationFreq) * 1.4;
+        }
+
         /// <summary>Waveform shape for the activation chirp ("blip" on the
         /// rising edge).</summary>
         public Waveform Waveform { get; set; } = Waveform.Square;

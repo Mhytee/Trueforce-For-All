@@ -29,6 +29,14 @@ namespace TrueforceForAll.Plugin.Effects
         /// distinct when both fire close together.</summary>
         public float Freq { get; set; } = 50.0f;
 
+        // Phase 6 contract: a momentary alert around its thud frequency.
+        public override EffectClass PriorityClass => EffectClass.Transient;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Freq * 0.7;
+            hiHz = Freq * 1.6;
+        }
+
         /// <summary>Envelope length in milliseconds. 120 ms = perceptible
         /// thud with enough body to feel weighty.</summary>
         public int EnvelopeMs { get; set; } = 120;

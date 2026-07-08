@@ -17,6 +17,14 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>Thud frequency (Hz). 40 Hz = solid mechanical clunk feel.</summary>
         public float Freq { get; set; } = 40.0f;
 
+        // Phase 6 contract: a momentary alert around its knock frequency.
+        public override EffectClass PriorityClass => EffectClass.Transient;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Freq * 0.7;
+            hiHz = Freq * 1.6;
+        }
+
         /// <summary>Envelope length in milliseconds.</summary>
         public int EnvelopeMs { get; set; } = 80;
 
@@ -108,7 +116,15 @@ namespace TrueforceForAll.Plugin.Effects
                 return;
             }
 
-            if (_lastGear != null && _lastGear != gear)
+            // Phase 2: consume the deriver's GearChanged edge when the CTM
+            // stage ran on this frame (it owns first-frame seeding and fires
+            // exactly once per change); fall back to the local string diff on
+            // paths that bypass the engine loop, where Caps is None.
+            bool changed = (f.Caps & SignalGroups.DerivedEvents) != 0
+                ? (f.Events & FrameEvents.GearChanged) != 0
+                : _lastGear != null && _lastGear != gear;
+
+            if (changed)
             {
                 // Sequential gearboxes pass through "N" between every gear, so
                 // every shift triggers two transitions: gear→N then N→gear.

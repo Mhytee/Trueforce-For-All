@@ -33,6 +33,11 @@ namespace TrueforceForAll.Plugin.Effects
     {
         public override string Name => "Traction loss";
 
+        /// <summary>Sink for the once-per-second traction diagnostic line.
+        /// Injected by the host (the SimHub logger in the plugin) so the
+        /// engine assembly carries no SimHub reference. Null = silent.</summary>
+        public Action<string> DiagLog { get; set; }
+
         /// <summary>1.0 = baseline, &lt;1 stricter, &gt;1 more sensitive.</summary>
         public float Sensitivity { get; set; } = 1.0f;
 
@@ -48,6 +53,24 @@ namespace TrueforceForAll.Plugin.Effects
         public float PitchBaseHz  { get; set; } = 80.0f;
         public float PitchMaxHz   { get; set; } = 600.0f;
         public float PitchMaxKmh  { get; set; } = 200.0f;
+
+        // Phase 6 contract: slip texture is grip information. Band = the
+        // noise window for the default Noise waveform, else the tonal pitch
+        // range; either way capped at the wheel-relevant 400 Hz.
+        public override EffectClass PriorityClass => EffectClass.GripState;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            if (Waveform == Waveform.Noise)
+            {
+                loHz = Math.Max(10.0, NoiseHighpassHz);
+                hiHz = Math.Min(400.0, Math.Max(loHz + 10.0, NoiseLowpassHz));
+            }
+            else
+            {
+                loHz = PitchBaseHz * 0.7;
+                hiHz = Math.Min(400.0, PitchMaxHz);
+            }
+        }
 
         public Waveform Waveform
         {
@@ -92,19 +115,34 @@ namespace TrueforceForAll.Plugin.Effects
         private double _peakSlipSinceLastLog;
         private float[] _scratch;
 
-        // EMA alpha is intentionally PER-SAMPLE, not per-time. At higher source
-        // rates (AC native 333 Hz vs SimHub 60 Hz) the same alpha produces a
-        // proportionally faster response in milliseconds, slide onset feels
-        // ~5x sooner on AC. That responsiveness gain is the whole point of the
-        // enhanced source; converting to a fixed time constant would throw it
-        // away for parity with the slower path.
+        // EMA alphas are per-TICK. Historically OnTelemetry ran at the source
+        // rate and per-sample alphas deliberately made AC (333 Hz) respond ~5x
+        // faster than SimHub (60 Hz) — that gain was the point of the enhanced
+        // source. Since phase 1 the engine ticks effects at a FIXED 500 Hz on
+        // resampled frames, so every game gets the fast response and the rate
+        // dependence is gone. The alphas below are the old AC-rate values
+        // rescaled to the 500 Hz tick (alpha' = 1-(1-alpha)^(333/500)) so the
+        // reference feel — the one the whole effect was tuned against — is
+        // preserved: attack tau ~4 ms, release tau ~8 ms.
 
         // RPM/speed heuristic state for wheelspin detection (AC's SpeedKmh and
         // GroundSpeedKmH are always identical, so we can't use that diff
         // need to fall back to "RPM rising faster than speed under throttle").
+        // The derivative is windowed by COUNTING TICKS of the fixed 500 Hz
+        // effect tick (10 ticks = 20 ms): a per-tick RPM delta is numerically
+        // useless, and wall-clock windowing would break the replay harness,
+        // which drives this pipeline on a virtual clock much faster than
+        // real time. The estimate computed at a window boundary is held in
+        // _wheelspinHold for the ticks in between. Any tick that skips the
+        // heuristic (neutral, low speed, stall) invalidates the baseline: an
+        // RPM delta spanning such a gap is free-revving, not wheelspin.
+        private const int    WheelspinWindowTicks = 10;
+        private const double WheelspinWindowSec   = WheelspinWindowTicks / 500.0;
         private double _prevRpm;
         private double _prevSpeed;
-        private long   _prevTicks;
+        private bool   _wheelspinSeeded;
+        private int    _wheelspinTicks;
+        private double _wheelspinHold;
 
         public override bool IsActive => IsTesting || (Enabled && _noise.IsActive);
 
@@ -195,16 +233,17 @@ namespace TrueforceForAll.Plugin.Effects
                 rawTraction = 0.0;
 
             // Tighter decay: when rawTraction is near zero, snap _slipEma down
-            // quickly so the buzz ends within ~100 ms of grip recovery instead
-            // of ringing on for half a second.
+            // quickly so the buzz ends within ~20 ms of grip recovery instead
+            // of ringing on.
             if (rawTraction < 0.05)
             {
-                _slipEma *= 0.5;       // ~50% per tick → near-zero in 4 ticks
+                _slipEma *= 0.63;      // AC-rate 0.5/frame rescaled to the 500 Hz tick
                 if (_slipEma < 0.01) _slipEma = 0;
             }
             else
             {
-                double alpha = (rawTraction > _slipEma) ? 0.5 : 0.3;
+                // AC-rate 0.5 / 0.3 rescaled to the 500 Hz tick (see header).
+                double alpha = (rawTraction > _slipEma) ? 0.37 : 0.21;
                 _slipEma = _slipEma * (1 - alpha) + rawTraction * alpha;
             }
             _noise.Amp = (float)(_slipEma * 0.40 * Gain);
@@ -215,12 +254,21 @@ namespace TrueforceForAll.Plugin.Effects
         public override void OnTelemetryStall()
         {
             _slipEma = 0;
+            _wheelspinSeeded = false;
+            _wheelspinTicks  = 0;
+            _wheelspinHold   = 0;
             _noise.Amp = 0;
         }
 
         private void DecayAndEmit()
         {
-            _slipEma *= 0.4;
+            _slipEma *= 0.54;      // AC-rate 0.4/frame rescaled to the 500 Hz tick (see header)
+            // These ticks skip ComputeHeuristic, so the wheelspin baseline
+            // dies with them: an RPM delta measured across a neutral / low-
+            // speed gap is free-revving, not wheelspin.
+            _wheelspinSeeded = false;
+            _wheelspinTicks  = 0;
+            _wheelspinHold   = 0;
             _noise.Amp = (float)(_slipEma * 0.40 * Gain);
         }
 
@@ -250,18 +298,26 @@ namespace TrueforceForAll.Plugin.Effects
             // diag log), so we can't use their diff. Fall back to the classic
             // heuristic: RPM rising sharply while speed isn't. Gated on
             // throttle and on RPM being well below redline (rules out limiter).
-            long now = Stopwatch.GetTimestamp();
+            // Tick-counted windowing per the field comment; the old wall-clock
+            // "dtSec >= 0.005" gate never passed once the engine ticked this
+            // at a fixed 500 Hz (every call rebased the baseline 2 ms after
+            // the last), which silently disabled the detector.
             double throttlePct = f.Throttle01 * 100.0;
-            double wheelspinNorm = 0;
-            if (_prevTicks != 0)
+            if (!_wheelspinSeeded)
             {
-                double dtSec = (double)(now - _prevTicks) / Stopwatch.Frequency;
-                if (dtSec >= 0.005 && dtSec <= 0.5
-                    && throttlePct >= 25.0
+                _wheelspinSeeded = true;
+                _wheelspinTicks  = 0;
+                _prevRpm   = f.Rpms;
+                _prevSpeed = f.SpeedKmh;
+            }
+            else if (++_wheelspinTicks >= WheelspinWindowTicks)
+            {
+                double ws = 0;
+                if (throttlePct >= 25.0
                     && f.MaxRpm > 0 && f.Rpms < f.MaxRpm * 0.95)   // not at limiter
                 {
-                    double dRpm   = (f.Rpms     - _prevRpm)   / dtSec;   // RPM/s
-                    double dSpeed = (f.SpeedKmh - _prevSpeed) / dtSec;   // (km/h)/s
+                    double dRpm   = (f.Rpms     - _prevRpm)   / WheelspinWindowSec;   // RPM/s
+                    double dSpeed = (f.SpeedKmh - _prevSpeed) / WheelspinWindowSec;   // (km/h)/s
                     double rpmRise   = Math.Max(0.0, dRpm);
                     double speedRise = Math.Max(0.0, dSpeed);
                     // Threshold rebased to 500 RPM/s (was 1500); empirically
@@ -272,13 +328,16 @@ namespace TrueforceForAll.Plugin.Effects
                     {
                         double rpmExcess   = (rpmRise - rpmThreshold) / 2000.0;
                         double speedFactor = Math.Max(0.0, 1.0 - speedRise / 12.0);
-                        wheelspinNorm = Math.Min(1.0, rpmExcess * speedFactor);
+                        ws = Math.Min(1.0, rpmExcess * speedFactor);
                     }
                 }
+                _wheelspinHold  = ws;
+                _wheelspinTicks = 0;
+                _prevRpm   = f.Rpms;
+                _prevSpeed = f.SpeedKmh;
             }
-            _prevTicks = now;
-            _prevRpm   = f.Rpms;
-            _prevSpeed = f.SpeedKmh;
+            // Mid-window ticks keep the baseline and the held value.
+            double wheelspinNorm = _wheelspinHold;
 
             // ---------- Drift / oversteer (slip angle + transient detectors) ----------
             // Source delivers yaw rate in deg/s; convert to rad/s here.
@@ -343,12 +402,16 @@ namespace TrueforceForAll.Plugin.Effects
             }
 
             // Diagnostic, once per second, only when something interesting.
+            // Wall-clock on purpose: this is log throttling, not signal math.
+            long now = Stopwatch.GetTimestamp();
             if (rawTraction > _peakSlipSinceLastLog) _peakSlipSinceLastLog = rawTraction;
             if (now - _lastDiagLogTicks > Stopwatch.Frequency)
             {
                 if (_peakSlipSinceLastLog > 0.05)
                 {
-                    SimHub.Logging.Current.Info(
+                    // DiagLog, not SimHub.Logging: the Engine assembly has no
+                    // SimHub reference; the plugin injects the logger sink.
+                    DiagLog?.Invoke(
                         $"[TF4ALL] traction diag | spd={speedKmh:F1} thr={throttlePct:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
                 }
                 _lastDiagLogTicks = now;
@@ -357,6 +420,8 @@ namespace TrueforceForAll.Plugin.Effects
             return rawTraction;
         }
 
+        public override void SeedNoise(int seed) => _noise.SeedNoise(seed);
+
         public override void Reset()
         {
             // Clear EMA + the dRpm/dSpeed history so the new car's first frame
@@ -364,9 +429,11 @@ namespace TrueforceForAll.Plugin.Effects
             // (which would spike the wheelspin heuristic on a 800 → 6000 RPM
             // jump from idling-car to running-car spawn).
             _slipEma              = 0;
-            _prevTicks            = 0;
             _prevRpm              = 0;
             _prevSpeed            = 0;
+            _wheelspinSeeded      = false;
+            _wheelspinTicks       = 0;
+            _wheelspinHold        = 0;
             _lastDiagLogTicks     = 0;
             _peakSlipSinceLastLog = 0;
             _noise.Amp            = 0;

@@ -31,6 +31,14 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>Carrier tone freq within each pulse / tick (Hz).</summary>
         public float Freq { get; set; } = 80.0f;
 
+        // Phase 6 contract: an alert tick around its carrier frequency.
+        public override EffectClass PriorityClass => EffectClass.Transient;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Freq * 0.7;
+            hiHz = Freq * 1.5;
+        }
+
         /// <summary>Pulse rate (Hz), Pulse mode only. Real ABS valves cycle
         /// at 10-15 Hz; default 12.</summary>
         public float PulseFreq { get; set; } = 12.0f;
