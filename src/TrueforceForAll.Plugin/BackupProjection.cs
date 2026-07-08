@@ -117,7 +117,6 @@ namespace TrueforceForAll.Plugin
             // Backend config (release bakes constants; a dev override must not travel).
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
-            "CarFactsDismissedSignatures", "CarFactsFirstObservedSignature",
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
             "IRacingTrueforceNoticeDismissed",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
@@ -132,8 +131,7 @@ namespace TrueforceForAll.Plugin
             // Per-account achievement-celebration baseline + notify-dot (re-seed on PC2).
             "AchievementBaseline", "AchievementUnseen",
             // Preset-manager UI layout.
-            "ManagerCommunityForCars", "ManagerCommunityForGames", "ManagerCommunityForCustoms",
-            "ManagerCommunityForPacks", "ManageGamesSort", "ManageCarsSort", "ManageCustomsSort",
+            "ManagerCommunityForCars", "ManageGamesSort", "ManageCarsSort", "ManageCustomsSort",
             "ManageGamesColumns", "ManageCarsColumns", "ManageCustomsColumns",
             // Runtime caches of the on-disk library: back up the FILES, not these dicts.
             // They are rebuilt from user/games + user/cars on the next Init.

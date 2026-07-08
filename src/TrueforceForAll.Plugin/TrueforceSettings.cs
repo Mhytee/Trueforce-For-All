@@ -145,31 +145,6 @@ namespace TrueforceForAll.Plugin
         // collides with an existing Car_<n> is merged, never dropped).
         public bool ForzaCarIdsNormalizedV1 { get; set; } = false;
 
-        // Per-(game, carId) signatures the user dismissed the
-        // "register this new engine variant?" prompt for. Key:
-        // "{game}/{carId}". Value: list of telemetry signature strings
-        // (cylinders/config/redline tuple from ComputeActiveCarVariantSignature)
-        // the user clicked "Don't ask again" on. The unknown-variant
-        // detector consults this list before flagging a signature as
-        // un-registered, so a configuration the user has declined
-        // stays quiet across sessions until the underlying signature
-        // changes (Forza swap to a different engine = new sig = fresh
-        // prompt). Local-only; not submitted to community.
-        public Dictionary<string, List<string>> CarFactsDismissedSignatures { get; set; }
-            = new Dictionary<string, List<string>>();
-
-        // First telemetry signature observed per (game, carId). Used by
-        // the unknown-variant detector's empty-bundle branch to detect
-        // in-session AND cross-session swaps without polluting the
-        // bundle with auto-registered placeholders. Persisted so a user
-        // who clicks Skip-for-now and restarts SimHub still gets the
-        // prompt the next time they swap engines. Local-only; not
-        // submitted to community (the signature ITSELF reaches community
-        // through engine_layout / redline submissions, which are
-        // variant-signature-keyed by design).
-        public Dictionary<string, string> CarFactsFirstObservedSignature { get; set; }
-            = new Dictionary<string, string>();
-
         // Community backend settings. Defaults are inert: CommunityEnabled
         // is off, no HTTP calls are made. Enabling it activates fire-and-
         // forget submission of User-source CarFacts corrections + (later)
@@ -302,17 +277,12 @@ namespace TrueforceForAll.Plugin
         // like the prompts, so it never sends anything the prompt wouldn't have.
         public bool   AutoSubmitCarFacts { get; set; } = false;
 
-        // Persist the Library|Community sub-pill selection per segment in
-        // the Preset Manager. When the user toggles a segment to
-        // Community, switches to another segment, and comes back, the
-        // toggle restores from these latches. Default false (Library)
-        // matches the original out-of-box selection. Per-segment so the
-        // user's "Cars > Community" choice doesn't drag Games into
-        // Community mode the next time they switch tabs.
+        // Single "last view was online" latch for the Preset Manager: true when
+        // the user left the manager in Community / My uploads, so the next open
+        // restores the online view. (Historically one latch per segment; the
+        // 3-way nav overhaul collapsed them and reuses this flag globally, see
+        // HydrateModeToggles / PersistManagerMode in PresetManagerControl.)
         public bool ManagerCommunityForCars    { get; set; } = false;
-        public bool ManagerCommunityForGames   { get; set; } = false;
-        public bool ManagerCommunityForCustoms { get; set; } = false;
-        public bool ManagerCommunityForPacks   { get; set; } = false;
 
         public float MasterGain { get; set; } = 1.0f;
 
@@ -1076,19 +1046,12 @@ namespace TrueforceForAll.Plugin
         /// (community / telemetry / percentage / default).</summary>
         public int? UserRedlineRpm { get; set; }
 
-        /// <summary>The community redline value the user explicitly declined to
-        /// adopt for this variant. Suppresses the "adopt community redline?"
-        /// prompt for this value; if the community consensus later shifts to a
-        /// different value the prompt can surface again. null = never
-        /// declined.</summary>
-        public int? DeclinedCommunityRedlineRpm { get; set; }
-
         /// <summary>The community redline PROFILE (overall + per-gear) the user
         /// declined to adopt for this variant, as a stable signature string
-        /// ("overall;gear:rpm;..."). Per-gear-aware successor to
-        /// <see cref="DeclinedCommunityRedlineRpm"/>: suppresses the adopt offer
-        /// for this exact profile, but a community shift in any gear produces a
-        /// new signature so the offer can surface again. null = never declined.</summary>
+        /// ("overall;gear:rpm;..."). Per-gear-aware decline memory: suppresses
+        /// the adopt offer for this exact profile, but a community shift in any
+        /// gear produces a new signature so the offer can surface again.
+        /// null = never declined.</summary>
         public string DeclinedCommunityRedlineSig { get; set; }
 
         /// <summary>The community value the user ADOPTED for this variant (copied

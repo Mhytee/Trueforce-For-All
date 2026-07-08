@@ -103,15 +103,6 @@ namespace TrueforceForAll.Plugin
             => new PresetShareWindow(plugin, "engine",
                 engineName, "", "", "", body, new List<string>());
 
-        // Back-compat: existing car call sites that haven't migrated
-        // to ForCar yet still work via the legacy ctor signature.
-        public PresetShareWindow(
-            TrueforcePlugin plugin,
-            string presetName, string game, string carId, string carDisplay,
-            Newtonsoft.Json.Linq.JObject body, List<string> effectTags)
-            : this(plugin, "car", presetName, game, carId, carDisplay, body, effectTags)
-        { }
-
         private PresetShareWindow(
             TrueforcePlugin plugin, string kind,
             string presetName, string game, string carId, string carDisplay,

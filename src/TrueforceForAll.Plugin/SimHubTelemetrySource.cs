@@ -106,10 +106,7 @@ namespace TrueforceForAll.Plugin
                 // SimHub plugin doesn't expose it; effects gracefully skip
                 // when they read null. SimHub maps these from per-game
                 // shared memory / UDP in its own readers, so we just pass
-                // through StatusDataBase. KERS / ERS deployment isn't on
-                // the universal API (only ERSStored/Max/Percent storage
-                // state), KersActive stays null until we add a per-game
-                // overlay that derives it from the ERS-percent derivative.
+                // through StatusDataBase.
                 PitLimiterActive = d.PitLimiterOn,
                 DrsActive        = d.DRSEnabled,
 

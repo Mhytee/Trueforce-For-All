@@ -126,10 +126,6 @@ namespace TrueforceForAll.Core
         /// null when the source can't read it (most non-F1 games).</summary>
         public int? DrsActive;
 
-        /// <summary>0 = KERS / energy-recovery deployment off, &gt;0 = deploying.
-        /// F1 / hybrid-era sims only; null otherwise.</summary>
-        public int? KersActive;
-
         // ---- Tire grip ----
         /// <summary>Direct slip-ratio reading from a sim that exposes one
         /// (e.g. AC's wheelSlip[], Forza's TireCombinedSlip[]), max-abs across

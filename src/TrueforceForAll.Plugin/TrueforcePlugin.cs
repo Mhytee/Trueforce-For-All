@@ -6251,53 +6251,12 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { error = ex.Message; return false; }
         }
 
-        /// <summary>Reload the folder and (re)install its built-ins into the
-        /// library: game presets overwrite by name, car factory files refresh.
-        /// Additive, never removes. No standalone UI button (DEV authoring
-        /// already reloads after each write; restart picks up external edits);
-        /// reserved for Phase 3 folder-switch / GitHub-repair to call.</summary>
-        public string ImportBuiltinsFromFolder()
-        {
-            BuiltinPresets.Reload();
-            InstallBuiltinPresetsIfMissing();
-            LoadAndMigrateCarPresets();
-            string msg = $"Imported from folder: {BuiltinPresets.BuiltinPresetJsons.Count} game + {BuiltinPresets.CarPresetJsons.Count} car built-in(s).";
-            SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
-            return msg;
-        }
-
-        /// <summary>Make the library's built-ins match the folder exactly:
-        /// drop game built-ins the folder no longer has (and any GameDefaults
-        /// pointing at them), then re-import. Car factory files refresh via
-        /// LoadAndMigrateCarPresets. No standalone UI button (the in-app delete
-        /// already prunes); reserved for the Phase 3 change-folder / GitHub
-        /// repair flows, which should run a full replace after switching.</summary>
-        public string ReseedBuiltinsFromFolder()
-        {
-            var oldGameBuiltins = new List<string>(BuiltinPresets.BuiltinPresetJsons.Keys);
-            BuiltinPresets.Reload();
-            var newSet = new HashSet<string>(BuiltinPresets.BuiltinPresetJsons.Keys, StringComparer.Ordinal);
-            int removed = 0;
-            if (Settings?.Presets != null)
-                foreach (var name in oldGameBuiltins)
-                    if (!newSet.Contains(name) && Settings.Presets.Remove(name))
-                    {
-                        removed++;
-                        if (Settings.GameDefaults != null)
-                        {
-                            var orphans = new List<string>();
-                            foreach (var kv in Settings.GameDefaults)
-                                if (kv.Value == name) orphans.Add(kv.Key);
-                            foreach (var k in orphans) Settings.GameDefaults.Remove(k);
-                        }
-                    }
-            InstallBuiltinPresetsIfMissing();
-            LoadAndMigrateCarPresets();
-            PersistSettingsCore();
-            string msg = $"Reseeded from folder: {newSet.Count} game built-in(s) (removed {removed} stale), {BuiltinPresets.CarPresetJsons.Count} car built-in(s).";
-            SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
-            return msg;
-        }
+        // (Phase 3 change-folder / GitHub-repair note: after switching the built-in
+        // folder, the full refresh sequence is BuiltinPresets.Reload() +
+        // RebuildPresetCacheFromFolders() + LoadAndMigrateCarPresets(). The old
+        // ImportBuiltinsFromFolder/ReseedBuiltinsFromFolder wrappers were deleted
+        // 2026-07-08; the rebuild's clear-and-rebuild + defaults self-heal subsumes
+        // them. History: e64eb16.)
 
         /// <summary>Validate the built-in folder (parse + missing-section
         /// flag). Returns human-readable lines for the dev panel.</summary>
@@ -9251,11 +9210,6 @@ namespace TrueforceForAll.Plugin
                 && c.SupportingSubmissions >= CommunityRedlineMinSupport;
         }
 
-        /// <summary>The community value the user already declined to adopt for
-        /// the active variant (so the UI can suppress a repeat prompt).</summary>
-        public int? GetActiveVariantDeclinedCommunityRedline()
-            => FindActiveStoredVariant()?.DeclinedCommunityRedlineRpm;
-
         /// <summary>True when a live, unsaved redline draft is in flight.</summary>
         public bool HasRedlinePreview => RevLimiter?.PreviewRedlineRpm != null;
 
@@ -10144,11 +10098,6 @@ namespace TrueforceForAll.Plugin
             return _presetSharing?.FetchPresetBody(id);
         }
 
-        public void VoteCommunityPreset(string id, int value)
-        {
-            _presetSharing?.VotePresetAsync(id, value);
-        }
-
         // Awaitable variants. Callers (ToggleVote) await + revert the
         // optimistic UI on false so a rate-limit / blocked-user / no-
         // auth rejection doesn't leave the row visually voted forever.
@@ -10250,9 +10199,6 @@ namespace TrueforceForAll.Plugin
         internal PresetFull FetchCommunityGamePresetBody(string id)
             => _presetSharing?.FetchGamePresetBody(id);
 
-        public void VoteCommunityGamePreset(string id, int value)
-            => _presetSharing?.VoteGamePresetAsync(id, value);
-
         public void RecordCommunityGamePresetDownload(string id)
             => _presetSharing?.RecordGamePresetDownloadAsync(id);
 
@@ -10329,9 +10275,6 @@ namespace TrueforceForAll.Plugin
 
         internal PresetFull FetchCommunityCustomEngineBody(string id)
             => _presetSharing?.FetchCommunityCustomEngineBody(id);
-
-        public void VoteCommunityCustomEngine(string id, int value)
-            => _presetSharing?.VoteCustomEngineAsync(id, value);
 
         public void RecordCommunityCustomEngineDownload(string id)
             => _presetSharing?.RecordCustomEngineDownloadAsync(id);
@@ -10503,9 +10446,6 @@ namespace TrueforceForAll.Plugin
 
         internal PresetFull FetchCommunityPackBody(string id)
             => _presetSharing?.FetchCommunityPackBody(id);
-
-        public void VoteCommunityPack(string id, int value)
-            => _presetSharing?.VotePackAsync(id, value);
 
         public void RecordCommunityPackDownload(string id)
             => _presetSharing?.RecordPackDownloadAsync(id);
@@ -13742,31 +13682,6 @@ namespace TrueforceForAll.Plugin
             };
         }
 
-        /// <summary>Write a named preset (or the current settings if the name
-        /// doesn't exist in the library yet) to a shareable JSON file. The
-        /// file carries the preset name but no game binding. Metadata fields
-        /// (Author/Description/AuthorVersion) are optional, pass null to
-        /// omit; the importer just won't surface them.</summary>
-        public void ExportPreset(string presetName, string path,
-            string author = null, string description = null, string authorVersion = null)
-        {
-            if (Settings == null || string.IsNullOrEmpty(presetName)) return;
-            GameSettingsSnapshot snap;
-            if (Settings.Presets == null || !Settings.Presets.TryGetValue(presetName, out snap) || snap == null)
-                snap = SnapshotCurrentAsPreset();
-            var file = new PresetFile
-            {
-                PresetName    = presetName,
-                Snapshot      = snap,
-                Author        = NullIfBlank(author),
-                Description   = NullIfBlank(description),
-                AuthorVersion = NullIfBlank(authorVersion),
-            };
-            System.IO.File.WriteAllText(path,
-                Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[TF4ALL] Exported preset '{presetName}' to {path}.");
-        }
-
         // Trim and return null on blank so JSON serialization omits empty
         // strings instead of writing them out (cleaner files, and the
         // importer's null-check logic is straightforward).
@@ -13999,118 +13914,6 @@ namespace TrueforceForAll.Plugin
             public string Author;
             public string Description;
             public string AuthorVersion;
-        }
-
-        /// <summary>Export the active car's override as a standalone file.
-        /// If no override exists yet, captures the current ActiveX section
-        /// values so the user can share their tuning without committing it
-        /// to a per-car override first.</summary>
-        public void ExportActiveCarPreset(string path,
-            string author = null, string description = null, string authorVersion = null)
-        {
-            if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
-            CarOverride ovr = GetActiveCarOverride();
-            if (ovr == null || ovr.IsEmpty)
-            {
-                // Build a full override from the current active sections so the
-                // exported file is self-contained even if the user hasn't
-                // toggled "Override for this car" yet.
-                ovr = new CarOverride
-                {
-                    EnginePulse  = Clone(ActiveEngine),
-                    RoadBumps    = Clone(ActiveBumps),
-                    TractionLoss = Clone(ActiveTraction),
-                    GearShift    = Clone(ActiveShift),
-                    AbsClick     = Clone(ActiveAbs),
-                    PitLimiter   = Clone(ActivePitLimiter),
-                    Drs          = Clone(ActiveDrs),
-                    Collision    = Clone(ActiveCollision),
-                    RevLimiter   = Clone(ActiveRevLimiter),
-                    AudioCapture = CloneOrNull(ActiveAudio),
-                    Airborne     = Clone(ActiveAirborne),
-                };
-            }
-            // Carry the active preset name into the exported file so a
-            // recipient sees what the author named it. IsBuiltin is forced
-            // false on export, only the plugin's bundled factory files are
-            // built-ins; an exported community preset is always user-tier.
-            string presetName = GetActiveCarPresetName(_activeCarId) ?? _activeCarId;
-            var file = new CarPresetFile
-            {
-                GameName      = _activeGame,
-                CarId         = _activeCarId,
-                PresetName    = StripDefaultSuffixForExport(presetName),
-                IsBuiltin     = false,
-                Author        = NullIfBlank(author),
-                Description   = NullIfBlank(description),
-                AuthorVersion = NullIfBlank(authorVersion),
-                Override      = ovr,
-                // Bundle any custom firing patterns the override references so
-                // the file is self-contained for the recipient (their library
-                // absorbs missing-by-Id defs on import). Null when none.
-                CustomEngines = CollectReferencedCustomEngines(snapshots: null, carOverrides: new[] { ovr }),
-            };
-            System.IO.File.WriteAllText(path,
-                Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[TF4ALL] Exported car preset '{file.PresetName}' for '{_activeCarId}' to {path}.");
-        }
-
-        /// <summary>Export a specific car preset (arbitrary carId / presetName)
-        /// to a shareable JSON file. Used by the preset manager where
-        /// the user can pick any preset regardless of which car is currently
-        /// active. Returns false if the preset doesn't exist on disk.</summary>
-        public bool ExportCarPreset(string carId, string presetName, string path,
-            string author = null, string description = null, string authorVersion = null)
-        {
-            if (_carStore == null) return false;
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName) || string.IsNullOrEmpty(path)) return false;
-            // presetName from UI may be a factory display name (with the
-            // " (Built-In)" suffix). _carStore.LoadAll keys are on-disk; strip
-            // before lookup. The export file's PresetName also gets the
-            // on-disk form so re-import doesn't reproduce the suffix.
-            string diskName = ToDiskName(presetName);
-            var loaded = _carStore.LoadAll();
-            CarPresetEntry entry = null;
-            if (loaded.TryGetValue(carId, out var perCar))
-                perCar.TryGetValue(diskName, out entry);
-            // Fall back to factory if the user side doesn't have it.
-            if (entry == null && BuiltinPresets.CarPresetJsons.TryGetValue(carId + "/" + diskName, out var factJson))
-            {
-                try { entry = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(factJson)
-                    is CarPresetFile fac && fac != null
-                    ? new CarPresetEntry { CarId = carId, PresetName = diskName, GameName = fac.GameName ?? "", IsBuiltin = true, Override = fac.Override } : null;
-                } catch { }
-            }
-            if (entry == null) return false;
-            var file = new CarPresetFile
-            {
-                GameName      = entry.GameName ?? "",
-                CarId         = carId,
-                PresetName    = StripDefaultSuffixForExport(diskName),
-                IsBuiltin     = false,
-                Author        = NullIfBlank(author),
-                Description   = NullIfBlank(description),
-                AuthorVersion = NullIfBlank(authorVersion),
-                Override      = entry.Override,
-                // Bundle referenced custom firing patterns so the shared file is
-                // self-contained (recipient's library absorbs them on import).
-                CustomEngines = CollectReferencedCustomEngines(snapshots: null, carOverrides: new[] { entry.Override }),
-            };
-            System.IO.File.WriteAllText(path,
-                Newtonsoft.Json.JsonConvert.SerializeObject(file, Newtonsoft.Json.Formatting.Indented));
-            SimHub.Logging.Current.Info($"[TF4ALL] Exported car preset '{carId}/{diskName}' to {path}.");
-            return true;
-        }
-
-        // Strip a trailing " (default)" so an exported built-in doesn't
-        // claim to be a built-in on import (which we'd refuse to honor
-        // anyway, but the UX is cleaner without the suffix).
-        private static string StripDefaultSuffixForExport(string name)
-        {
-            const string suffix = " (default)";
-            return !string.IsNullOrEmpty(name) && name.EndsWith(suffix, StringComparison.Ordinal)
-                ? name.Substring(0, name.Length - suffix.Length)
-                : name;
         }
 
         /// <summary>Read a car-preset file and add it to the multi-preset
@@ -15688,14 +15491,6 @@ namespace TrueforceForAll.Plugin
 
         // ---------- export / import ----------
 
-        public void ExportSettings(string path)
-        {
-            if (Settings == null) return;
-            string json = Newtonsoft.Json.JsonConvert.SerializeObject(Settings, Newtonsoft.Json.Formatting.Indented);
-            System.IO.File.WriteAllText(path, json);
-            SimHub.Logging.Current.Info($"[TF4ALL] Settings exported to {path}.");
-        }
-
         /// <summary>Bundle ALL user-owned Trueforce data into one zip archive
         /// for moving to another machine. Contents:
         ///   GeneralSettings.json (the plugin's settings JSON)
@@ -16380,11 +16175,6 @@ namespace TrueforceForAll.Plugin
         // this PC's machine-local fields) rather than wholesale-replacing.
 
         private BackupClient _backupClient;
-        // Stashed at divergence time for the conflict DIALOG's display (device/time).
-        // The resolve step re-downloads the CURRENT cloud before applying.
-        private BackupEnvelope _pendingCloudEnvelope;
-        private string _pendingCloudRevision;
-        private readonly object _backupGate = new object();
         // Single-flight: serializes every backup network op (manual + auto) so two
         // upload/apply/stamp cycles never overlap (no concurrent Settings mutation, no
         // stale-revision stamping).
@@ -16476,7 +16266,6 @@ namespace TrueforceForAll.Plugin
                     // Pull the cloud envelope so the dialog can name its source + time.
                     var (dlResult, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
                     BackupEnvelope cloudEnv = dlResult == BackupTransfer.Success ? SafeParse(json) : null;
-                    lock (_backupGate) { _pendingCloudEnvelope = cloudEnv; _pendingCloudRevision = cloudRev; }
                     return new BackupOutcome
                     {
                         Status = BackupStatus.Diverged,
@@ -16561,7 +16350,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Resolve a detected divergence per the user's choice from the dialog.</summary>
         internal async Task<BackupOutcome> ResolveBackupConflictAsync(BackupConflictChoice choice, bool keepCloudSettings)
         {
-            if (choice == BackupConflictChoice.Cancel) { ClearPendingConflict(); return Fail(BackupStatus.Failed, "Cancelled."); }
+            if (choice == BackupConflictChoice.Cancel) return Fail(BackupStatus.Failed, "Cancelled.");
             if (!BackupReady) return Fail(BackupStatus.NotSignedIn, "Sign in to back up.");
             if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
                 return Fail(BackupStatus.Failed, "A backup is already in progress.");
@@ -16599,12 +16388,7 @@ namespace TrueforceForAll.Plugin
                 return new BackupOutcome { Status = BackupStatus.Success, Message = "Merged and backed up." };
             }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup conflict resolution failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't resolve the backup conflict. See the SimHub log, then try again."); }
-            finally { ClearPendingConflict(); _backupOp.Release(); }
-        }
-
-        private void ClearPendingConflict()
-        {
-            lock (_backupGate) { _pendingCloudEnvelope = null; _pendingCloudRevision = null; }
+            finally { _backupOp.Release(); }
         }
 
         /// <summary>Explicit "Restore from cloud" (e.g. a freshly set-up second PC).

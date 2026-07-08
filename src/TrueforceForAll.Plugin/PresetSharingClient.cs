@@ -1204,45 +1204,10 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---- Vote ----------------------------------------------------------
-
-        /// <summary>Fire-and-forget upvote / downvote / retract. value =
-        /// +1, -1, or 0 (retract). Caller updates the local row
-        /// optimistically; server vote_preset is idempotent on
-        /// (preset_id, voter_id) and supports the 0 case via row-delete.</summary>
-        public void VotePresetAsync(string id, int value)
-        {
-            if (!ShouldSubmit(out var url, out var anonKey)) return;
-            if (string.IsNullOrWhiteSpace(id)) return;
-            if (value != 1 && value != -1 && value != 0) return;
-
-            string body;
-            try
-            {
-                body = JsonConvert.SerializeObject(new
-                {
-                    p_preset_id = id,
-                    p_value     = value,
-                }, _jsonSettings);
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[TF4ALL] Preset vote serialize failed: {ex.Message}");
-                return;
-            }
-            // vote_preset is auth-gated now. Attach the bearer token if
-            // available; the server will reject without one.
-            Task.Run(async () =>
-            {
-                string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                FireAndForgetRpc(url, anonKey, VoteRpcPath, body, bearer);
-            });
-        }
-
-        // ---- Awaitable vote variants --------------------------------------
-        // Caller can await + reconcile its optimistic counter / arrow
-        // state on failure. Same semantics as VotePresetAsync etc, but
-        // returns Task<bool> instead of being fire-and-forget. Used by
-        // ToggleVote so a server rejection (rate limit, blocked, no
+        // Awaitable: caller awaits + reconciles its optimistic counter / arrow
+        // state on failure. The vote RPCs are auth-gated and idempotent on
+        // (target_id, voter_id); value = +1, -1, or 0 (retract, via row-delete).
+        // Used by ToggleVote so a server rejection (rate limit, blocked, no
         // auth) doesn't leave the row visually voted forever.
 
         public Task<bool> TryVotePresetAsync(string id, int value, int timeoutMs = 10000)
@@ -1582,35 +1547,6 @@ namespace TrueforceForAll.Plugin
                 _log?.Invoke($"[TF4ALL] Update game preset exception: {ex.Message}");
                 return null;
             }
-        }
-
-        /// <summary>Fire-and-forget upvote / downvote / retract on a
-        /// game preset. value = +1, -1, or 0.</summary>
-        public void VoteGamePresetAsync(string id, int value)
-        {
-            if (!ShouldSubmit(out var url, out var anonKey)) return;
-            if (string.IsNullOrWhiteSpace(id)) return;
-            if (value != 1 && value != -1 && value != 0) return;
-
-            string body;
-            try
-            {
-                body = JsonConvert.SerializeObject(new
-                {
-                    p_game_preset_id = id,
-                    p_value          = value,
-                }, _jsonSettings);
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[TF4ALL] Game preset vote serialize failed: {ex.Message}");
-                return;
-            }
-            Task.Run(async () =>
-            {
-                string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                FireAndForgetRpc(url, anonKey, VoteGameRpcPath, body, bearer);
-            });
         }
 
         public void RecordGamePresetDownloadAsync(string id)
@@ -2000,33 +1936,6 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        public void VoteCustomEngineAsync(string id, int value)
-        {
-            if (!ShouldSubmit(out var url, out var anonKey)) return;
-            if (string.IsNullOrWhiteSpace(id)) return;
-            if (value != 1 && value != -1 && value != 0) return;
-
-            string body;
-            try
-            {
-                body = JsonConvert.SerializeObject(new
-                {
-                    p_custom_engine_id = id,
-                    p_value            = value,
-                }, _jsonSettings);
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[TF4ALL] Engine vote serialize failed: {ex.Message}");
-                return;
-            }
-            Task.Run(async () =>
-            {
-                string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                FireAndForgetRpc(url, anonKey, VoteEngineRpcPath, body, bearer);
-            });
-        }
-
         public void RecordCustomEngineDownloadAsync(string id)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return;
@@ -2342,32 +2251,6 @@ namespace TrueforceForAll.Plugin
                 StampUploadError(UploadError.NetworkFailure, ex.Message);
                 return null;
             }
-        }
-
-        public void VotePackAsync(string id, int value)
-        {
-            if (!ShouldSubmit(out var url, out var anonKey)) return;
-            if (string.IsNullOrWhiteSpace(id)) return;
-            if (value != 1 && value != -1 && value != 0) return;
-            string body;
-            try
-            {
-                body = JsonConvert.SerializeObject(new
-                {
-                    p_pack_id = id,
-                    p_value   = value,
-                }, _jsonSettings);
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[TF4ALL] Pack vote serialize failed: {ex.Message}");
-                return;
-            }
-            Task.Run(async () =>
-            {
-                string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                FireAndForgetRpc(url, anonKey, VotePackRpcPath, body, bearer);
-            });
         }
 
         public void RecordPackDownloadAsync(string id)

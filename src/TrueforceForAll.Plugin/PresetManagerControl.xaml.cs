@@ -1324,11 +1324,6 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Last preset the user clicked Edit on. Kept for reference; the actual
-        // hand-off to offline-edit mode now happens via the EditPresetRequested
-        // event (the control is embedded, there's no dialog close to read on).
-        public string RequestedEditPresetName { get; private set; }
-
         // ===================== Reload =====================
 
         // Fire LibraryChanged unless we're inside Init's first load. Called at
@@ -2904,7 +2899,6 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedGame;
             if (sel == null) return;
-            RequestedEditPresetName = sel.Name;
             EditPresetRequested?.Invoke(sel.Name);
         }
 
@@ -3185,12 +3179,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     }
                 }
 
-                var dialog = new PresetShareWindow(
+                var dialog = PresetShareWindow.ForCar(
                     _plugin, shareName, resolvedGame,
-                    carId, carDisplay, body, tags)
-                {
-                    Owner = owner,
-                };
+                    carId, carDisplay, body, tags);
+                dialog.Owner = owner;
                 dialog.IsUpdate = isUpdatePath;
                 dialog.ExistingUploadId = existingUploadId;
 
