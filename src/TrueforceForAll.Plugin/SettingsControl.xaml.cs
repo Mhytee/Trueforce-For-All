@@ -4454,22 +4454,6 @@ namespace TrueforceForAll.Plugin
                 : name;
         }
 
-        // Find an entry in `combo.Items` whose Tag matches `tag` and
-        // select it. No-op if combo is null, tag is empty, or no match.
-        private static void SelectComboItemByTag(System.Windows.Controls.ComboBox combo, string tag)
-        {
-            if (combo == null || string.IsNullOrEmpty(tag)) return;
-            foreach (var obj in combo.Items)
-            {
-                if (obj is System.Windows.Controls.ComboBoxItem item
-                    && string.Equals(item.Tag as string, tag, StringComparison.Ordinal))
-                {
-                    combo.SelectedItem = item;
-                    return;
-                }
-            }
-        }
-
         /// <summary>Modal name-prompt for car preset save. Disallows empty
         /// names, the suffix "(default)" (built-in territory), and names
         /// already taken by another preset for this car. Returns the
@@ -6167,6 +6151,9 @@ namespace TrueforceForAll.Plugin
         // saved file path is given, a "Show in folder" link that reveals it in
         // Explorer only if clicked. Replaces the old OK-to-dismiss success dialogs
         // and the earlier auto-open-Explorer-on-every-export behavior.
+        // Siblings (deliberately separate semantics, don't merge): FlashSaveStatus
+        // (paired header save labels, shared timed clear) and ClearStatusAfter
+        // (generic per-label timed clear with optional fade).
         internal static void ShowSavedStatus(System.Windows.Controls.TextBlock block, string message, string savedPath)
         {
             if (block == null) return;
@@ -11501,6 +11488,9 @@ namespace TrueforceForAll.Plugin
         // one-click Save shouldn't interrupt with a modal you must dismiss).
         // Only one save happens at a time, so a single shared timer clears
         // whichever label is showing.
+        // Siblings (deliberately separate semantics, don't merge): ShowSavedStatus
+        // (persistent message + "Show in folder" link) and ClearStatusAfter
+        // (generic per-label timed clear with optional fade).
         private System.Windows.Threading.DispatcherTimer _saveStatusTimer;
         private void FlashSaveStatus(TextBlock target, string msg)
         {
@@ -11852,27 +11842,6 @@ namespace TrueforceForAll.Plugin
             }
             return true;
         }
-
-        // Back-compat overload without allowInPacks / packName. Callers
-        // that pre-date the export-permission toggle don't need it.
-        internal static bool PromptForExportMetadata(Window owner, TrueforcePlugin plugin,
-            string title, string subjectKind,
-            out string author, out string description, out string authorVersion,
-            out string packName,
-            bool includePackName = false)
-            => PromptForExportMetadata(owner, plugin, title, subjectKind,
-                out author, out description, out authorVersion, out packName, out _,
-                includePackName: includePackName);
-
-        // Back-compat overload (no packName out / no Pack Name field).
-        // Lets ManagePresetsDialog's per-row Export buttons keep their
-        // 4-arg signature without bringing in the new pack-name plumbing.
-        internal static bool PromptForExportMetadata(Window owner, TrueforcePlugin plugin,
-            string title, string subjectKind,
-            out string author, out string description, out string authorVersion)
-            => PromptForExportMetadata(owner, plugin, title, subjectKind,
-                out author, out description, out authorVersion, out _, out _,
-                includePackName: false);
 
         /// <summary>Tiny inline name-prompt dialog. WPF has no built-in
         /// InputBox; this draws a 360x140 modal with TextBox + OK/Cancel.</summary>
@@ -12867,6 +12836,9 @@ namespace TrueforceForAll.Plugin
         // Transient inline status for the Support tab so "Opening…" / "Link
         // copied." don't linger forever. Keyed per-label; fade=true animates the
         // label out instead of a hard clear.
+        // Siblings (deliberately separate semantics, don't merge): ShowSavedStatus
+        // (persistent message + "Show in folder" link) and FlashSaveStatus
+        // (paired header save labels, shared timed clear).
         private readonly System.Collections.Generic.Dictionary<TextBlock, System.Windows.Threading.DispatcherTimer> _supportStatusTimers
             = new System.Collections.Generic.Dictionary<TextBlock, System.Windows.Threading.DispatcherTimer>();
         private void ClearStatusAfter(TextBlock label, double seconds, bool fade)
