@@ -2,11 +2,10 @@
 
 ## Release prep for 0.2.0 (ui-tabs-layout)
 
-- [ ] **Port DRIVER testing mode to ui-tabs.** Commit d6aace5 (hidden "driver testing mode":
-  DRIVER access code + unlock-revealed checkbox, TFFA filter-driver intercept integration)
-  shipped in v0.1.24/v0.1.25 but is NOT on this branch; shipping 0.2.0 without it silently
-  removes the capability from users who have it. Expect conflicts (TrueforcePlugin diverged);
-  port deliberately, not via blind cherry-pick.
+- [x] **Port DRIVER testing mode to ui-tabs.** DONE 2026-07-08 (commit 8f16057): manual
+  hunk-for-hunk port of d6aace5 (TFFADriverChannel.cs verbatim; settings, checkbox, access
+  code, plugin lifecycle) with [TF4ALL] log prefix + BackupProjection classification.
+  Build clean; runtime smoke test on the wheel still outstanding.
 - [x] v0.1.25 spike-taming fix (5ee2ce4): already ported (tombstone at TrueforcePlugin.cs
   ~L11823). Issue-13 pause-release + telemetry-stall fixes: present as this branch's reworked
   default-off NOLOCK variant.
