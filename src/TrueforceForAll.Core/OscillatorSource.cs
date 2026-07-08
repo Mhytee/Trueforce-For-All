@@ -120,7 +120,7 @@ namespace TrueforceForAll.Core
 
             for (int i = 0; i < count; i++)
             {
-                buffer[i] += SampleAt(w, _phase) * amp;
+                buffer[i] += WaveformMath.SampleAt(w, _phase, _rng) * amp;
                 _phase += phaseStep;
                 if (_phase >= 1.0) _phase -= Math.Floor(_phase);
             }
@@ -131,21 +131,5 @@ namespace TrueforceForAll.Core
         /// transient effect (e.g. gear-shift jolt).
         /// </summary>
         public void ResetPhase() => _phase = 0;
-
-        private float SampleAt(Waveform w, double phase)
-        {
-            switch (w)
-            {
-                case Waveform.Sine:     return (float)Math.Sin(2.0 * Math.PI * phase);
-                case Waveform.Square:   return phase < 0.5 ? 1f : -1f;
-                case Waveform.Saw:      return (float)(2.0 * phase - 1.0);
-                case Waveform.Triangle:
-                    return phase < 0.5
-                        ? (float)(4.0 * phase - 1.0)
-                        : (float)(3.0 - 4.0 * phase);
-                case Waveform.Noise:    return (float)(_rng.NextDouble() * 2.0 - 1.0);
-                default: return 0f;
-            }
-        }
     }
 }

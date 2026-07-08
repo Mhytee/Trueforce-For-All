@@ -119,7 +119,7 @@ namespace TrueforceForAll.Plugin.Effects
                 if (_envelopeRemaining > 0 && total > 0)
                 {
                     float env = (float)_envelopeRemaining / total;
-                    sample += SampleAt(aW, _activationPhase) * env * aAmp;
+                    sample += WaveformMath.SampleAt(aW, _activationPhase) * env * aAmp;
                     _activationPhase += aStep;
                     if (_activationPhase >= 1.0) _activationPhase -= Math.Floor(_activationPhase);
                     _envelopeRemaining--;
@@ -128,7 +128,7 @@ namespace TrueforceForAll.Plugin.Effects
                 // Sustained tone while held
                 if (_drsHeld && sAmp > 0f)
                 {
-                    sample += SampleAt(sW, _sustainedPhase) * sAmp;
+                    sample += WaveformMath.SampleAt(sW, _sustainedPhase) * sAmp;
                     _sustainedPhase += sStep;
                     if (_sustainedPhase >= 1.0) _sustainedPhase -= Math.Floor(_sustainedPhase);
                 }
@@ -190,21 +190,6 @@ namespace TrueforceForAll.Plugin.Effects
             _drsHeld = false;
             _lastDrsValue = 0;
             SustainedDuckMultiplier = 1.0f;
-        }
-
-        private static float SampleAt(Waveform w, double phase)
-        {
-            switch (w)
-            {
-                case Waveform.Sine:     return (float)Math.Sin(2.0 * Math.PI * phase);
-                case Waveform.Square:   return phase < 0.5 ? 1f : -1f;
-                case Waveform.Saw:      return (float)(2.0 * phase - 1.0);
-                case Waveform.Triangle:
-                    return phase < 0.5
-                        ? (float)(4.0 * phase - 1.0)
-                        : (float)(3.0 - 4.0 * phase);
-                default:                return 0f;
-            }
         }
     }
 }

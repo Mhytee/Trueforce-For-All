@@ -75,28 +75,13 @@ namespace TrueforceForAll.Plugin.Effects
             for (int i = 0; i < count && remaining > 0; i++)
             {
                 float env = (float)remaining / total;            // linear 1 → 0
-                float v   = SampleAt(w, _phase, _rng);
+                float v   = WaveformMath.SampleAt(w, _phase, _rng);
                 buffer[i] += v * env * scale;
                 _phase += phaseStep;
                 if (_phase >= 1.0) _phase -= Math.Floor(_phase);
                 remaining--;
             }
             _envelopeRemaining = remaining;
-        }
-
-        private static float SampleAt(Waveform w, double phase, Random rng)
-        {
-            switch (w)
-            {
-                case Waveform.Sine:     return (float)Math.Sin(2.0 * Math.PI * phase);
-                case Waveform.Square:   return phase < 0.5 ? 1f : -1f;
-                case Waveform.Saw:      return (float)(2.0 * phase - 1.0);
-                case Waveform.Triangle: return phase < 0.5
-                                            ? (float)(4.0 * phase - 1.0)
-                                            : (float)(3.0 - 4.0 * phase);
-                case Waveform.Noise:    return (float)(rng.NextDouble() * 2.0 - 1.0);
-                default:                return 0f;
-            }
         }
 
         public override int TestPlay()

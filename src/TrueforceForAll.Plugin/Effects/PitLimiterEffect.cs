@@ -73,7 +73,7 @@ namespace TrueforceForAll.Plugin.Effects
             for (int i = 0; i < count; i++)
             {
                 if (_pulsePhase < duty)
-                    buffer[i] += SampleAt(w, _carrierPhase) * amp;
+                    buffer[i] += WaveformMath.SampleAt(w, _carrierPhase) * amp;
                 _carrierPhase += cStep;
                 if (_carrierPhase >= 1.0) _carrierPhase -= Math.Floor(_carrierPhase);
                 _pulsePhase   += pStep;
@@ -127,21 +127,6 @@ namespace TrueforceForAll.Plugin.Effects
             _lastActiveTicks = 0;
             _carrierPhase = 0;
             _pulsePhase = 0;
-        }
-
-        private static float SampleAt(Waveform w, double phase)
-        {
-            switch (w)
-            {
-                case Waveform.Sine:     return (float)Math.Sin(2.0 * Math.PI * phase);
-                case Waveform.Square:   return phase < 0.5 ? 1f : -1f;
-                case Waveform.Saw:      return (float)(2.0 * phase - 1.0);
-                case Waveform.Triangle:
-                    return phase < 0.5
-                        ? (float)(4.0 * phase - 1.0)
-                        : (float)(3.0 - 4.0 * phase);
-                default:                return 0f;
-            }
         }
     }
 }

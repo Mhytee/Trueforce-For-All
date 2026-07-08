@@ -373,7 +373,7 @@ namespace TrueforceForAll.Plugin.Effects
                 for (int s = 0; s < pulseWidth; s++)
                 {
                     double phase01 = (double)s / pulseWidth;
-                    float v = (float)(SampleWaveform(w, phase01) * a);
+                    float v = (float)(WaveformMath.SampleForWavetable(w, phase01) * a);
                     int idx = start + s;
                     if (idx >= WavetableSize) idx -= WavetableSize;
                     _wavetable[idx] += v;
@@ -396,21 +396,6 @@ namespace TrueforceForAll.Plugin.Effects
             {
                 float scale = 1f / peak;
                 for (int i = 0; i < _wavetable.Length; i++) _wavetable[i] *= scale;
-            }
-        }
-
-        private static double SampleWaveform(Waveform w, double phase01)
-        {
-            switch (w)
-            {
-                case Waveform.Sine:     return Math.Sin(2.0 * Math.PI * phase01);
-                case Waveform.Square:   return phase01 < 0.5 ? 1.0 : -1.0;
-                case Waveform.Saw:      return 2.0 * phase01 - 1.0;
-                case Waveform.Triangle: return phase01 < 0.5
-                                            ? 4.0 * phase01 - 1.0
-                                            : 3.0 - 4.0 * phase01;
-                case Waveform.Noise:    // unstable as a wavetable seed; fall back to sine
-                default:                return Math.Sin(2.0 * Math.PI * phase01);
             }
         }
 
