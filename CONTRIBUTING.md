@@ -46,6 +46,8 @@ dotnet publish src\TrueforceForAll.LoopbackHelper\TrueforceForAll.LoopbackHelper
 
 The plugin csproj resolves SimHub assemblies via `$(SimHubPath)`, defaulting to `C:\Program Files (x86)\SimHub`. Override with `-p:SimHubPath="..."` if SimHub lives elsewhere. Drop the build outputs into your SimHub install folder and reload the plugin in SimHub. The full release build (with Inno Setup installer) is documented in [RELEASING.md](RELEASING.md), which is maintainer-facing.
 
+Unit tests for the Core library (telemetry parsing, synthesis math, pack-registry merge logic) live in `src/TrueforceForAll.Core.Tests`. The test project is intentionally not in `TrueforceForAll.sln` (it targets net8.0 and would perturb the net48 plugin build); run it directly with `dotnet test src/TrueforceForAll.Core.Tests`. Please run it before submitting changes that touch `TrueforceForAll.Core`.
+
 ## Adding a new effect
 
 Effects are small synth voices mixed into the haptic stream. Adding one
