@@ -256,6 +256,7 @@ namespace TrueforceForAll.Core
                 using (var proc = Process.Start(psi))
                 {
                     if (proc == null) return result;
+                    ChildProcessJob.TryAssign(proc, log);
                     string stdout = proc.StandardOutput.ReadToEnd();
                     proc.WaitForExit(2000);
 
@@ -308,6 +309,7 @@ namespace TrueforceForAll.Core
             {
                 proc = Process.Start(psi);
                 if (proc == null) return stat;
+                ChildProcessJob.TryAssign(proc, log);
                 Process p = proc;
                 ScanStats statCapture = stat;
 

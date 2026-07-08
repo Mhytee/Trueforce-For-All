@@ -16,10 +16,15 @@ namespace TrueforceForAll.Core.Tests
         private static TelemetryFrame Frame(long tUs, double speed, string gear = "3",
                                             double maxRpm = 8000, bool quads = false, double quadVal = 0)
         {
+            // A maxRpm of 0 models a Forza keepalive: the REAL packets zero the
+            // whole payload, so the builder zeroes every sign-of-life field the
+            // physics gate checks, not just maxRpm.
+            bool keepalive = maxRpm <= 0;
             var f = new TelemetryFrame
             {
-                CapturedAtTicks = tUs, SpeedKmh = speed, Rpms = 5000, MaxRpm = maxRpm,
-                Throttle01 = 0.5, Gear = gear,
+                CapturedAtTicks = tUs, SpeedKmh = keepalive ? 0 : speed,
+                Rpms = keepalive ? 0 : 5000, MaxRpm = maxRpm,
+                Throttle01 = keepalive ? 0 : 0.5, Gear = gear,
                 HasTireQuads = quads,
             };
             if (quads)

@@ -34,13 +34,20 @@
 //
 //   Horizon insert (232..243), 12 bytes Microsoft hasn't documented; skipped.
 //
-//   Dash (244..end on Horizon, 232..end on Motorsport, we only handle the
-//   Horizon-shape here since our target is FH5/FH6):
-//     256 Speed              float32  (m/s)
-//     315 Accel              uint8    (throttle, 0..255)
-//     316 Brake              uint8    (0..255)
-//     319 Gear               uint8    (0=R, 1=N, 2..n=fwd)
-//     320 Steer              int8     (-127 left .. +127 right)
+//   Dash block, identical field order everywhere, but its BASE offset moves:
+//   Horizon (324-byte packet) puts it at 244 (after the 12-byte insert, plus
+//   one unknown trailing byte at 323); Motorsport (311 = FM7, 331 = FM2023)
+//   puts it directly at 232. FM2023 then appends TireWear[4] + TrackOrdinal
+//   at 311..330. Dash-relative offsets (verified against the geeooff/
+//   forza-data-web decoder structs, 2026-07-03):
+//     +12 Speed              float32  (m/s)          → 256 Horizon, 244 FM8
+//     +71 Accel              uint8    (throttle)     → 315 Horizon, 303 FM8
+//     +72 Brake              uint8                   → 316 Horizon, 304 FM8
+//     +75 Gear               uint8    (0=R, 1=N, 2..n=fwd)
+//     +76 Steer              int8     (-127 left .. +127 right)
+//   The base is resolved at runtime by plausibility check (ResolveDashBase),
+//   not trusted blindly, so a doc drift or a future layout shift degrades to
+//   a loud log line instead of garbage speed feeding the force path.
 //
 // IsRaceOn handling: in FH4/FH5 this flag is 1 during freeroam too, it's
 // just "is the player driving" despite the name. We emit on every received
@@ -96,27 +103,40 @@ namespace TrueforceForAll.Core
         private const int OFF_ACCEL_Z            = 28;   // longitudinal (forward/backward)
         private const int OFF_ANG_VEL_Y          = 48;
         private const int OFF_NORM_SUSP_FL       = 68;
-        private const int OFF_TIRE_SLIP_RATIO_FL = 84;
+        private const int OFF_TIRE_SLIP_RATIO_FL = 84;   // TireSlipRatio[4], signed (+spin/-lock)
+        private const int OFF_WHEEL_ROT_FL       = 100;  // WheelRotationSpeed[4], rad/s
         private const int OFF_ON_RUMBLE_STRIP_FL = 116;
         private const int OFF_SURFACE_RUMBLE_FL  = 148;
+        private const int OFF_TIRE_SLIP_ANGLE_FL = 164;  // TireSlipAngle[4], radians, signed
         private const int OFF_TIRE_COMBINED_FL   = 180;
+        private const int OFF_SUSP_TRAVEL_M_FL   = 196;  // SuspensionTravelMeters[4]
         private const int OFF_CAR_ORDINAL        = 212;
         private const int OFF_NUM_CYLINDERS      = 228;
-        // Horizon Dash offsets (Sled + 12 bytes of unknowns at 232..243).
-        private const int OFF_SPEED_HORIZON      = 256;
-        private const int OFF_ACCEL_PEDAL        = 315;
-        private const int OFF_BRAKE_PEDAL        = 316;
-        private const int OFF_GEAR_HORIZON       = 319;
+
+        // Dash offsets, relative to the dash BASE (see header). The base is
+        // 244 on Horizon packets and 232 on Motorsport packets, resolved by
+        // ResolveDashBase at runtime.
+        private const int DASH_SPEED  = 12;
+        private const int DASH_ACCEL  = 71;
+        private const int DASH_BRAKE  = 72;
+        private const int DASH_GEAR   = 75;
         // Steer: signed int8, offset-from-center, -127 (full left) .. +127
-        // (full right). Only present in the full Horizon dash (>=324); feeds
-        // the stationary-spring FFB floor so it works in Forza, not just AC.
-        // Low resolution (254 steps lock-to-lock) so the consumer smooths it.
-        private const int OFF_STEER_HORIZON      = 320;
+        // (full right). Feeds the stationary-spring FFB floor so it works in
+        // Forza, not just AC. Low resolution (254 steps lock-to-lock) so the
+        // consumer smooths it.
+        private const int DASH_STEER  = 76;
+        // Bytes of dash a parser must be able to address (through Steer).
+        private const int DashSpanNeeded = DASH_STEER + 1;
+
+        private const int DashBaseMotorsport = 232;   // FM7 (311) and FM2023 (331)
+        private const int DashBaseHorizon    = 244;   // FH4/FH5/FH6 (324)
 
         // Smallest Sled-only payload. Anything shorter we discard.
         private const int MinSledLength    = 232;
-        // Full Horizon-Dash size used by FH4/FH5 (and likely FH6).
+        // Known full-packet sizes.
+        private const int Fm7DashLength     = 311;
         private const int HorizonDashLength = 324;
+        private const int Fm8DashLength     = 331;   // FM2023: dash@232 + TireWear[4] + TrackOrdinal
 
         private readonly int _port;
         private readonly IPAddress _bindAddress;
@@ -129,9 +149,48 @@ namespace TrueforceForAll.Core
 
         public Action<string> Logger { get; set; }
 
-        /// <summary>Most recent IsRaceOn flag, exposed so the UI can show
-        /// "active / paused" state independent of MeasuredHz.</summary>
+        /// <summary>Most recent IsRaceOn flag FROM A REAL FRAME (all-zero
+        /// keepalives don't stamp it: their flag byte is zeroed payload, not
+        /// state). Exposed so the UI can show "active / paused" state
+        /// independent of MeasuredHz.</summary>
         public bool LastIsRaceOn { get; private set; }
+
+        // FH6 interleaves all-zero keepalives between real frames several
+        // times a second while driving (see the keepalive gate in
+        // ParsePacket). A lone keepalive adjacent to fresh real frames must
+        // not reach consumers: its zeroed scalars (speed / rpm / gear "N")
+        // wipe their caches mid-race (force notches through low-speed gates,
+        // spurious neutral-gear decays in the effects). Only persistent
+        // emptiness (a real pause / menu: no real frame for
+        // KeepaliveSilenceAfterMs) passes the silencing zero frame through.
+        // Receive-thread only.
+        internal double KeepaliveSilenceAfterMs = 250;
+        private long _lastRealFrameTicks;
+        internal bool ShouldEmit(TelemetryFrame frame, long nowTicks)
+        {
+            if (frame.MaxRpm > 0)
+            {
+                _lastRealFrameTicks = nowTicks;
+                return true;
+            }
+            if (_lastRealFrameTicks != 0
+                && (nowTicks - _lastRealFrameTicks) * 1000.0
+                   / System.Diagnostics.Stopwatch.Frequency < KeepaliveSilenceAfterMs)
+                return false;
+            // Persistent emptiness IS session state, even though one zeroed
+            // payload is not: no real frame for KeepaliveSilenceAfterMs means
+            // pause / menu, so the session flag drops HERE (the zeroed packets
+            // themselves no longer stamp it in ParsePacket). This keeps the
+            // FFB provider's pause-release and the stop-stream-on-pause gate
+            // engaging for Horizon pauses that stream only keepalives (issue
+            // #13's full-lock protection), just one silence window later than
+            // the per-packet stamping it replaces. Dropping _prevRaceOn too
+            // re-arms the raceOn 0->1 settle edge for the restart-from-menu
+            // placement jolt, matching the pre-swallow behavior.
+            LastIsRaceOn = false;
+            _prevRaceOn  = false;
+            return true;
+        }
 
         /// <summary>Forza's CarOrdinal for the currently-loaded car (unique
         /// per car model across the entire Forza catalog). Null until we've
@@ -167,6 +226,7 @@ namespace TrueforceForAll.Core
         /// settings panel to confirm the user has the port wired up correctly.</summary>
         public long PacketsReceived => _packetsReceived;
         private long _packetsReceived;
+        private long _lastParseDiagTicks;   // throttles the [Forza-parse] raw dump
 
         /// <summary>Number of packets successfully forwarded to the secondary
         /// destination since Start(). Stays at 0 when no forward target was
@@ -174,6 +234,12 @@ namespace TrueforceForAll.Core
         /// N packets relayed" so the user can confirm coexistence works.</summary>
         public long PacketsForwarded => _packetsForwarded;
         private long _packetsForwarded;
+
+        /// <summary>Masks short raceOn=0 gaps (replay loops, rewinds) on the
+        /// FORWARDED copy so SimHub never sees the disconnect. Our own parse
+        /// always reads the original packet. Configure via Enabled /
+        /// MaxGapSeconds; safe to leave at defaults.</summary>
+        public ForzaGapBridge GapBridge { get; } = new ForzaGapBridge();
 
         public ForzaUdpTelemetrySource(int port, IPAddress bindAddress = null, IPEndPoint forwardTo = null)
         {
@@ -256,6 +322,7 @@ namespace TrueforceForAll.Core
         {
             var remoteEp = new IPEndPoint(IPAddress.Any, 0);
             byte[] scratch = new byte[1024];   // FH packets are 324; 1024 is generous.
+            byte[] fwdBuf  = new byte[1024];   // forward copy: the gap bridge may patch it
 
             while (!_stopping)
             {
@@ -282,12 +349,19 @@ namespace TrueforceForAll.Core
 
                 // Forward FIRST so a parse error in our pipeline can't strand
                 // SimHub without telemetry. Forward is fire-and-forget UDP
-                // we don't care if the target listener exists.
+                // we don't care if the target listener exists. The forwarded
+                // bytes go through the gap bridge on a COPY: short raceOn=0
+                // gaps get masked for SimHub while our own parse (below)
+                // always sees the game's real session state.
                 if (_forwardSocket != null && _forwardTo != null)
                 {
                     try
                     {
-                        _forwardSocket.SendTo(scratch, 0, len, SocketFlags.None, _forwardTo);
+                        Buffer.BlockCopy(scratch, 0, fwdBuf, 0, len);
+                        GapBridge.Process(fwdBuf, len,
+                            System.Diagnostics.Stopwatch.GetTimestamp(),
+                            System.Diagnostics.Stopwatch.Frequency);
+                        _forwardSocket.SendTo(fwdBuf, 0, len, SocketFlags.None, _forwardTo);
                         Interlocked.Increment(ref _packetsForwarded);
                     }
                     catch (Exception)
@@ -302,7 +376,9 @@ namespace TrueforceForAll.Core
                 try
                 {
                     Interlocked.Increment(ref _packetsReceived);
-                    EmitFrame(ParsePacket(scratch, len));
+                    var frame = ParsePacket(scratch, len);
+                    if (ShouldEmit(frame, System.Diagnostics.Stopwatch.GetTimestamp()))
+                        EmitFrame(frame);
                 }
                 catch (Exception ex)
                 {
@@ -318,6 +394,24 @@ namespace TrueforceForAll.Core
             int isRaceOn   = ReadInt32(buf,  OFF_IS_RACE_ON);
             float maxRpm   = ReadFloat(buf,  OFF_ENGINE_MAX_RPM);
             float curRpm   = ReadFloat(buf,  OFF_CURRENT_RPM);
+
+            // DIAGNOSTIC: throttled raw dump to crack the FH6 packet layout.
+            // If curRpm/maxRpm look sane while driving, the sled offsets are
+            // right and raceOn@0 is a real game state (FH6 may zero it in
+            // free-roam); if they're garbage, the whole layout shifted.
+            {
+                long pdnow = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (pdnow - _lastParseDiagTicks > System.Diagnostics.Stopwatch.Frequency * 2)
+                {
+                    _lastParseDiagTicks = pdnow;
+                    float spd256 = len >= 260 ? ReadFloat(buf, 256) : -1f;
+                    float spd244 = len >= 248 ? ReadFloat(buf, 244) : -1f;
+                    var sb = new System.Text.StringBuilder();
+                    for (int k = 0; k < Math.Min(len, 24); k++) sb.Append(buf[k].ToString("X2"));
+                    Log($"[Forza-parse] len={len} raceOn@0={isRaceOn} maxRpm@8={maxRpm:F0} curRpm@16={curRpm:F0} spd@256={spd256:F1} spd@244={spd244:F1} head24={sb}");
+                }
+            }
+
             float accelY   = ReadFloat(buf,  OFF_ACCEL_Y);
             float accelX   = ReadFloat(buf,  OFF_ACCEL_X);
             float accelZ   = ReadFloat(buf,  OFF_ACCEL_Z);
@@ -343,30 +437,111 @@ namespace TrueforceForAll.Core
             float cmbRL = ReadFloat(buf, OFF_TIRE_COMBINED_FL + 8);
             float cmbRR = ReadFloat(buf, OFF_TIRE_COMBINED_FL + 12);
 
+            // Per-tire channels for the CTM quads. All live inside the Sled
+            // (offsets < 232), so they're present in EVERY Forza packet,
+            // Sled-only included. Slip angle is signed radians; suspension
+            // travel is meters (a vertical-load proxy); slip ratio is signed
+            // (+ = wheelspin, - = lockup); wheel rotation is rad/s.
+            float saFL = ReadFloat(buf, OFF_TIRE_SLIP_ANGLE_FL + 0);
+            float saFR = ReadFloat(buf, OFF_TIRE_SLIP_ANGLE_FL + 4);
+            float saRL = ReadFloat(buf, OFF_TIRE_SLIP_ANGLE_FL + 8);
+            float saRR = ReadFloat(buf, OFF_TIRE_SLIP_ANGLE_FL + 12);
+
+            float stmFL = ReadFloat(buf, OFF_SUSP_TRAVEL_M_FL + 0);
+            float stmFR = ReadFloat(buf, OFF_SUSP_TRAVEL_M_FL + 4);
+            float stmRL = ReadFloat(buf, OFF_SUSP_TRAVEL_M_FL + 8);
+            float stmRR = ReadFloat(buf, OFF_SUSP_TRAVEL_M_FL + 12);
+
+            float srFL = ReadFloat(buf, OFF_TIRE_SLIP_RATIO_FL + 0);
+            float srFR = ReadFloat(buf, OFF_TIRE_SLIP_RATIO_FL + 4);
+            float srRL = ReadFloat(buf, OFF_TIRE_SLIP_RATIO_FL + 8);
+            float srRR = ReadFloat(buf, OFF_TIRE_SLIP_RATIO_FL + 12);
+
+            float wrFL = ReadFloat(buf, OFF_WHEEL_ROT_FL + 0);
+            float wrFR = ReadFloat(buf, OFF_WHEEL_ROT_FL + 4);
+            float wrRL = ReadFloat(buf, OFF_WHEEL_ROT_FL + 8);
+            float wrRR = ReadFloat(buf, OFF_WHEEL_ROT_FL + 12);
+
+            double frontSlipAngle   = 0.5 * (saFL + saFR);   // signed, radians
+            double frontSuspTravelM = 0.5 * (stmFL + stmFR);
+
             int numCyl  = ReadInt32(buf, OFF_NUM_CYLINDERS);
             int carOrd  = ReadInt32(buf, OFF_CAR_ORDINAL);
             CurrentCarOrdinal = carOrd > 0 ? carOrd : (int?)null;
 
-            // Horizon-Dash fields. Tolerate Motorsport-Sled-only packets by
-            // checking length; we just leave speed/throttle/gear at zero in
-            // that case (the Sled doesn't carry them). For FH5/FH6 (>=324)
-            // these are populated.
+            // Dash fields. The dash block's base moves per title (232 on
+            // Motorsport, 244 on Horizon); ResolveDashBase picks the base by
+            // plausibility check instead of trusting the length→layout table
+            // blindly. Sled-only packets (232) carry no dash at all — speed /
+            // throttle / gear stay at their idle defaults.
             float speedMs   = 0;
             byte  accelByte = 0;
             byte  brakeByte = 0;
             byte  gearByte  = 1;   // 1 = N
             double? steerNorm = null;
-            if (len >= HorizonDashLength)
+            int dashBase = ResolveDashBase(buf, len);
+            if (dashBase > 0)
             {
-                speedMs   = ReadFloat(buf, OFF_SPEED_HORIZON);
-                accelByte = buf[OFF_ACCEL_PEDAL];
-                brakeByte = buf[OFF_BRAKE_PEDAL];
-                gearByte  = buf[OFF_GEAR_HORIZON];
+                speedMs   = ReadFloat(buf, dashBase + DASH_SPEED);
+                accelByte = buf[dashBase + DASH_ACCEL];
+                brakeByte = buf[dashBase + DASH_BRAKE];
+                gearByte  = buf[dashBase + DASH_GEAR];
                 // Steer is a signed byte (read the byte, reinterpret as sbyte)
                 // normalized to ~[-1, 1]. Sign matches Forza's convention
                 // (+ = right); the spring's downstream invert was tuned on
                 // AC, so the Forza direction is a hardware-verify item.
-                steerNorm = (double)unchecked((sbyte)buf[OFF_STEER_HORIZON]) / 127.0;
+                steerNorm = (double)unchecked((sbyte)buf[dashBase + DASH_STEER]) / 127.0;
+            }
+
+            // Forza's accel fields are already m/s² (no g→m/s² conversion
+            // needed here, unlike AC's wheelSlip path which gets cars in g).
+            const double RadToDeg = 180.0 / Math.PI;
+
+            // FH6 interleaves all-zero "keepalive" packets between real frames:
+            // IsRaceOn=0 with the ENTIRE payload zeroed (EngineMaxRpm@8 == 0).
+            // Earlier builds treated ANY IsRaceOn=0 as "silence everything", so
+            // those empties wiped the live telemetry several times a second
+            // while driving and the effects never sustained (a real frame one
+            // tick, a zeroed one the next). So gate silence on a genuinely-empty
+            // packet (maxRpm==0),
+            // NOT on IsRaceOn. Any packet carrying real physics flows through
+            // the full data path below regardless of the flag. (For the
+            // record: IsRaceOn is 1 during free-roam driving on FH4/FH5/FH6,
+            // "is the player driving" despite the name; replays and cutscenes
+            // report 0 with live physics, and the flag-based force gating
+            // keeps the wheel quiet there on purpose.) A true pause /
+            // menu either streams these empties or a frozen stationary frame
+            // whose surface/slip channels are ~0, so nothing buzzes when you're
+            // not driving. LONE empties between fresh real frames never reach
+            // consumers at all (ShouldEmit swallows them in the receive loop);
+            // only persistent emptiness flows through as this silencing frame.
+            //
+            // This check sits ABOVE the raceOn / settle / airborne stamping
+            // below on purpose: an all-zero payload's IsRaceOn byte is zeroed
+            // payload, not state. Stamping it flapped LastIsRaceOn (which
+            // notched the FFB provider's pause-release several times a second
+            // mid-race) and recorded a raceOn 0->1 edge on every
+            // keepalive->real transition, re-opening the 400 ms settle window
+            // so the grip / impact channels never escaped suppression during
+            // FH6 races. Persistent emptiness DOES drop the flag, in
+            // ShouldEmit, once the silence window expires: one zeroed payload
+            // is noise, a quarter second of nothing but them is a pause.
+            bool emptyKeepalive = maxRpm <= 0f;
+            if (emptyKeepalive)
+            {
+                return new TelemetryFrame
+                {
+                    Rpms       = 0,
+                    MaxRpm     = maxRpm,
+                    Throttle01 = 0,
+                    SpeedKmh   = 0,
+                    Gear       = "N",
+                    NumCylinders = numCyl > 0 ? numCyl : (int?)null,
+                    // Steering intentionally not reported: an empty packet zeros
+                    // it anyway and the stationary spring falls back to the
+                    // wheel's physical position, so a null avoids feeding the
+                    // spring a stray 0.
+                };
             }
 
             bool raceOn = isRaceOn != 0;
@@ -403,35 +578,6 @@ namespace TrueforceForAll.Core
                 _prevAirborne = airborne;
             }
 
-            // Forza's accel fields are already m/s² (no g→m/s² conversion
-            // needed here, unlike AC's wheelSlip path which gets cars in g).
-            const double RadToDeg = 180.0 / Math.PI;
-
-            // When paused / in menu (IsRaceOn=0), Forza often keeps the last
-            // captured frame's payload frozen. Returning those values would
-            // hold engine pulse + slip effects at their last-known intensity
-            // until the user resumed. Zero the volatile channels instead so
-            // effects decay cleanly. Static-ish fields (NumCylinders,
-            // EngineMaxRpm) remain so we don't lose the auto-detect on pause.
-            if (!raceOn)
-            {
-                return new TelemetryFrame
-                {
-                    Rpms       = 0,
-                    MaxRpm     = maxRpm,
-                    Throttle01 = 0,
-                    SpeedKmh   = 0,
-                    Gear       = "N",
-                    NumCylinders = numCyl > 0 ? numCyl : (int?)null,
-                    // Surface / grip signals zeroed; effects silence. Steering is
-                    // intentionally NOT reported here: when IsRaceOn=0 Forza zeros
-                    // the steering value anyway, and the stationary spring detects
-                    // this paused state (authoritative IsRaceOn) and switches to
-                    // the wheel's physical position instead, so leaving it null is
-                    // correct and avoids feeding the spring a misleading 0.
-                };
-            }
-
             double surfaceMax = Math.Max(
                 Math.Max(Math.Abs(surFL), Math.Abs(surFR)),
                 Math.Max(Math.Abs(surRL), Math.Abs(surRR)));
@@ -461,6 +607,11 @@ namespace TrueforceForAll.Core
 
                 Gear       = GearString(gearByte),
                 WheelSlip  = settling ? 0.0 : combinedMax,
+                // SAT inputs, suppressed during the settle window like the other
+                // grip channels so the spawn transient can't drive a future SAT
+                // model. Front-pair averages computed above.
+                FrontSlipAngleRad     = settling ? 0.0 : frontSlipAngle,
+                FrontSuspTravelMeters = settling ? 0.0 : frontSuspTravelM,
                 Airborne   = airborne,
 
                 // Wheel position for the stationary-spring floor. Flows even
@@ -472,10 +623,100 @@ namespace TrueforceForAll.Core
                 OnRumbleStrip = !settling && anyRumbleStrip,
                 NumCylinders  = numCyl > 0 ? numCyl : (int?)null,
 
+                // Per-tire quads for the CTM. Suppressed to zero during the
+                // settle window like the scalar grip channels (data present,
+                // placement transient must not reach the effects). Wheel
+                // rotation flows through the settle window — it's kinematics,
+                // not an impact channel, and the rear rotation-pulse texture
+                // wants it continuous.
+                HasTireQuads    = true,
+                TireSlipRatio   = settling ? default : TireQuad.Of(srFL, srFR, srRL, srRR),
+                TireSlipAngleRad= settling ? default : TireQuad.Of(saFL, saFR, saRL, saRR),
+                TireCombinedSlip= settling ? default : TireQuad.Of(cmbFL, cmbFR, cmbRL, cmbRR),
+                SuspTravelM     = settling ? default : TireQuad.Of(stmFL, stmFR, stmRL, stmRR),
+                SurfaceRumbleQ  = settling ? default : TireQuad.Of(surFL, surFR, surRL, surRR),
+                WheelRotRadS    = TireQuad.Of(wrFL, wrFR, wrRL, wrRR),
+
                 // AbsActive is left default: Forza's Data Out doesn't expose
                 // ABS pump activity; SimHub's reader can't either. Effect
                 // stays silent for ABS, but everything else is full-fat.
             };
+        }
+
+        // Dash-base resolution cache. Keyed by packet length; a session
+        // streams a single length so this is effectively resolve-once. Only
+        // committed from a live (non-keepalive) packet, because an all-zero
+        // payload passes plausibility at ANY offset and would lock in
+        // whatever base we tried first.
+        private int _dashBaseCachedLen = -1;
+        private int _dashBaseCached    = -1;
+
+        /// <summary>Pick the dash block's base offset for this packet length
+        /// by plausibility check rather than trusting the length→layout table
+        /// blindly. Returns -1 when the packet has no usable dash (Sled-only,
+        /// or nothing passed the checks — logged loudly, sled channels still
+        /// flow). internal for unit tests.</summary>
+        internal int ResolveDashBase(byte[] buf, int len)
+        {
+            if (len == _dashBaseCachedLen) return _dashBaseCached;
+
+            int primary, alternate;
+            if (len == HorizonDashLength)
+            {
+                primary = DashBaseHorizon;  alternate = DashBaseMotorsport;
+            }
+            else if (len >= Fm7DashLength)
+            {
+                // FM7 (311), FM2023 (331), and any future Motorsport-family
+                // length: dash directly after the sled.
+                primary = DashBaseMotorsport;  alternate = DashBaseHorizon;
+            }
+            else
+            {
+                _dashBaseCachedLen = len;
+                _dashBaseCached    = -1;
+                return -1;   // Sled-only: no dash to find.
+            }
+
+            int chosen;
+            if (DashPlausible(buf, len, primary))
+            {
+                chosen = primary;
+            }
+            else if (DashPlausible(buf, len, alternate))
+            {
+                chosen = alternate;
+                Log($"[Forza-dash] len={len}: documented dash base {primary} failed plausibility, using {alternate}. " +
+                    "Layout may have shifted — verify against current Data Out docs.");
+            }
+            else
+            {
+                chosen = -1;
+                Log($"[Forza-dash] len={len}: NO dash base passed plausibility (tried {primary}, {alternate}). " +
+                    "Speed/throttle/gear/steer unavailable; sled channels still flow.");
+            }
+
+            bool liveFrame = ReadFloat(buf, OFF_ENGINE_MAX_RPM) > 0f;
+            if (liveFrame)
+            {
+                _dashBaseCachedLen = len;
+                _dashBaseCached    = chosen;
+                if (chosen > 0)
+                    Log($"[Forza-dash] len={len}: dash base {chosen} " +
+                        $"(speed {ReadFloat(buf, chosen + DASH_SPEED):F1} m/s, gear byte {buf[chosen + DASH_GEAR]}).");
+            }
+            return chosen;
+        }
+
+        private static bool DashPlausible(byte[] buf, int len, int dashBase)
+        {
+            if (dashBase + DashSpanNeeded > len) return false;
+            float v = ReadFloat(buf, dashBase + DASH_SPEED);
+            // >150 m/s (540 km/h) is not a car speed; NaN/Inf is not a float
+            // that was ever a speed.
+            if (float.IsNaN(v) || float.IsInfinity(v) || Math.Abs(v) > 150f) return false;
+            byte gear = buf[dashBase + DASH_GEAR];
+            return gear <= 11;
         }
 
         // Forza convention: 0=R, 1=N, 2=1st, 3=2nd, ... Matches AC's gear
@@ -488,16 +729,15 @@ namespace TrueforceForAll.Core
         }
 
         /// <summary>Cheap shape check used by UdpPortScanner: packet length
-        /// matches one of the known Forza Data Out sizes. Forza ships three
-        /// sizes, Sled-only (FM7), Sled + Horizon-Dash (FH4/FH5), and
-        /// Sled + Motorsport-Dash (FM2023), so we accept any of them. The
-        /// length match is a strong enough signal for discovery; random
-        /// UDP traffic won't be exactly 232/311/324 bytes by chance.</summary>
+        /// matches one of the known Forza Data Out sizes. Forza ships four
+        /// sizes: Sled-only (232), FM7 Dash (311), Horizon Dash (FH4/FH5/FH6,
+        /// 324), and FM2023 Dash (331 = FM7 dash + TireWear[4] + TrackOrdinal).
+        /// The length match is a strong enough signal for discovery; random
+        /// UDP traffic won't be exactly one of these sizes by chance.</summary>
         public static bool IsValidPacketCandidate(byte[] buf, int len)
         {
             if (buf == null) return false;
-            // Known Forza sizes: 232 (Sled), 311 (Motorsport Dash), 324 (Horizon Dash).
-            return len == 232 || len == 311 || len == 324;
+            return len == 232 || len == Fm7DashLength || len == HorizonDashLength || len == Fm8DashLength;
         }
 
         /// <summary>Default candidate ports the discovery flow tries when
@@ -517,7 +757,14 @@ namespace TrueforceForAll.Core
 
         private static float ReadFloat(byte[] b, int off)
         {
-            return BitConverter.ToSingle(b, off);
+            // Boundary sanitizer (2026-07-05 review finding): a single
+            // corrupt UDP frame carrying NaN/Infinity would otherwise poison
+            // every downstream exponential moving average PERMANENTLY
+            // (ema += (NaN - ema) * a never recovers), silencing Mode B — the
+            // only FM8 force source — for the rest of the session. Non-finite
+            // floats read as 0, the same neutral value the settle window uses.
+            float v = BitConverter.ToSingle(b, off);
+            return float.IsNaN(v) || float.IsInfinity(v) ? 0f : v;
         }
 
         private void Log(string msg)

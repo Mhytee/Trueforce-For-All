@@ -42,6 +42,17 @@ namespace TrueforceForAll.Core
         /// &lt; 1 = eager (more force earlier), &gt; 1 = lazy.</summary>
         public double RiseGamma { get; set; } = 1.0;
 
+        /// <summary>Test layer 8 (early torque peak, GAP #1 in
+        /// docs/steering-feel-physics.md): utilization at which torque
+        /// PLATEAUS. Real pneumatic trail collapses before the grip peak, so
+        /// rim torque tops out at ~60–80% of limit slip and holds — "the
+        /// wheel stopped getting heavier" IS the approach warning. 1.0
+        /// (default) = legacy shape, torque still climbing at the limit;
+        /// 0.75 = plateau from 75% utilization to the limit, then the normal
+        /// drop past it. The rise below the plateau keeps its gamma shape,
+        /// rescaled to reach full torque AT the plateau.</summary>
+        public double PlateauStartU { get; set; } = 1.0;
+
         // --- secondary tunables (LOADFX / trail) ---
 
         /// <summary>How much derived load modulates torque. 0 = ignore load,
@@ -64,7 +75,8 @@ namespace TrueforceForAll.Core
             if (uFront <= 0 || signedFrontSlipRad == 0) return 0;
             double u = uFront;
 
-            double rise = Math.Pow(Math.Min(u, 1.0), Math.Max(0.05, RiseGamma));
+            double plateau = Math.Min(Math.Max(PlateauStartU, 0.3), 1.0);
+            double rise = Math.Pow(Math.Min(u, plateau) / plateau, Math.Max(0.05, RiseGamma));
 
             double drop = 1.0;
             if (u > 1.0)

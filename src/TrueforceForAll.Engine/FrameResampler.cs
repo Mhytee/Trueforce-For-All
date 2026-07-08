@@ -55,7 +55,11 @@ namespace TrueforceForAll.Core
         // Zeros then flow to effects exactly as they do today, so pause decay
         // is unchanged.
         private const double HoldSeconds = 0.35;
-        private static bool IsPhysicsFrame(in TelemetryFrame f) => f.MaxRpm > 0;
+        // "Any sign of life": Forza keepalives zero the whole payload, but a
+        // SimHub-fallback game with a missing MaxRpm must not have all its
+        // frames misread as keepalives (effects would starve while driving).
+        private static bool IsPhysicsFrame(in TelemetryFrame f)
+            => f.MaxRpm > 0 || f.Rpms > 0 || f.SpeedKmh > 0.1 || f.Throttle01 > 0.01;
 
         private TelemetryFrame _lastNonPhysics;
         private bool _haveNonPhysics;
