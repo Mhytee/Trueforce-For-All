@@ -5462,8 +5462,7 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
-                string parent = Path.Combine(baseDir, "PluginsData", "Common");
+                string parent = TfPaths.CommonRoot;
                 if (!Directory.Exists(parent)) return;
                 foreach (var path in Directory.GetDirectories(parent, "TrueforceCars.bak*"))
                 {
@@ -5502,8 +5501,8 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
-                string commonDir = Path.Combine(baseDir, "PluginsData", "Common");
+                string baseDir = TfPaths.BaseDir;
+                string commonDir = TfPaths.CommonRoot;
                 // Three legacy sources -> new homes (already wired into the
                 // default-folder getters; see BuiltinPresets / UserPresets /
                 // UserImportsFolderPath).
@@ -5570,8 +5569,7 @@ namespace TrueforceForAll.Plugin
             int migratedCarDefaults = 0;
             try
             {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
-                string legacyCarsFolder = Path.Combine(baseDir, "PluginsData", "Common", "TrueforceCars");
+                string legacyCarsFolder = TfPaths.LegacyCarsFolder;
                 if (Directory.Exists(legacyCarsFolder))
                 {
                     foreach (var path in Directory.GetFiles(legacyCarsFolder, "*.tfcar.json"))
@@ -5615,7 +5613,7 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                        string bakRoot = Path.Combine(baseDir, "PluginsData", "Common",
+                        string bakRoot = Path.Combine(TfPaths.CommonRoot,
                             $"TrueforceForAll-LegacyCars.bak-{ts}");
                         Directory.Move(legacyCarsFolder, bakRoot);
                     }
@@ -6068,8 +6066,7 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
-                string src = Path.Combine(baseDir, "PluginsData", "Common", "TrueforcePlugin.GeneralSettings.json");
+                string src = TfPaths.GeneralSettingsFile;
                 if (!File.Exists(src)) return;
                 string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 string dst = src + $".bak-{tag}-{ts}";

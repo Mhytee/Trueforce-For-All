@@ -48,8 +48,7 @@ namespace TrueforceForAll.Plugin
         {
             get
             {
-                string baseDir = System.AppDomain.CurrentDomain.BaseDirectory ?? "";
-                return Path.Combine(baseDir, "PluginsData", "Common",
+                return Path.Combine(TfPaths.CommonRoot,
                     BuiltinPresets.RootFolderName, UserSubfolderName);
             }
         }

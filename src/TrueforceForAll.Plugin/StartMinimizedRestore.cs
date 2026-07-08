@@ -76,9 +76,8 @@ namespace TrueforceForAll.Plugin
 
         private static string MarkerPath()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
-            if (baseDir.Length == 0) return "";
-            return Path.Combine(baseDir, "PluginsData", "Common",
+            if (TfPaths.BaseDir.Length == 0) return "";
+            return Path.Combine(TfPaths.CommonRoot,
                                 BuiltinPresets.RootFolderName, MarkerFileName);
         }
 

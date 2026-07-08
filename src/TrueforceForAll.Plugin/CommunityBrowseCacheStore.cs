@@ -300,8 +300,7 @@ namespace TrueforceForAll.Plugin
 
         private static string PathForSlot(string slot)
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string dir = Path.Combine(baseDir, "PluginsData", "Common", BuiltinPresets.RootFolderName);
+            string dir = Path.Combine(TfPaths.CommonRoot, BuiltinPresets.RootFolderName);
             return Path.Combine(dir, "community-browse-cache-" + SlotFileToken(slot) + ".json");
         }
 
