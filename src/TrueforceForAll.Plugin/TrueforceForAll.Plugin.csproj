@@ -39,6 +39,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TrueforceForAll.Core\TrueforceForAll.Core.csproj" />
+    <ProjectReference Include="..\TrueforceForAll.Engine\TrueforceForAll.Engine.csproj" />
   </ItemGroup>
 
   <!-- SimHub provides these at runtime; don't copy them to the output dir. -->

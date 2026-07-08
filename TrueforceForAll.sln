@@ -7,6 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrueforceForAll.Plugin", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrueforceForAll.LoopbackHelper", "src\TrueforceForAll.LoopbackHelper\TrueforceForAll.LoopbackHelper.csproj", "{4E0A3F2A-4444-4444-AAAA-000000000004}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{2EFD1ADB-E58C-4AF7-8371-40098EC83450}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrueforceForAll.Engine", "src\TrueforceForAll.Engine\TrueforceForAll.Engine.csproj", "{A07BA65E-BA5E-4629-9790-BC8C0EB69607}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -25,8 +29,15 @@ Global
 		{4E0A3F2A-4444-4444-AAAA-000000000004}.Debug|x64.Build.0 = Debug|x64
 		{4E0A3F2A-4444-4444-AAAA-000000000004}.Release|x64.ActiveCfg = Release|x64
 		{4E0A3F2A-4444-4444-AAAA-000000000004}.Release|x64.Build.0 = Release|x64
+		{A07BA65E-BA5E-4629-9790-BC8C0EB69607}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A07BA65E-BA5E-4629-9790-BC8C0EB69607}.Debug|x64.Build.0 = Debug|Any CPU
+		{A07BA65E-BA5E-4629-9790-BC8C0EB69607}.Release|x64.ActiveCfg = Release|Any CPU
+		{A07BA65E-BA5E-4629-9790-BC8C0EB69607}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A07BA65E-BA5E-4629-9790-BC8C0EB69607} = {2EFD1ADB-E58C-4AF7-8371-40098EC83450}
 	EndGlobalSection
 EndGlobal

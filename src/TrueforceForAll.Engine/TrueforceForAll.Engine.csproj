@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The game-agnostic haptic engine: telemetry model + sources, effects,
+         and (as later phases land) the resampler, CTM composer, band arbiter
+         and engine loop. netstandard2.0 so both the net48 SimHub plugin and
+         the net8 test/replay harness consume it directly. Extracted from
+         Core/Plugin in phase 0b of docs/haptic-engine-plan.md as a MOVE-ONLY
+         refactor: file namespaces deliberately keep their original names
+         (TrueforceForAll.Core, TrueforceForAll.Plugin.Effects) so consumers
+         didn't churn; the namespace rename is a phase 7 cleanup. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>TrueforceForAll.Engine</RootNamespace>
+    <AssemblyName>TrueforceForAll.Engine</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TrueforceForAll.Core\TrueforceForAll.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only, for the [JsonConverter] attributes on effect
+         enums (settings serialization). SimHub ships Newtonsoft.Json in its
+         install root and loads it process-wide; the plugin binds to that at
+         runtime. Same do-not-ship rationale as HidSharp in Core (issue #11):
+         ExcludeAssets=runtime keeps the DLL out of the plugin output. The
+         net8 test harness never serializes effects, so the attribute types
+         are never materialized there. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
