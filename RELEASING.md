@@ -49,6 +49,9 @@ For each release:
      on instead (the rev limiter does). Either way, keep its `CarOverride` slot
      nullable (= use global) so existing presets and per-car overrides inherit
      the chosen default with no migration.
+   - If you keep `CHANGELOG_UNRELEASED.md` (local, gitignored maintainer
+     scratch), delete the entries that ship in this release and update its
+     "since vX.Y.Z" baseline to this version so it never goes stale.
 4. Hardware-validate any new telemetry source or game-detection change on the
    rig before tagging.
 5. Commit the version bump (plus any README / changelog changes) to `main`

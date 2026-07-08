@@ -1,6 +1,6 @@
 # Message of the Day (MOTD)
 
-Status: design only, not yet built (2026-06-19). Nothing in this doc exists in code or in the database yet.
+Status: SHIPPED 2026-06-19 (MotdStrip + owner-only post RPCs deployed). Kept as design rationale; the shipped implementation may have drifted in details, so trust the code over this doc.
 
 ## Goal
 

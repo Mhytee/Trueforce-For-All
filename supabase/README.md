@@ -1,22 +1,33 @@
 # Trueforce For All community backend
 
-Hosts the CarFacts community data (and, eventually, preset sharing) on a
-single Supabase project. The schema treats the anon API key as **public**
-and gates every write through `SECURITY DEFINER` RPC functions that
-validate input, derive identity server-side, and rate-limit by IP. Direct
-table writes from the anon key are revoked.
+Hosts the whole community backend (CarFacts, preset sharing, moderation,
+auth, cloud backup) on a single Supabase project. The schema treats the
+anon API key as **public** and gates every write through `SECURITY
+DEFINER` RPC functions that validate input, derive identity server-side,
+and rate-limit. Direct table writes from the anon key are revoked.
 
 ## What's in here
 
-- `migrations/0001_carfacts_init.sql` — CarFacts schema: private
-  submissions / votes / app_config / submitter_blocked tables, public
-  `car_fact_consensus` table, two callable RPCs (`submit_car_fact`,
-  `vote_car_fact`), payload normalization per fact_type, IP-based rate
-  limiting, salt-rotating submitter_id derivation, suppression flag for
-  moderation.
+`migrations/` (90+, applied in filename order) grouped by subsystem:
 
-Future migrations land alongside `0001_*`; Supabase applies them in
-filename order. Always make new migrations idempotent (`if not exists`,
+- **CarFacts** (`0001`-`0004` + later refinements): community car data;
+  submissions/votes/consensus with Wilson scoring, payload normalization,
+  IP-derived submitter identity, rate limiting, suppression.
+- **Preset sharing** (`0005`+): presets, game presets, custom engines,
+  packs; owner auth, votes, downloads, edit rate limits, target games.
+- **Accounts / auth** (`0007`, `0009`, `0023`+): profiles + usernames,
+  auth-gated RPCs, per-user rate limits, locked internal helpers.
+- **Moderation / reports** (`0021`, `0080`-`0090`): report flags, Discord
+  notify pipeline, action/appeal RPCs.
+- **Backup / sync + entitlements** (interleaved): cloud settings backup,
+  retention, Patreon/Discord linking, supporters, achievements.
+
+`functions/`: Edge Functions (report/appeal notify, Discord + Patreon
+linking and role sync, supporters sync, backup retention warn/GC).
+`dev-seed/`: mock community data for local testing + teardown.
+
+Run `ls migrations/` for the current set; migration filenames are
+descriptive. Always make new migrations idempotent (`if not exists`,
 `create or replace`, `drop ... if exists`) so re-runs are safe.
 
 ## Security model
