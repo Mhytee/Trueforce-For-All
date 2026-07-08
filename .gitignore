@@ -8,8 +8,8 @@ packages/
 **/.DS_Store
 *.pdb
 
-# Working notes: USB captures, parser experiments, ad-hoc analysis scripts.
-# Big binary pcaps (~120 MB) live here; never commit.
+# USB captures moved to ..\SimHubTrueforce-local\captures (2026-07-07).
+# Rule kept so pcaps never get committed if the folder reappears.
 captures/
 
 # Ad-hoc working artifacts. Convention: throwaway scratch files get a __
@@ -19,9 +19,8 @@ __*
 *.pcap
 *.pcapng
 
-# Local-only dev/test harnesses. Useful while developing on a real wheel,
-# but not part of the user-facing product, so kept out of the public repo.
-# Files stay on disk locally; just untracked.
+# Dev/test harnesses moved to ..\SimHubTrueforce-local\dev-harnesses
+# (2026-07-07). Rules kept in case they get copied back for wheel work.
 /src/SineTest/
 /src/DiscoveryTest/
 /src/UsbPcapTest/
@@ -36,6 +35,11 @@ __*
 /docs/marketing/
 /docs/preset-sharing-design.md
 /docs/troubleshooting-ffb.md
+/docs/agent-audit.md
+
+# Local agent orientation file (build/deploy gotchas, architecture map).
+# Per-developer, not a public doc.
+/CLAUDE.md
 
 # Claude Code working state (per-machine: scheduled tasks, settings,
 # MCP config). MCP URL is public but the file is per-developer.
@@ -49,8 +53,3 @@ __*
 /SimHub.Plugins.*.resources
 /*.leonardo.hex
 /UsersmhyteAppDataLocalTemp*
-
-# Driver spike handoff package. The driver work lives on
-# driver-spike-2026-05-31; this zip/folder stays on disk for local
-# reference but is out of scope for plugin releases.
-/tffa-driver-handoff*
