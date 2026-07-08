@@ -6,7 +6,7 @@
 // fields; float FfbScale) and round-trips them through the EXACT
 // serializer calls the persistence code uses:
 //   write: JsonConvert.SerializeObject(x, Formatting.Indented)   (plain)
-//   read:  JsonConvert.DeserializeObject<T>(json, {MaxDepth=64}) (_safeJsonSettings)
+//   read:  JsonConvert.DeserializeObject<T>(json, {MaxDepth=64}) (SafeJson.Settings)
 // Verified against the source that these fields carry no [JsonIgnore],
 // [JsonConverter], [DefaultValue], and that no path sets DefaultValueHandling,
 // so this faithfully represents the real round-trip. The load-bearing case is
@@ -33,7 +33,7 @@ namespace TrueforceForAll.Core.Tests
             public double? StationarySpringCutoffKmh { get; set; }
         }
 
-        // Same as TrueforcePlugin._safeJsonSettings.
+        // Same as the plugin's SafeJson.Settings.
         private static readonly JsonSerializerSettings ReadSettings =
             new JsonSerializerSettings { MaxDepth = 64 };
 

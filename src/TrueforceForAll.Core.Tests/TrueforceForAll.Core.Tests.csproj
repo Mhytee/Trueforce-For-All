@@ -32,6 +32,10 @@
     <Compile Include="..\TrueforceForAll.Plugin\InstalledPacksStore.cs">
       <Link>Linked\InstalledPacksStore.cs</Link>
     </Compile>
+    <!-- Shared untrusted-JSON guard the store references (SafeJson.Settings). -->
+    <Compile Include="..\TrueforceForAll.Plugin\SafeJson.cs">
+      <Link>Linked\SafeJson.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

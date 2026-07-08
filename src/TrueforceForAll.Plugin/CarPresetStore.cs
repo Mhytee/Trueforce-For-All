@@ -50,13 +50,6 @@ namespace TrueforceForAll.Plugin
         public const string CarsSubfolderName = "cars";
         public const string FileExtension     = ".json";
 
-        // JSON deserializer settings capped at depth 64 to prevent unbounded
-        // recursion / DoS through a deeply nested malicious preset JSON.
-        internal static readonly JsonSerializerSettings SafeJsonSettings = new JsonSerializerSettings
-        {
-            MaxDepth = 64
-        };
-
         // Lazy: the user library folder path can be set/changed after the
         // store is constructed, so look it up on each access via the provider.
         private readonly Func<string> _rootFolderProvider;
@@ -125,7 +118,7 @@ namespace TrueforceForAll.Plugin
                 {
                     try
                     {
-                        var f = JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path), SafeJsonSettings);
+                        var f = JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path), SafeJson.Settings);
                         if (f == null || string.IsNullOrEmpty(f.CarId) || f.Override == null) continue;
 
                         string presetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
@@ -204,7 +197,7 @@ namespace TrueforceForAll.Plugin
                 {
                     try
                     {
-                        var prev = JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path), SafeJsonSettings);
+                        var prev = JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path), SafeJson.Settings);
                         if (prev != null)
                         {
                             existingPackName = NullIfBlank(prev.PackName);

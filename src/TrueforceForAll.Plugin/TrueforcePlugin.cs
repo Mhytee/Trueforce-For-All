@@ -421,15 +421,6 @@ namespace TrueforceForAll.Plugin
         private const string GHubProcessName = "lghub";
         private static readonly long GHubCheckIntervalTicks = Stopwatch.Frequency * 5;
 
-        // JSON deserializer settings capped at depth 64 to prevent unbounded
-        // recursion / DoS through a deeply nested malicious preset JSON.
-        // Shared across every Newtonsoft.Json.DeserializeObject call in this
-        // file that ingests user-supplied or imported content.
-        private static readonly Newtonsoft.Json.JsonSerializerSettings _safeJsonSettings = new Newtonsoft.Json.JsonSerializerSettings
-        {
-            MaxDepth = 64
-        };
-
         // Snapshot every Logitech-related process running right now (G HUB,
         // its agent + updater, older Gaming Software, etc.) as a single log
         // line. Lets a support bundle answer "what was running when the user
@@ -5267,7 +5258,7 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
-                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value, _safeJsonSettings);
+                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value, SafeJson.Settings);
                     if (snap != null) Settings.Presets[kv.Key] = snap;
                 }
                 catch (Exception ex)
@@ -5286,7 +5277,7 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
-                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value, _safeJsonSettings);
+                    var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value, SafeJson.Settings);
                     if (snap != null) Settings.Presets[kv.Key] = snap;
                 }
                 catch (Exception ex)
@@ -7457,7 +7448,7 @@ namespace TrueforceForAll.Plugin
 
             if (entry == null) return false;
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(entry.Override);
-            var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CarOverride>(json, _safeJsonSettings);
+            var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CarOverride>(json, SafeJson.Settings);
             // A duplicate of an imported preset stays attributed to its
             // pack. When the source had no Author, stamp the duplicator (the
             // user) via defaultAuthor so the new preset reads as theirs in
@@ -14021,7 +14012,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null) return default(ImportPresetResult);
             string json = System.IO.File.ReadAllText(path);
-            var file = Newtonsoft.Json.JsonConvert.DeserializeObject<PresetFile>(json, _safeJsonSettings);
+            var file = Newtonsoft.Json.JsonConvert.DeserializeObject<PresetFile>(json, SafeJson.Settings);
             if (file == null || file.Snapshot == null || string.IsNullOrEmpty(file.PresetName))
                 throw new System.IO.InvalidDataException("Not a valid TF4ALL preset file.");
             if (file.Type != PresetFile.FileType)
@@ -14102,7 +14093,7 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null || _carStore == null) return default(ImportCarPresetResult);
             string json = System.IO.File.ReadAllText(path);
-            var file = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(json, _safeJsonSettings);
+            var file = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(json, SafeJson.Settings);
             if (file == null || file.Override == null || string.IsNullOrEmpty(file.CarId))
                 throw new System.IO.InvalidDataException("Not a valid TF4ALL car-preset file.");
             if (file.Type != CarPresetFile.FileType)
@@ -15358,7 +15349,7 @@ namespace TrueforceForAll.Plugin
                 {
                     try
                     {
-                        var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value, _safeJsonSettings);
+                        var snap = Newtonsoft.Json.JsonConvert.DeserializeObject<GameSettingsSnapshot>(kv.Value, SafeJson.Settings);
                         if (snap == null) continue;
                         bool changed = ClearIfDeleted(snap.EnginePulse);
                         if (snap.CarOverrides != null)
