@@ -1,0 +1,20 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# UTF-8 with BOM matches Visual Studio's default for C# and guards against
+# a repeat of the BuiltinCarCylinders mojibake (accented car names corrupted
+# by a cp1252 round-trip; the fix deliberately added a BOM there).
+# No end_of_line rule on purpose: line endings are git's job (autocrlf).
+[*.cs]
+charset = utf-8-bom
+
+[*.{json,yml,yaml,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
