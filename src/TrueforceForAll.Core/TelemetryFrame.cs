@@ -108,11 +108,13 @@ namespace TrueforceForAll.Core
 
         // ---- Tire grip ----
         /// <summary>Direct slip-ratio reading from a sim that exposes one
-        /// (e.g. AC's wheelSlip[], Forza's TireCombinedSlip[]), max-abs across
-        /// all four tires. ~0 = grip, &gt;0.05 = noticeable slip, &gt;0.5 =
-        /// sliding hard. Null when the source can't measure slip directly
-        /// TractionLossEffect falls back to its yaw-rate / RPM-derivative
-        /// heuristic in that case.</summary>
+        /// (e.g. AC's wheelSlip[], Forza's TireCombinedSlip[]), LOAD-WEIGHTED
+        /// across the four tyres: sum(|slip_i| * load_i) / sum(load_i), so an
+        /// unloaded wheel (airborne, one-wheel lift) contributes nothing and a
+        /// four-wheel slide reads full strength (issue #30, see SlipWeighting).
+        /// ~0 = grip, &gt;0.05 = noticeable slip, &gt;0.5 = sliding hard. Null
+        /// when the source can't measure slip directly; TractionLossEffect falls
+        /// back to its yaw-rate / RPM-derivative heuristic in that case.</summary>
         public double? WheelSlip;
 
         /// <summary>Front-axle slip angle in radians, signed (sign follows the

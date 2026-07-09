@@ -214,6 +214,21 @@ namespace TrueforceForAll.Core
         // we log the transition once instead of every frame while in the air.
         private bool _prevAirborne;
 
+        // Load-channel-live latch for the load-weighted slip (issue #30). Armed
+        // the first time any wheel shows real suspension compression, so a
+        // genuinely airborne frame (all four drooped, summed load ~0) reads as
+        // "every wheel unloaded => silent" rather than "channel dead => fall
+        // back to the loud unweighted value". Normalized suspension travel is a
+        // core Sled field so this arms on the first grounded frame in practice;
+        // the latch only guards a hypothetical title that leaves it at 0.
+        private bool _seenSuspLoad;
+        // A grounded wheel sits well above full droop; this proves the channel
+        // is live (above DroopThreshold, below any loaded value).
+        private const float SuspLoadArmThreshold = 0.05f;
+        // Summed normalized suspension travel below which every wheel is drooped
+        // (airborne). Four wheels each under DroopThreshold (0.02) sum under 0.08.
+        private const double MinTotalSuspLoad = 0.08;
+
         // Suspension-droop threshold for the airborne detector. Forza's
         // NormalizedSuspensionTravel runs 0.0 (fully extended / wheel hanging)
         // to 1.0 (fully compressed). A grounded car carries its weight on the
@@ -422,6 +437,16 @@ namespace TrueforceForAll.Core
             float susRL = ReadFloat(buf, OFF_NORM_SUSP_FL + 8);
             float susRR = ReadFloat(buf, OFF_NORM_SUSP_FL + 12);
 
+            // Arm the load-channel-live latch (issue #30) the moment any wheel
+            // shows real compression. Done here, ahead of the settle / keepalive
+            // gates, so a car placed and then jumped still proves the channel
+            // live before the airborne frame needs the "silent, not loud"
+            // fallback.
+            if (!_seenSuspLoad &&
+                (susFL > SuspLoadArmThreshold || susFR > SuspLoadArmThreshold ||
+                 susRL > SuspLoadArmThreshold || susRR > SuspLoadArmThreshold))
+                _seenSuspLoad = true;
+
             int rsFL = ReadInt32(buf, OFF_ON_RUMBLE_STRIP_FL + 0);
             int rsFR = ReadInt32(buf, OFF_ON_RUMBLE_STRIP_FL + 4);
             int rsRL = ReadInt32(buf, OFF_ON_RUMBLE_STRIP_FL + 8);
@@ -586,6 +611,18 @@ namespace TrueforceForAll.Core
                 Math.Max(Math.Abs(cmbFL), Math.Abs(cmbFR)),
                 Math.Max(Math.Abs(cmbRL), Math.Abs(cmbRR)));
 
+            // Load-weighted whole-car slip (issue #30). Forza's normalized
+            // suspension travel (0 = wheel hanging, 1 = fully compressed) is the
+            // per-wheel load proxy, so an airborne or kerb-lifted wheel's slip
+            // spike drops out of the reading instead of buzzing as a phantom
+            // slide. Fallback when every wheel is drooped: silent if the channel
+            // has proven live (airborne), else the legacy max-abs.
+            double slipFallback = _seenSuspLoad ? 0.0 : combinedMax;
+            double weightedSlip = SlipWeighting.Weighted(
+                cmbFL, cmbFR, cmbRL, cmbRR,
+                susFL, susFR, susRL, susRR,
+                MinTotalSuspLoad, slipFallback);
+
             bool anyRumbleStrip = rsFL != 0 || rsFR != 0 || rsRL != 0 || rsRR != 0;
 
             // During the spawn / un-pause settle window, suppress the
@@ -606,7 +643,7 @@ namespace TrueforceForAll.Core
                 YawRateDegPerSec  = settling ? 0.0 : yawRad * RadToDeg,
 
                 Gear       = GearString(gearByte),
-                WheelSlip  = settling ? 0.0 : combinedMax,
+                WheelSlip  = settling ? 0.0 : weightedSlip,
                 // SAT inputs, suppressed during the settle window like the other
                 // grip channels so the spawn transient can't drive a future SAT
                 // model. Front-pair averages computed above.

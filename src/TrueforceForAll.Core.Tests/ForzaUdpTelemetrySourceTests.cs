@@ -156,6 +156,62 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
+        public void Airborne_LoadWeightedSlip_GoesSilent()
+        {
+            // Issue #30: a car in the air spins its unloaded wheels, so combined
+            // slip spikes, but no grip is being lost. Weighting each wheel by its
+            // suspension load drops the airborne wheels out, so the direct slip
+            // reads ~0 (silent) even with airborne ducking off.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);   // grounded: arm the load latch + open settle
+            Thread.Sleep(450);
+            var f = src.ParsePacket(DashPacket(combinedSlip: 0.9f, suspTravel: 0.0f), HorizonDashLength);
+
+            Assert.True(f.Airborne.GetValueOrDefault());
+            Assert.Equal(0.0, f.WheelSlip.GetValueOrDefault(), 6);
+        }
+
+        [Fact]
+        public void OneWheelLift_LoadWeightedSlip_TracksGroundedWheels()
+        {
+            // Issue #30: one wheel lifted over a kerb spins up (high slip, ~0
+            // load) while the other three stay planted with little slip. The load
+            // weighting follows the grounded three, not the lone spinning wheel
+            // (the old max-abs would have read the 0.90 spike at full strength).
+            var src = NewSource();
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.5f);        // three grounded wheels loaded...
+            PutFloat(b, OFF_COMBINED_FL + 0, 0.05f);     // FL grounded, low slip
+            PutFloat(b, OFF_COMBINED_FL + 4, 0.05f);     // FR grounded, low slip
+            PutFloat(b, OFF_COMBINED_FL + 8, 0.05f);     // RL grounded, low slip
+            PutFloat(b, OFF_COMBINED_FL + 12, 0.90f);    // RR spun up...
+            PutFloat(b, OFF_NORM_SUSP_FL + 12, 0.0f);    // ...and lifted (no load)
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.False(f.Airborne.GetValueOrDefault());   // not all four drooped
+            // Grounded three dominate: ~0.05, nowhere near the lifted wheel's 0.90.
+            Assert.InRange(f.WheelSlip.GetValueOrDefault(), 0.04, 0.10);
+        }
+
+        [Fact]
+        public void DeadSuspChannel_LoadWeightedSlip_FallsBackToLegacyMax()
+        {
+            // A hypothetical Forza title that never populates normalized
+            // suspension travel (all zeros) leaves the load channel unproven.
+            // Rather than silencing traction loss forever, the weighting falls
+            // back to the legacy max-abs so the effect still works (issue #30
+            // fallback) -- the loud branch the airborne test can't reach.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(combinedSlip: 0.7f, suspTravel: 0.0f), HorizonDashLength);  // settle; never arms the latch
+            Thread.Sleep(450);
+            var f = src.ParsePacket(DashPacket(combinedSlip: 0.7f, suspTravel: 0.0f), HorizonDashLength);
+
+            Assert.Equal(0.7, f.WheelSlip.GetValueOrDefault(), 6);   // legacy max-abs, not silenced
+        }
+
+        [Fact]
         public void DrivingFrame_ExtractsFrontSlipAngleAndSuspTravel()
         {
             // Past the settle window, the front-axle slip angle (Forza offset

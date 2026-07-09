@@ -5,7 +5,9 @@
 //
 //   A. Direct (preferred). When TelemetryFrame.WheelSlip is supplied, i.e.
 //      the source reads per-wheel slip ratio from the sim's shared memory
-//      directly (AC's wheelSlip[]), we just normalize it. Cleaner, no
+//      directly (AC's wheelSlip[]), we just normalize it. The source has
+//      already load-weighted the four tyres into that scalar (SlipWeighting,
+//      issue #30) so an airborne / lifted wheel doesn't buzz. Cleaner, no
 //      cross-coupling between detectors, and matches what the sim itself
 //      considers a slipping tire.
 //

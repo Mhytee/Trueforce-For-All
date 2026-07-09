@@ -50,8 +50,12 @@ namespace TrueforceForAll.Core
         private const int OFF_ACC_G_Y         = 48;    // float, vertical, g
         private const int OFF_ACC_G_Z         = 52;    // float, longitudinal, g (positive = forward)
         // wheelSlip[4], float[4] starting at offset 56. Order is FL/FR/RL/RR;
-        // 0 = perfect grip, larger magnitude = more slip. We take max-abs
-        // across all four (any slipping tire shakes the wheel).
+        // 0 = perfect grip, larger magnitude = more slip. Collapsed to the
+        // scalar WheelSlip for TractionLossEffect by load-weighting across the
+        // four tyres (issue #30, see ReadFrame): a wheel carrying no load
+        // contributes nothing, so an airborne or kerb-lifted tyre's slip spike
+        // drops out. (The TireCombinedSlip QUAD uses the binary GuardByLoad
+        // instead; the two serve different consumers.)
         private const int OFF_WHEEL_SLIP_FL   = 56;
         private const int OFF_WHEEL_SLIP_FR   = 60;
         private const int OFF_WHEEL_SLIP_RL   = 64;
@@ -130,6 +134,30 @@ namespace TrueforceForAll.Core
         // All four below this = no tyre touching = airborne.
         private const float AirborneLoadN = 1.0f;
 
+        // Load-weighted scalar slip (issue #30). Below this summed wheelLoad
+        // (newtons) no tyre is meaningfully on the ground, so the weighting has
+        // nothing to key on and falls back (silent when the load channel is
+        // live, legacy max-abs when it never populated). A grounded car carries
+        // hundreds-plus N per wheel; airborne is <1 N each, so 4 N cleanly
+        // separates them.
+        internal const double MinTotalLoadN = 4.0;
+
+        // Frozen-entry guard for the scalar weighting. AC freezes a wheel's
+        // wheelSlip[] entry the instant it leaves the ground (it stops solving
+        // that contact patch, CM-verified), so an entry bit-identical to the
+        // previous physics frame means the wheel is off the road; we zero its
+        // load so it can't contribute even on a build where wheelLoad doesn't
+        // collapse cleanly on contact loss (belt-and-suspenders for the same
+        // case GuardByLoad handles on the quad). The comparison is deliberately
+        // exact ==, not an epsilon: it detects "the solver stopped touching this
+        // entry", and a grounded wheel (locked included) is still solved every
+        // step against a decaying speed and shifting load, so its ndSlip moves
+        // in at least the low bits. Speed-gated: at a crawl a grounded wheel's
+        // slip legitimately repeats frame to frame, which isn't loss of contact.
+        internal const double FrozenGuardSpeedKmh = 10.0;
+        private TireQuad _prevSlip;
+        private bool     _prevSlipValid;
+
         public Action<string> Logger { get; set; }
 
         /// <summary>Opens the AC physics page and starts the polling thread.
@@ -173,9 +201,10 @@ namespace TrueforceForAll.Core
             // last one we observed.
             _lastPacketId = -1;
             // New session may be a different car / track; re-arm the airborne
-            // detector from scratch.
+            // detector and the slip load-weighting state from scratch.
             _seenWheelLoad = false;
             _prevAirborne  = false;
+            _prevSlipValid = false;
             Interlocked.Exchange(ref _running, 0);
         }
 
@@ -338,10 +367,6 @@ namespace TrueforceForAll.Core
             if (throttle01 < 0) throttle01 = 0;
             else if (throttle01 > 1) throttle01 = 1;
 
-            double maxSlip = Math.Max(
-                Math.Max(Math.Abs(wsFL), Math.Abs(wsFR)),
-                Math.Max(Math.Abs(wsRL), Math.Abs(wsRR)));
-
             // Airborne detection. The free-spinning, unloaded tyres of a car
             // in the air make wheelSlip[] spike, which TractionLossEffect would
             // read as a hard slide and buzz. When every wheel's vertical load
@@ -364,6 +389,22 @@ namespace TrueforceForAll.Core
                 Log(airborne ? "AC: airborne (wheel loads ~0)." : "AC: grounded.");
                 _prevAirborne = airborne;
             }
+
+            // Load-weighted scalar slip (issue #30). Weighting each wheel's slip
+            // by the vertical load it carries drops an unloaded wheel out of the
+            // reading, so a jump or a one-wheel lift no longer buzzes as a
+            // phantom slide (the free-spinning airborne tyre reads high slip but
+            // ~0 load). This is the scalar the direct traction path reads;
+            // GuardByLoad below handles the quad separately. The frozen-entry
+            // guard, fallback selection, and threshold live in pure statics
+            // (ZeroFrozenLoads / DirectScalarSlip) so they unit-test like their
+            // GuardByLoad / DeriveSlipRatio siblings.
+            var slipQuad = TireQuad.Of(wsFL, wsFR, wsRL, wsRR);
+            var effLoad  = ZeroFrozenLoads(slipQuad, _prevSlip, _prevSlipValid, speedKmh,
+                                           TireQuad.Of(wlFL, wlFR, wlRL, wlRR));
+            _prevSlip      = slipQuad;
+            _prevSlipValid = true;
+            double weightedSlip = DirectScalarSlip(slipQuad, effLoad, _seenWheelLoad);
 
             // Per-tire quads. AC's wheelSlip[] is best identified as Kunos
             // ndSlip: COMBINED lat+long slip normalized to peak grip, ~1.0 at
@@ -398,7 +439,7 @@ namespace TrueforceForAll.Core
                 SteeringAngle     = steer,
 
                 Gear      = GearString(gear),
-                WheelSlip = maxSlip,
+                WheelSlip = weightedSlip,
                 Airborne  = airborne,
 
                 // Quads: combined slip (ndSlip scale), suspension travel in
@@ -460,6 +501,39 @@ namespace TrueforceForAll.Core
             }
             return TireQuad.Of(R(wheelRotRadS.FL), R(wheelRotRadS.FR),
                                R(wheelRotRadS.RL), R(wheelRotRadS.RR));
+        }
+
+        /// <summary>Effective per-wheel loads for the scalar #30 weighting with
+        /// frozen (off-ground) wheels zeroed. A wheel whose wheelSlip[] entry is
+        /// bit-identical to the previous physics frame has lost contact (AC
+        /// stopped solving it), so its load is forced to 0 and it drops out of
+        /// the weighted average, even if wheelLoad misbehaves on contact loss.
+        /// No-op on the first frame (no previous to compare) and at/below
+        /// FrozenGuardSpeedKmh, where a grounded wheel's slip can legitimately
+        /// repeat. Exact == on purpose (see the field comment).</summary>
+        internal static TireQuad ZeroFrozenLoads(
+            TireQuad slip, TireQuad prevSlip, bool prevValid, double speedKmh, TireQuad loadN)
+        {
+            if (!prevValid || speedKmh <= FrozenGuardSpeedKmh) return loadN;
+            return TireQuad.Of(
+                slip.FL == prevSlip.FL ? 0.0 : loadN.FL,
+                slip.FR == prevSlip.FR ? 0.0 : loadN.FR,
+                slip.RL == prevSlip.RL ? 0.0 : loadN.RL,
+                slip.RR == prevSlip.RR ? 0.0 : loadN.RR);
+        }
+
+        /// <summary>The scalar WheelSlip the direct traction path reads (#30):
+        /// load-weighted |slip| across the four tyres. Fallback when no tyre is
+        /// loaded: silent when the load channel has proven live (seenLoad, i.e.
+        /// genuinely airborne) else the legacy max-abs (this build never
+        /// populated wheelLoad, so weighting can't work at all).</summary>
+        internal static double DirectScalarSlip(TireQuad slip, TireQuad effLoad, bool seenLoad)
+        {
+            double fallback = seenLoad ? 0.0 : slip.MaxAbs;
+            return SlipWeighting.Weighted(
+                slip.FL, slip.FR, slip.RL, slip.RR,
+                effLoad.FL, effLoad.FR, effLoad.RL, effLoad.RR,
+                MinTotalLoadN, fallback);
         }
 
         /// <summary>Zero a quad's entries for wheels carrying ~no vertical

@@ -95,6 +95,97 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(1.3, g.FR, 6);
         }
 
+        // ---- Scalar #30 load-weighting (frozen-entry guard + fallback) ----
+
+        [Fact]
+        public void ZeroFrozenLoads_FirstFrame_PassesThrough()
+        {
+            // No previous frame to compare against: never zero anything, or the
+            // first frame of a session would drop wheels on a stale comparison.
+            var slip = TireQuad.Of(0.5, 0.5, 0.5, 0.5);
+            var load = TireQuad.Of(3000, 3000, 3000, 3000);
+            var e = AcSharedMemoryTelemetrySource.ZeroFrozenLoads(
+                slip, prevSlip: default, prevValid: false, speedKmh: 100, loadN: load);
+            Assert.Equal(3000, e.FL, 6);
+            Assert.Equal(3000, e.RR, 6);
+        }
+
+        [Fact]
+        public void ZeroFrozenLoads_BelowSpeedGate_PassesThrough()
+        {
+            // At a crawl a grounded wheel's slip legitimately repeats, so the
+            // guard is disarmed below FrozenGuardSpeedKmh even for identical slip.
+            var slip = TireQuad.Of(0.5, 0.5, 0.5, 0.5);
+            var load = TireQuad.Of(3000, 3000, 3000, 3000);
+            var e = AcSharedMemoryTelemetrySource.ZeroFrozenLoads(
+                slip, prevSlip: slip, prevValid: true, speedKmh: 5.0, loadN: load);
+            Assert.Equal(3000, e.FL, 6);
+            Assert.Equal(3000, e.RR, 6);
+        }
+
+        [Fact]
+        public void ZeroFrozenLoads_ZeroesOnlyBitIdenticalWheels_AtSpeed()
+        {
+            // Above the gate: a wheel whose slip is bit-identical to the previous
+            // physics frame has left the ground (AC stopped solving it) and its
+            // load is zeroed; a wheel whose slip moved at all keeps its load.
+            var prev = TireQuad.Of(0.50, 0.50, 0.50, 0.50);
+            var slip = TireQuad.Of(0.50, 0.70, 0.50, 0.80);   // FL + RL frozen
+            var load = TireQuad.Of(3000, 3000, 3000, 3000);
+            var e = AcSharedMemoryTelemetrySource.ZeroFrozenLoads(
+                slip, prev, prevValid: true, speedKmh: 60.0, loadN: load);
+            Assert.Equal(0.0,  e.FL, 6);
+            Assert.Equal(3000, e.FR, 6);
+            Assert.Equal(0.0,  e.RL, 6);
+            Assert.Equal(3000, e.RR, 6);
+        }
+
+        [Fact]
+        public void DirectScalarSlip_FourWheelSlide_ReadsFullStrength()
+        {
+            // Every tyre loaded and sliding equally: the weighting equals that
+            // common value, so the effect's 0.50-is-full calibration is kept.
+            double r = AcSharedMemoryTelemetrySource.DirectScalarSlip(
+                TireQuad.Of(0.50, 0.50, 0.50, 0.50),
+                TireQuad.Of(2500, 3500, 2000, 4000), seenLoad: true);
+            Assert.Equal(0.50, r, 6);
+        }
+
+        [Fact]
+        public void DirectScalarSlip_UnloadedWheel_DropsOut()
+        {
+            // A lifted wheel spun up to 0.9 but carrying no load contributes
+            // nothing; the reading follows the three planted wheels.
+            double r = AcSharedMemoryTelemetrySource.DirectScalarSlip(
+                TireQuad.Of(0.05, 0.05, 0.05, 0.90),
+                TireQuad.Of(3000, 3000, 3000, 0.0), seenLoad: true);
+            Assert.Equal(0.05, r, 6);
+        }
+
+        [Fact]
+        public void DirectScalarSlip_Airborne_WhenChannelLive_GoesSilent()
+        {
+            // Every wheel unloaded and the load channel has proven live: this is
+            // a genuine jump, so the direct slip reads silent (issue #30).
+            double r = AcSharedMemoryTelemetrySource.DirectScalarSlip(
+                TireQuad.Of(0.9, 0.9, 0.9, 0.9),
+                TireQuad.Of(0.0, 0.0, 0.0, 0.0), seenLoad: true);
+            Assert.Equal(0.0, r, 6);
+        }
+
+        [Fact]
+        public void DirectScalarSlip_DeadLoadChannel_FallsBackToMaxAbs()
+        {
+            // wheelLoad never populated on this build (seenLoad false): weighting
+            // can't work, so fall back to the legacy max-abs rather than going
+            // silent. This is the loud-fallback branch the airborne test can't
+            // reach.
+            double r = AcSharedMemoryTelemetrySource.DirectScalarSlip(
+                TireQuad.Of(0.9, 0.8, 0.7, 0.6),
+                TireQuad.Of(0.0, 0.0, 0.0, 0.0), seenLoad: false);
+            Assert.Equal(0.9, r, 6);   // max-abs of the slip quad
+        }
+
         [Fact]
         public void AcShapedFrame_LightsTheCtmRollups()
         {

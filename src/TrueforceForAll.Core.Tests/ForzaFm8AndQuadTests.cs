@@ -207,8 +207,13 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0.04, f.SuspTravelM.RL, 4);
             Assert.Equal(0.21, f.SurfaceRumbleQ.FR, 4);
             Assert.Equal(52.0, f.WheelRotRadS.RL, 3);
-            // Existing scalar fields stay consistent with the quads.
-            Assert.Equal(f.TireCombinedSlip.MaxAbs, f.WheelSlip.GetValueOrDefault(), 6);
+            // Existing scalar fields stay consistent with the quads. WheelSlip is
+            // now the LOAD-WEIGHTED whole-car slip (issue #30), not the max: with
+            // all four suspensions equally loaded here (SledBase sets 0.5 each) it
+            // is the plain mean of the combined-slip quad.
+            double expectedWeighted = (f.TireCombinedSlip.FL + f.TireCombinedSlip.FR
+                                     + f.TireCombinedSlip.RL + f.TireCombinedSlip.RR) / 4.0;
+            Assert.Equal(expectedWeighted, f.WheelSlip.GetValueOrDefault(), 6);
             Assert.Equal(f.TireSlipAngleRad.FrontAvg, f.FrontSlipAngleRad.GetValueOrDefault(), 6);
         }
 
