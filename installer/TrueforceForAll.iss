@@ -95,9 +95,12 @@ Type: files; Name: "{app}\SimHubTrueforce.LoopbackHelper.exe"
 Type: filesandordirs; Name: "{app}\PluginsData\Common\TrueforceForAll\factory"
 
 [Files]
-; Our own files — always overwrite on upgrade.
+; Our own files — always overwrite on upgrade. THREE plugin DLLs since the
+; Engine assembly split: a missing or stale TrueforceForAll.Engine.dll means
+; the plugin silently fails to load (and a stale Core.dll a silent dead wheel).
 Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PluginBin}\TrueforceForAll.Engine.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; GPL-2.0 license + the EULA / safety notice, shipped so they travel with the
 ; install (the EULA is also the accept-to-install page; see LicenseFile above).
