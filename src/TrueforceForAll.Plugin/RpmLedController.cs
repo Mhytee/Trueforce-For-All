@@ -58,7 +58,15 @@ namespace TrueforceForAll.Plugin
 
             if (!gateOpen)
             {
-                if (_lastBucket > 0 && _channel.IsReady)
+                // Release the wheel when the gate closes (game switch, pause,
+                // Mode B disarm). Clear() also STOPS the keepalive thread, so
+                // we stop writing entirely and whatever drives this game's LEDs
+                // natively (or SimHub) has the wheel to itself. Fire on any
+                // prior drive, not just level > 0: leaving during the redline
+                // flash's off-phase (last level 0) must still stop the
+                // keepalive, else it keeps resending 0 and fights the native
+                // writer. Once cleared (_lastBucket = -1) this no-ops.
+                if (_lastBucket != -1 && _channel.IsReady)
                 {
                     try { _channel.Clear(); } catch { }
                 }
