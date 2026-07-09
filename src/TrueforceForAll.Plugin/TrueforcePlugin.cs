@@ -4078,7 +4078,13 @@ namespace TrueforceForAll.Plugin
                 var ledTap = _ffbTap;
                 bool gameFfbQuiet = ledTap != null && ledTap.IsRunning
                             && !ledTap.TryGetFreshFfbTarget(2000).HasValue;
-                bool modeBLeds = ledsOn && _forceModeB != 0 && gameFfbQuiet;
+                // Only while actively driving. On pause / menu / replay the
+                // session goes inactive: the Mode B force is already zeroed
+                // there, and without this the rev bar would freeze on the
+                // paused RPM (flashing if you paused near the redline, since
+                // the latch stays set). Mirrors the force pause-release.
+                bool sessionActive = _telemetrySource?.IsSessionActive ?? false;
+                bool modeBLeds = ledsOn && _forceModeB != 0 && gameFfbQuiet && sessionActive;
 
                 double pct     = frame.RpmPercent;
                 bool   redline = frame.RedlineReached;
