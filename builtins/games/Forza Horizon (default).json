@@ -57,6 +57,21 @@
     "NoiseHighpassHz": 30.281329923273656,
     "Waveform": "Noise"
   },
+  "AxleSlip": {
+    "Enabled": false,
+    "Gain": 1.0,
+    "PredictiveSlip": true,
+    "RevLockedRearPulse": true
+  },
+  "KerbThump": {
+    "Enabled": false,
+    "Gain": 1.6,
+    "Freq": 30.0
+  },
+  "LockupJudder": {
+    "Enabled": false,
+    "Gain": 1.0
+  },
   "GearShift": {
     "Enabled": true,
     "Gain": 0.4,

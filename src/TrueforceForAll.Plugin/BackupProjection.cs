@@ -60,9 +60,11 @@ namespace TrueforceForAll.Plugin
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb",
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
             "DuckingEnabled", "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
+            "DuckFrequencyAware",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
+            "AxleSlip", "KerbThump", "LockupJudder",
             // Per-game/car data + the custom-engine library (lives in settings, not files).
             "GameEnabled", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
             "CustomEngines", "SharingAuthor",

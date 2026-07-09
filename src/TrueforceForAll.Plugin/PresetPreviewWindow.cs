@@ -253,6 +253,7 @@ namespace TrueforceForAll.Plugin
             // Anything that's a section header lives elsewhere; skip.
             var sectionKeys = new HashSet<string>(new[] {
                 "EnginePulse","RevLimiter","RoadBumps","TractionLoss",
+                "AxleSlip","KerbThump","LockupJudder",
                 "GearShift","AbsClick","PitLimiter","Drs","Collision",
                 "AudioCapture","Airborne",
             });
@@ -479,6 +480,9 @@ namespace TrueforceForAll.Plugin
             AddSection(host, ovr, "RevLimiter",   "Rev limiter");
             AddSection(host, ovr, "RoadBumps",    "Road bumps");
             AddSection(host, ovr, "TractionLoss", "Traction loss");
+            AddSection(host, ovr, "AxleSlip",     "Axle slip");
+            AddSection(host, ovr, "KerbThump",    "Kerb thump");
+            AddSection(host, ovr, "LockupJudder", "Lockup judder");
             AddSection(host, ovr, "GearShift",    "Gear shift");
             AddSection(host, ovr, "AbsClick",     "ABS click");
             AddSection(host, ovr, "PitLimiter",   "Pit limiter");

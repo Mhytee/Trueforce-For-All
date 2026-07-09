@@ -1602,6 +1602,9 @@ namespace TrueforceForAll.Plugin
             AppendEffectLine(sb, "Engine pulse",     snap.EnginePulse);
             AppendEffectLine(sb, "Road bumps",       snap.RoadBumps);
             AppendEffectLine(sb, "Traction loss",    snap.TractionLoss);
+            AppendEffectLine(sb, "Axle slip",        snap.AxleSlip);
+            AppendEffectLine(sb, "Kerb thump",       snap.KerbThump);
+            AppendEffectLine(sb, "Lockup judder",    snap.LockupJudder);
             AppendEffectLine(sb, "Gear shift",       snap.GearShift);
             AppendEffectLine(sb, "ABS",              snap.AbsClick);
             AppendEffectLine(sb, "Pit limiter",      snap.PitLimiter);
@@ -1656,6 +1659,9 @@ namespace TrueforceForAll.Plugin
             AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  baseline?.EnginePulse);
             AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    baseline?.RoadBumps);
             AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, baseline?.TractionLoss);
+            AppendOverrideSection(sections, "Axle slip",        ov.AxleSlip,     baseline?.AxleSlip);
+            AppendOverrideSection(sections, "Kerb thump",       ov.KerbThump,    baseline?.KerbThump);
+            AppendOverrideSection(sections, "Lockup judder",    ov.LockupJudder, baseline?.LockupJudder);
             AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    baseline?.GearShift);
             AppendOverrideSection(sections, "ABS",              ov.AbsClick,     baseline?.AbsClick);
             AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   baseline?.PitLimiter);
@@ -1871,6 +1877,9 @@ namespace TrueforceForAll.Plugin
                         AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  null);
                         AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    null);
                         AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, null);
+                        AppendOverrideSection(sections, "Axle slip",        ov.AxleSlip,     null);
+                        AppendOverrideSection(sections, "Kerb thump",       ov.KerbThump,    null);
+                        AppendOverrideSection(sections, "Lockup judder",    ov.LockupJudder, null);
                         AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    null);
                         AppendOverrideSection(sections, "ABS",              ov.AbsClick,     null);
                         AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   null);
@@ -2686,11 +2695,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (customs != null && customs.Count > 0)
                     body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
 
-                var tags = new List<string>(11);
+                var tags = new List<string>(14);
                 if (snap.EnginePulse  != null) tags.Add("engine");
                 if (snap.RevLimiter   != null) tags.Add("revlimiter");
                 if (snap.RoadBumps    != null) tags.Add("roadbumps");
                 if (snap.TractionLoss != null) tags.Add("tractionloss");
+                if (snap.AxleSlip     != null) tags.Add("axleslip");
+                if (snap.KerbThump    != null) tags.Add("kerbthump");
+                if (snap.LockupJudder != null) tags.Add("lockupjudder");
                 if (snap.GearShift    != null) tags.Add("gearshift");
                 if (snap.AbsClick     != null) tags.Add("abs");
                 if (snap.PitLimiter   != null) tags.Add("pitlimiter");
@@ -3110,11 +3122,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (customs != null && customs.Count > 0)
                     body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
 
-                var tags = new List<string>(8);
+                var tags = new List<string>(14);
                 if (entry.Override.EnginePulse  != null) tags.Add("engine");
                 if (entry.Override.RevLimiter   != null) tags.Add("revlimiter");
                 if (entry.Override.RoadBumps    != null) tags.Add("roadbumps");
                 if (entry.Override.TractionLoss != null) tags.Add("tractionloss");
+                if (entry.Override.AxleSlip     != null) tags.Add("axleslip");
+                if (entry.Override.KerbThump    != null) tags.Add("kerbthump");
+                if (entry.Override.LockupJudder != null) tags.Add("lockupjudder");
                 if (entry.Override.GearShift    != null) tags.Add("gearshift");
                 if (entry.Override.AbsClick     != null) tags.Add("abs");
                 if (entry.Override.PitLimiter   != null) tags.Add("pitlimiter");
@@ -4849,12 +4864,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         // sections. Both upload + edit need it.
         private static List<string> BuildEffectTags(CarOverride ovr)
         {
-            var tags = new List<string>(11);
+            var tags = new List<string>(14);
             if (ovr == null) return tags;
             if (ovr.EnginePulse  != null) tags.Add("engine");
             if (ovr.RevLimiter   != null) tags.Add("revlimiter");
             if (ovr.RoadBumps    != null) tags.Add("roadbumps");
             if (ovr.TractionLoss != null) tags.Add("tractionloss");
+            if (ovr.AxleSlip     != null) tags.Add("axleslip");
+            if (ovr.KerbThump    != null) tags.Add("kerbthump");
+            if (ovr.LockupJudder != null) tags.Add("lockupjudder");
             if (ovr.GearShift    != null) tags.Add("gearshift");
             if (ovr.AbsClick     != null) tags.Add("abs");
             if (ovr.PitLimiter   != null) tags.Add("pitlimiter");
@@ -5712,6 +5730,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (chosen.Contains("revlimiter"))   apply.RevLimiter   = ovr.RevLimiter;
             if (chosen.Contains("roadbumps"))    apply.RoadBumps    = ovr.RoadBumps;
             if (chosen.Contains("tractionloss")) apply.TractionLoss = ovr.TractionLoss;
+            if (chosen.Contains("axleslip"))     apply.AxleSlip     = ovr.AxleSlip;
+            if (chosen.Contains("kerbthump"))    apply.KerbThump    = ovr.KerbThump;
+            if (chosen.Contains("lockupjudder")) apply.LockupJudder = ovr.LockupJudder;
             if (chosen.Contains("gearshift"))    apply.GearShift    = ovr.GearShift;
             if (chosen.Contains("abs"))          apply.AbsClick     = ovr.AbsClick;
             if (chosen.Contains("pitlimiter"))   apply.PitLimiter   = ovr.PitLimiter;

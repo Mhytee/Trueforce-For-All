@@ -214,6 +214,9 @@ namespace TrueforceForAll.Plugin
         public EnginePulseEffect  EnginePulse  { get; private set; }
         public RoadBumpsEffect    RoadBumps    { get; private set; }
         public TractionLossEffect TractionLoss { get; private set; }
+        public AxleSlipEffect     AxleSlip     { get; private set; }
+        public KerbThumpEffect    KerbThump    { get; private set; }
+        public LockupJudderEffect LockupJudder { get; private set; }
         public GearShiftEffect    GearShift    { get; private set; }
         public AbsClickEffect     AbsClick     { get; private set; }
         public PitLimiterEffect   PitLimiter   { get; private set; }
@@ -2494,6 +2497,9 @@ namespace TrueforceForAll.Plugin
                 // injects the diagnostic sink.
                 DiagLog = m => SimHub.Logging.Current.Info(m),
             };
+            AxleSlip     = new AxleSlipEffect();
+            KerbThump    = new KerbThumpEffect();
+            LockupJudder = new LockupJudderEffect();
             GearShift    = new GearShiftEffect();
             AbsClick     = new AbsClickEffect();
             PitLimiter   = new PitLimiterEffect();
@@ -2505,17 +2511,19 @@ namespace TrueforceForAll.Plugin
             // needs OnTelemetry (to read frame.Airborne) and Reset, both of
             // which the plugin fans out over _effects. Its no-op RenderAdd in
             // the mixer costs nothing.
-            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, Airborne };
+            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, AxleSlip, KerbThump, LockupJudder, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, Airborne };
             foreach (var fx in _effects) _mixer.Add(fx);
 
             // Sidechain ducker (Engine assembly): one field per effect, all
-            // null-checked inside, so the slots for effects this branch does
-            // not construct (AxleSlip / KerbThump / LockupJudder) stay unset.
-            // Audio is re-assigned every producer tick because the capture
-            // source is created after Init and can be retargeted live.
+            // null-checked inside. Audio is re-assigned every producer tick
+            // because the capture source is created after Init and can be
+            // retargeted live.
             _ducking.EnginePulse  = EnginePulse;
             _ducking.RoadBumps    = RoadBumps;
             _ducking.TractionLoss = TractionLoss;
+            _ducking.AxleSlip     = AxleSlip;
+            _ducking.KerbThump    = KerbThump;
+            _ducking.LockupJudder = LockupJudder;
             _ducking.GearShift    = GearShift;
             _ducking.AbsClick     = AbsClick;
             _ducking.PitLimiter   = PitLimiter;
@@ -4746,6 +4754,9 @@ namespace TrueforceForAll.Plugin
             ApplyEngineSettings(ovr?.EnginePulse  ?? Settings.EnginePulse);
             ApplyBumpsSettings (ovr?.RoadBumps    ?? Settings.RoadBumps);
             ApplyTractionSettings(ovr?.TractionLoss ?? Settings.TractionLoss);
+            ApplyAxleSlipSettings(ovr?.AxleSlip ?? Settings.AxleSlip);
+            ApplyKerbThumpSettings(ovr?.KerbThump ?? Settings.KerbThump);
+            ApplyLockupJudderSettings(ovr?.LockupJudder ?? Settings.LockupJudder);
             ApplyShiftSettings (ovr?.GearShift    ?? Settings.GearShift);
             ApplyAbsSettings   (ovr?.AbsClick     ?? Settings.AbsClick);
             ApplyPitLimiterSettings(ovr?.PitLimiter ?? Settings.PitLimiter);
@@ -4914,6 +4925,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:
                 case SectionKind.Bumps:
                 case SectionKind.Traction:
+                case SectionKind.AxleSlip:
+                case SectionKind.KerbThump:
+                case SectionKind.LockupJudder:
                 case SectionKind.Shift:
                 case SectionKind.Abs:
                 case SectionKind.PitLimiter:
@@ -4937,6 +4951,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:     return ovr.EnginePulse  != null;
                 case SectionKind.Bumps:      return ovr.RoadBumps    != null;
                 case SectionKind.Traction:   return ovr.TractionLoss != null;
+                case SectionKind.AxleSlip:   return ovr.AxleSlip     != null;
+                case SectionKind.KerbThump:  return ovr.KerbThump    != null;
+                case SectionKind.LockupJudder: return ovr.LockupJudder != null;
                 case SectionKind.Shift:      return ovr.GearShift    != null;
                 case SectionKind.Abs:        return ovr.AbsClick     != null;
                 case SectionKind.PitLimiter: return ovr.PitLimiter   != null;
@@ -4955,6 +4972,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:     ovr.EnginePulse  = null; break;
                 case SectionKind.Bumps:      ovr.RoadBumps    = null; break;
                 case SectionKind.Traction:   ovr.TractionLoss = null; break;
+                case SectionKind.AxleSlip:   ovr.AxleSlip     = null; break;
+                case SectionKind.KerbThump:  ovr.KerbThump    = null; break;
+                case SectionKind.LockupJudder: ovr.LockupJudder = null; break;
                 case SectionKind.Shift:      ovr.GearShift    = null; break;
                 case SectionKind.Abs:        ovr.AbsClick     = null; break;
                 case SectionKind.PitLimiter: ovr.PitLimiter   = null; break;
@@ -4972,6 +4992,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:     to.EnginePulse  = Clone(from.EnginePulse);  break;
                 case SectionKind.Bumps:      to.RoadBumps    = Clone(from.RoadBumps);    break;
                 case SectionKind.Traction:   to.TractionLoss = Clone(from.TractionLoss); break;
+                case SectionKind.AxleSlip:   to.AxleSlip     = Clone(from.AxleSlip);     break;
+                case SectionKind.KerbThump:  to.KerbThump    = Clone(from.KerbThump);    break;
+                case SectionKind.LockupJudder: to.LockupJudder = Clone(from.LockupJudder); break;
                 case SectionKind.Shift:      to.GearShift    = Clone(from.GearShift);    break;
                 case SectionKind.Abs:        to.AbsClick     = Clone(from.AbsClick);     break;
                 case SectionKind.PitLimiter: to.PitLimiter   = Clone(from.PitLimiter);   break;
@@ -4987,6 +5010,9 @@ namespace TrueforceForAll.Plugin
         public bool IsEngineOverridden     => GetActiveCarOverride()?.EnginePulse  != null;
         public bool IsBumpsOverridden      => GetActiveCarOverride()?.RoadBumps    != null;
         public bool IsTractionOverridden   => GetActiveCarOverride()?.TractionLoss != null;
+        public bool IsAxleSlipOverridden   => GetActiveCarOverride()?.AxleSlip     != null;
+        public bool IsKerbThumpOverridden  => GetActiveCarOverride()?.KerbThump    != null;
+        public bool IsLockupJudderOverridden => GetActiveCarOverride()?.LockupJudder != null;
         public bool IsShiftOverridden      => GetActiveCarOverride()?.GearShift    != null;
         public bool IsAbsOverridden        => GetActiveCarOverride()?.AbsClick     != null;
         public bool IsPitLimiterOverridden => GetActiveCarOverride()?.PitLimiter   != null;
@@ -5000,6 +5026,9 @@ namespace TrueforceForAll.Plugin
         public EnginePulseSettings  ActiveEngine   => GetActiveCarOverride()?.EnginePulse  ?? Settings.EnginePulse;
         public RoadBumpsSettings    ActiveBumps    => GetActiveCarOverride()?.RoadBumps    ?? Settings.RoadBumps;
         public TractionLossSettings ActiveTraction => GetActiveCarOverride()?.TractionLoss ?? Settings.TractionLoss;
+        public AxleSlipSettings     ActiveAxleSlip => GetActiveCarOverride()?.AxleSlip     ?? Settings.AxleSlip;
+        public KerbThumpSettings    ActiveKerbThump => GetActiveCarOverride()?.KerbThump   ?? Settings.KerbThump;
+        public LockupJudderSettings ActiveLockupJudder => GetActiveCarOverride()?.LockupJudder ?? Settings.LockupJudder;
         public GearShiftSettings    ActiveShift    => GetActiveCarOverride()?.GearShift    ?? Settings.GearShift;
         public AbsClickSettings     ActiveAbs        => GetActiveCarOverride()?.AbsClick     ?? Settings.AbsClick;
         public PitLimiterSettings   ActivePitLimiter => GetActiveCarOverride()?.PitLimiter   ?? Settings.PitLimiter;
@@ -5138,6 +5167,29 @@ namespace TrueforceForAll.Plugin
             TractionLoss.NoiseLowpassHz  = SafeMath.SafeDouble(s.NoiseLowpassHz, 20.0, 20000.0, 8000.0);
             TractionLoss.NoiseHighpassHz = SafeMath.SafeDouble(s.NoiseHighpassHz, 0.0, 1000.0, 30.0);
         }
+        private void ApplyAxleSlipSettings(AxleSlipSettings s)
+        {
+            if (AxleSlip == null || s == null) return;
+            AxleSlip.Enabled            = s.Enabled;
+            AxleSlip.Gain               = SafeMath.SafeFloat(s.Gain, 0.0f, 10.0f, 1.0f);
+            // 150 ms is the validated fixed lead; the toggle only turns the
+            // early warning on or off.
+            AxleSlip.PredictiveLeadMs   = s.PredictiveSlip ? 150f : 0f;
+            AxleSlip.RevLockedRearPulse = s.RevLockedRearPulse;
+        }
+        private void ApplyKerbThumpSettings(KerbThumpSettings s)
+        {
+            if (KerbThump == null || s == null) return;
+            KerbThump.Enabled = s.Enabled;
+            KerbThump.Gain    = SafeMath.SafeFloat(s.Gain, 0.0f, 10.0f, 1.0f);
+            KerbThump.Freq    = SafeMath.SafeFloat(s.Freq, 15.0f, 60.0f, 30.0f);
+        }
+        private void ApplyLockupJudderSettings(LockupJudderSettings s)
+        {
+            if (LockupJudder == null || s == null) return;
+            LockupJudder.Enabled = s.Enabled;
+            LockupJudder.Gain    = SafeMath.SafeFloat(s.Gain, 0.0f, 10.0f, 1.0f);
+        }
         private void ApplyShiftSettings(GearShiftSettings s)
         {
             if (GearShift == null || s == null) return;
@@ -5266,6 +5318,12 @@ namespace TrueforceForAll.Plugin
             };
         private static TractionLossSettings Clone(TractionLossSettings s)
             => new TractionLossSettings { Enabled = s.Enabled, Gain = s.Gain, Sensitivity = s.Sensitivity, Waveform = s.Waveform, Freq = s.Freq, NoiseLowpassHz = s.NoiseLowpassHz, NoiseHighpassHz = s.NoiseHighpassHz };
+        private static AxleSlipSettings     Clone(AxleSlipSettings s)
+            => new AxleSlipSettings     { Enabled = s.Enabled, Gain = s.Gain, PredictiveSlip = s.PredictiveSlip, RevLockedRearPulse = s.RevLockedRearPulse };
+        private static KerbThumpSettings    Clone(KerbThumpSettings s)
+            => new KerbThumpSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq };
+        private static LockupJudderSettings Clone(LockupJudderSettings s)
+            => new LockupJudderSettings { Enabled = s.Enabled, Gain = s.Gain };
         private static GearShiftSettings    Clone(GearShiftSettings s)
             => new GearShiftSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, Waveform = s.Waveform };
         private static AbsClickSettings     Clone(AbsClickSettings s)
@@ -6155,7 +6213,8 @@ namespace TrueforceForAll.Plugin
         /// carry. Drives the Validate "missing section" check.</summary>
         private static readonly string[] BuiltinGameSections =
         {
-            "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
+            "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss",
+            "AxleSlip", "KerbThump", "LockupJudder", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
         };
 
@@ -7278,6 +7337,9 @@ namespace TrueforceForAll.Plugin
                 EnginePulse  = o.EnginePulse  == null ? null : Clone(o.EnginePulse),
                 RoadBumps    = o.RoadBumps    == null ? null : Clone(o.RoadBumps),
                 TractionLoss = o.TractionLoss == null ? null : Clone(o.TractionLoss),
+                AxleSlip     = o.AxleSlip     == null ? null : Clone(o.AxleSlip),
+                KerbThump    = o.KerbThump    == null ? null : Clone(o.KerbThump),
+                LockupJudder = o.LockupJudder == null ? null : Clone(o.LockupJudder),
                 GearShift    = o.GearShift    == null ? null : Clone(o.GearShift),
                 AbsClick     = o.AbsClick     == null ? null : Clone(o.AbsClick),
                 PitLimiter   = o.PitLimiter   == null ? null : Clone(o.PitLimiter),
@@ -7992,6 +8054,9 @@ namespace TrueforceForAll.Plugin
             if (!Eq(live?.EnginePulse  ?? snap?.EnginePulse,  saved?.EnginePulse  ?? snap?.EnginePulse))  return true;
             if (!Eq(live?.RoadBumps    ?? snap?.RoadBumps,    saved?.RoadBumps    ?? snap?.RoadBumps))    return true;
             if (!Eq(live?.TractionLoss ?? snap?.TractionLoss, saved?.TractionLoss ?? snap?.TractionLoss)) return true;
+            if (!Eq(live?.AxleSlip     ?? snap?.AxleSlip,     saved?.AxleSlip     ?? snap?.AxleSlip))     return true;
+            if (!Eq(live?.KerbThump    ?? snap?.KerbThump,    saved?.KerbThump    ?? snap?.KerbThump))    return true;
+            if (!Eq(live?.LockupJudder ?? snap?.LockupJudder, saved?.LockupJudder ?? snap?.LockupJudder)) return true;
             if (!Eq(live?.GearShift    ?? snap?.GearShift,    saved?.GearShift    ?? snap?.GearShift))    return true;
             if (!Eq(live?.AbsClick     ?? snap?.AbsClick,     saved?.AbsClick     ?? snap?.AbsClick))     return true;
             if (!Eq(live?.PitLimiter   ?? snap?.PitLimiter,   saved?.PitLimiter   ?? snap?.PitLimiter))   return true;
@@ -8023,6 +8088,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:   if (ovr.EnginePulse  == null) ovr.EnginePulse  = Clone(Settings.EnginePulse);    break;
                 case SectionKind.Bumps:    if (ovr.RoadBumps    == null) ovr.RoadBumps    = Clone(Settings.RoadBumps);      break;
                 case SectionKind.Traction: if (ovr.TractionLoss == null) ovr.TractionLoss = Clone(Settings.TractionLoss);   break;
+                case SectionKind.AxleSlip:   if (ovr.AxleSlip     == null) ovr.AxleSlip     = Clone(Settings.AxleSlip);       break;
+                case SectionKind.KerbThump:  if (ovr.KerbThump    == null) ovr.KerbThump    = Clone(Settings.KerbThump);      break;
+                case SectionKind.LockupJudder: if (ovr.LockupJudder == null) ovr.LockupJudder = Clone(Settings.LockupJudder);  break;
                 case SectionKind.Shift:    if (ovr.GearShift    == null) ovr.GearShift    = Clone(Settings.GearShift);      break;
                 case SectionKind.Abs:        if (ovr.AbsClick     == null) ovr.AbsClick     = Clone(Settings.AbsClick);       break;
                 case SectionKind.PitLimiter: if (ovr.PitLimiter   == null) ovr.PitLimiter   = Clone(Settings.PitLimiter);     break;
@@ -8052,6 +8120,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:   if (ovr.EnginePulse  != null) { Settings.EnginePulse  = Clone(ovr.EnginePulse);    ovr.EnginePulse  = null; } break;
                 case SectionKind.Bumps:    if (ovr.RoadBumps    != null) { Settings.RoadBumps    = Clone(ovr.RoadBumps);      ovr.RoadBumps    = null; } break;
                 case SectionKind.Traction: if (ovr.TractionLoss != null) { Settings.TractionLoss = Clone(ovr.TractionLoss);   ovr.TractionLoss = null; } break;
+                case SectionKind.AxleSlip:   if (ovr.AxleSlip     != null) { Settings.AxleSlip     = Clone(ovr.AxleSlip);       ovr.AxleSlip     = null; } break;
+                case SectionKind.KerbThump:  if (ovr.KerbThump    != null) { Settings.KerbThump    = Clone(ovr.KerbThump);      ovr.KerbThump    = null; } break;
+                case SectionKind.LockupJudder: if (ovr.LockupJudder != null) { Settings.LockupJudder = Clone(ovr.LockupJudder);  ovr.LockupJudder = null; } break;
                 case SectionKind.Shift:    if (ovr.GearShift    != null) { Settings.GearShift    = Clone(ovr.GearShift);      ovr.GearShift    = null; } break;
                 case SectionKind.Abs:        if (ovr.AbsClick     != null) { Settings.AbsClick     = Clone(ovr.AbsClick);       ovr.AbsClick     = null; } break;
                 case SectionKind.PitLimiter: if (ovr.PitLimiter   != null) { Settings.PitLimiter   = Clone(ovr.PitLimiter);     ovr.PitLimiter   = null; } break;
@@ -12225,6 +12296,9 @@ namespace TrueforceForAll.Plugin
                     case SectionKind.Engine:   return !EffectEquals(snap, EffectField.Engine);
                     case SectionKind.Bumps:    return !EffectEquals(snap, EffectField.Bumps);
                     case SectionKind.Traction: return !EffectEquals(snap, EffectField.Traction);
+                    case SectionKind.AxleSlip:     return !EffectEquals(snap, EffectField.AxleSlip);
+                    case SectionKind.KerbThump:    return !EffectEquals(snap, EffectField.KerbThump);
+                    case SectionKind.LockupJudder: return !EffectEquals(snap, EffectField.LockupJudder);
                     case SectionKind.Shift:    return !EffectEquals(snap, EffectField.Shift);
                     case SectionKind.Abs:        return !EffectEquals(snap, EffectField.Abs);
                     case SectionKind.PitLimiter: return !EffectEquals(snap, EffectField.PitLimiter);
@@ -12251,6 +12325,9 @@ namespace TrueforceForAll.Plugin
                     case SectionKind.Engine:   if (liveCo?.EnginePulse  != null) return !Eq(liveCo.EnginePulse,  savedCo?.EnginePulse);  break;
                     case SectionKind.Bumps:    if (liveCo?.RoadBumps    != null) return !Eq(liveCo.RoadBumps,    savedCo?.RoadBumps);    break;
                     case SectionKind.Traction: if (liveCo?.TractionLoss != null) return !Eq(liveCo.TractionLoss, savedCo?.TractionLoss); break;
+                    case SectionKind.AxleSlip:   if (liveCo?.AxleSlip     != null) return !Eq(liveCo.AxleSlip,     savedCo?.AxleSlip);     break;
+                    case SectionKind.KerbThump:  if (liveCo?.KerbThump    != null) return !Eq(liveCo.KerbThump,    savedCo?.KerbThump);    break;
+                    case SectionKind.LockupJudder: if (liveCo?.LockupJudder != null) return !Eq(liveCo.LockupJudder, savedCo?.LockupJudder); break;
                     case SectionKind.Shift:    if (liveCo?.GearShift    != null) return !Eq(liveCo.GearShift,    savedCo?.GearShift);    break;
                     case SectionKind.Abs:        if (liveCo?.AbsClick     != null) return !Eq(liveCo.AbsClick,     savedCo?.AbsClick);     break;
                     case SectionKind.PitLimiter: if (liveCo?.PitLimiter   != null) return !Eq(liveCo.PitLimiter,   savedCo?.PitLimiter);   break;
@@ -12299,6 +12376,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:   return liveCo.EnginePulse  != null;
                 case SectionKind.Bumps:    return liveCo.RoadBumps    != null;
                 case SectionKind.Traction: return liveCo.TractionLoss != null;
+                case SectionKind.AxleSlip:   return liveCo.AxleSlip     != null;
+                case SectionKind.KerbThump:  return liveCo.KerbThump    != null;
+                case SectionKind.LockupJudder: return liveCo.LockupJudder != null;
                 case SectionKind.Shift:    return liveCo.GearShift    != null;
                 case SectionKind.Abs:        return liveCo.AbsClick     != null;
                 case SectionKind.PitLimiter: return liveCo.PitLimiter   != null;
@@ -12329,6 +12409,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:     return snap.EnginePulse  != null;
                 case SectionKind.Bumps:      return snap.RoadBumps    != null;
                 case SectionKind.Traction:   return snap.TractionLoss != null;
+                case SectionKind.AxleSlip:   return snap.AxleSlip     != null;
+                case SectionKind.KerbThump:  return snap.KerbThump    != null;
+                case SectionKind.LockupJudder: return snap.LockupJudder != null;
                 case SectionKind.Shift:      return snap.GearShift    != null;
                 case SectionKind.Abs:        return snap.AbsClick     != null;
                 case SectionKind.PitLimiter: return snap.PitLimiter   != null;
@@ -12379,7 +12462,8 @@ namespace TrueforceForAll.Plugin
             return Settings.DuckingEnabled == snap.DuckingEnabled
                 && EqF2(Settings.DuckDepth,    snap.DuckDepth)
                 && EqI (Settings.DuckAttackMs, snap.DuckAttackMs)
-                && EqI (Settings.DuckReleaseMs, snap.DuckReleaseMs);
+                && EqI (Settings.DuckReleaseMs, snap.DuckReleaseMs)
+                && Settings.DuckFrequencyAware == snap.DuckFrequencyAware;
         }
 
         // Airborne ducking is a global (non-per-car) section. A preset saved
@@ -12421,7 +12505,7 @@ namespace TrueforceForAll.Plugin
         private static bool EqF1(double a, double b) => Math.Round(a, 1) == Math.Round(b, 1);
         private static bool EqI (double a, double b) => Math.Round(a, 0) == Math.Round(b, 0);
 
-        private enum EffectField { Audio, Engine, Bumps, Traction, Shift, Abs, PitLimiter, Drs, Collision, RevLimiter }
+        private enum EffectField { Audio, Engine, Bumps, Traction, Shift, Abs, PitLimiter, Drs, Collision, RevLimiter, AxleSlip, KerbThump, LockupJudder }
 
         /// <summary>Scope-aware equals for dirty detection.
         ///
@@ -12489,6 +12573,15 @@ namespace TrueforceForAll.Plugin
                 case EffectField.RevLimiter:
                     if (liveCo?.RevLimiter   != null) return Eq(liveCo.RevLimiter,   savedCo?.RevLimiter   ?? snap.RevLimiter ?? new RevLimiterSettings());
                     return snap.RevLimiter   == null || Eq(Settings.RevLimiter,   snap.RevLimiter);
+                case EffectField.AxleSlip:
+                    if (liveCo?.AxleSlip     != null) return Eq(liveCo.AxleSlip,     savedCo?.AxleSlip     ?? snap.AxleSlip);
+                    return snap.AxleSlip     == null || Eq(Settings.AxleSlip,     snap.AxleSlip);
+                case EffectField.KerbThump:
+                    if (liveCo?.KerbThump    != null) return Eq(liveCo.KerbThump,    savedCo?.KerbThump    ?? snap.KerbThump);
+                    return snap.KerbThump    == null || Eq(Settings.KerbThump,    snap.KerbThump);
+                case EffectField.LockupJudder:
+                    if (liveCo?.LockupJudder != null) return Eq(liveCo.LockupJudder, savedCo?.LockupJudder ?? snap.LockupJudder);
+                    return snap.LockupJudder == null || Eq(Settings.LockupJudder, snap.LockupJudder);
             }
             return true;
         }
@@ -12603,6 +12696,27 @@ namespace TrueforceForAll.Plugin
                 && EqI (a.NoiseHighpassHz, b.NoiseHighpassHz)
                 && a.Waveform == b.Waveform;
         }
+        private static bool Eq(AxleSlipSettings a, AxleSlipSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain, b.Gain)
+                && a.PredictiveSlip     == b.PredictiveSlip
+                && a.RevLockedRearPulse == b.RevLockedRearPulse;
+        }
+        private static bool Eq(KerbThumpSettings a, KerbThumpSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain, b.Gain)
+                && EqI(a.Freq, b.Freq);   // Freq displays as an integer; compare at display precision
+        }
+        private static bool Eq(LockupJudderSettings a, LockupJudderSettings b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Enabled == b.Enabled
+                && EqF2(a.Gain, b.Gain);
+        }
         private static bool Eq(GearShiftSettings a, GearShiftSettings b)
         {
             if (a == null || b == null) return a == b;
@@ -12711,7 +12825,7 @@ namespace TrueforceForAll.Plugin
         /// Mirrors the per-section "Save…" / "Revert" buttons in the UI:
         /// Master and Ducking are global-only; the rest have a per-car
         /// override component that revert respects.</summary>
-        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs, SpikeReduction, PitLimiter, Drs, Collision, RevLimiter, Airborne, StationarySpring }
+        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs, SpikeReduction, PitLimiter, Drs, Collision, RevLimiter, Airborne, StationarySpring, AxleSlip, KerbThump, LockupJudder }
 
         /// <summary>Revert one section to the active preset's saved snapshot.
         /// Scope-aware: if the snapshot has a per-car override for the
@@ -12773,6 +12887,7 @@ namespace TrueforceForAll.Plugin
                     Settings.DuckDepth      = snap.DuckDepth;
                     Settings.DuckAttackMs   = snap.DuckAttackMs;
                     Settings.DuckReleaseMs  = snap.DuckReleaseMs;
+                    Settings.DuckFrequencyAware = snap.DuckFrequencyAware;
                     return true;
 
                 case SectionKind.Airborne:
@@ -12812,6 +12927,39 @@ namespace TrueforceForAll.Plugin
                         s => Settings.TractionLoss = Clone(s),
                         (co, v) => co.TractionLoss = Clone(v),
                         co => co.TractionLoss = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.AxleSlip:
+                    RevertEffectScopeAware(
+                        snap.AxleSlip,
+                        snap.CarOverrides,
+                        co => co?.AxleSlip,
+                        s => Settings.AxleSlip = Clone(s),
+                        (co, v) => co.AxleSlip = Clone(v),
+                        co => co.AxleSlip = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.KerbThump:
+                    RevertEffectScopeAware(
+                        snap.KerbThump,
+                        snap.CarOverrides,
+                        co => co?.KerbThump,
+                        s => Settings.KerbThump = Clone(s),
+                        (co, v) => co.KerbThump = Clone(v),
+                        co => co.KerbThump = null);
+                    ApplyActiveCarOverride();
+                    return true;
+
+                case SectionKind.LockupJudder:
+                    RevertEffectScopeAware(
+                        snap.LockupJudder,
+                        snap.CarOverrides,
+                        co => co?.LockupJudder,
+                        s => Settings.LockupJudder = Clone(s),
+                        (co, v) => co.LockupJudder = Clone(v),
+                        co => co.LockupJudder = null);
                     ApplyActiveCarOverride();
                     return true;
 
@@ -13061,6 +13209,7 @@ namespace TrueforceForAll.Plugin
                     snap.DuckDepth     = Settings.DuckDepth;
                     snap.DuckAttackMs  = Settings.DuckAttackMs;
                     snap.DuckReleaseMs = Settings.DuckReleaseMs;
+                    snap.DuckFrequencyAware = Settings.DuckFrequencyAware;
                     break;
                 case SectionKind.Airborne:
                     snap.Airborne = Clone(Settings.Airborne);
@@ -13068,6 +13217,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:     snap.EnginePulse  = Clone(Settings.EnginePulse);     break;
                 case SectionKind.Bumps:      snap.RoadBumps    = Clone(Settings.RoadBumps);       break;
                 case SectionKind.Traction:   snap.TractionLoss = Clone(Settings.TractionLoss);    break;
+                case SectionKind.AxleSlip:   snap.AxleSlip     = Clone(Settings.AxleSlip);        break;
+                case SectionKind.KerbThump:  snap.KerbThump    = Clone(Settings.KerbThump);       break;
+                case SectionKind.LockupJudder: snap.LockupJudder = Clone(Settings.LockupJudder);  break;
                 case SectionKind.Shift:      snap.GearShift    = Clone(Settings.GearShift);       break;
                 case SectionKind.Abs:        snap.AbsClick     = Clone(Settings.AbsClick);        break;
                 case SectionKind.PitLimiter: snap.PitLimiter   = Clone(Settings.PitLimiter);      break;
@@ -13135,6 +13287,9 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Engine:     patched.EnginePulse  = live.EnginePulse  != null ? Clone(live.EnginePulse)  : null; break;
                 case SectionKind.Bumps:      patched.RoadBumps    = live.RoadBumps    != null ? Clone(live.RoadBumps)    : null; break;
                 case SectionKind.Traction:   patched.TractionLoss = live.TractionLoss != null ? Clone(live.TractionLoss) : null; break;
+                case SectionKind.AxleSlip:   patched.AxleSlip     = live.AxleSlip     != null ? Clone(live.AxleSlip)     : null; break;
+                case SectionKind.KerbThump:  patched.KerbThump    = live.KerbThump    != null ? Clone(live.KerbThump)    : null; break;
+                case SectionKind.LockupJudder: patched.LockupJudder = live.LockupJudder != null ? Clone(live.LockupJudder) : null; break;
                 case SectionKind.Shift:      patched.GearShift    = live.GearShift    != null ? Clone(live.GearShift)    : null; break;
                 case SectionKind.Abs:        patched.AbsClick     = live.AbsClick     != null ? Clone(live.AbsClick)     : null; break;
                 case SectionKind.PitLimiter: patched.PitLimiter   = live.PitLimiter   != null ? Clone(live.PitLimiter)   : null; break;
@@ -13769,6 +13924,7 @@ namespace TrueforceForAll.Plugin
             Settings.DuckDepth               = SafeMath.SafeFloat(snap.DuckDepth, 0.0f, 1.0f, 0.60f);
             Settings.DuckAttackMs            = SafeMath.SafeFloat(snap.DuckAttackMs, 0.0f, 10000.0f, 5.0f);
             Settings.DuckReleaseMs           = SafeMath.SafeFloat(snap.DuckReleaseMs, 0.0f, 10000.0f, 80.0f);
+            Settings.DuckFrequencyAware      = snap.DuckFrequencyAware;
             // Stationary spring: nullable in the snapshot. Null = preset predates
             // the field, so leave the user's current value untouched (migration).
             if (snap.StationarySpringEnabled.HasValue)   Settings.StationarySpringEnabled   = snap.StationarySpringEnabled.Value;
@@ -13779,6 +13935,9 @@ namespace TrueforceForAll.Plugin
             if (snap.EnginePulse  != null) Settings.EnginePulse  = Clone(snap.EnginePulse);
             if (snap.RoadBumps    != null) Settings.RoadBumps    = Clone(snap.RoadBumps);
             if (snap.TractionLoss != null) Settings.TractionLoss = Clone(snap.TractionLoss);
+            if (snap.AxleSlip     != null) Settings.AxleSlip     = Clone(snap.AxleSlip);
+            if (snap.KerbThump    != null) Settings.KerbThump    = Clone(snap.KerbThump);
+            if (snap.LockupJudder != null) Settings.LockupJudder = Clone(snap.LockupJudder);
             if (snap.GearShift    != null) Settings.GearShift    = Clone(snap.GearShift);
             if (snap.AbsClick     != null) Settings.AbsClick     = Clone(snap.AbsClick);
             if (snap.PitLimiter   != null) Settings.PitLimiter   = Clone(snap.PitLimiter);
@@ -13847,10 +14006,14 @@ namespace TrueforceForAll.Plugin
                 DuckDepth               = Settings.DuckDepth,
                 DuckAttackMs            = Settings.DuckAttackMs,
                 DuckReleaseMs           = Settings.DuckReleaseMs,
+                DuckFrequencyAware      = Settings.DuckFrequencyAware,
                 AudioCapture            = CloneOrNull(Settings.AudioCapture),
                 EnginePulse             = Clone(Settings.EnginePulse),
                 RoadBumps               = Clone(Settings.RoadBumps),
                 TractionLoss            = Clone(Settings.TractionLoss),
+                AxleSlip                = Clone(Settings.AxleSlip),
+                KerbThump               = Clone(Settings.KerbThump),
+                LockupJudder            = Clone(Settings.LockupJudder),
                 GearShift               = Clone(Settings.GearShift),
                 AbsClick                = Clone(Settings.AbsClick),
                 PitLimiter              = Clone(Settings.PitLimiter),
@@ -17649,6 +17812,9 @@ namespace TrueforceForAll.Plugin
                     // Keep the ducker's audio ref current: the capture source
                     // is created after Init and can be retargeted live.
                     _ducking.Audio = _audio;
+                    // Live toggle: UseBandArbiter is volatile, written here on
+                    // the producer thread, read on the engine thread.
+                    _ducking.UseBandArbiter = Settings?.DuckFrequencyAware ?? false;
                     loop.RunOneTick(buf, Stopwatch.GetTimestamp(),
                         (Settings?.DuckingEnabled ?? true) ? (Settings?.DuckDepth ?? 0.5f) : 0f,
                         Settings?.DuckAttackMs  ?? 5.0f,

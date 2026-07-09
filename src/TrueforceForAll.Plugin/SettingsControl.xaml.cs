@@ -107,8 +107,8 @@ namespace TrueforceForAll.Plugin
         // Values mirror TrueforcePlugin.SectionKind so we can pass through.
         // Numeric values mirror TrueforcePlugin.SectionKind so we can pass
         // through with a cast.
-        private enum EffectKind { Master = 0, Ducking = 1, Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, SpikeReduction = 8, PitLimiter = 9, Drs = 10, Collision = 11, RevLimiter = 12, Airborne = 13, StationarySpring = 14 }
-        private readonly bool[] _effectDirty = new bool[15];
+        private enum EffectKind { Master = 0, Ducking = 1, Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, SpikeReduction = 8, PitLimiter = 9, Drs = 10, Collision = 11, RevLimiter = 12, Airborne = 13, StationarySpring = 14, AxleSlip = 15, KerbThump = 16, LockupJudder = 17 }
+        private readonly bool[] _effectDirty = new bool[18];
         private System.Windows.Controls.Button GetEffectSaveBtn(EffectKind which)
         {
             switch (which)
@@ -128,6 +128,9 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.Collision:      return CollisionSaveBtn;
                 case EffectKind.RevLimiter:     return RevLimiterSaveBtn;
                 case EffectKind.Airborne:       return AirborneSaveBtn;
+                case EffectKind.AxleSlip:       return AxleSlipSaveBtn;
+                case EffectKind.KerbThump:      return KerbThumpSaveBtn;
+                case EffectKind.LockupJudder:   return LockupJudderSaveBtn;
             }
             return null;
         }
@@ -150,6 +153,9 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.Collision:      return CollisionRevertBtn;
                 case EffectKind.RevLimiter:     return RevLimiterRevertBtn;
                 case EffectKind.Airborne:       return AirborneRevertBtn;
+                case EffectKind.AxleSlip:       return AxleSlipRevertBtn;
+                case EffectKind.KerbThump:      return KerbThumpRevertBtn;
+                case EffectKind.LockupJudder:   return LockupJudderRevertBtn;
             }
             return null;
         }
@@ -172,6 +178,9 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.Collision:      return "Collision";
                 case EffectKind.RevLimiter:     return "Rev limiter";
                 case EffectKind.Airborne:       return "Airborne ducking";
+                case EffectKind.AxleSlip:       return "Axle slip";
+                case EffectKind.KerbThump:      return "Kerb thump";
+                case EffectKind.LockupJudder:   return "Lockup judder";
             }
             return "section";
         }
@@ -526,6 +535,8 @@ namespace TrueforceForAll.Plugin
                 DuckAttackText.Text     = ((int)DuckAttackSlider.Value).ToString();
                 DuckReleaseSlider.Value = _plugin.Settings?.DuckReleaseMs ?? 80.0;
                 DuckReleaseText.Text    = ((int)DuckReleaseSlider.Value).ToString();
+                if (DuckFrequencyAwareCheck != null)
+                    DuckFrequencyAwareCheck.IsChecked = _plugin.Settings?.DuckFrequencyAware ?? false;
 
                 var audio = _plugin.ActiveAudio;
                 AudioEnabledCheck.IsChecked      = audio?.Enabled ?? false;
@@ -762,6 +773,34 @@ namespace TrueforceForAll.Plugin
                     CollisionEnvelopeMsText.Text       = coll.EnvelopeMs.ToString();
                     SelectWaveform(CollisionWaveformCombo, coll.Waveform);
                 }
+                // Axle slip (per-car overridable like the other effects)
+                var axle = _plugin.ActiveAxleSlip;
+                if (axle != null && AxleSlipEnabledCheck != null)
+                {
+                    AxleSlipEnabledCheck.IsChecked    = axle.Enabled;
+                    AxleSlipGainSlider.Value          = axle.Gain;
+                    AxleSlipGainText.Text             = axle.Gain.ToString("F2");
+                    AxleSlipPredictiveCheck.IsChecked = axle.PredictiveSlip;
+                    AxleSlipRevLockedCheck.IsChecked  = axle.RevLockedRearPulse;
+                }
+                // Kerb thump (per-car overridable like the other effects)
+                var kerb = _plugin.ActiveKerbThump;
+                if (kerb != null && KerbThumpEnabledCheck != null)
+                {
+                    KerbThumpEnabledCheck.IsChecked   = kerb.Enabled;
+                    KerbThumpGainSlider.Value         = kerb.Gain;
+                    KerbThumpGainText.Text            = kerb.Gain.ToString("F2");
+                    KerbThumpFreqSlider.Value         = kerb.Freq;
+                    KerbThumpFreqText.Text            = ((int)kerb.Freq).ToString();
+                }
+                // Lockup judder (per-car overridable like the other effects)
+                var lockup = _plugin.ActiveLockupJudder;
+                if (lockup != null && LockupJudderEnabledCheck != null)
+                {
+                    LockupJudderEnabledCheck.IsChecked = lockup.Enabled;
+                    LockupJudderGainSlider.Value       = lockup.Gain;
+                    LockupJudderGainText.Text          = lockup.Gain.ToString("F2");
+                }
                 // Rev limiter (per-car overridable like the other effects)
                 var rl = _plugin.ActiveRevLimiter;
                 if (rl != null && RevLimiterEnabledCheck != null)
@@ -861,6 +900,12 @@ namespace TrueforceForAll.Plugin
                     DrsOverrideBadge.Visibility        = (_plugin.IsDrsOverridden        && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (CollisionOverrideBadge != null)
                     CollisionOverrideBadge.Visibility  = (_plugin.IsCollisionOverridden  && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                if (AxleSlipOverrideBadge != null)
+                    AxleSlipOverrideBadge.Visibility   = (_plugin.IsAxleSlipOverridden   && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                if (KerbThumpOverrideBadge != null)
+                    KerbThumpOverrideBadge.Visibility  = (_plugin.IsKerbThumpOverridden  && carDetected) ? Visibility.Visible : Visibility.Collapsed;
+                if (LockupJudderOverrideBadge != null)
+                    LockupJudderOverrideBadge.Visibility = (_plugin.IsLockupJudderOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (RevLimiterOverrideBadge != null)
                     RevLimiterOverrideBadge.Visibility = (_plugin.IsRevLimiterOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1851,6 +1896,9 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.Drs:        return "Drs";
                 case EffectKind.Collision:  return "Collision";
                 case EffectKind.RevLimiter: return "RevLimiter";
+                case EffectKind.AxleSlip:     return "AxleSlip";
+                case EffectKind.KerbThump:    return "KerbThump";
+                case EffectKind.LockupJudder: return "LockupJudder";
                 default:                    return null;
             }
         }
@@ -1872,6 +1920,9 @@ namespace TrueforceForAll.Plugin
                 case "Collision":  return CollisionNewBadge;
                 case "RevLimiter": return RevLimiterNewBadge;
                 case "Airborne":   return AirborneNewBadge;
+                case "AxleSlip":     return AxleSlipNewBadge;
+                case "KerbThump":    return KerbThumpNewBadge;
+                case "LockupJudder": return LockupJudderNewBadge;
                 default:           return null;
             }
         }
@@ -2596,7 +2647,7 @@ namespace TrueforceForAll.Plugin
 
             // Effect tags from non-null sections on the snapshot. Same
             // whitelist the server enforces, same order as car presets.
-            var tags = new List<string>(11);
+            var tags = new List<string>(14);
             if (snap.EnginePulse  != null) tags.Add("engine");
             if (snap.RevLimiter   != null) tags.Add("revlimiter");
             if (snap.RoadBumps    != null) tags.Add("roadbumps");
@@ -2606,6 +2657,9 @@ namespace TrueforceForAll.Plugin
             if (snap.PitLimiter   != null) tags.Add("pitlimiter");
             if (snap.Drs          != null) tags.Add("drs");
             if (snap.Collision    != null) tags.Add("collision");
+            if (snap.AxleSlip     != null) tags.Add("axleslip");
+            if (snap.KerbThump    != null) tags.Add("kerbthump");
+            if (snap.LockupJudder != null) tags.Add("lockupjudder");
             if (snap.AudioCapture != null) tags.Add("audio");
             if (snap.Airborne     != null) tags.Add("airborne");
 
@@ -2743,7 +2797,7 @@ namespace TrueforceForAll.Plugin
             if (customs != null && customs.Count > 0)
                 body["custom_engines"] = Newtonsoft.Json.Linq.JToken.FromObject(customs);
 
-            var tags = new List<string>(11);
+            var tags = new List<string>(14);
             if (entry.Override.EnginePulse  != null) tags.Add("engine");
             if (entry.Override.RevLimiter   != null) tags.Add("revlimiter");
             if (entry.Override.RoadBumps    != null) tags.Add("roadbumps");
@@ -2753,6 +2807,9 @@ namespace TrueforceForAll.Plugin
             if (entry.Override.PitLimiter   != null) tags.Add("pitlimiter");
             if (entry.Override.Drs          != null) tags.Add("drs");
             if (entry.Override.Collision    != null) tags.Add("collision");
+            if (entry.Override.AxleSlip     != null) tags.Add("axleslip");
+            if (entry.Override.KerbThump    != null) tags.Add("kerbthump");
+            if (entry.Override.LockupJudder != null) tags.Add("lockupjudder");
             if (entry.Override.AudioCapture != null) tags.Add("audio");
             if (entry.Override.Airborne     != null) tags.Add("airborne");
 
@@ -2983,6 +3040,9 @@ namespace TrueforceForAll.Plugin
             if (chosen.Contains("pitlimiter"))   apply.PitLimiter   = ovr.PitLimiter;
             if (chosen.Contains("drs"))          apply.Drs          = ovr.Drs;
             if (chosen.Contains("collision"))    apply.Collision    = ovr.Collision;
+            if (chosen.Contains("axleslip"))     apply.AxleSlip     = ovr.AxleSlip;
+            if (chosen.Contains("kerbthump"))    apply.KerbThump    = ovr.KerbThump;
+            if (chosen.Contains("lockupjudder")) apply.LockupJudder = ovr.LockupJudder;
             if (chosen.Contains("audio"))        apply.AudioCapture = ovr.AudioCapture;
             if (chosen.Contains("airborne"))     apply.Airborne     = ovr.Airborne;
 
@@ -4165,6 +4225,12 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             DuckReleaseText.Text = ((int)v).ToString();
             _plugin.Settings.DuckReleaseMs = v;
+            MarkEffectDirty(EffectKind.Ducking);
+        }
+        private void DuckFrequencyAware_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DuckFrequencyAware = DuckFrequencyAwareCheck.IsChecked == true;
             MarkEffectDirty(EffectKind.Ducking);
         }
 
@@ -9733,6 +9799,89 @@ namespace TrueforceForAll.Plugin
         }
         private void CollisionTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.Collision);
         private void RevLimiterTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.RevLimiter);
+
+        // ---------- Axle slip ----------
+
+        private void AxleSlipEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.Enabled = AxleSlipEnabledCheck.IsChecked == true;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipGainText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.Gain = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipPredictive_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.PredictiveSlip = AxleSlipPredictiveCheck.IsChecked == true;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipRevLocked_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.RevLockedRearPulse = AxleSlipRevLockedCheck.IsChecked == true;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.AxleSlip);
+
+        // ---------- Kerb thump ----------
+
+        private void KerbThumpEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.KerbThump);
+            _plugin.ActiveKerbThump.Enabled = KerbThumpEnabledCheck.IsChecked == true;
+            Apply(EffectKind.KerbThump);
+        }
+        private void KerbThumpGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            KerbThumpGainText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.KerbThump);
+            _plugin.ActiveKerbThump.Gain = v;
+            Apply(EffectKind.KerbThump);
+        }
+        private void KerbThumpFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            KerbThumpFreqText.Text = ((int)v).ToString();
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.KerbThump);
+            _plugin.ActiveKerbThump.Freq = v;
+            Apply(EffectKind.KerbThump);
+        }
+        private void KerbThumpTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.KerbThump);
+
+        // ---------- Lockup judder ----------
+
+        private void LockupJudderEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.LockupJudder);
+            _plugin.ActiveLockupJudder.Enabled = LockupJudderEnabledCheck.IsChecked == true;
+            Apply(EffectKind.LockupJudder);
+        }
+        private void LockupJudderGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            LockupJudderGainText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.LockupJudder);
+            _plugin.ActiveLockupJudder.Gain = v;
+            Apply(EffectKind.LockupJudder);
+        }
+        private void LockupJudderTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.LockupJudder);
 
         // ---------- ABS ----------
 

@@ -1891,6 +1891,121 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Axle slip (which end of the car is letting go). A high
+                     scrub texture as the front washes wide, a deep pulse as
+                     the rear steps out. Needs per-tire telemetry. -->
+                <Expander x:Name="AxleSlipExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="AxleSlipEnabledCheck" Content="Axle slip"
+                                      FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Checked="AxleSlipEnabled_Changed" Unchecked="AxleSlipEnabled_Changed"/>
+                            <Border x:Name="AxleSlipNewBadge" Style="{StaticResource NewEffectBadge}">
+                                <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                            </Border>
+                            <TextBlock x:Name="AxleSlipOverrideBadge" Style="{StaticResource OverrideBadge}"/>
+                            <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="AxleSlipTest_Click"/>
+                            <Button x:Name="AxleSlipRevertBtn" Content="↶" Tag="AxleSlip" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="AxleSlipSaveBtn"   Content="Save…" Tag="AxleSlip" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="Feel which axle is letting go: a high scrub texture as the front washes wide, a deep pulse as the rear steps out. The louder axle is the one losing grip. Needs per-tire telemetry (Forza games today)."/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="AxleSlipGainSlider" Minimum="0" Maximum="3" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.25" ValueChanged="AxleSlipGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="AxleSlipPredictiveCheck"
+                                      Content="Predictive onset" VerticalAlignment="Center"
+                                      Checked="AxleSlipPredictive_Changed" Unchecked="AxleSlipPredictive_Changed"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,8" TextWrapping="Wrap"
+                                   Text="Starts the texture a fraction earlier, so the warning arrives before the slide instead of with it."/>
+                        <Grid Margin="0,0,0,2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="AxleSlipRevLockedCheck"
+                                      Content="Wheelspin-locked rear pulse" VerticalAlignment="Center"
+                                      Checked="AxleSlipRevLocked_Changed" Unchecked="AxleSlipRevLocked_Changed"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,0" TextWrapping="Wrap"
+                                   Text="The rear pulse speeds up and slows down with the spinning wheels themselves, so wheelspin feels like wheels turning rather than a generic buzz."/>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Kerb thump (first-contact whack, distinct from the rumble
+                     that follows). Needs kerb telemetry. -->
+                <Expander x:Name="KerbThumpExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="KerbThumpEnabledCheck" Content="Kerb thump"
+                                      FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Checked="KerbThumpEnabled_Changed" Unchecked="KerbThumpEnabled_Changed"/>
+                            <Border x:Name="KerbThumpNewBadge" Style="{StaticResource NewEffectBadge}">
+                                <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                            </Border>
+                            <TextBlock x:Name="KerbThumpOverrideBadge" Style="{StaticResource OverrideBadge}"/>
+                            <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="KerbThumpTest_Click"/>
+                            <Button x:Name="KerbThumpRevertBtn" Content="↶" Tag="KerbThump" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="KerbThumpSaveBtn"   Content="Save…" Tag="KerbThump" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="A single firm whack the instant a wheel first touches a kerb, distinct from the rumble that follows. Scales with speed. Needs kerb telemetry (Forza games today)."/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="KerbThumpGainSlider" Minimum="0" Maximum="3" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.25" ValueChanged="KerbThumpGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="KerbThumpGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.60"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"
+                                       ToolTip="Lower = deeper whack. 30 Hz default keeps it below the gear-shift thud."/>
+                            <Slider     Grid.Column="1" x:Name="KerbThumpFreqSlider" Minimum="15" Maximum="60" SmallChange="1" LargeChange="5"
+                                        TickFrequency="5" ValueChanged="KerbThumpFreqSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="KerbThumpFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Lockup judder (flat-spot pulse while a braking tire is
+                     locked, slowing with the car). Needs per-tire telemetry. -->
+                <Expander x:Name="LockupJudderExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="LockupJudderEnabledCheck" Content="Lockup judder"
+                                      FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Checked="LockupJudderEnabled_Changed" Unchecked="LockupJudderEnabled_Changed"/>
+                            <Border x:Name="LockupJudderNewBadge" Style="{StaticResource NewEffectBadge}">
+                                <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                            </Border>
+                            <TextBlock x:Name="LockupJudderOverrideBadge" Style="{StaticResource OverrideBadge}"/>
+                            <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="LockupJudderTest_Click"/>
+                            <Button x:Name="LockupJudderRevertBtn" Content="↶" Tag="LockupJudder" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="LockupJudderSaveBtn"   Content="Save…" Tag="LockupJudder" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="A flat-spot pulse while a braking tire is locked, slowing with the car the way a real flat spot would. Needs per-tire telemetry (Forza games today)."/>
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="LockupJudderGainSlider" Minimum="0" Maximum="3" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.25" ValueChanged="LockupJudderGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="LockupJudderGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+
                 <!-- Gear shift -->
                 <Expander x:Name="ShiftExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
@@ -2499,6 +2614,11 @@
                                                 TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
                                     <TextBox Grid.Column="2" x:Name="DuckReleaseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="80"/>
                                 </Grid>
+                                <CheckBox x:Name="DuckFrequencyAwareCheck" Content="Frequency-aware ducking"
+                                          Margin="0,8,0,2" VerticalAlignment="Center"
+                                          Checked="DuckFrequencyAware_Changed" Unchecked="DuckFrequencyAware_Changed"/>
+                                <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,0" FontSize="12" TextWrapping="Wrap"
+                                           Text="Only ducks effects that overlap in frequency. Grip textures always win their band, so a slide stays crisp through the engine pulse instead of blending into it."/>
                             </StackPanel>
                         </Expander>
                     </StackPanel>

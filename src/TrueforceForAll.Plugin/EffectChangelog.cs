@@ -55,7 +55,7 @@ namespace TrueforceForAll.Plugin
         {
             "Audio", "Engine", "Bumps", "Traction", "Shift",
             "Abs", "PitLimiter", "Drs", "Collision", "RevLimiter",
-            "Airborne",
+            "Airborne", "AxleSlip", "KerbThump", "LockupJudder",
         };
 
         // Ordered oldest -> newest. Append-only.
@@ -574,6 +574,36 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         Headline = "Installer 'Launch SimHub now' surfaces the window",
                         Description = "The post-install checkbox launches SimHub through the same path as a desktop double-click, so the window comes to the foreground instead of being stranded behind a taskbar button.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 2, 0),
+                Title = "New grip and kerb effects + smarter ducking",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        EffectId = "AxleSlip",
+                        Group = "New effects",
+                        Headline = "Axle slip: feel which axle is letting go",
+                        Description = "A high scrub texture as the front washes wide, a deep pulse as the rear steps out. The louder axle is the one losing grip. Off by default. Needs per-tire telemetry (Forza games today).",
+                    },
+                    new ChangelogEntry {
+                        EffectId = "KerbThump",
+                        Group = "New effects",
+                        Headline = "Kerb thump: a firm whack the instant a wheel finds a kerb",
+                        Description = "A single firm hit when a wheel first touches a kerb, distinct from the rumble that follows. Scales with speed. Off by default. Needs kerb telemetry (Forza games today).",
+                    },
+                    new ChangelogEntry {
+                        EffectId = "LockupJudder",
+                        Group = "New effects",
+                        Headline = "Lockup judder: a flat-spot pulse under locked brakes",
+                        Description = "A flat-spot pulse while a braking tire is locked, slowing with the car the way a real flat spot would. Off by default. Needs per-tire telemetry (Forza games today).",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Frequency-aware ducking option",
+                        Description = "A new checkbox in the Sidechain ducking section only ducks effects that overlap in frequency. Grip textures always win their band, so a slide stays crisp through the engine pulse instead of blending into it. Off by default.",
                     },
                 },
             },

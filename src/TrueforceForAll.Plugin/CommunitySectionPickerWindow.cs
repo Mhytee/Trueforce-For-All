@@ -28,6 +28,9 @@ namespace TrueforceForAll.Plugin
             ("revlimiter",   "Rev limiter"),
             ("roadbumps",    "Road bumps"),
             ("tractionloss", "Traction loss"),
+            ("axleslip",     "Axle slip"),
+            ("kerbthump",    "Kerb thump"),
+            ("lockupjudder", "Lockup judder"),
             ("gearshift",    "Gear shift"),
             ("abs",          "ABS click"),
             ("pitlimiter",   "Pit limiter"),
@@ -158,6 +161,9 @@ namespace TrueforceForAll.Plugin
                 case "revlimiter":   return ovr.RevLimiter   != null;
                 case "roadbumps":    return ovr.RoadBumps    != null;
                 case "tractionloss": return ovr.TractionLoss != null;
+                case "axleslip":     return ovr.AxleSlip     != null;
+                case "kerbthump":    return ovr.KerbThump    != null;
+                case "lockupjudder": return ovr.LockupJudder != null;
                 case "gearshift":    return ovr.GearShift    != null;
                 case "abs":          return ovr.AbsClick     != null;
                 case "pitlimiter":   return ovr.PitLimiter   != null;

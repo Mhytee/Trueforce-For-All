@@ -467,6 +467,10 @@ namespace TrueforceForAll.Plugin
         public float DuckDepth     { get; set; } = 0.60f;
         public float DuckAttackMs  { get; set; } = 5.0f;
         public float DuckReleaseMs { get; set; } = 80.0f;
+        // Frequency-aware ducking: only ducks effects that overlap in
+        // frequency, so a slide stays crisp through the engine pulse instead
+        // of blending into it. Off = classic full-band ducking.
+        public bool  DuckFrequencyAware { get; set; } = false;
 
         public AudioCaptureSettings AudioCapture { get; set; } = new AudioCaptureSettings();
         public EnginePulseSettings  EnginePulse  { get; set; } = new EnginePulseSettings();
@@ -478,6 +482,9 @@ namespace TrueforceForAll.Plugin
         public DrsSettings          Drs          { get; set; } = new DrsSettings();
         public CollisionSettings    Collision    { get; set; } = new CollisionSettings();
         public RevLimiterSettings   RevLimiter   { get; set; } = new RevLimiterSettings();
+        public AxleSlipSettings     AxleSlip     { get; set; } = new AxleSlipSettings();
+        public KerbThumpSettings    KerbThump    { get; set; } = new KerbThumpSettings();
+        public LockupJudderSettings LockupJudder { get; set; } = new LockupJudderSettings();
 
         // Airborne ducking coordinator. Global, not per-car/per-preset: it's a
         // wheel-comfort behaviour (suppress phantom output while the car is in
@@ -1221,6 +1228,7 @@ namespace TrueforceForAll.Plugin
         public float DuckDepth                 { get; set; } = 0.60f;
         public float DuckAttackMs              { get; set; } = 5.0f;
         public float DuckReleaseMs             { get; set; } = 80.0f;
+        public bool  DuckFrequencyAware        { get; set; } = false;
 
         // Stationary spring (parked-car centering). Per-game preset-scoped.
         // Nullable: a preset saved before this lived in the snapshot carries
@@ -1241,6 +1249,12 @@ namespace TrueforceForAll.Plugin
         public DrsSettings          Drs          { get; set; }
         public CollisionSettings    Collision    { get; set; }
         public RevLimiterSettings   RevLimiter   { get; set; }
+        // Grip/kerb trio. Null in presets saved before these effects existed;
+        // apply leaves the user's current values untouched (same migration
+        // pattern as Airborne below).
+        public AxleSlipSettings     AxleSlip     { get; set; }
+        public KerbThumpSettings    KerbThump    { get; set; }
+        public LockupJudderSettings LockupJudder { get; set; }
         // Airborne ducking travels with the preset (built-in presets seed it);
         // null in presets saved before it existed, handled on apply.
         public AirborneSettings     Airborne     { get; set; }
@@ -1626,6 +1640,44 @@ namespace TrueforceForAll.Plugin
         public Waveform Waveform { get; set; } = Waveform.Square;
     }
 
+    /// <summary>Settings for the axle-slip texture: feel which axle is letting
+    /// go, a high scrub as the front washes wide, a deep pulse as the rear
+    /// steps out. The louder axle is the one losing grip. Off by default (new
+    /// effect baseline); needs per-tire telemetry (Forza games today).
+    /// PredictiveSlip starts the texture a fixed validated 150 ms before the
+    /// slip fully develops; RevLockedRearPulse locks the rear pulse rate to
+    /// the actual rear wheel rev rate when per-tire data allows.</summary>
+    public sealed class AxleSlipSettings
+    {
+        public bool  Enabled            { get; set; } = false;
+        public float Gain               { get; set; } = 1.0f;
+        public bool  PredictiveSlip     { get; set; } = true;
+        public bool  RevLockedRearPulse { get; set; } = true;
+    }
+
+    /// <summary>Settings for the kerb thump: a single firm whack the instant
+    /// a wheel first touches a kerb, distinct from the rumble that follows.
+    /// Scales with speed. Off by default (new effect baseline); needs kerb
+    /// telemetry (Forza games today). Gain ships hot (1.6) per on-wheel
+    /// validation; Freq sits below the 40 Hz gear thud so the two stay
+    /// distinct.</summary>
+    public sealed class KerbThumpSettings
+    {
+        public bool  Enabled { get; set; } = false;
+        public float Gain    { get; set; } = 1.6f;
+        public float Freq    { get; set; } = 30.0f;
+    }
+
+    /// <summary>Settings for the lockup judder: a flat-spot pulse while a
+    /// braking tire is locked, slowing with the car the way a real flat spot
+    /// would. Off by default (new effect baseline); needs per-tire telemetry
+    /// (Forza games today).</summary>
+    public sealed class LockupJudderSettings
+    {
+        public bool  Enabled { get; set; } = false;
+        public float Gain    { get; set; } = 1.0f;
+    }
+
     public sealed class RevLimiterSettings
     {
         // On by default (project owner's call, 2026-05-24): the rev-limiter
@@ -1835,6 +1887,9 @@ namespace TrueforceForAll.Plugin
         public DrsSettings          Drs          { get; set; }
         public CollisionSettings    Collision    { get; set; }
         public RevLimiterSettings   RevLimiter   { get; set; }
+        public AxleSlipSettings     AxleSlip     { get; set; }
+        public KerbThumpSettings    KerbThump    { get; set; }
+        public LockupJudderSettings LockupJudder { get; set; }
         public AudioCaptureSettings AudioCapture { get; set; }
         public AirborneSettings     Airborne     { get; set; }
 
@@ -1878,7 +1933,8 @@ namespace TrueforceForAll.Plugin
             EnginePulse == null && RoadBumps == null && TractionLoss == null &&
             GearShift   == null && AbsClick  == null && AudioCapture == null &&
             PitLimiter  == null && Drs       == null && Collision    == null &&
-            RevLimiter  == null && Airborne  == null;
+            RevLimiter  == null && AxleSlip  == null && KerbThump    == null &&
+            LockupJudder == null && Airborne == null;
 
         /// <summary>True when this override carries community lineage (download/
         /// upload tracking) even with no effect sections. Such an override must
