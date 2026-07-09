@@ -4083,7 +4083,12 @@ namespace TrueforceForAll.Plugin
                         // fallback still agrees with the buzz.
                         : frame.MaxRpm * 0.85;
                     pct = ForzaRevBar(frame.Rpms, full);
-                    if (_forzaRedlineLatch) { if (frame.Rpms < full * 0.96) _forzaRedlineLatch = false; }
+                    // Flash on AT the redline, release as soon as you drop back
+                    // below it. The 1% dead band only de-bounces telemetry
+                    // jitter while holding right at the line; wider than that
+                    // and the flash stays stuck on after you have clearly
+                    // backed off (a 4% band did exactly that).
+                    if (_forzaRedlineLatch) { if (frame.Rpms < full * 0.99) _forzaRedlineLatch = false; }
                     else if (frame.Rpms >= full) _forzaRedlineLatch = true;
                     redline = _forzaRedlineLatch;
                 }
