@@ -1,0 +1,13 @@
+<Project>
+
+  <!-- Single source of truth for the assembly version across Core, Engine, and
+       Plugin. Each ships as its own DLL and they must be deployed as a matched
+       set; TrueforcePlugin cross-checks these three at Init and logs loudly if
+       a stale copy of any one is present (a mismatched Core/Engine otherwise
+       fails silently as a dead wheel). CI can still override for a release via
+       -p:Version=X.Y.Z. Keep this in step with the release version. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">0.2.0</Version>
+  </PropertyGroup>
+
+</Project>

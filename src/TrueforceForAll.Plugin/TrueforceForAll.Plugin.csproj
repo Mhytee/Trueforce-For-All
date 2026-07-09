@@ -7,9 +7,10 @@
     <!-- "User." is the SimHub convention for community plugins. -->
     <AssemblyName>User.TrueforceForAll</AssemblyName>
     <!-- Plugin version is read at runtime by UpdateChecker to compare against
-         the latest GitHub release tag. CI can override via -p:Version=X.Y.Z;
-         local builds default to the value below. Bump this on every release. -->
-    <Version Condition="'$(Version)' == ''">0.2.0</Version>
+         the latest GitHub release tag. The version is defined once in
+         ..\Directory.Build.props (shared by Core, Engine, and Plugin so a
+         stale DLL is detectable at load). CI can override via -p:Version=X.Y.Z.
+         Bump the release version there, not here. -->
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <!-- AnyCPU: SimHub runs as 32-bit (it's installed under Program Files
