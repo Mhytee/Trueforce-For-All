@@ -69,6 +69,21 @@ namespace TrueforceForAll.Core
         // surfaces "in pit lane" as PitLimiterOn for AC and produces false
         // positives whenever the car sits in the pit area (e.g., spawn box
         // on touge maps that the AC track defines as pit lane).
+        // wheelAngularSpeed[4], float[4] at 104, rad/s per wheel. Unit-exact
+        // for TelemetryFrame.WheelRotRadS and the slip-ratio derivation.
+        private const int OFF_WHEEL_ANG_FL    = 104;
+        private const int OFF_WHEEL_ANG_FR    = 108;
+        private const int OFF_WHEEL_ANG_RL    = 112;
+        private const int OFF_WHEEL_ANG_RR    = 116;
+        // suspensionTravel[4], float[4] at 184, meters. Feeds the CTM
+        // composer's load-weighted axle rollups.
+        private const int OFF_SUSP_TRAVEL_FL  = 184;
+        private const int OFF_SUSP_TRAVEL_FR  = 188;
+        private const int OFF_SUSP_TRAVEL_RL  = 192;
+        private const int OFF_SUSP_TRAVEL_RR  = 196;
+        // tc, float at 204: the game's traction-control intervention level
+        // (0 = idle, >0 = actively cutting). Not the TC configuration.
+        private const int OFF_TC              = 204;
         private const int OFF_PIT_LIMITER_ON  = 248;
         private const int OFF_LOCAL_ANG_VEL_Y = 300;   // float, yaw rad/s
 
@@ -304,6 +319,15 @@ namespace TrueforceForAll.Core
             float wlFR     = _physicsView.ReadSingle(OFF_WHEEL_LOAD_FR);
             float wlRL     = _physicsView.ReadSingle(OFF_WHEEL_LOAD_RL);
             float wlRR     = _physicsView.ReadSingle(OFF_WHEEL_LOAD_RR);
+            float waFL     = _physicsView.ReadSingle(OFF_WHEEL_ANG_FL);
+            float waFR     = _physicsView.ReadSingle(OFF_WHEEL_ANG_FR);
+            float waRL     = _physicsView.ReadSingle(OFF_WHEEL_ANG_RL);
+            float waRR     = _physicsView.ReadSingle(OFF_WHEEL_ANG_RR);
+            float stFL     = _physicsView.ReadSingle(OFF_SUSP_TRAVEL_FL);
+            float stFR     = _physicsView.ReadSingle(OFF_SUSP_TRAVEL_FR);
+            float stRL     = _physicsView.ReadSingle(OFF_SUSP_TRAVEL_RL);
+            float stRR     = _physicsView.ReadSingle(OFF_SUSP_TRAVEL_RR);
+            float tc       = _physicsView.ReadSingle(OFF_TC);
             int   pitLimit = _physicsView.ReadInt32 (OFF_PIT_LIMITER_ON);
             float yawRadS  = _physicsView.ReadSingle(OFF_LOCAL_ANG_VEL_Y);
 
@@ -341,6 +365,25 @@ namespace TrueforceForAll.Core
                 _prevAirborne = airborne;
             }
 
+            // Per-tire quads. AC's wheelSlip[] is best identified as Kunos
+            // ndSlip: COMBINED lat+long slip normalized to peak grip, ~1.0 at
+            // the limit, exactly the unit TireCombinedSlip declares, so the
+            // CTM rollups and AxleSlip light up with zero calibration.
+            // Guarded per wheel by vertical load: an unloaded wheel FREEZES
+            // its wheelSlip entry at the last value (verified against Content
+            // Manager's reader), so a kerb-hopped or airborne corner would
+            // otherwise hold a phantom slide. The guard zeroes unloaded
+            // wheels' slip entries; it arms only after a real grounded load,
+            // so builds that leave wheelLoad at 0 pass values through.
+            var load    = TireQuad.Of(wlFL, wlFR, wlRL, wlRR);
+            var combined = GuardByLoad(TireQuad.Of(wsFL, wsFR, wsRL, wsRR), load, _seenWheelLoad);
+            var wheelRot = TireQuad.Of(waFL, waFR, waRL, waRR);
+            // Signed longitudinal slip ratio derived from wheel rev rate vs
+            // car speed (AC1 exposes no slip-ratio array): locked wheel gives
+            // -1 regardless of tire-radius error, wheelspin runs positive.
+            var slipRatio = GuardByLoad(
+                DeriveSlipRatio(wheelRot, speedKmh), load, _seenWheelLoad);
+
             return new TelemetryFrame
             {
                 Rpms       = rpms,
@@ -356,6 +399,23 @@ namespace TrueforceForAll.Core
                 Gear      = GearString(gear),
                 WheelSlip = maxSlip,
                 Airborne  = airborne,
+
+                // Quads: combined slip (ndSlip scale), suspension travel in
+                // meters (CTM load weighting), wheel rotation, derived slip
+                // ratio. Slip ANGLE stays unset: AC1's physics page has no
+                // per-wheel slip angle, and inventing one from body motion
+                // belongs to a model, not a reader. Surface rumble / strips
+                // do not exist in the page; KerbThump stays Forza-only.
+                HasTireQuads    = true,
+                TireCombinedSlip = combined,
+                SuspTravelM      = TireQuad.Of(stFL, stFR, stRL, stRR),
+                WheelRotRadS     = wheelRot,
+                TireSlipRatio    = slipRatio,
+
+                // TC intervention level (0..1); >0 means the game is actively
+                // cutting power, the most direct grip-loss ground truth AC has.
+                TcActive = tc > 0.01f ? 1 : 0,
+
                 // pitLimiterOn read directly from AC's physics page so the
                 // PitLimiterEffect sees the actual button state instead of
                 // the SimHub overlay's pit-lane-geometry mapping.
@@ -364,6 +424,44 @@ namespace TrueforceForAll.Core
                 // TrueforcePlugin.DispatchFrame overlays them from the latest
                 // SimHub reading, which is the right authority for both.
             };
+        }
+
+        // Fixed rolling radius for the slip-ratio derivation. Precision does
+        // not matter much: a locked wheel reads omega ~0 so the ratio goes to
+        // -1 whatever the radius, and the wheelspin threshold (+0.5) has wide
+        // margin against the ~10% radius spread of racing tires.
+        internal const float RollingRadiusM = 0.33f;
+
+        /// <summary>Signed longitudinal slip ratio per wheel from rotation
+        /// speed vs car speed: (omega*r - v) / max(v, 2 m/s). The 2 m/s floor
+        /// keeps the ratio bounded at crawl speeds (effects gate below
+        /// ~5 km/h anyway); output clamped to +-2 against garbage frames.</summary>
+        internal static TireQuad DeriveSlipRatio(TireQuad wheelRotRadS, double speedKmh)
+        {
+            double v = Math.Max(Math.Abs(speedKmh) / 3.6, 2.0);
+            double R(double omega)
+            {
+                double r = (omega * RollingRadiusM - v) / v;
+                if (r > 2.0) r = 2.0; else if (r < -2.0) r = -2.0;
+                return r;
+            }
+            return TireQuad.Of(R(wheelRotRadS.FL), R(wheelRotRadS.FR),
+                               R(wheelRotRadS.RL), R(wheelRotRadS.RR));
+        }
+
+        /// <summary>Zero a quad's entries for wheels carrying ~no vertical
+        /// load. An unloaded AC wheel freezes its slip readings (and a free
+        /// spinner reads as massive wheelspin), so its entries are noise.
+        /// No-op until a real grounded load has been seen (armed), matching
+        /// the airborne detector's defensive gate.</summary>
+        internal static TireQuad GuardByLoad(TireQuad q, TireQuad loadN, bool armed)
+        {
+            if (!armed) return q;
+            return TireQuad.Of(
+                Math.Abs(loadN.FL) < AirborneLoadN ? 0.0 : q.FL,
+                Math.Abs(loadN.FR) < AirborneLoadN ? 0.0 : q.FR,
+                Math.Abs(loadN.RL) < AirborneLoadN ? 0.0 : q.RL,
+                Math.Abs(loadN.RR) < AirborneLoadN ? 0.0 : q.RR);
         }
 
         // AC convention: 0=R, 1=N, 2=1st, 3=2nd, ... Matches SimHub's

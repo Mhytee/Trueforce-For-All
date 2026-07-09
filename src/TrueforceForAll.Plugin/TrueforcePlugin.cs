@@ -4016,26 +4016,51 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // Rim rev/shift LEDs. Gated to iRacing (where MAIRA users lose
-            // native rev lights after disabling in-game Trueforce) and the
-            // opt-in setting. Independent HID++ channel; can't disturb FFB or
-            // the ep3 stream even when it shares the wheel with native FFB.
+            // Rim rev/shift LEDs. Two sanctioned contexts, both defined by
+            // the same rule: LED writes are only SAFE when no game PID is on
+            // the wheel's HID++ pipe (an LED write against live PID stalls
+            // FFB ~1.5 s at the firmware).
+            //   1. iRacing + MAIRA passthrough live (MAIRA publishes force to
+            //      shared memory, PID suppressed).
+            //   2. Telemetry based FFB (Mode B) on a G PRO: the game is
+            //      configured to send nothing and we render force on ep3, so
+            //      the HID++ pipe is free. Verified LIVE via the FFB tap
+            //      (2 s quiet window), not assumed from the mode: FH6 still
+            //      emits PID in some states, and sole-writer must be proven.
+            //      G PRO only: the 0x807A level protocol is hardware-validated
+            //      there; the RS50 uses a different RGB page (and spoofs the
+            //      G PRO PID in compat mode, hence the product-string check)
+            //      and the G923 is unvalidated.
             if (_rpmLeds != null)
             {
-                // LEDs are only SAFE when there is no PID on the wheel's HID++
-                // pipe, i.e. MAIRA passthrough is live (MAIRA publishing to
-                // shared memory, PID suppressed). In the no-MAIRA iRacing path
-                // (Trueforce disabled in app.ini) iRacing sends PID and an LED
-                // write stalls FFB ~1.5 s, so auto-suppress LEDs there. The
-                // setting can be on; it just can't fight FFB.
+                bool ledsOn    = Settings?.RpmLedsEnabled ?? false;
                 bool mairaLive = _mairaIpc != null && _mairaIpc.IsOpen;
-                bool gate = (Settings?.RpmLedsEnabled ?? false)
+                bool iracingGate = ledsOn
                             && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
                             && mairaLive;
+
+                bool gproWheel = (_hidWheelPid == 0xC272 || _hidWheelPid == 0xC268)
+                            && !WheelDiscovery.IsRs50(_hidWheelPid, _hidWheelProductString);
+                bool gameFfbQuiet = !(_ffbTap?.TryGetFreshFfbTarget(2000).HasValue ?? false);
+                bool modeBGate = ledsOn && _forceModeB != 0 && gproWheel && gameFfbQuiet;
+
+                double pct     = frame.RpmPercent;
+                bool   redline = frame.RedlineReached;
+                if (modeBGate)
+                {
+                    // Forza UDP has no RpmPercent or redline flag: derive the
+                    // bar from raw revs (lights from 70% of max) and flash at
+                    // the top. The per-variant redline model is deliberately
+                    // NOT used here: SimHub's Forza redline is unreliable and
+                    // is suppressed for Forza everywhere else too.
+                    pct = ForzaRevBar(frame.Rpms, frame.MaxRpm);
+                    redline = pct >= 0.995;
+                }
+
                 try
                 {
-                    _rpmLeds.OnFrame(frame.RpmPercent, frame.Rpms, frame.MaxRpm,
-                                     frame.RedlineReached, gate);
+                    _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
+                                     redline, iracingGate || modeBGate);
                 }
                 catch (Exception ex)
                 {
@@ -4693,6 +4718,21 @@ namespace TrueforceForAll.Plugin
                 default:
                     return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BCS/BDIRK)";
             }
+        }
+
+        /// <summary>Rev-bar fraction for the rim LEDs on Forza sources, which
+        /// carry no RpmPercent channel: raw revs mapped so the bar lights
+        /// from 70 percent of max to the limiter. The 70 percent onset is the
+        /// haptic-engine validated value.</summary>
+        private static double ForzaRevBar(double rpm, double maxRpm)
+        {
+            const double Onset = 0.70;
+            if (maxRpm <= 1.0) return 0.0;
+            double f = rpm / maxRpm;
+            if (f <= Onset) return 0.0;
+            double bar = (f - Onset) / (1.0 - Onset);
+            if (bar < 0.0) bar = 0.0; else if (bar > 1.0) bar = 1.0;
+            return bar;
         }
 
         /// <summary>Run the simulated rev/shift sweep on the rim LEDs (settings
