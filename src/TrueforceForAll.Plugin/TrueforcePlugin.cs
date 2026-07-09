@@ -3894,7 +3894,7 @@ namespace TrueforceForAll.Plugin
             {
                 // Degraded (no quads): rear mirrors front so the rear-excess
                 // counter term stays exactly zero rather than firing on noise.
-                _lastFrontCombined = (float)frame.WheelSlip.Value;   // max-abs all four
+                _lastFrontCombined = (float)frame.WheelSlip.Value;   // the source's scalar slip (quad sources take the branch above)
                 _lastRearCombined  = _lastFrontCombined;
             }
             // Suspension-load input: front suspension compression vs its own
