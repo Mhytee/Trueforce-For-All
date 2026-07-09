@@ -4062,17 +4062,23 @@ namespace TrueforceForAll.Plugin
                 bool   redline = frame.RedlineReached;
                 if (modeBGate)
                 {
-                    // Forza UDP has no RpmPercent or redline flag: derive the
-                    // bar from raw revs (lights from 70% of max) and flash at
-                    // the top. The per-variant redline model is deliberately
-                    // NOT used here: SimHub's Forza redline is unreliable and
-                    // is suppressed for Forza everywhere else too. The flash
-                    // latch has hysteresis (in at 99.5%, out below 95%) so
-                    // limiter bounce blinks cleanly instead of flickering the
-                    // flag at limiter frequency.
+                    // Forza UDP has no RpmPercent or redline flag, so derive
+                    // both from raw revs. The bar fills the full 10-LED strip
+                    // (ForzaRevBar) and the all-on redline flash both key off
+                    // the SAME reference: rpm as a fraction of EngineMaxRpm.
+                    // Forza reports EngineMaxRpm ABOVE where the car actually
+                    // bounces off the limiter, so the strip must fill and flash
+                    // at a reachable fraction (RevBarFullFrac), not at a literal
+                    // rpm==maxRpm that Forza never reports; otherwise the top
+                    // LEDs and the flash never come on. Latch has hysteresis so
+                    // limiter bounce blinks cleanly instead of flickering.
+                    // The per-variant redline model is deliberately NOT used:
+                    // SimHub's Forza redline is unreliable and suppressed for
+                    // Forza everywhere else too.
+                    double revFrac = frame.MaxRpm > 1.0 ? frame.Rpms / frame.MaxRpm : 0.0;
                     pct = ForzaRevBar(frame.Rpms, frame.MaxRpm);
-                    if (_forzaRedlineLatch) { if (pct < 0.95) _forzaRedlineLatch = false; }
-                    else if (pct >= 0.995) _forzaRedlineLatch = true;
+                    if (_forzaRedlineLatch) { if (revFrac < RevBarFullFrac - 0.05) _forzaRedlineLatch = false; }
+                    else if (revFrac >= RevBarFullFrac) _forzaRedlineLatch = true;
                     redline = _forzaRedlineLatch;
                 }
                 else
@@ -4751,13 +4757,22 @@ namespace TrueforceForAll.Plugin
         // thread only). Hysteresis lives in the DispatchFrame LED block.
         private bool _forzaRedlineLatch;
 
+        // Rev fraction at which the LED strip is FULL (all 10) and the redline
+        // flash engages. Below EngineMaxRpm on purpose: Forza reports its max
+        // rev above where cars actually bounce off the limiter, and a shift
+        // indicator is meant to warn just BEFORE the limiter anyway. G PRO,
+        // FH6: the strip capped at ~8 of 10 with a literal 1.0 reference
+        // because rpm/maxRpm plateaued near 0.94 at the limiter. Validated
+        // 2026-07-08.
+        private const double RevBarFullFrac = 0.93;
+        private const double RevBarOnsetFrac = 0.72;
+
         private static double ForzaRevBar(double rpm, double maxRpm)
         {
-            const double Onset = 0.70;
             if (maxRpm <= 1.0) return 0.0;
             double f = rpm / maxRpm;
-            if (f <= Onset) return 0.0;
-            double bar = (f - Onset) / (1.0 - Onset);
+            if (f <= RevBarOnsetFrac) return 0.0;
+            double bar = (f - RevBarOnsetFrac) / (RevBarFullFrac - RevBarOnsetFrac);
             if (bar < 0.0) bar = 0.0; else if (bar > 1.0) bar = 1.0;
             return bar;
         }
