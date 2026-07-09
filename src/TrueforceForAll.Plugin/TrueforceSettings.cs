@@ -485,15 +485,16 @@ namespace TrueforceForAll.Plugin
 
         // ---- Telemetry based FFB (Mode B): the wheel's steering force is
         // built from telemetry (slip angle, tire load, speed) instead of the
-        // game's own FFB. Default OFF (owner decision): it REPLACES the
-        // game's force, so the user opts in from the Telemetry Based FFB tab.
-        // Arms only on Mode B capable games (IsModeBCapableGame: FM8, where
-        // classic FFB is unavailable anyway, plus FH5/FH6, run with in-game
-        // FFB and vibration at 0). Every other game keeps its normal path.
-        // Global-only for now: none of this travels in presets. Defaults are
-        // the first on-wheel-tuned recipe (2026-07-03), G PRO-validated on
-        // FH6 2026-07-08. ----
-        public bool  ModeBEnabled   { get; set; } = false;
+        // game's own FFB. It REPLACES the game's force, so it is strictly
+        // OPT-IN, PER GAME, and never forced on: enabled from the Telemetry
+        // Based FFB tab for whichever game is active. Keyed by SimHub GameName;
+        // a missing key = off. Only games with enough telemetry are offered
+        // (IsModeBCapableGame: the Forza titles FM8 / FH4 / FH5 / FH6, run with
+        // the game's own force feedback and vibration at 0). The tuning below
+        // is global (shared across games); defaults are the first on-wheel
+        // recipe (2026-07-03), G PRO-validated on FH6 2026-07-08. ----
+        public Dictionary<string, bool> ModeBGameEnabled { get; set; }
+            = new Dictionary<string, bool>();
         public float ModeBSatGain   { get; set; } = 1.0f;    // peak torque fraction
         public float ModeBRiseGamma { get; set; } = 0.5f;    // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit

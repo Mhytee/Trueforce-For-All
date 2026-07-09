@@ -65,7 +65,7 @@ namespace TrueforceForAll.Plugin
             // category as FfbScale. CarGripCalibration travels too: learned
             // per-car state, but re-learning costs seat time per car (the
             // CarFacts rationale, not the GamesWithRedline one).
-            "ModeBEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
+            "ModeBGameEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
             "ModeBDropFloor", "ModeBEmaMs", "ModeBSign", "ModeBDamper",
             "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",

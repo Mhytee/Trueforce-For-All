@@ -2666,10 +2666,10 @@
                        Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
                        Text="The game is still sending its own force feedback, so two force streams are fighting and the wheel will feel jumpy or buzzy. In the game's wheel settings, set force feedback and vibration strength to 0 so this is the only force on the wheel."/>
 
-            <CheckBox x:Name="ModeBEnabledCheck" Content="Enable telemetry based FFB"
+            <CheckBox x:Name="ModeBEnabledCheck" Content="Enable telemetry based FFB for this game"
                       Margin="0,4,0,2" Checked="ModeBEnabled_Changed" Unchecked="ModeBEnabled_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                       Text="Forza Motorsport (2023) has native Trueforce, so the plugin starts disabled for that game. Enable the plugin for Forza Motorsport at the top of this panel as well, or this setting does nothing there."/>
+            <TextBlock x:Name="ModeBGameNote" Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                       Text="Enable this per game, for whichever game is running. Set that game's own force feedback and vibration to 0."/>
 
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>

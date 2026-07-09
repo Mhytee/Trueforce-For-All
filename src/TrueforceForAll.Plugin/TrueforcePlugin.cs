@@ -4357,12 +4357,44 @@ namespace TrueforceForAll.Plugin
         private float _mbRamp;
         private long  _mbPrevTicks;
 
+        /// <summary>True if the user has opted Mode B in for the active game
+        /// (per-game toggle; a missing key = off) AND that game has enough
+        /// telemetry to support it (IsModeBCapableGame).</summary>
+        public bool ModeBEnabledForActiveGame
+        {
+            get
+            {
+                var g = _activeGame;
+                return !string.IsNullOrEmpty(g)
+                    && IsModeBCapableGame(g)
+                    && Settings?.ModeBGameEnabled != null
+                    && Settings.ModeBGameEnabled.TryGetValue(g, out bool v) && v;
+            }
+        }
+
+        /// <summary>True if the active game supports Mode B at all (drives
+        /// whether the tab's toggle is enabled). Empty in menus.</summary>
+        public bool ActiveGameSupportsModeB => IsModeBCapableGame(_activeGame);
+
+        /// <summary>Toggle Mode B for the active game (the tab checkbox).
+        /// Persists the per-game flag and re-arms. No-op in menus / unsupported
+        /// games.</summary>
+        public void SetModeBEnabledForActiveGame(bool on)
+        {
+            var g = _activeGame;
+            if (Settings == null || string.IsNullOrEmpty(g) || !IsModeBCapableGame(g)) return;
+            if (Settings.ModeBGameEnabled == null)
+                Settings.ModeBGameEnabled = new System.Collections.Generic.Dictionary<string, bool>();
+            Settings.ModeBGameEnabled[g] = on;
+            ApplyModeBFromSettings();
+            PersistSettings();
+        }
+
         /// <summary>Push the persisted Mode B settings into the live model and
-        /// (re)compute whether Mode B is armed: enabled in settings AND the
-        /// active game is Mode B capable (see IsModeBCapableGame and
-        /// TrueforceSettings.ModeBEnabled). Called at Init, on game change,
-        /// and from the settings UI; access codes remain the raw dev override
-        /// on top.</summary>
+        /// (re)compute whether Mode B is armed: opted in for THIS game (the
+        /// per-game toggle) AND the game is Mode B capable (IsModeBCapableGame).
+        /// Called at Init, on game change, and from the settings UI; access
+        /// codes remain the raw dev override on top.</summary>
         public void ApplyModeBFromSettings(bool save = false)
         {
             var s = Settings;
@@ -4379,7 +4411,7 @@ namespace TrueforceForAll.Plugin
             _pModeBCounterGain = s.ModeBCounterGain;
             _pModeBDirSoft     = s.ModeBDirSoft;
 
-            bool want = s.ModeBEnabled && IsModeBCapableGame(_activeGame);
+            bool want = ModeBEnabledForActiveGame;
             if (want && _forceModeB == 0)
             {
                 // Clean engage: ramp from zero, EMAs seeded from current state.
@@ -4800,7 +4832,18 @@ namespace TrueforceForAll.Plugin
                         _mbOverEma = 0f;
                     }
                     _forceModeB = modeBOn ? 1 : 0;
-                    if (Settings != null) { Settings.ModeBEnabled = modeBOn; PersistSettings(); }
+                    // Persist as the active game's per-game opt-in so the tab
+                    // toggle and this dev override stay consistent (when a
+                    // supported game is active). Off unsupported games / menus
+                    // this is a raw _forceModeB override only.
+                    if (Settings != null && !string.IsNullOrEmpty(_activeGame)
+                        && IsModeBCapableGame(_activeGame))
+                    {
+                        if (Settings.ModeBGameEnabled == null)
+                            Settings.ModeBGameEnabled = new System.Collections.Generic.Dictionary<string, bool>();
+                        Settings.ModeBGameEnabled[_activeGame] = modeBOn;
+                        PersistSettings();
+                    }
                     return modeBOn
                         ? "MODE B: force synthesized from telemetry (game FFB ignored). Run the game with its FFB / TrueForce OFF. Tune: BSAT/BPEAK/BFLOOR/BFULL/BSPD, BSIGN -1 if it pulls the wrong way."
                         : "MODE A: game-FFB mirror path restored.";
@@ -5369,21 +5412,23 @@ namespace TrueforceForAll.Plugin
                 || game == "LMU";
         }
 
-        /// <summary>True if Mode B (synthesized force) may arm for this game.
-        /// FM8 is the origin case: its native Trueforce rides the stream we
-        /// need, so the pass-through path is impossible and Mode B is the only
-        /// option there. The Horizon titles are opt-in ports: FH5/FH6 emit the
-        /// same Sled block (per-tire slip angle, combined slip, suspension
-        /// travel) in their 324-byte Data Out packet, so the tire model has
-        /// every input it needs. Unlike FM8 their normal FFB works, so on
-        /// those titles Mode B REPLACES a working feel and the in-game FFB /
-        /// vibration scales must be set to 0 (the contention watchdog logs if
-        /// the game still writes). FH4 shares the packet format but is
-        /// untested, so it is not listed.</summary>
+        /// <summary>True if a game has enough telemetry for Mode B to be
+        /// OFFERED (the tab still gates it behind the per-game opt-in). The
+        /// Forza titles all emit the Sled block (per-tire slip angle, combined
+        /// slip, suspension travel) the tire model needs: FM8 (Motorsport, the
+        /// one native-Trueforce title, where the pass-through path is
+        /// impossible so Mode B is the only option) and FH4 / FH5 / FH6, whose
+        /// own FFB works fine, so there Mode B is a REPLACEMENT the user opts
+        /// into with the in-game force feedback and vibration set to 0 (the
+        /// contention watchdog logs if the game still writes). Assetto Corsa
+        /// is NOT here: its physics page has no per-tire slip angle, so the SAT
+        /// model computes a zero direction and no force; it would need a
+        /// derived slip angle first.</summary>
         private static bool IsModeBCapableGame(string game)
         {
             if (string.IsNullOrEmpty(game)) return false;
             return game == "FM8"
+                || game == "FH4"
                 || game == "FH5"
                 || game == "FH6";
         }

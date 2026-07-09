@@ -517,7 +517,29 @@ namespace TrueforceForAll.Plugin
                 var mbs = _plugin.Settings;
                 if (mbs != null && ModeBEnabledCheck != null)
                 {
-                    ModeBEnabledCheck.IsChecked = mbs.ModeBEnabled;
+                    // Per-game opt-in: the checkbox reflects and toggles the
+                    // ACTIVE game, and is disabled when the active game has no
+                    // Mode B support (or none is running).
+                    string mbGame = _plugin.ActiveGame;
+                    bool mbSupported = _plugin.ActiveGameSupportsModeB;
+                    ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
+                    ModeBEnabledCheck.IsEnabled = mbSupported;
+                    if (ModeBGameNote != null)
+                    {
+                        if (mbSupported)
+                        {
+                            string note = $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
+                            if (mbGame == "FM8")
+                                note += " Forza Motorsport has native Trueforce, so also enable the plugin for it at the top of this panel.";
+                            ModeBGameNote.Text = note;
+                        }
+                        else
+                        {
+                            ModeBGameNote.Text = string.IsNullOrEmpty(mbGame)
+                                ? "Start a supported game (Forza Motorsport, or Forza Horizon 4 / 5 / 6) to enable this."
+                                : $"Not available for {ModeBGameDisplayName(mbGame)} yet. Supported: Forza Motorsport and Forza Horizon 4 / 5 / 6.";
+                        }
+                    }
                     ModeBSignCheck.IsChecked    = mbs.ModeBSign < 0f;
                     ModeBStrengthSlider.Value   = mbs.ModeBSatGain;
                     ModeBStrengthText.Text      = mbs.ModeBSatGain.ToString("F2");
@@ -4153,9 +4175,23 @@ namespace TrueforceForAll.Plugin
         private void ModeBEnabled_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.ModeBEnabled = ModeBEnabledCheck.IsChecked == true;
-            _plugin.ApplyModeBFromSettings();
-            try { _plugin.PersistSettings(); } catch { }
+            // Per-game toggle: enable Mode B for the ACTIVE game only (it
+            // persists + re-arms inside the plugin). Off unsupported games the
+            // checkbox is disabled, so this only fires for supported ones.
+            _plugin.SetModeBEnabledForActiveGame(ModeBEnabledCheck.IsChecked == true);
+        }
+
+        // SimHub GameName -> friendly label for the Mode B tab note.
+        private static string ModeBGameDisplayName(string game)
+        {
+            switch (game)
+            {
+                case "FM8": return "Forza Motorsport";
+                case "FH4": return "Forza Horizon 4";
+                case "FH5": return "Forza Horizon 5";
+                case "FH6": return "Forza Horizon 6";
+                default:    return string.IsNullOrEmpty(game) ? "this game" : game;
+            }
         }
 
         // "Reverse force direction": ModeBSign is a multiplier (1 normal,
@@ -10286,7 +10322,7 @@ namespace TrueforceForAll.Plugin
                             try
                             {
                                 if (ModeBEnabledCheck != null)
-                                    ModeBEnabledCheck.IsChecked = _plugin.Settings.ModeBEnabled;
+                                    ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                             }
                             finally { _suppressEvents = prevSuppress; }
                         }
