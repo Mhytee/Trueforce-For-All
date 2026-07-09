@@ -8614,13 +8614,13 @@ namespace TrueforceForAll.Plugin
             try
             {
                 string body =
-                    "This game supports Telemetry Based FFB (Mode B). Instead of passing the "
+                    "This game supports Telemetry Based FFB. Instead of passing the "
                     + "game's own force feedback through, the plugin builds the wheel's steering "
                     + "force from telemetry: slip angle, tire load, and speed.\n\n"
-                    + "It also drives your wheel's rev lights. Rev lights only work with Mode B "
+                    + "It also drives your wheel's rev lights. Rev lights only work with it "
                     + "for now, because writing to them while a game runs its own force feedback "
                     + "makes that force feedback cut out (they share one channel on the wheel). "
-                    + "Mode B replaces the game's force feedback, so the lights are free. A custom "
+                    + "It replaces the game's force feedback, so the lights are free. A custom "
                     + "driver that would enable rev lights in every game is in testing, but it "
                     + "needs to be signed by Microsoft first.\n\n"
                     + "To use it, open this game's wheel settings and set its force feedback and "

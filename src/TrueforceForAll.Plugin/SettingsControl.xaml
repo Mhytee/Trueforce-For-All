@@ -2654,7 +2654,7 @@
                     <StackPanel Margin="14,12,14,14">
 
             <Border Style="{StaticResource SectionHeaderBorder}">
-                <TextBlock Text="Telemetry based FFB (Mode B)" Style="{StaticResource SectionHeaderText}"/>
+                <TextBlock Text="Telemetry based FFB" Style="{StaticResource SectionHeaderText}"/>
             </Border>
 
             <!-- Shown when the active game can't use Mode B: an explainer plus the
@@ -2667,9 +2667,9 @@
                 <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,2" Text="&#8226;  Forza Horizon 5"/>
                 <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,10" Text="&#8226;  Forza Horizon 6"/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" TextWrapping="Wrap"
-                           Text="In these games it also drives your wheel's rev lights. Rev lights only work with Mode B for now: writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel. Mode B replaces the game's force feedback, so the lights are free."/>
+                           Text="In these games it also drives your wheel's rev lights. Rev lights only work with Telemetry Based FFB for now: writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel. Replacing the game's force feedback frees the lights."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" TextWrapping="Wrap"
-                           Text="We're testing a custom driver that would enable rev lights in every game, but it needs to be signed by Microsoft first. Start a supported game to set Mode B up."/>
+                           Text="We're testing a custom driver that would enable rev lights in every game and let them work without replacing the game's own force feedback, but it needs to be signed by Microsoft first. Start a supported game to set it up."/>
             </StackPanel>
 
             <!-- The real Mode B controls; shown only when the active game supports it. -->
@@ -3453,7 +3453,7 @@
                         <TextBlock Text="FFB tuning from a different wheel model:" VerticalAlignment="Center" FontSize="12"/>
                         <ComboBox x:Name="CrossWheelFfbModeCombo" Width="140" Margin="8,0,0,0"
                                   SelectionChanged="CrossWheelFfbMode_Changed"
-                                  ToolTip="Force feedback tuning (Telemetry Based FFB / Mode B) is dialed in for a specific wheel. Your FFB always backs up; this controls what happens when a restore or sync brings tuning made for a different wheel model (G PRO, RS50, G923).">
+                                  ToolTip="Force feedback tuning (Telemetry Based FFB) is dialed in for a specific wheel. Your FFB always backs up; this controls what happens when a restore or sync brings tuning made for a different wheel model (G PRO, RS50, G923).">
                             <ComboBoxItem Tag="Ask" Content="Ask me"/>
                             <ComboBoxItem Tag="Always" Content="Always apply"/>
                             <ComboBoxItem Tag="Never" Content="Never apply"/>
