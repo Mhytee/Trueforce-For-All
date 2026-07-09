@@ -14,6 +14,16 @@ using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
 {
+    /// <summary>How a PC treats FFB tuning synced from a DIFFERENT wheel model.
+    /// FFB always backs up regardless; this only governs whether it is APPLIED on
+    /// restore/sync onto a mismatched wheel. Per-PC (tied to this device's wheel).</summary>
+    public enum CrossWheelFfbMode
+    {
+        Ask = 0,     // show a notice with apply-anyway / dismiss (default)
+        Always = 1,  // apply it, no wheel gate
+        Never = 2,   // withhold it silently, no notice
+    }
+
     public sealed class TrueforceSettings
     {
         // Master enable. When false, ProducerLoop skips rendering and the
@@ -518,13 +528,16 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBSlideCounterGrowth { get; set; } = true;   // counter-force grows with slide depth
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
 
-        // Cross-wheel FFB sync gate. Mode B / FFB tuning is wheel-specific (a
-        // curve dialed in on a G PRO is wrong on a G923), so when this is on the
-        // Mode B settings + CarGripCalibration still BACK UP but are NOT applied
-        // on restore/sync to a device running a different wheel model. Default
-        // on: FFB never silently crosses wheel models. Matched by chassis label
-        // (LastUsedWheel: "G PRO" / "RS50" / "G923"); console transport ignored.
-        public bool OnlyApplyFfbToMatchingWheel { get; set; } = true;
+        // Cross-wheel FFB sync policy. Mode B / FFB tuning is wheel-specific (a
+        // curve dialed in on a G PRO is wrong on a G923), so the Mode B settings
+        // + CarGripCalibration still BACK UP but, by default, are NOT applied on
+        // restore/sync to a device running a different wheel model. Ask (default)
+        // prompts once per gated pull with apply-anyway/dismiss; the notice's
+        // "remember my choice" flips this to Always / Never so auto-sync stops
+        // re-prompting. Matched by chassis label (LastUsedWheel: "G PRO" / "RS50"
+        // / "G923"); console transport ignored. Per-PC (this device's wheel), so
+        // Excluded from backup.
+        public CrossWheelFfbMode CrossWheelFfbMode { get; set; } = CrossWheelFfbMode.Ask;
 
         // "Apply anyway" retention for a cross-wheel-gated restore: the skipped
         // Mode B / grip keys as a JSON object string, plus the wheel model they

@@ -459,8 +459,9 @@ namespace TrueforceForAll.Plugin
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
                     AutoSyncBackupCheck.IsChecked = _plugin.Settings?.AutoSyncBackupEnabled == true;
-                if (FfbMatchWheelCheck != null)
-                    FfbMatchWheelCheck.IsChecked = _plugin.Settings?.OnlyApplyFfbToMatchingWheel != false;
+                if (CrossWheelFfbModeCombo != null)
+                    SelectComboByTag(CrossWheelFfbModeCombo,
+                        (_plugin.Settings?.CrossWheelFfbMode ?? CrossWheelFfbMode.Ask).ToString());
                 RefreshCrossWheelFfbNotice();
                 RefreshCommunityAuthRow();
 
@@ -6327,17 +6328,32 @@ namespace TrueforceForAll.Plugin
             _plugin.UpdateAutoPullTimer();   // start/stop the cloud poll to match the toggle
         }
 
-        // Cross-wheel FFB gate toggle: FFB tuning still backs up, but with this on
-        // it is not auto-applied on a restore/sync to a different wheel model.
-        private void FfbMatchWheel_Changed(object sender, RoutedEventArgs e)
+        // Cross-wheel FFB policy: FFB tuning always backs up; this controls whether
+        // it is applied on a restore/sync from a different wheel model (Ask /
+        // Always / Never).
+        private void CrossWheelFfbMode_Changed(object sender, SelectionChangedEventArgs e)
         {
-            if (_suppressEvents || _plugin?.Settings == null || FfbMatchWheelCheck == null) return;
-            _plugin.Settings.OnlyApplyFfbToMatchingWheel = FfbMatchWheelCheck.IsChecked == true;
+            if (_suppressEvents || _plugin?.Settings == null || CrossWheelFfbModeCombo == null) return;
+            var tag = (CrossWheelFfbModeCombo.SelectedItem as ComboBoxItem)?.Tag as string;
+            CrossWheelFfbMode mode;
+            if (!Enum.TryParse(tag, out mode)) mode = CrossWheelFfbMode.Ask;
+            _plugin.Settings.CrossWheelFfbMode = mode;
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Persist FfbMatchWheel failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Persist CrossWheelFfbMode failed: " + ex.Message);
             }
+        }
+
+        // Reflect the plugin's current cross-wheel FFB policy in the combo without
+        // re-firing the change handler.
+        private void SyncCrossWheelFfbModeCombo()
+        {
+            if (CrossWheelFfbModeCombo == null || _plugin?.Settings == null) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try { SelectComboByTag(CrossWheelFfbModeCombo, _plugin.Settings.CrossWheelFfbMode.ToString()); }
+            finally { _suppressEvents = prev; }
         }
 
         // Show/hide the "FFB tuning held back" notice from the pending stash a
@@ -6363,11 +6379,14 @@ namespace TrueforceForAll.Plugin
         private void CrossWheelFfbApply_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            bool applied = _plugin.ApplyPendingCrossWheelFfb();
+            bool remember = CrossWheelFfbRememberCheck?.IsChecked == true;
+            bool applied = _plugin.ApplyPendingCrossWheelFfb(remember);
+            if (CrossWheelFfbRememberCheck != null) CrossWheelFfbRememberCheck.IsChecked = false;
             RefreshCrossWheelFfbNotice();
             if (applied)
             {
-                // The Mode B / FFB controls now reflect the applied tuning.
+                // The Mode B / FFB controls (and the policy combo, if remembered)
+                // now reflect the applied tuning.
                 RefreshFromPlugin();
                 SetBackupStatus("FFB tuning applied.");
             }
@@ -6376,8 +6395,11 @@ namespace TrueforceForAll.Plugin
         private void CrossWheelFfbDismiss_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            _plugin.DismissPendingCrossWheelFfb();
+            bool remember = CrossWheelFfbRememberCheck?.IsChecked == true;
+            _plugin.DismissPendingCrossWheelFfb(remember);
+            if (CrossWheelFfbRememberCheck != null) CrossWheelFfbRememberCheck.IsChecked = false;
             RefreshCrossWheelFfbNotice();
+            SyncCrossWheelFfbModeCombo();   // reflect a remembered Never
         }
 
         private async void BackupNow_Click(object sender, RoutedEventArgs e)

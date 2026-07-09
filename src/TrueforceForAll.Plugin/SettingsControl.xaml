@@ -3428,11 +3428,18 @@
                               ToolTip="Automatically uploads your setup to the cloud as you change it, and pulls those changes down on your other signed-in devices. Sign-in required."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8" FontSize="12"
                                Text="Real-time sync across your devices: changes you make on one device flow to the others automatically. Off = back up only when you click 'Back up now'."/>
-                    <CheckBox x:Name="FfbMatchWheelCheck" Content="Only apply FFB tuning to a matching wheel"
-                              Margin="0,0,0,2" Checked="FfbMatchWheel_Changed" Unchecked="FfbMatchWheel_Changed"
-                              ToolTip="Force feedback tuning (Telemetry Based FFB / Mode B) is dialed in for a specific wheel. With this on, that tuning still backs up, but it is not applied automatically when you restore or sync onto a PC running a different wheel model (G PRO, RS50, G923)."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8" FontSize="12"
-                               Text="Your FFB tuning always backs up. This only controls whether it is auto-applied on a device with a different wheel model; if it is held back you can still apply it by hand."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Text="FFB tuning from a different wheel model:" VerticalAlignment="Center" FontSize="12"/>
+                        <ComboBox x:Name="CrossWheelFfbModeCombo" Width="140" Margin="8,0,0,0"
+                                  SelectionChanged="CrossWheelFfbMode_Changed"
+                                  ToolTip="Force feedback tuning (Telemetry Based FFB / Mode B) is dialed in for a specific wheel. Your FFB always backs up; this controls what happens when a restore or sync brings tuning made for a different wheel model (G PRO, RS50, G923).">
+                            <ComboBoxItem Tag="Ask" Content="Ask me"/>
+                            <ComboBoxItem Tag="Always" Content="Always apply"/>
+                            <ComboBoxItem Tag="Never" Content="Never apply"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                               Text="Your FFB tuning always backs up. This only controls whether it is applied on a device with a different wheel model. 'Ask me' prompts once per change; you can tick 'remember my choice' on that prompt to stop being asked."/>
                     <!-- Cross-wheel FFB notice: shown from code (RefreshCrossWheelFfbNotice) when a
                          restore/sync held back FFB tuning built on a different wheel model. -->
                     <Border x:Name="CrossWheelFfbNotice" Visibility="Collapsed"
@@ -3441,6 +3448,9 @@
                         <StackPanel>
                             <TextBlock x:Name="CrossWheelFfbNoticeText" TextWrapping="Wrap" FontSize="12"
                                        Foreground="#FFF0D890" Margin="0,0,0,6"/>
+                            <CheckBox x:Name="CrossWheelFfbRememberCheck" Content="Remember my choice"
+                                      Margin="0,0,0,6" FontSize="12" Foreground="#FFF0D890"
+                                      ToolTip="Apply this choice to future syncs from a different wheel model without asking again. (Apply anyway = always apply; Dismiss = never apply. Change later under 'FFB tuning from a different wheel model'.)"/>
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="CrossWheelFfbApplyBtn" Content="Apply anyway"
                                         Padding="10,3" Height="24" Click="CrossWheelFfbApply_Click"

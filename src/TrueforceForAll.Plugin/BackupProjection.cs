@@ -71,11 +71,6 @@ namespace TrueforceForAll.Plugin
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
             "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
             "ModeBGripAutoCal", "CarGripCalibration",
-            // The cross-wheel FFB sync gate is itself a portable preference (a
-            // user choice that should be consistent across their devices). The
-            // FFB fields it gates are Portable above; the gate only affects
-            // whether ApplySettings WRITES them on a mismatched wheel.
-            "OnlyApplyFfbToMatchingWheel",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
@@ -156,11 +151,12 @@ namespace TrueforceForAll.Plugin
             "Presets", "GameDefaults", "CarDefaults", "CarOverrides", "GamePresets",
             // Learned-per-machine redline set (re-learns from telemetry on PC2).
             "GamesWithRedline",
-            // "Apply anyway" retention for a cross-wheel-gated restore: holds
-            // ANOTHER wheel's FFB tuning until the user acts. Per-PC, transient,
-            // and must never travel (it would re-introduce the cross-wheel bleed
-            // the gate exists to prevent).
-            "PendingCrossWheelFfb", "PendingCrossWheelFfbSource",
+            // Cross-wheel FFB sync policy + "apply anyway" retention. The policy
+            // is a per-PC decision tied to THIS device's wheel; the stash holds
+            // ANOTHER wheel's withheld tuning until the user acts. Neither
+            // travels: the policy would mis-govern the other device, and the
+            // stash would re-introduce the cross-wheel bleed the gate prevents.
+            "CrossWheelFfbMode", "PendingCrossWheelFfb", "PendingCrossWheelFfbSource",
         };
 
         // Forza is the one PARTIAL field: the listener preference (Enabled + Port)
@@ -174,7 +170,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The wheel-specific FFB tuning keys (Mode B feel + learned
         /// grip calibration): a subset of Portable that ApplySettings WITHHOLDS
-        /// when OnlyApplyFfbToMatchingWheel is on and the backup came from a
+        /// when the cross-wheel policy is not Always and the backup came from a
         /// different wheel model. They still travel in the envelope; the gate
         /// only decides whether they are written onto THIS PC. Kept in sync with
         /// the ModeB* / CarGripCalibration entries in Portable (a self-test
@@ -273,12 +269,14 @@ namespace TrueforceForAll.Plugin
                     if (Portable.Contains(prop.Name)) filtered[prop.Name] = prop.Value;
 
                 // Cross-wheel FFB gate: withhold the wheel-specific FFB tuning
-                // (Mode B + learned grip) when the user asked us to AND this
+                // (Mode B + learned grip) unless the policy is Always AND this
                 // backup was built on a different wheel model. The keys still
                 // arrived in the envelope; we just don't write them onto a PC
                 // running a different wheel. The withheld subset is handed back
-                // so the caller can stash it for an "apply anyway" prompt.
-                if (live.OnlyApplyFfbToMatchingWheel
+                // so the caller can stash it for an "apply anyway" prompt (Ask)
+                // or discard it silently (Never); ApplySettings withholds the
+                // same either way, the caller distinguishes on the mode.
+                if (live.CrossWheelFfbMode != CrossWheelFfbMode.Always
                     && WheelModelsDiffer(env.SourceWheelModel, live.LastUsedWheel))
                 {
                     var skipped = new JObject();

@@ -242,31 +242,37 @@ namespace TrueforceForAll.Plugin
                 "PC", wheelDate);
             Check("cross-wheel gate: Build stamps SourceWheelModel", srcGpro.SourceWheelModel == "G PRO");
 
-            // Matching wheel: FFB applies, not gated.
-            var tgtMatch = new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.10f, OnlyApplyFfbToMatchingWheel = true };
+            // Matching wheel (Ask): FFB applies, not gated.
+            var tgtMatch = new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.10f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
             var rMatch = BackupProjection.ApplySettings(srcGpro, tgtMatch);
             Check("cross-wheel gate: matching wheel applies FFB",
                 Math.Abs(tgtMatch.ModeBSatGain - 0.77f) < 1e-6 && !rMatch.FfbGated);
 
-            // Mismatch + toggle ON: Mode B withheld, non-FFB still applied, result reports the stash.
-            var tgtMis = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, MasterGain = 0.10f, OnlyApplyFfbToMatchingWheel = true };
+            // Mismatch + Ask: Mode B withheld, non-FFB still applied, result reports the stash.
+            var tgtMis = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, MasterGain = 0.10f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
             var rMis = BackupProjection.ApplySettings(srcGpro, tgtMis);
-            Check("cross-wheel gate: mismatch + on withholds Mode B", Math.Abs(tgtMis.ModeBSatGain - 0.10f) < 1e-6);
-            Check("cross-wheel gate: mismatch + on still applies non-FFB", Math.Abs(tgtMis.MasterGain - 0.44f) < 1e-6);
+            Check("cross-wheel gate: mismatch + Ask withholds Mode B", Math.Abs(tgtMis.ModeBSatGain - 0.10f) < 1e-6);
+            Check("cross-wheel gate: mismatch + Ask still applies non-FFB", Math.Abs(tgtMis.MasterGain - 0.44f) < 1e-6);
             Check("cross-wheel gate: mismatch reports FfbGated + source + stash",
                 rMis.FfbGated && rMis.SourceWheel == "G PRO"
                 && rMis.SkippedFfb != null && rMis.SkippedFfb["ModeBSatGain"] != null);
 
-            // Mismatch + toggle OFF: FFB applies across wheels.
-            var tgtOff = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, OnlyApplyFfbToMatchingWheel = false };
-            var rOff = BackupProjection.ApplySettings(srcGpro, tgtOff);
-            Check("cross-wheel gate: toggle off applies FFB across wheels",
-                Math.Abs(tgtOff.ModeBSatGain - 0.77f) < 1e-6 && !rOff.FfbGated);
+            // Mismatch + Never: withheld too (the plugin decides silent vs notice; ApplySettings withholds either way).
+            var tgtNever = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, CrossWheelFfbMode = CrossWheelFfbMode.Never };
+            var rNever = BackupProjection.ApplySettings(srcGpro, tgtNever);
+            Check("cross-wheel gate: mismatch + Never withholds Mode B",
+                Math.Abs(tgtNever.ModeBSatGain - 0.10f) < 1e-6 && rNever.FfbGated);
 
-            // Unknown source (no wheel known at build): never gates.
+            // Mismatch + Always: FFB applies across wheels.
+            var tgtAlways = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, CrossWheelFfbMode = CrossWheelFfbMode.Always };
+            var rAlways = BackupProjection.ApplySettings(srcGpro, tgtAlways);
+            Check("cross-wheel gate: Always applies FFB across wheels",
+                Math.Abs(tgtAlways.ModeBSatGain - 0.77f) < 1e-6 && !rAlways.FfbGated);
+
+            // Unknown source (no wheel known at build): never gates, even with Ask.
             var srcUnknown = BackupProjection.Build(
                 new TrueforceSettings { LastUsedWheel = "", ModeBSatGain = 0.77f }, "PC", wheelDate);
-            var tgtUnknown = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, OnlyApplyFfbToMatchingWheel = true };
+            var tgtUnknown = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
             var rUnknown = BackupProjection.ApplySettings(srcUnknown, tgtUnknown);
             Check("cross-wheel gate: unknown source applies FFB (never gates)",
                 srcUnknown.SourceWheelModel == null

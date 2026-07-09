@@ -1576,6 +1576,33 @@ namespace TrueforceForAll.Plugin
             PersistSettings();
         }
 
+        /// <summary>Log the versions of the three shipped assemblies (Plugin,
+        /// Core, Engine) and warn loudly if they differ. They must be deployed
+        /// as a matched set; a stale Core or Engine DLL copied alongside a newer
+        /// Plugin otherwise fails silently (dead wheel / missing effects) with no
+        /// obvious cause. Directory.Build.props stamps all three from one version.
+        /// EngineLoop lives in the Engine assembly, TrueforceDevice in Core, so
+        /// typeof(...).Assembly resolves each despite the shared namespace.</summary>
+        private static void LogAssemblyVersionCrossCheck()
+        {
+            try
+            {
+                var plugin = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                var core   = typeof(TrueforceDevice).Assembly.GetName().Version;
+                var engine = typeof(EngineLoop).Assembly.GetName().Version;
+                string line = $"Plugin {plugin}, Core {core}, Engine {engine}";
+                if (plugin == core && core == engine)
+                    SimHub.Logging.Current.Info($"[TF4ALL] Assembly versions: {line}.");
+                else
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] Assembly version MISMATCH: " + line + ". The Plugin, "
+                        + "Core, and Engine DLLs must come from the same build - a stale "
+                        + "copy causes silent failures (dead wheel / missing effects). "
+                        + "Reinstall via the installer, or copy all three DLLs together.");
+            }
+            catch { /* never let a diagnostic block Init */ }
+        }
+
         public void Init(PluginManager pluginManager)
         {
             // SimHub injects this property too, but assign it explicitly so it's
@@ -1589,6 +1616,7 @@ namespace TrueforceForAll.Plugin
             // No-op if already enabled.
             try { System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12; } catch { }
             SimHub.Logging.Current.Info("[TF4ALL] Init: loading settings...");
+            LogAssemblyVersionCrossCheck();
             SimHub.Logging.Current.Info(
                 "[TF4ALL] Logitech processes at startup: " + SnapshotLogitechProcesses());
             // If the installer just opened SimHub visibly after an install/update,
@@ -2083,9 +2111,39 @@ namespace TrueforceForAll.Plugin
             // thread) still comes up so the watchdog only has to re-attach
             // the device, not reconstruct the whole pipeline.
             if (!TryBringUpDevice())
+            {
                 SimHub.Logging.Current.Warn(
                     "[TF4ALL] Wheel not ready at startup; the plugin will "
                     + "keep retrying automatically (replug the wheel / close G HUB).");
+            }
+            else
+            {
+                // G923 audio-path wedge workaround (2026-07-06). A cold
+                // bring-up on a wheel left in a stale streaming state (any
+                // SimHub restart while a game holds the wheel) makes the
+                // wheel honor cur but silently DISCARD the audio window —
+                // force feels fine, every audio effect is dead, and nothing
+                // in software can tell. Empirically one close→reopen→re-init
+                // cycle heals it (the FAULT access code proved it on
+                // hardware; G HUB is NOT needed). So after a successful cold
+                // bring-up, force one fault so the recovery watchdog runs
+                // that exact proven cycle ~3 s in. Costs one reconnect blip
+                // at startup, before anyone is driving.
+                var d = _device;
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Delay(3000);
+                        if (_shuttingDown || !ReferenceEquals(_device, d)) return;
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Startup re-attach: cycling the device once to clear "
+                            + "the G923 stale-state audio wedge (expected, not an error).");
+                        d.DebugForceStreamFault();
+                    }
+                    catch { }
+                });
+            }
 
             InitPipeline();
 
@@ -4213,6 +4271,12 @@ namespace TrueforceForAll.Plugin
         private void SettleEffectsOnStall()
         {
             _engineLoop?.RequestStallSettle();
+            // Rev LEDs are driven from DispatchFrame, not the engine tick, so
+            // when frames stop entirely (game exit/crash/frozen page) OnFrame
+            // never runs again and the bar freezes on its last bucket. Release
+            // it here on the same fire-once stall path. Idempotent: ForceOff
+            // no-ops once cleared and yields to an active test sweep.
+            _rpmLeds?.ForceOff();
             SimHub.Logging.Current.Info("[TF4ALL] Telemetry stalled; settling sustained effects on the engine tick.");
         }
 
@@ -6571,7 +6635,7 @@ namespace TrueforceForAll.Plugin
 
             BackupSettingsFile("user-preset-migration");
 
-            int migratedPresets = 0, skippedBuiltins = 0, failedPresets = 0;
+            int migratedPresets = 0, skippedBuiltins = 0, failedPresets = 0, skippedExisting = 0;
             if (Settings.Presets != null)
             {
                 foreach (var kv in Settings.Presets)
@@ -6584,6 +6648,17 @@ namespace TrueforceForAll.Plugin
                     // shouldn't end up with a "(default)"-suffixed copy in
                     // their library after this migration.
                     if (IsFactoryBuiltinName(kv.Key)) { skippedBuiltins++; continue; }
+                    // Ping-pong guard: a legitimate first migration writes into a
+                    // freshly created, empty library folder, so a same-named file
+                    // never pre-exists here. If one DOES, this is a re-run after an
+                    // older-branch build repopulated the legacy dict (dev branch
+                    // ping-pong); the file on disk is the newer copy, so never
+                    // overwrite it with stale dict content.
+                    if (File.Exists(BuiltinPresetWriter.GetGamePresetPath(UserPresets.CurrentFolder, kv.Key)))
+                    {
+                        skippedExisting++;
+                        continue;
+                    }
                     try
                     {
                         string json = Newtonsoft.Json.JsonConvert.SerializeObject(
@@ -6639,7 +6714,7 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
 
             SimHub.Logging.Current.Info(
-                $"[TF4ALL] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} factory built-in name(s) + {skippedFactoryDefaults} factory-bound default(s); {failedPresets} failed).");
+                $"[TF4ALL] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} factory built-in name(s) + {skippedFactoryDefaults} factory-bound default(s) + {skippedExisting} already-present file(s); {failedPresets} failed).");
         }
 
         /// <summary>Rename any leftover bare-"Trueforce" car backup folders to
@@ -6755,7 +6830,7 @@ namespace TrueforceForAll.Plugin
         /// the legacy folder. Skipped after the first run.</summary>
         private void MigrateLegacyUserCarsToFolder()
         {
-            int migratedCarFiles = 0, skippedBuiltinCars = 0, failedCars = 0;
+            int migratedCarFiles = 0, skippedBuiltinCars = 0, failedCars = 0, skippedExistingCars = 0;
             int migratedCarDefaults = 0;
             try
             {
@@ -6775,6 +6850,14 @@ namespace TrueforceForAll.Plugin
                             // car with its game, so a user copy is redundant.
                             if (IsFactoryCarDuplicate(f.CarId, f.Override)) { skippedBuiltinCars++; continue; }
                             string presetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
+                            // Ping-pong guard (see game-preset migration): never
+                            // overwrite an already-migrated car file with stale
+                            // legacy content on a re-run.
+                            if (File.Exists(BuiltinPresetWriter.GetCarPresetPath(UserPresets.CurrentFolder, f.GameName ?? "", f.CarId, presetName)))
+                            {
+                                skippedExistingCars++;
+                                continue;
+                            }
                             string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                                 new CarPresetFile
                                 {
@@ -6859,7 +6942,7 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
 
             SimHub.Logging.Current.Info(
-                $"[TF4ALL] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car file(s) + {skippedFactoryCarDefaults} factory-bound default(s); {failedCars} failed).");
+                $"[TF4ALL] User-car migration: moved {migratedCarFiles} car file(s) and {migratedCarDefaults} car-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltinCars} built-in car file(s) + {skippedFactoryCarDefaults} factory-bound default(s) + {skippedExistingCars} already-present file(s); {failedCars} failed).");
         }
 
         // Rewrite legacy "Forza_<n>" identifiers to today's "Car_<n>" form.
@@ -17846,6 +17929,15 @@ namespace TrueforceForAll.Plugin
         private void StashCrossWheelFfbIfGated(BackupApplyResult result)
         {
             if (result == null || !result.FfbGated || Settings == null) return;
+            // Never = the user already chose to keep FFB local: withhold silently,
+            // no stash, no notice. Only the Ask policy surfaces the prompt.
+            // (Always never reaches here: ApplySettings would not have withheld.)
+            if (Settings.CrossWheelFfbMode != CrossWheelFfbMode.Ask)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] FFB tuning from '{result.SourceWheel}' withheld silently (policy Never).");
+                return;
+            }
             try
             {
                 Settings.PendingCrossWheelFfb =
@@ -17876,8 +17968,10 @@ namespace TrueforceForAll.Plugin
         /// the pending state. Only keys still classified FFB-wheel-specific AND
         /// Portable are written, so a stale stash can't smuggle a since-
         /// reclassified field onto live. No-op (returns false) when nothing is
-        /// pending or the stash is unreadable.</summary>
-        public bool ApplyPendingCrossWheelFfb()
+        /// pending or the stash is unreadable. When <paramref name="remember"/>
+        /// is set, the policy flips to Always so future cross-wheel FFB applies
+        /// without prompting.</summary>
+        public bool ApplyPendingCrossWheelFfb(bool remember = false)
         {
             if (Settings == null || string.IsNullOrEmpty(Settings.PendingCrossWheelFfb)) return false;
             try
@@ -17901,22 +17995,26 @@ namespace TrueforceForAll.Plugin
             }
             Settings.PendingCrossWheelFfb = "";
             Settings.PendingCrossWheelFfbSource = "";
+            if (remember) Settings.CrossWheelFfbMode = CrossWheelFfbMode.Always;
             // Push the freshly-written Mode B core tuning AND feel toggles to the
             // live model, then persist (the second call's save also writes the
-            // cleared pending fields). CarGripCalibration is consumed on the next
-            // variant load; no live-push method for it.
+            // cleared pending fields + any policy change). CarGripCalibration is
+            // consumed on the next variant load; no live-push method for it.
             ApplyModeBFromSettings(save: false);
             ApplyModeBFeel(save: true);
             return true;
         }
 
         /// <summary>"Dismiss": discard the FFB tuning a cross-wheel-gated restore
-        /// held back, keeping this PC's own FFB settings.</summary>
-        public void DismissPendingCrossWheelFfb()
+        /// held back, keeping this PC's own FFB settings. When
+        /// <paramref name="remember"/> is set, the policy flips to Never so
+        /// future cross-wheel FFB is withheld silently without prompting.</summary>
+        public void DismissPendingCrossWheelFfb(bool remember = false)
         {
             if (Settings == null) return;
             Settings.PendingCrossWheelFfb = "";
             Settings.PendingCrossWheelFfbSource = "";
+            if (remember) Settings.CrossWheelFfbMode = CrossWheelFfbMode.Never;
             PersistSettings();
         }
 
