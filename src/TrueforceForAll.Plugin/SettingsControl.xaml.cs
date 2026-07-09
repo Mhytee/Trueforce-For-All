@@ -526,6 +526,14 @@ namespace TrueforceForAll.Plugin
                     // Mode B support (or none is running).
                     string mbGame = _plugin.ActiveGame;
                     bool mbSupported = _plugin.ActiveGameSupportsModeB;
+                    // Conditional view: real controls only when the active game can
+                    // use Mode B; otherwise the explainer panel with the title list.
+                    if (ModeBSupportedPanel != null)
+                        ModeBSupportedPanel.Visibility = mbSupported
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    if (ModeBUnsupportedPanel != null)
+                        ModeBUnsupportedPanel.Visibility = mbSupported
+                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
                     if (ModeBGameNote != null)
@@ -653,6 +661,15 @@ namespace TrueforceForAll.Plugin
                     _lastGameForIracingNotice = curGameForNotice;
                     if (string.Equals(curGameForNotice, "IRacing", StringComparison.Ordinal))
                         Dispatcher.BeginInvoke(new Action(MaybeShowIracingTrueforceNotice),
+                            System.Windows.Threading.DispatcherPriority.Background);
+                }
+                // Fire the Mode B intro once, when a Mode-B-capable game becomes active.
+                if (!string.Equals(_lastGameForModeBIntro, curGameForNotice, StringComparison.Ordinal))
+                {
+                    _lastGameForModeBIntro = curGameForNotice;
+                    if (_plugin != null && _plugin.ActiveGameSupportsModeB
+                        && _plugin.Settings != null && !_plugin.Settings.HasSeenModeBIntro)
+                        Dispatcher.BeginInvoke(new Action(MaybeShowModeBIntro),
                             System.Windows.Threading.DispatcherPriority.Background);
                 }
                 string headerCar =
@@ -8579,6 +8596,56 @@ namespace TrueforceForAll.Plugin
             finally { _iracingNoticeShowing = false; }
         }
 
+        // Telemetry Based FFB (Mode B) intro. Shown once, the first time a
+        // Mode-B-capable game (FM8 / FH5 / FH6) is the active game. Trigger lives
+        // in RefreshFromPlugin (transition into a supported game); this is the
+        // show step, mirroring the iRacing notice above.
+        private string _lastGameForModeBIntro;
+        private bool _modeBIntroShowing;
+        private void MaybeShowModeBIntro()
+        {
+            if (_plugin?.Settings == null) return;
+            if (_plugin.Settings.HasSeenModeBIntro) return;
+            if (!_plugin.ActiveGameSupportsModeB) return;
+            var owner = Window.GetWindow(this);
+            if (owner == null) return;
+            if (_modeBIntroShowing) return;
+            _modeBIntroShowing = true;
+            try
+            {
+                string body =
+                    "This game supports Telemetry Based FFB (Mode B). Instead of passing the "
+                    + "game's own force feedback through, the plugin builds the wheel's steering "
+                    + "force from telemetry: slip angle, tire load, and speed.\n\n"
+                    + "It also enables shift and rev LED support on your wheel.\n\n"
+                    + "To use it, open this game's wheel settings and set its force feedback and "
+                    + "vibration strength to 0, so the plugin is the only force on the wheel. "
+                    + "Then activate it below.";
+                bool? r = TrueforceDialog.Show(owner,
+                    "Telemetry Based FFB is available",
+                    body,
+                    DialogKind.Info,
+                    okLabel: "Activate for this game",
+                    cancelLabel: "Not now",
+                    goldOk: true);
+                // One-time: mark seen on any outcome so it never re-nags.
+                _plugin.Settings.HasSeenModeBIntro = true;
+                if (r == true)
+                {
+                    _plugin.SetModeBEnabledForActiveGame(true);
+                    if (ModeBEnabledCheck != null)
+                    {
+                        bool prev = _suppressEvents;
+                        _suppressEvents = true;
+                        try { ModeBEnabledCheck.IsChecked = true; }
+                        finally { _suppressEvents = prev; }
+                    }
+                }
+                _plugin.PersistSettings();
+            }
+            finally { _modeBIntroShowing = false; }
+        }
+
         private void MaybeShowNetworkedWelcome()
         {
             if (_plugin?.Settings == null) return;
@@ -10290,7 +10357,7 @@ namespace TrueforceForAll.Plugin
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
             "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
-            "WELCOME        Reset the networked-welcome modal seen state and re-trigger it now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt all cleared).\n" +
+            "WELCOME        Reset the networked-welcome modal AND the Mode B intro seen state and re-trigger them now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro all cleared).\n" +
             "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +
             "MOTDROLL       Preview the MOTD strip on a RANDOM upcoming day (shows which day in the strip + status). Run again to re-roll. Dismissals + nag cooldown bypassed.\n" +
             "MOTDDATE<MMDDYYYY>  Preview the MOTD strip as if it were that date, e.g. MOTDDATE12252026, to see upcoming messages before they trigger.\n" +
@@ -10930,17 +10997,22 @@ namespace TrueforceForAll.Plugin
                 _plugin.Settings.HasSeenNetworkedWelcome = false;
                 _plugin.Settings.WelcomeDeclineCount     = 0;
                 _plugin.Settings.WelcomeNextShowAt       = null;
+                // Also reset the Mode B intro so both first-run modals can be retested.
+                _plugin.Settings.HasSeenModeBIntro       = false;
+                _lastGameForModeBIntro                   = null;
                 try { _plugin.PersistSettings(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Networked-welcome state reset: opening the modal now.";
+                    AccessCodeStatus.Text = "Networked-welcome + Mode B intro reset: opening the welcome now.";
                 // Re-trigger via the same gate the normal startup path
                 // uses so any preconditions (backend URL configured,
                 // etc.) apply identically. Clear the per-session guard
                 // first or the reset would no-op after an earlier show.
                 WelcomeWindow.ShownThisSession = false;
                 MaybeShowNetworkedWelcome();
+                // If a Mode-B-capable game is active, re-show its intro too.
+                MaybeShowModeBIntro();
                 return;
             }
 
@@ -11291,6 +11363,7 @@ namespace TrueforceForAll.Plugin
             _plugin.ResetOneTimeNotices();
             // Also clear this session's guards so notices can re-fire without a restart.
             _lastGameForIracingNotice = null;
+            _lastGameForModeBIntro    = null;
             _welcomeTriggeredThisSession = false;
             WelcomeWindow.ShownThisSession = false;
             try { RefreshFromPlugin(); } catch { }

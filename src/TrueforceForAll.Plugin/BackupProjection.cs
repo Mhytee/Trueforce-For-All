@@ -131,7 +131,7 @@ namespace TrueforceForAll.Plugin
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
-            "IRacingTrueforceNoticeDismissed",
+            "IRacingTrueforceNoticeDismissed", "HasSeenModeBIntro",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed",

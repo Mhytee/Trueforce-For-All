@@ -752,6 +752,9 @@ namespace TrueforceForAll.Plugin
         public bool      HasSeenNetworkedWelcome { get; set; } = false;
         public int       WelcomeDeclineCount     { get; set; } = 0;
         public DateTime? WelcomeNextShowAt       { get; set; } = null;
+        // One-time intro for Telemetry Based FFB (Mode B), shown the first time
+        // a Mode-B-capable game (FM8 / FH5 / FH6) is the active game. Per-machine.
+        public bool      HasSeenModeBIntro       { get; set; } = false;
 
         // Tracks community presets the user has downloaded so we can
         // notify them when the upstream curator publishes a new

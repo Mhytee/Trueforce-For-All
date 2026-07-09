@@ -2656,6 +2656,21 @@
             <Border Style="{StaticResource SectionHeaderBorder}">
                 <TextBlock Text="Telemetry based FFB (Mode B)" Style="{StaticResource SectionHeaderText}"/>
             </Border>
+
+            <!-- Shown when the active game can't use Mode B: an explainer plus the
+                 list of supported titles, instead of controls that would do nothing. -->
+            <StackPanel x:Name="ModeBUnsupportedPanel" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                           Text="Telemetry Based FFB builds the wheel's steering force from the game's telemetry (slip angle, tire load, speed) instead of its own force feedback. It's only available in the few titles that expose the data it needs:"/>
+                <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,2" Text="&#8226;  Forza Motorsport (2023)"/>
+                <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,2" Text="&#8226;  Forza Horizon 5"/>
+                <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,10" Text="&#8226;  Forza Horizon 6"/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" TextWrapping="Wrap"
+                           Text="In these games it also enables shift and rev LED support on your wheel. Start one of them to set it up."/>
+            </StackPanel>
+
+            <!-- The real Mode B controls; shown only when the active game supports it. -->
+            <StackPanel x:Name="ModeBSupportedPanel">
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10"
                        Text="The wheel's steering force is built from telemetry: slip angle, tire load, and speed, instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 5 and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel."/>
 
@@ -2804,6 +2819,7 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,0" Text="Learns where each car's grip actually tops out while you drive (about a lap of pushing) and normalizes the limit feel to it. Automatic, per car, remembered between sessions."/>
                 </StackPanel>
             </Expander>
+            </StackPanel><!-- ModeBSupportedPanel -->
 
                     </StackPanel>
                 </ScrollViewer>
