@@ -3570,9 +3570,14 @@ namespace TrueforceForAll.Plugin
                 // override to the persisted baseline before we move on.
                 DiscardUnsavedCarDraft(_activeCarId);
                 _activeCarId = carId;
-                // Swap the grip auto-cal learner to the new car (flushes the
-                // outgoing car's learned peak into settings).
-                LoadGripCal(_activeGame, carId);
+                // Grip auto-cal is (re)loaded per VARIANT on the telemetry
+                // thread by the variant-change detector in DispatchFrame, not
+                // here: the variant signature isn't resolved at car-change time
+                // (EnginePulse observations are reset just below), and the
+                // learner must only be touched from the thread that Ticks it.
+                // Clearing _lastAppliedVariantSignature below makes that
+                // detector fire on the next frame, which flushes this car's
+                // outgoing variant and loads the new one.
                 // Drop the prior car's community consensus so the resolver
                 // doesn't briefly attribute it to the new car. The
                 // SettingsControl will re-fetch and re-notify for the new
@@ -4018,6 +4023,12 @@ namespace TrueforceForAll.Plugin
                         // draft: it belonged to the previous variant.
                         if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
                         ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+                        // Swap the grip auto-cal learner to this variant: its
+                        // tires / downforce, and so its grip ceiling, can differ
+                        // from the previous variant's. Flushes the outgoing
+                        // variant's learned peak, loads this one (or starts
+                        // fresh). Same thread as the learner Tick above.
+                        LoadGripCal(_activeGame, _activeCarId, liveSig);
                     }
                 }
             }
@@ -4345,17 +4356,17 @@ namespace TrueforceForAll.Plugin
         // yank hands). Ticked on the FFB thread inside ComputeModeBForce.
         private readonly CrashDuckModel _crashDuck = new CrashDuckModel();
 
-        // Per-car grip-limit auto-calibration. The learner ALWAYS ticks while
-        // Mode B runs (so seat time accumulates regardless of the checkbox);
-        // the checkbox only gates whether the learned peak is applied as the
-        // utilization divisor. State swaps on car change and persists per
-        // "game|car" in Settings.CarGripCalibration.
+        // Per-VARIANT grip-limit auto-calibration. The learner ALWAYS ticks
+        // while Mode B runs (so seat time accumulates regardless of the
+        // checkbox); the checkbox only gates whether the learned peak is
+        // applied as the utilization divisor. State swaps on variant change
+        // and persists per "game|car|variant" in Settings.CarGripCalibration.
         private volatile bool _mbAutoCalOn;
         private readonly GripPeakLearner _gripCal = new GripPeakLearner();
         private volatile float _mbCalPeak = 1f;   // telemetry thread writes
         private long   _calPrevTicks;             // telemetry thread only
         private string _gripCalKey;               // settings key of the loaded state
-        private bool   _calConvergedLogged;       // one log line per car per load
+        private bool   _calConvergedLogged;       // one log line per variant per load
 
         // Mode B contention watchdog state (see DataUpdate). Warned resets on
         // Mode B re-engage so a fixed in-game setting re-arms the detector.
@@ -4380,11 +4391,21 @@ namespace TrueforceForAll.Plugin
             };
         }
 
-        /// <summary>Swap the learner to the new car: flush the outgoing
-        /// car's state, then restore the incoming car's (or start fresh).</summary>
-        private void LoadGripCal(string game, string carId)
+        /// <summary>Swap the learner to the active VARIANT: flush the outgoing
+        /// variant's state, then restore the incoming one (or start fresh).
+        /// Keyed per variant, not per car: different variants (engine swaps /
+        /// tunes) of the same car can run different tires and downforce, so
+        /// the combined-slip ceiling differs and must be learned + stored
+        /// separately. A null / empty variant signature (the car just changed
+        /// and telemetry has not resolved the signature yet) parks the learner
+        /// with no key until the variant-change detector calls again with the
+        /// resolved signature. Runs only on the telemetry thread (the same one
+        /// that Ticks the learner), so no cross-thread learner access.</summary>
+        private void LoadGripCal(string game, string carId, string variantSig)
         {
-            string key = string.IsNullOrEmpty(carId) ? null : (game ?? "") + "|" + carId;
+            string key = (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(variantSig))
+                ? null
+                : (game ?? "") + "|" + carId + "|" + variantSig;
             if (key == _gripCalKey) return;
             FlushGripCal();
             _gripCalKey = key;

@@ -89,12 +89,14 @@ namespace TrueforceForAll.Plugin
         // against the improved heuristic.
         public int CarCylinderCacheVersion { get; set; } = 1;
 
-        // Telemetry based FFB: per-car grip-limit auto-calibration state
-        // (GripPeakLearner), keyed "GameName|CarId". Written as the player
-        // drives (where each car's combined-slip metric actually tops out
-        // plus how much near-limit seat time backs that estimate) so the
-        // next session starts calibrated. Zero user action; the grip
-        // auto-cal checkbox gates application, not learning persistence.
+        // Telemetry based FFB: per-VARIANT grip-limit auto-calibration state
+        // (GripPeakLearner), keyed "GameName|CarId|VariantSignature" so that
+        // variants of the same car with different tires / grip learn and store
+        // separately. Written as the player drives (where each variant's
+        // combined-slip metric actually tops out plus how much near-limit seat
+        // time backs that estimate) so the next session starts calibrated.
+        // Zero user action; the grip auto-cal checkbox gates application, not
+        // learning persistence.
         public Dictionary<string, CarGripCal> CarGripCalibration { get; set; }
             = new Dictionary<string, CarGripCal>();
 
