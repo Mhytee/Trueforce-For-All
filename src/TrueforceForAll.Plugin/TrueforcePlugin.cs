@@ -4044,10 +4044,11 @@ namespace TrueforceForAll.Plugin
             //      the HID++ pipe is free. Verified LIVE via the FFB tap
             //      (2 s quiet window), not assumed from the mode: FH6 still
             //      emits PID in some states, and sole-writer must be proven.
-            //      G PRO only: the 0x807A level protocol is hardware-validated
-            //      there; the RS50 uses a different RGB page (and spoofs the
-            //      G PRO PID in compat mode, hence the product-string check)
-            //      and the G923 is unvalidated.
+            //      Per wheel: G PRO and RS50 share the HID++ 0x807A level
+            //      protocol and a 10-LED strip; G923 uses the legacy F8-12
+            //      report and fewer LEDs. G PRO is hardware-validated; RS50 and
+            //      G923 are built to the documented protocols, pending on-wheel
+            //      confirmation.
             if (_rpmLeds != null)
             {
                 bool ledsOn    = Settings?.RpmLedsEnabled ?? false;
@@ -4056,22 +4057,32 @@ namespace TrueforceForAll.Plugin
                             && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
                             && mairaLive;
 
-                bool gproWheel = (_hidWheelPid == 0xC272 || _hidWheelPid == 0xC268)
-                            && !WheelDiscovery.IsRs50(_hidWheelPid, _hidWheelProductString);
+                // Wheel LED family by chassis. G PRO + RS50 = HID++ 0x807A level
+                // channel, 10-LED strip (WheelLedChannel, via _rpmLeds); the
+                // RS50 in G PRO compat mode spoofs the G PRO PID (C272), and its
+                // native PID (C276) is handled too. G923 = legacy F8-12 report,
+                // fewer LEDs (the F8 path, via DriveG923Leds).
+                bool levelWheel = _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268   // G PRO (+ RS50 compat)
+                            || _hidWheelPid == 0xC276;                               // RS50 native
+                bool g923Wheel  = _hidWheelPid == 0xC266                             // G923 PS/PC
+                            || _hidWheelPid == 0xC26D || _hidWheelPid == 0xC26E;      // G923 Xbox/PC
+
                 // Fail CLOSED: quiet must be PROVEN by a live capture, never
                 // assumed. A null tap, a tap whose USBPcap child never
                 // started, or one that died mid-session is blind, and a blind
                 // tap returning nothing looks identical to real silence. The
                 // tap keeps capturing under Mode B exactly so this probe (and
-                // the contention watchdog) stay valid.
+                // the contention watchdog) stay valid. LEDs are only safe while
+                // the game FFB is proven quiet (Mode B owns the wheel); the
+                // driver lifts this later.
                 var ledTap = _ffbTap;
                 bool gameFfbQuiet = ledTap != null && ledTap.IsRunning
                             && !ledTap.TryGetFreshFfbTarget(2000).HasValue;
-                bool modeBGate = ledsOn && _forceModeB != 0 && gproWheel && gameFfbQuiet;
+                bool modeBLeds = ledsOn && _forceModeB != 0 && gameFfbQuiet;
 
                 double pct     = frame.RpmPercent;
                 bool   redline = frame.RedlineReached;
-                if (modeBGate)
+                if (modeBLeds && (levelWheel || g923Wheel))
                 {
                     // Forza UDP has no RpmPercent or redline flag, so derive
                     // both from raw revs. Fill and flash share ONE reference:
@@ -4108,16 +4119,78 @@ namespace TrueforceForAll.Plugin
                     _forzaRedlineLatch = false;
                 }
 
-                try
+                if (levelWheel)
                 {
-                    _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
-                                     redline, iracingGate || modeBGate);
+                    // G PRO / RS50: HID++ 0x807A level channel (iRacing+MAIRA or
+                    // Mode B). RS50 rides the same channel; if its firmware does
+                    // not answer 0x807A the channel just never resolves and the
+                    // LEDs stay dark (no harm).
+                    try
+                    {
+                        _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
+                                         redline, iracingGate || modeBLeds);
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Error("[TF4ALL] RPM-LED telemetry error", ex);
+                    }
                 }
-                catch (Exception ex)
+                else if (g923Wheel)
                 {
-                    SimHub.Logging.Current.Error("[TF4ALL] RPM-LED telemetry error", ex);
+                    // G923: legacy F8-12 rev bar, fewer LEDs. Mode B only for
+                    // now (the iRacing+MAIRA path stays on the level channel).
+                    DriveG923Leds(pct, redline, modeBLeds);
                 }
             }
+        }
+
+        // ---- G923 rev LEDs (legacy F8-12 path) ----------------------------
+        // The G923 rev strip is driven by the legacy Logitech F8-12 report on
+        // the gamepad collection (LegacyLedF8Channel), NOT the G PRO's HID++
+        // 0x807A. It has fewer LEDs than the G PRO's 10; the exact count is
+        // documented for the G-series wheels. VALIDATE against a real G923 and
+        // correct if the strip fills at the wrong rate (the F8 byte is a
+        // bitmask, so a wrong count only mis-scales, it does not break).
+        private const int G923LedCount = 8;
+        private int _g923OpenState;   // 0 idle, 1 opening, 2 open, 3 failed
+
+        private void DriveG923Leds(double pct, bool redline, bool gateOpen)
+        {
+            var f8 = _f8Leds;
+            if (!gateOpen)
+            {
+                try { f8?.ClearLevel(); } catch { }
+                return;
+            }
+            // Lazy background open, one-shot (Open enumerates + opens a HID
+            // stream; keep it off the telemetry thread). Shares the _f8Leds
+            // instance with the F8SWEEP test code; production SetLevel no-ops
+            // while a sweep owns the channel.
+            if (f8 == null)
+            {
+                f8 = new TrueforceForAll.Core.LegacyLedF8Channel(
+                    msg => SimHub.Logging.Current.Info(msg));
+                _f8Leds = f8;
+            }
+            if (_g923OpenState == 0)
+            {
+                _g923OpenState = 1;
+                var chan = f8;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    bool ok = false;
+                    try { ok = chan.Open(); } catch { }
+                    _g923OpenState = ok ? 2 : 3;
+                });
+                return;
+            }
+            if (_g923OpenState != 2) return;
+
+            int level = redline
+                ? ((((DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond) / 185L) & 1L) == 0L
+                       ? G923LedCount : 0)                              // ~2.7 Hz shift flash
+                : (int)Math.Floor(pct * G923LedCount + 0.5);
+            try { f8.SetLevel(level, G923LedCount); } catch { }
         }
 
         /// <summary>Telemetry feed went stale (the active source stopped

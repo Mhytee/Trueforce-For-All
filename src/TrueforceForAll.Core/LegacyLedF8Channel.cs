@@ -189,6 +189,36 @@ namespace TrueforceForAll.Core
 
         public void AllOff() { try { Send(0x00); } catch { } }
 
+        // ---- Production rev-bar writer -------------------------------------
+
+        private int  _lastSetBits = -1;
+        private long _lastSetWriteMs;
+        private const int SetKeepAliveMs = 1000;   // re-light if the wheel drops state
+
+        /// <summary>Production level write for the rev bar. <paramref name="level"/>
+        /// (0..<paramref name="maxLevel"/>) maps to the progressive bitmask
+        /// (1&lt;&lt;level)-1, the same encoding the sweep and forza-wheel-leds use;
+        /// the firmware decides how the bits map to the strip. Writes only on
+        /// change plus a ~1 Hz keepalive, so it is safe to call every frame.
+        /// No-op while a sweep test owns the channel or the stream is closed.</summary>
+        public void SetLevel(int level, int maxLevel)
+        {
+            if (_sweeping || _stream == null) return;
+            if (maxLevel < 1) maxLevel = 1;
+            if (level < 0) level = 0; else if (level > maxLevel) level = maxLevel;
+            int bits = (1 << level) - 1;
+            long now = NowMs();
+            if (bits == _lastSetBits && (now - _lastSetWriteMs) < SetKeepAliveMs) return;
+            if (Send(bits)) { _lastSetBits = bits; _lastSetWriteMs = now; }
+        }
+
+        /// <summary>Turn the strip off (level 0) if it isn't already.</summary>
+        public void ClearLevel()
+        {
+            if (_sweeping || _stream == null || _lastSetBits == 0) return;
+            if (Send(0)) { _lastSetBits = 0; _lastSetWriteMs = NowMs(); }
+        }
+
         // ---- Sweep test ----------------------------------------------------
 
         /// <summary>Start a continuous empty-&gt;full-&gt;empty sweep on a background

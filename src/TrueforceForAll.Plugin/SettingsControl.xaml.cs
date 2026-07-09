@@ -9184,14 +9184,18 @@ namespace TrueforceForAll.Plugin
                 CarFactsRedlineSourceText.Text = RedlineSourceFriendly(s.RedlineSource);
 
             // Share appears once the user has pinned their own value and the
-            // community is enabled (sign-in is handled on click). When
-            // always-share is on, Set pushes the value itself, so the manual
-            // Share button is redundant - hide it.
+            // community is enabled (sign-in is handled on click). Hidden when
+            // always-share is on (Set pushes the value itself) OR once this
+            // variant's redline was already shared this session (nothing left
+            // to submit until they change it again; the nudge below switches
+            // to a thank-you). The panel re-runs after a share via
+            // RefreshActiveCommunityRedlineFromServer, so this hides promptly.
             bool communityOn = _plugin.Settings?.CommunityEnabled == true;
             bool autoSubmit  = _plugin.Settings?.AutoSubmitCarFacts == true;
             if (CarFactsShareBtn != null)
                 CarFactsShareBtn.Visibility =
-                    (s.HasUserRedline && communityOn && !autoSubmit) ? Visibility.Visible : Visibility.Collapsed;
+                    (s.HasUserRedline && communityOn && !autoSubmit && !WasRedlineSharedThisSession())
+                        ? Visibility.Visible : Visibility.Collapsed;
 
             // Surface that we have nothing from the community yet. When the user
             // has their own value, gently invite a share (the button is right
