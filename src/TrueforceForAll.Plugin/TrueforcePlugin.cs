@@ -4047,7 +4047,15 @@ namespace TrueforceForAll.Plugin
 
                 bool gproWheel = (_hidWheelPid == 0xC272 || _hidWheelPid == 0xC268)
                             && !WheelDiscovery.IsRs50(_hidWheelPid, _hidWheelProductString);
-                bool gameFfbQuiet = !(_ffbTap?.TryGetFreshFfbTarget(2000).HasValue ?? false);
+                // Fail CLOSED: quiet must be PROVEN by a live capture, never
+                // assumed. A null tap, a tap whose USBPcap child never
+                // started, or one that died mid-session is blind, and a blind
+                // tap returning nothing looks identical to real silence. The
+                // tap keeps capturing under Mode B exactly so this probe (and
+                // the contention watchdog) stay valid.
+                var ledTap = _ffbTap;
+                bool gameFfbQuiet = ledTap != null && ledTap.IsRunning
+                            && !ledTap.TryGetFreshFfbTarget(2000).HasValue;
                 bool modeBGate = ledsOn && _forceModeB != 0 && gproWheel && gameFfbQuiet;
 
                 double pct     = frame.RpmPercent;
@@ -4058,9 +4066,18 @@ namespace TrueforceForAll.Plugin
                     // bar from raw revs (lights from 70% of max) and flash at
                     // the top. The per-variant redline model is deliberately
                     // NOT used here: SimHub's Forza redline is unreliable and
-                    // is suppressed for Forza everywhere else too.
+                    // is suppressed for Forza everywhere else too. The flash
+                    // latch has hysteresis (in at 99.5%, out below 95%) so
+                    // limiter bounce blinks cleanly instead of flickering the
+                    // flag at limiter frequency.
                     pct = ForzaRevBar(frame.Rpms, frame.MaxRpm);
-                    redline = pct >= 0.995;
+                    if (_forzaRedlineLatch) { if (pct < 0.95) _forzaRedlineLatch = false; }
+                    else if (pct >= 0.995) _forzaRedlineLatch = true;
+                    redline = _forzaRedlineLatch;
+                }
+                else
+                {
+                    _forzaRedlineLatch = false;
                 }
 
                 try
@@ -4730,6 +4747,10 @@ namespace TrueforceForAll.Plugin
         /// carry no RpmPercent channel: raw revs mapped so the bar lights
         /// from 70 percent of max to the limiter. The 70 percent onset is the
         /// haptic-engine validated value.</summary>
+        // Redline-flash latch for the derived Forza rev bar (telemetry
+        // thread only). Hysteresis lives in the DispatchFrame LED block.
+        private bool _forzaRedlineLatch;
+
         private static double ForzaRevBar(double rpm, double maxRpm)
         {
             const double Onset = 0.70;

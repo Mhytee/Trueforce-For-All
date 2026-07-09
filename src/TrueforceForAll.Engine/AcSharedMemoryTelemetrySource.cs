@@ -381,8 +381,9 @@ namespace TrueforceForAll.Core
             // Signed longitudinal slip ratio derived from wheel rev rate vs
             // car speed (AC1 exposes no slip-ratio array): locked wheel gives
             // -1 regardless of tire-radius error, wheelspin runs positive.
+            // Silent below walking pace and in reverse (see DeriveSlipRatio).
             var slipRatio = GuardByLoad(
-                DeriveSlipRatio(wheelRot, speedKmh), load, _seenWheelLoad);
+                DeriveSlipRatio(wheelRot, speedKmh, gear == 0), load, _seenWheelLoad);
 
             return new TelemetryFrame
             {
@@ -432,13 +433,25 @@ namespace TrueforceForAll.Core
         // margin against the ~10% radius spread of racing tires.
         internal const float RollingRadiusM = 0.33f;
 
+        // Below this speed the ratio derivation returns silence: a parked or
+        // crawling car has omega ~0 on every LOADED wheel, which a naive
+        // (omega*r - v)/v reads as full lockup, and the lockup consumers have
+        // no speed gate of their own (LockupJudder would pulse at every stop,
+        // grid, and pit box). Lockup/wheelspin detection below ~11 km/h is
+        // not meaningful anyway.
+        internal const double SlipRatioMinSpeedMs = 3.0;
+
         /// <summary>Signed longitudinal slip ratio per wheel from rotation
-        /// speed vs car speed: (omega*r - v) / max(v, 2 m/s). The 2 m/s floor
-        /// keeps the ratio bounded at crawl speeds (effects gate below
-        /// ~5 km/h anyway); output clamped to +-2 against garbage frames.</summary>
-        internal static TireQuad DeriveSlipRatio(TireQuad wheelRotRadS, double speedKmh)
+        /// speed vs car speed: (omega*r - v) / v, clamped to +-2. Returns an
+        /// all-zero quad (no signal) below SlipRatioMinSpeedMs and in reverse
+        /// gear: at standstill every loaded wheel would otherwise read -1
+        /// (full lockup), and in reverse the signed wheel rotation runs
+        /// opposite the unsigned speed so the ratio pins at the clamp; both
+        /// are derivation artifacts, not grip states.</summary>
+        internal static TireQuad DeriveSlipRatio(TireQuad wheelRotRadS, double speedKmh, bool reverseGear)
         {
-            double v = Math.Max(Math.Abs(speedKmh) / 3.6, 2.0);
+            double v = Math.Abs(speedKmh) / 3.6;
+            if (reverseGear || v < SlipRatioMinSpeedMs) return default;
             double R(double omega)
             {
                 double r = (omega * RollingRadiusM - v) / v;

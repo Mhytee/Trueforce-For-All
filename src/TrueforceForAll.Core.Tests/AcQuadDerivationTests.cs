@@ -16,7 +16,7 @@ namespace TrueforceForAll.Core.Tests
             // omega = 0 at speed: ratio = (0 - v)/v = -1 exactly; the fixed
             // rolling radius cannot perturb it.
             var rot = TireQuad.Of(0, 0, 0, 0);
-            var q = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 100.0);
+            var q = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 100.0, reverseGear: false);
             Assert.Equal(-1.0, q.FL, 3);
             Assert.Equal(-1.0, q.RR, 3);
         }
@@ -28,23 +28,49 @@ namespace TrueforceForAll.Core.Tests
             double omegaRolling = v / R;
             var rot = TireQuad.Of(omegaRolling, omegaRolling,
                                   2 * omegaRolling, 2 * omegaRolling);   // rears spinning 2x
-            var q = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 100.0);
+            var q = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 100.0, reverseGear: false);
             Assert.Equal(0.0, q.FL, 3);
             Assert.Equal(1.0, q.RL, 3);                   // (2v - v)/v = +1
         }
 
         [Fact]
-        public void SlipRatio_IsClamped_AndBoundedAtCrawl()
+        public void SlipRatio_SilentAtStandstill_AndCrawl()
         {
-            // Free-spinning wheel on a stationary car: the 2 m/s floor plus
-            // the clamp keep the ratio finite and within +-2.
-            var rot = TireQuad.Of(500, 500, 500, 500);
-            var q = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 0.0);
-            Assert.Equal(2.0, q.FL, 3);
+            // A parked car has omega ~0 on every LOADED wheel, which a naive
+            // derivation reads as full lockup on all four; the consumers have
+            // no speed gate, so the source must return silence instead. This
+            // was a live bug: full-severity lockup judder at every stop.
+            var rot = TireQuad.Of(0, 0, 0, 0);
+            var q = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 0.0, reverseGear: false);
+            Assert.Equal(0.0, q.FL, 6);
+            Assert.Equal(0.0, q.RR, 6);
 
+            var crawl = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 9.0, reverseGear: false);
+            Assert.Equal(0.0, crawl.FL, 6);               // 9 km/h = 2.5 m/s < the 3 m/s gate
+        }
+
+        [Fact]
+        public void SlipRatio_SilentInReverse()
+        {
+            // Reverse: signed wheel rotation runs opposite the unsigned
+            // speed, pinning a naive ratio at the clamp (full-lockup buzz
+            // while backing out of the pits). Reverse returns silence.
+            double v = 15.0 / 3.6;
+            var rot = TireQuad.Of(-v / R, -v / R, -v / R, -v / R);
+            var q = AcSharedMemoryTelemetrySource.DeriveSlipRatio(rot, 15.0, reverseGear: true);
+            Assert.Equal(0.0, q.FL, 6);
+        }
+
+        [Fact]
+        public void SlipRatio_IsClamped_AgainstGarbage()
+        {
             var qNeg = AcSharedMemoryTelemetrySource.DeriveSlipRatio(
-                TireQuad.Of(-500, 0, 0, 0), 50.0);
+                TireQuad.Of(-500, 0, 0, 0), 50.0, reverseGear: false);
             Assert.Equal(-2.0, qNeg.FL, 3);
+
+            var qPos = AcSharedMemoryTelemetrySource.DeriveSlipRatio(
+                TireQuad.Of(500, 0, 0, 0), 50.0, reverseGear: false);
+            Assert.Equal(2.0, qPos.FL, 3);
         }
 
         [Fact]
