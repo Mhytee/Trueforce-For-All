@@ -79,6 +79,16 @@ namespace TrueforceForAll.Plugin
             return rel;
         }
 
+        /// <summary>Resolve the absolute path WriteCar / DeleteCar use for a
+        /// given car preset, without writing or reading anything. Mirrors
+        /// WriteCar's path construction exactly. Used by the one-time legacy-car
+        /// migration to avoid clobbering an already-migrated file on a re-run.</summary>
+        public static string GetCarPresetPath(string folder, string gameName, string carId, string presetName)
+        {
+            string g = SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName);
+            return Path.Combine(folder, "cars", g, SafeFile(carId), SafeFile(presetName) + ".json");
+        }
+
         /// <summary>Write a car preset (CarPresetFile JSON) to
         /// cars/&lt;GameName&gt;/&lt;carId&gt;/&lt;PresetName&gt;.json. Multiple
         /// presets per car. Returns the relative path.</summary>
