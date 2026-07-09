@@ -4063,22 +4063,28 @@ namespace TrueforceForAll.Plugin
                 if (modeBGate)
                 {
                     // Forza UDP has no RpmPercent or redline flag, so derive
-                    // both from raw revs. The bar fills the full 10-LED strip
-                    // (ForzaRevBar) and the all-on redline flash both key off
-                    // the SAME reference: rpm as a fraction of EngineMaxRpm.
-                    // Forza reports EngineMaxRpm ABOVE where the car actually
-                    // bounces off the limiter, so the strip must fill and flash
-                    // at a reachable fraction (RevBarFullFrac), not at a literal
-                    // rpm==maxRpm that Forza never reports; otherwise the top
-                    // LEDs and the flash never come on. Latch has hysteresis so
-                    // limiter bounce blinks cleanly instead of flickering.
-                    // The per-variant redline model is deliberately NOT used:
-                    // SimHub's Forza redline is unreliable and suppressed for
-                    // Forza everywhere else too.
-                    double revFrac = frame.MaxRpm > 1.0 ? frame.Rpms / frame.MaxRpm : 0.0;
-                    pct = ForzaRevBar(frame.Rpms, frame.MaxRpm);
-                    if (_forzaRedlineLatch) { if (revFrac < RevBarFullFrac - 0.05) _forzaRedlineLatch = false; }
-                    else if (revFrac >= RevBarFullFrac) _forzaRedlineLatch = true;
+                    // both from raw revs. Fill and flash share ONE reference:
+                    // the redline RPM the rev-limiter buzz already fires at
+                    // (RevLimiter.EffectiveRedlineRpm, which runs the full
+                    // cascade: the per-variant CarFacts redline when known,
+                    // else the community/telemetry value, else 0.85 of Forza's
+                    // EngineMaxRpm). So the all-LED flash and the buzz go off
+                    // together as one "shift now" signal, and a known redline
+                    // pins the strip exactly. Fill spans the top window below
+                    // that point; the latch has hysteresis so limiter bounce
+                    // blinks cleanly. (EffectiveRedlineRpm is written on the
+                    // engine thread; this eventual-consistency read is fine for
+                    // LEDs, worst case one glitch frame that self-corrects.)
+                    int? rl = RevLimiter?.EffectiveRedlineRpm;
+                    double full = (rl.HasValue && rl.Value > 100)
+                        ? rl.Value
+                        // No redline resolved yet (engine off / first frame):
+                        // RevLimiter's own 0.85-of-MaxRpm default, so the
+                        // fallback still agrees with the buzz.
+                        : frame.MaxRpm * 0.85;
+                    pct = ForzaRevBar(frame.Rpms, full);
+                    if (_forzaRedlineLatch) { if (frame.Rpms < full * 0.96) _forzaRedlineLatch = false; }
+                    else if (frame.Rpms >= full) _forzaRedlineLatch = true;
                     redline = _forzaRedlineLatch;
                 }
                 else
@@ -4757,22 +4763,22 @@ namespace TrueforceForAll.Plugin
         // thread only). Hysteresis lives in the DispatchFrame LED block.
         private bool _forzaRedlineLatch;
 
-        // Rev fraction at which the LED strip is FULL (all 10) and the redline
-        // flash engages. Below EngineMaxRpm on purpose: Forza reports its max
-        // rev above where cars actually bounce off the limiter, and a shift
-        // indicator is meant to warn just BEFORE the limiter anyway. G PRO,
-        // FH6: the strip capped at ~8 of 10 with a literal 1.0 reference
-        // because rpm/maxRpm plateaued near 0.94 at the limiter. Validated
-        // 2026-07-08.
-        private const double RevBarFullFrac = 0.93;
-        private const double RevBarOnsetFrac = 0.72;
+        // The 10-LED strip lights across the top window BELOW the redline:
+        // from RevBarFillWindowFrac of the redline RPM up to it. 0.85 = the
+        // strip sequences over the last ~15% of revs before the shift point,
+        // then goes full + flashes at the redline. A fraction of the redline
+        // (not of MaxRpm) so a low CarFacts redline still gets a proportional
+        // fill window instead of an onset above its own redline.
+        private const double RevBarFillWindowFrac = 0.85;
 
-        private static double ForzaRevBar(double rpm, double maxRpm)
+        /// <summary>0..1 fill for the rev-LED strip: 0 below the fill window,
+        /// 1 at or above <paramref name="fullRpm"/> (the resolved redline).</summary>
+        private static double ForzaRevBar(double rpm, double fullRpm)
         {
-            if (maxRpm <= 1.0) return 0.0;
-            double f = rpm / maxRpm;
-            if (f <= RevBarOnsetFrac) return 0.0;
-            double bar = (f - RevBarOnsetFrac) / (RevBarFullFrac - RevBarOnsetFrac);
+            if (fullRpm <= 1.0) return 0.0;
+            double onset = fullRpm * RevBarFillWindowFrac;
+            if (rpm <= onset) return 0.0;
+            double bar = (rpm - onset) / (fullRpm - onset);
             if (bar < 0.0) bar = 0.0; else if (bar > 1.0) bar = 1.0;
             return bar;
         }
