@@ -8617,7 +8617,12 @@ namespace TrueforceForAll.Plugin
                     "This game supports Telemetry Based FFB (Mode B). Instead of passing the "
                     + "game's own force feedback through, the plugin builds the wheel's steering "
                     + "force from telemetry: slip angle, tire load, and speed.\n\n"
-                    + "It also enables shift and rev LED support on your wheel.\n\n"
+                    + "It also drives your wheel's rev lights. Rev lights only work with Mode B "
+                    + "for now, because writing to them while a game runs its own force feedback "
+                    + "makes that force feedback cut out (they share one channel on the wheel). "
+                    + "Mode B replaces the game's force feedback, so the lights are free. A custom "
+                    + "driver that would enable rev lights in every game is in testing, but it "
+                    + "needs to be signed by Microsoft first.\n\n"
                     + "To use it, open this game's wheel settings and set its force feedback and "
                     + "vibration strength to 0, so the plugin is the only force on the wheel. "
                     + "Then activate it below.";
@@ -14022,7 +14027,13 @@ namespace TrueforceForAll.Plugin
             // section headers, dimmed two-tier entries).
             var ghReleases = _plugin.GetGitHubReleasesForBanner();
             var pending    = _plugin.GetPendingChangelog();
-            bool useGitHub = ghReleases != null && ghReleases.Count > 0;
+            // Prefer GitHub notes only when a release exists for the RUNNING
+            // version. On a dev build ahead of any public release (no matching
+            // release yet), fall back to the bundled EffectChangelog so changelogs
+            // can be authored and previewed as we go instead of showing stale
+            // notes from the last public release below this version.
+            bool useGitHub = ghReleases != null && ghReleases.Count > 0
+                             && _plugin.GitHubHasReleaseForCurrentVersion();
             bool useLocal  = !useGitHub && pending != null && pending.Count > 0;
             // The banner fires on any version upgrade (HasUnseenChangelog is
             // version-based, independent of bundled content), so an offline

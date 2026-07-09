@@ -2984,6 +2984,22 @@ namespace TrueforceForAll.Plugin
             return EffectChangelog.EntriesNewerThan(since);
         }
 
+        /// <summary>True when GitHub has a published (non-prerelease) release whose
+        /// version matches the running build. The What's new modal prefers GitHub
+        /// notes only in that case; a dev build ahead of any release falls back to
+        /// the bundled EffectChangelog, so changelogs can be authored and previewed
+        /// before a public release exists.</summary>
+        public bool GitHubHasReleaseForCurrentVersion()
+        {
+            var all = UpdateChecker?.AllReleases;
+            var current = UpdateChecker?.CurrentVersion;
+            if (all == null || current == null) return false;
+            foreach (var r in all)
+                if (r != null && !r.IsPrerelease && r.Version != null && Compare3(r.Version, current) == 0)
+                    return true;
+            return false;
+        }
+
         /// <summary>True when LastSeenVersion is strictly older than the
         /// running plugin's assembly version. Drives the What's new banner's
         /// visibility independently of EffectChangelog content, so the
