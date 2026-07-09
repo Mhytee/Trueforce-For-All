@@ -9869,6 +9869,7 @@ namespace TrueforceForAll.Plugin
             "SHARE          Force the 'spread the word' banner on now.\n" +
             "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
+            "CAPTURE        Toggle the aligned telemetry+FFB capture CSV (v2 golden fixture format) under Documents\\TrueforceForAll.\n" +
             "UDP            Toggle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> off.\n" +
             "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
@@ -10149,6 +10150,18 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Synthetic ratchet sequence fired (UP then DOWN; ~5 s total). Banner should appear, evolve, then auto-dismiss as both rings return to start.";
+                return;
+            }
+
+            // Dev-only: toggle the aligned telemetry+FFB capture log (v2 golden
+            // format, the replay-harness fixture recorder). Pure observation;
+            // safe while driving. See TrueforcePlugin.ToggleFfbCapture.
+            if (code.Equals("CAPTURE", StringComparison.OrdinalIgnoreCase))
+            {
+                string status = _plugin.ToggleFfbCapture();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = status;
                 return;
             }
 

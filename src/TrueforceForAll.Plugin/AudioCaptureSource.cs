@@ -22,7 +22,10 @@ using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin
 {
-    public sealed class AudioCaptureSource : ISampleSource, IDisposable
+    // IDuckable: the Engine's DuckingController writes DuckMultiplier through
+    // the interface (the capture source is the one duck target that is not a
+    // TelemetryEffect).
+    public sealed class AudioCaptureSource : ISampleSource, IDuckable, IDisposable
     {
         public const double TargetRateHz = 4000.0;
 

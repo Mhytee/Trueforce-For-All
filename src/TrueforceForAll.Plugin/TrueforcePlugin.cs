@@ -52,6 +52,13 @@ namespace TrueforceForAll.Plugin
 
         private readonly Mixer _mixer = new Mixer();
 
+        // Extracted engine homes (phase 0c): the sidechain ducker and the
+        // render tick live in the Engine assembly so the replay harness runs
+        // the exact production code. The plugin wires effect refs at Init and
+        // forwards its per-tick loop into EngineLoop.RunOneTick.
+        private readonly DuckingController _ducking = new DuckingController();
+        private EngineLoop _engineLoop;
+
         // Per-car preset files, one .tfcar.json per car, the canonical
         // home for car-specific tuning post-Model G refactor. Game presets
         // no longer carry CarOverrides; switching presets doesn't touch
@@ -161,6 +168,15 @@ namespace TrueforceForAll.Plugin
         private AudioCaptureSource _audio;
         private HelperHost _helperHost;
         private UsbPcapFfbTap _ffbTap;
+        // Aligned telemetry + game-FFB capture log, the v2 golden-fixture
+        // format (full frame incl. per-tire quads), replayable by the engine
+        // harness AND usable for offline FFB remodeling. Null when capture is
+        // off; armed/disarmed by the CAPTURE access code via ToggleFfbCapture().
+        // Written from DispatchFrame (telemetry thread); toggled from the UI
+        // thread. GoldenCaptureLog is internally locked and a disposed instance
+        // no-ops, so DispatchFrame only needs a local snapshot of the field
+        // before calling it.
+        private GoldenCaptureLog _captureLog;
         private FeedbackBoxInjector _feedbackInjector;
         // Reads the wheel's physical steering off its HID controller interface,
         // so the stationary spring has a position to work with even when the
@@ -2422,6 +2438,19 @@ namespace TrueforceForAll.Plugin
         // start producing the moment the device re-attaches.
         private void InitPipeline()
         {
+            // Sweep orphaned capture children from a previous SimHub run that
+            // died hard (taskkill /F, crash): an orphaned USBPcapCMD holds the
+            // USBPcap device AND our UDP sockets under a dead PID, so the tap
+            // and the Forza listener silently fail until it is gone. New
+            // children are job-bound (ChildProcessJob.TryAssign) so they die
+            // with us; this sweep is the recovery path for the old ones.
+            try
+            {
+                ChildProcessJob.KillOrphans("USBPcapCMD",
+                    msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"));
+            }
+            catch { }
+
             // Spawn the loopback helper child process. It does the actual
             // per-process WASAPI loopback in modern .NET (where COM interop is
             // reliable), and streams audio bytes back to us over stdout.
@@ -2459,7 +2488,12 @@ namespace TrueforceForAll.Plugin
             // ITelemetrySource's OnFrame callback (see DispatchFrame below).
             EnginePulse  = new EnginePulseEffect();
             RoadBumps    = new RoadBumpsEffect();
-            TractionLoss = new TractionLossEffect();
+            TractionLoss = new TractionLossEffect
+            {
+                // The engine assembly carries no SimHub reference; the host
+                // injects the diagnostic sink.
+                DiagLog = m => SimHub.Logging.Current.Info(m),
+            };
             GearShift    = new GearShiftEffect();
             AbsClick     = new AbsClickEffect();
             PitLimiter   = new PitLimiterEffect();
@@ -2473,6 +2507,32 @@ namespace TrueforceForAll.Plugin
             // the mixer costs nothing.
             _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, Airborne };
             foreach (var fx in _effects) _mixer.Add(fx);
+
+            // Sidechain ducker (Engine assembly): one field per effect, all
+            // null-checked inside, so the slots for effects this branch does
+            // not construct (AxleSlip / KerbThump / LockupJudder) stay unset.
+            // Audio is re-assigned every producer tick because the capture
+            // source is created after Init and can be retargeted live.
+            _ducking.EnginePulse  = EnginePulse;
+            _ducking.RoadBumps    = RoadBumps;
+            _ducking.TractionLoss = TractionLoss;
+            _ducking.GearShift    = GearShift;
+            _ducking.AbsClick     = AbsClick;
+            _ducking.PitLimiter   = PitLimiter;
+            _ducking.Drs          = Drs;
+            _ducking.Collision    = Collision;
+            _ducking.RevLimiter   = RevLimiter;
+            _ducking.Airborne     = Airborne;
+
+            // The engine tick: ducking, effect OnTelemetry at a fixed 500 Hz
+            // on resampled frames, mixer render, silence floor, device push.
+            // The resampler runs on Stopwatch time in production; the replay
+            // harness constructs its own EngineLoop on a virtual clock.
+            _engineLoop = new EngineLoop(_mixer, _ducking, new DeviceSink(this),
+                new FrameResampler(Stopwatch.Frequency))
+            {
+                Effects = _effects,
+            };
 
             _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
 
@@ -3624,57 +3684,22 @@ namespace TrueforceForAll.Plugin
             System.Threading.Interlocked.Exchange(ref _lastFrameTicks, Stopwatch.GetTimestamp());
             _telemetryStalled = false;
 
-            // Enhanced sources (AC MMF, etc.) deliberately skip slow-rate
-            // fields whose physics-rate fidelity wouldn't be perceptible.
-            // Overlay them from the cached SimHub reading so effects see a
-            // complete frame regardless of which source is active.
+            // Frame enrichment (SimHub-cache overlay for enhanced sources +
+            // universal collision derivation) moved to the Engine's
+            // FrameEnricher in phase 0c so the replay harness runs the exact
+            // production logic. Rationale comments live there.
             var src = _telemetrySource;
-            if (src != null && src.IsEnhanced)
-            {
-                frame.MaxRpm    = _lastSimHubMaxRpm;
-                frame.AbsActive = _lastSimHubAbsActive;
-                // Redline RPM: only fill when the enhanced source didn't supply
-                // its own (none do today), so the rev limiter can threshold
-                // against the real shift point where SimHub knows it. NEVER for
-                // Forza: SimHub's Forza redline is unreliable (often in-range
-                // but wrong), and the rev limiter's own sanity gate can't tell a
-                // bogus-but-in-range value from a real one, so it would switch
-                // to fire-at-redline and silently stop engaging. Leaving it 0
-                // forces the limiter onto the MaxRpm*Threshold (engage-%) path,
-                // matching ActiveSourceUsesRedline (which also excludes Forza).
-                if (frame.RedlineRpm <= 0 && !IsForzaGameName(_activeGame))
-                    frame.RedlineRpm = _lastSimHubRedlineRpm;
-                // Only overlay PitLimiter/DRS when the enhanced source itself
-                // didn't populate them, preserves any future enhanced source
-                // that does read them natively (e.g., a richer AC plugin
-                // reading the static page's pit-lane flags).
-                if (frame.PitLimiterActive == null) frame.PitLimiterActive = _lastSimHubPitLimiterActive;
-                if (frame.DrsActive        == null) frame.DrsActive        = _lastSimHubDrsActive;
-            }
-
-            // Universal collision derivation: if the source didn't populate
-            // CollisionMagnitude (only PC2's opponent-collision signal does
-            // directly), derive from a sudden three-axis accel spike.
-            // Threshold ≈ 5g (≈49 m/s²), well above hard cornering
-            // (~1.5-2g) and hard braking (~1g), squarely in "something hit
-            // something" territory. Surge (longitudinal) catches head-on /
-            // rear-end impacts; sway catches T-bones; heave catches hard
-            // landings and curb slams. Normalized: each ~50 m/s² over the
-            // threshold = 1.0 magnitude unit, capped in the effect.
-            if (frame.CollisionMagnitude == null)
-            {
-                const double CollisionThresholdMps2 = 49.0;   // ≈ 5g
-                const double NormalizePerMps2       = 0.02;   // 1.0 magnitude per ~50 m/s² over threshold
-                double sway  = frame.AccelerationSway  ?? 0;
-                double heave = frame.AccelerationHeave ?? 0;
-                double surge = frame.AccelerationSurge ?? 0;
-                double peak  = Math.Max(Math.Abs(surge),
-                               Math.Max(Math.Abs(sway), Math.Abs(heave)));
-                if (peak > CollisionThresholdMps2)
+            FrameEnricher.Enrich(ref frame,
+                sourceIsEnhanced: src != null && src.IsEnhanced,
+                new SimHubOverlay
                 {
-                    frame.CollisionMagnitude = (peak - CollisionThresholdMps2) * NormalizePerMps2;
-                }
-            }
+                    MaxRpm           = _lastSimHubMaxRpm,
+                    AbsActive        = _lastSimHubAbsActive,
+                    RedlineRpm       = _lastSimHubRedlineRpm,
+                    PitLimiterActive = _lastSimHubPitLimiterActive,
+                    DrsActive        = _lastSimHubDrsActive,
+                },
+                suppressRedlineOverlay: IsForzaGameName(_activeGame));
 
             // Latch motion for the stationary-spring FFB floor. Speed is
             // universal; steering is stamped only when the active source
@@ -3692,20 +3717,24 @@ namespace TrueforceForAll.Plugin
             // also goes false when telemetry stops (pause/menu) instead of
             // sticking at its last value.
 
+            // Golden-capture row (dev CAPTURE access code): raw enriched frame
+            // + session flag + fresh tap target, written on this thread; the
+            // log object is internally locked and no-ops once disposed.
+            var cap = _captureLog;
+            if (cap != null)
+                cap.LogRow(in frame,
+                           _telemetrySource?.IsSessionActive ?? false,
+                           _ffbTap?.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000));
+
             if (_audio != null)
                 _audio.ThrottleNormalized = (float)frame.Throttle01;
 
-            if (_effects != null)
-            {
-                for (int i = 0; i < _effects.Length; i++)
-                {
-                    try { _effects[i].OnTelemetry(frame); }
-                    catch (Exception ex)
-                    {
-                        SimHub.Logging.Current.Error($"[TF4ALL] {_effects[i].Name} telemetry error", ex);
-                    }
-                }
-            }
+            // Phase 1: effects no longer tick here on the telemetry thread.
+            // The enriched frame goes to the engine's resampler; effects tick
+            // at a fixed 500 Hz on the producer thread with interpolated /
+            // predicted frames (see FrameResampler), which also puts their
+            // state updates on the same thread as RenderAdd.
+            _engineLoop?.IngestFrame(in frame);
 
             // Update telemetry-derived inputs to the community variant
             // signature. Latest-valid (not peak): an in-session engine
@@ -3795,10 +3824,16 @@ namespace TrueforceForAll.Plugin
         /// effect that holds a sustained amplitude to fall silent so the wheel
         /// stops replaying the last frame. Transient effects keep the base
         /// no-op (they decay on their own). Runs on the DataUpdate tick, which
-        /// keeps firing after frames stop; the source thread is idle in a stall
-        /// so there's no concurrent OnTelemetry to race.</summary>
+        /// keeps firing after frames stop. Since the engine tick, effects tick
+        /// on the producer thread from RESAMPLED frames, and the resampler
+        /// holds-newest through a hard stall: without the reset below it would
+        /// re-feed the last physics frame at 500 Hz and re-latch the very
+        /// amplitudes this just silenced (the shipped AC engine-pulse stall
+        /// fix). Resetting empties the ring, so TrySample returns false until
+        /// fresh frames arrive.</summary>
         private void SettleEffectsOnStall()
         {
+            _engineLoop?.Resampler?.Reset();
             var fx = _effects;
             if (fx == null) return;
             for (int i = 0; i < fx.Length; i++)
@@ -3810,6 +3845,45 @@ namespace TrueforceForAll.Plugin
                 }
             }
             SimHub.Logging.Current.Info("[TF4ALL] Telemetry stalled; silenced sustained effects.");
+        }
+
+        /// <summary>Toggle the aligned telemetry+FFB capture log (dev CAPTURE
+        /// access code). On: opens a timestamped v2 golden-capture CSV under
+        /// Documents\TrueforceForAll and DispatchFrame logs one row per telemetry
+        /// frame (full frame incl. per-tire quads) with the game's tapped FFB
+        /// target, the replay-harness fixture format, which doubles as the
+        /// offline FFB-remodeling dataset. Off: closes the file. Returns a status
+        /// line for the access-code UI. Pure observation, no force is produced,
+        /// safe to run while driving.</summary>
+        public string ToggleFfbCapture()
+        {
+            var existing = _captureLog;
+            if (existing != null)
+            {
+                _captureLog = null;   // DispatchFrame stops logging on its next frame
+                long rows = existing.RowsWritten;
+                string donePath = existing.Path;
+                try { existing.Dispose(); } catch { }
+                return $"FFB capture stopped: {rows} rows -> {donePath}";
+            }
+
+            try
+            {
+                string dir = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "TrueforceForAll");
+                string path = System.IO.Path.Combine(dir,
+                    "ffb_capture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
+                _captureLog = new GoldenCaptureLog(path,
+                    _telemetrySource?.Name ?? "unknown",
+                    _currentGameName ?? "unknown",
+                    m => SimHub.Logging.Current.Info("[TF4ALL] " + m));
+                return $"FFB capture (v2 golden) started -> {path}  (drive, then type CAPTURE again to stop).";
+            }
+            catch (Exception ex)
+            {
+                return "FFB capture failed to start: " + ex.Message;
+            }
         }
 
         /// <summary>Run the simulated rev/shift sweep on the rim LEDs (settings
@@ -4348,6 +4422,7 @@ namespace TrueforceForAll.Plugin
                         {
                             Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                         };
+                        fz.GapBridge.Enabled = Settings.Forza.ForwardGapBridge;
                         fz.Start();
                         _forzaUdp = fz;
                     }
@@ -17171,6 +17246,11 @@ namespace TrueforceForAll.Plugin
             { "FH4",                      new[] { "ForzaHorizon4" } },
             { "FH5",                      new[] { "ForzaHorizon5" } },
             { "FH6",                      new[] { "ForzaHorizon6" } },
+            // Forza Motorsport (2023): the exe is nothing like the game name
+            // (confirmed live on the Steam build, 2026-07-03), so the fuzzy
+            // matcher can never find it. Audio capture reported "no supported
+            // game" for FM8 until this entry.
+            { "FM8",                      new[] { "forza_gaming.desktop.x64_release_final" } },
         });
 
         private static Dictionary<string, string> BuildExeLabels(Dictionary<string, string[]> games)
@@ -17490,122 +17570,20 @@ namespace TrueforceForAll.Plugin
         }
         // ---------- producer ----------
 
-        // Float-space silence floor. Samples with |v| < this are zeroed so the
-        // u16 conversion produces exactly 0x8000; TrueforceDevice's allCenter
-        // scan needs exact-center samples to detect "no audio". That detection
-        // does NOT pick the keepalive packet shape (keepalive is chosen solely
-        // by FFB-target freshness in StreamTick); it selects the silence-center
-        // window fill inside the ACTIVE shape, so cur alone drives the motor
-        // while no effect plays. ~3e-4 corresponds to ±10 LSB out of 32767,
-        // well below any perceptible content but above floating-point noise.
-        private const float SilenceFloor = 3e-4f;
+        // The sidechain ducking (tier ladder + airborne fold) and the silence
+        // floor moved to the Engine assembly in phase 0c (DuckingController,
+        // EngineLoop.SilenceFloor) so the replay harness runs the exact
+        // production code. Their rationale comments live there. The producer
+        // loop below forwards its per-tick work into EngineLoop.RunOneTick.
 
-        // Layered sidechain ducking. Effects sit in priority tiers; an effect
-        // is ducked by the strongest activity at a STRICTLY HIGHER tier.
-        // Same-tier and lower-tier effects never duck it.
-        //
-        //   L3  ABS, gear shift, collision        (top: sharp momentary alerts;
-        //                                           sources only, never ducked)
-        //   L2  rev limiter, pit limiter          (mode buzzes; duck L0/L1,
-        //                                           ducked by L3)
-        //   L1  road feel, traction loss, DRS hum (duck L0, ducked by L2/L3)
-        //   L0  engine pulse, captured audio      (bottom: ducked by anything)
-        //
-        // So: a curb (L1) ducks the engine; a gear shift (L3) ducks road feel
-        // and the rev-limiter buzz; the rev-limiter buzz (L2) ducks engine +
-        // road feel but is itself ducked by ABS / shifts. Each tier of TARGETS
-        // gets its own attack/release-smoothed multiplier. DRS's activation
-        // chirp ignores ducking by design (handled inside DrsEffect); only its
-        // sustained hum is ducked here (treated as L1).
-        private float _duckL0 = 1.0f;   // engine + audio
-        private float _duckL1 = 1.0f;   // road feel + traction + DRS hum
-        private float _duckL2 = 1.0f;   // rev + pit limiter
-
-        // Airborne duck envelope. Separate, orthogonal stage from the sidechain
-        // tiers above: it ramps toward (1 - Reduction) while the car is in the
-        // air and back to 1 on landing, and is folded multiplicatively into the
-        // chosen targets' DuckMultiplier so airborne + sidechain ducking stack.
-        private float _duckAir = 1.0f;
-
-        private static float SmoothDuck(float current, float target, float attackMs, float releaseMs)
+        /// <summary>Adapts the live device field to the engine's sample sink.
+        /// Reads _device per push so replug/watchdog swaps and the null (device
+        /// gone) case behave exactly as the old inline PushFloats call.</summary>
+        private sealed class DeviceSink : ISampleSink
         {
-            // Fast attack (duck quickly when an event hits), slow release.
-            // dt ≈ 1 ms (producer pushes ~1 batch/ms); alpha = 1 - exp(-dt/tau).
-            float tau   = (target < current) ? attackMs : releaseMs;
-            float alpha = (float)(1.0 - Math.Exp(-1.0 / Math.Max(0.5, tau)));
-            return current * (1f - alpha) + target * alpha;
-        }
-
-        private void UpdateDucking()
-        {
-            // Max activity at each tier.
-            double l1 = 0, l2 = 0, l3 = 0;
-            if (RoadBumps    != null) l1 = Math.Max(l1, RoadBumps.ActivityLevel);
-            if (TractionLoss != null) l1 = Math.Max(l1, TractionLoss.ActivityLevel);
-            if (Drs          != null) l1 = Math.Max(l1, Drs.ActivityLevel);
-            if (RevLimiter   != null) l2 = Math.Max(l2, RevLimiter.ActivityLevel);
-            if (PitLimiter   != null) l2 = Math.Max(l2, PitLimiter.ActivityLevel);
-            if (AbsClick     != null) l3 = Math.Max(l3, AbsClick.ActivityLevel);
-            if (GearShift    != null) l3 = Math.Max(l3, GearShift.ActivityLevel);
-            if (Collision    != null) l3 = Math.Max(l3, Collision.ActivityLevel);
-
-            // Strongest activity strictly above each target tier.
-            double above0 = Math.Max(l1, Math.Max(l2, l3));   // ducks L0 (engine/audio)
-            double above1 = Math.Max(l2, l3);                  // ducks L1 (road/traction/DRS hum)
-            double above2 = l3;                                 // ducks L2 (rev/pit limiter)
-
-            // Sidechain ducking can be turned off entirely; treat depth as 0 so
-            // continuous effects are never dipped (the tuning is preserved). The
-            // airborne stage below is separate, with its own enable.
-            float depth     = (Settings?.DuckingEnabled ?? true) ? (Settings?.DuckDepth ?? 0.5f) : 0f;
-            float attackMs  = Settings?.DuckAttackMs  ?? 5.0f;
-            float releaseMs = Settings?.DuckReleaseMs ?? 80.0f;
-
-            float t0 = (float)Math.Max(0.0, 1.0 - depth * above0);
-            float t1 = (float)Math.Max(0.0, 1.0 - depth * above1);
-            float t2 = (float)Math.Max(0.0, 1.0 - depth * above2);
-
-            _duckL0 = SmoothDuck(_duckL0, t0, attackMs, releaseMs);
-            _duckL1 = SmoothDuck(_duckL1, t1, attackMs, releaseMs);
-            _duckL2 = SmoothDuck(_duckL2, t2, attackMs, releaseMs);
-
-            // Airborne stage. Ramp the envelope toward (1 - Reduction) while
-            // airborne, back to 1 on landing, then fold it into each target the
-            // user opted in. Multiplicative on top of the sidechain values so
-            // the two duckers compose. Reuses the duck attack/release times
-            // (fast in on takeoff, smooth out on touchdown).
-            bool  airActive = Airborne != null && Airborne.AirborneActive;
-            float airReduce = Airborne?.Reduction ?? 0f;
-            float airTarget = airActive ? Math.Max(0f, 1f - airReduce) : 1f;
-            _duckAir = SmoothDuck(_duckAir, airTarget, attackMs, releaseMs);
-
-            float a0 = _duckL0, a1 = _duckL1, a2 = _duckL2;
-            // Build a per-effect airborne factor: _duckAir if opted in, else 1.
-            float fEngine   = (Airborne != null && Airborne.DuckEngine)       ? _duckAir : 1f;
-            float fAudio    = (Airborne != null && Airborne.DuckAudio)        ? _duckAir : 1f;
-            float fBumps    = (Airborne != null && Airborne.DuckRoadBumps)    ? _duckAir : 1f;
-            float fTraction = (Airborne != null && Airborne.DuckTractionLoss) ? _duckAir : 1f;
-            float fRev      = (Airborne != null && Airborne.DuckRevLimiter)   ? _duckAir : 1f;
-            float fPit      = (Airborne != null && Airborne.DuckPitLimiter)   ? _duckAir : 1f;
-            float fDrs      = (Airborne != null && Airborne.DuckDrs)          ? _duckAir : 1f;
-            // L3 alert voices (gear shift, ABS, collision) sit above every
-            // sidechain tier so the sidechain never touches their multiplier;
-            // the airborne factor is therefore the ONLY thing that ducks them,
-            // and their base is 1.0.
-            float fShift    = (Airborne != null && Airborne.DuckGearShift)    ? _duckAir : 1f;
-            float fAbs      = (Airborne != null && Airborne.DuckAbs)          ? _duckAir : 1f;
-            float fColl     = (Airborne != null && Airborne.DuckCollision)    ? _duckAir : 1f;
-
-            if (EnginePulse  != null) EnginePulse.DuckMultiplier   = a0 * fEngine;
-            if (_audio       != null) _audio.DuckMultiplier        = a0 * fAudio;
-            if (RoadBumps    != null) RoadBumps.DuckMultiplier      = a1 * fBumps;
-            if (TractionLoss != null) TractionLoss.DuckMultiplier   = a1 * fTraction;
-            if (Drs          != null) Drs.SustainedDuckMultiplier   = a1 * fDrs;
-            if (RevLimiter   != null) RevLimiter.DuckMultiplier     = a2 * fRev;
-            if (PitLimiter   != null) PitLimiter.DuckMultiplier     = a2 * fPit;
-            if (GearShift    != null) GearShift.DuckMultiplier      = fShift;
-            if (AbsClick     != null) AbsClick.DuckMultiplier       = fAbs;
-            if (Collision    != null) Collision.DuckMultiplier      = fColl;
+            private readonly TrueforcePlugin _p;
+            public DeviceSink(TrueforcePlugin p) { _p = p; }
+            public void Push(float[] samples, int count) => _p._device?.PushFloats(samples, count);
         }
 
         private void ProducerLoop()
@@ -17654,28 +17632,25 @@ namespace TrueforceForAll.Plugin
                 // marshals to its own thread for the modal.
                 try { CheckAutoRatchet(); } catch { }
 
-                // Defense-in-depth: catch any exception from ducking, render,
-                // or an effect's RenderAdd so a single bad frame (NaN, future
-                // regression) can't kill the producer and silently mute the
-                // wheel. Logged with a hot-path-safe rate limit.
+                // One engine tick: ducking, 500 Hz effect tick on resampled
+                // frames, render, silence floor, push. Render/ducking/effect
+                // exceptions are contained inside RunOneTick (logged via the
+                // rate-limited callback, batch cleared to silence); only sink
+                // exceptions reach here, and a dead device is the shutdown
+                // signal, exactly as the old inline PushFloats catch. The
+                // ducking depth folds in the ui-tabs master enable: off means
+                // depth 0, continuous effects never dipped, tuning preserved
+                // (the airborne stage has its own opt-ins inside).
                 try
                 {
-                    UpdateDucking();
-                    _mixer.Render(buf, BatchSamples);
-                    for (int i = 0; i < BatchSamples; i++)
-                    {
-                        float v = buf[i];
-                        if (v < SilenceFloor && v > -SilenceFloor) buf[i] = 0f;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogProducerError("render", ex);
-                    Array.Clear(buf, 0, BatchSamples);
-                }
-                try
-                {
-                    _device?.PushFloats(buf, BatchSamples);
+                    // Keep the ducker's audio ref current: the capture source
+                    // is created after Init and can be retargeted live.
+                    _ducking.Audio = _audio;
+                    _engineLoop.RunOneTick(buf, Stopwatch.GetTimestamp(),
+                        (Settings?.DuckingEnabled ?? true) ? (Settings?.DuckDepth ?? 0.5f) : 0f,
+                        Settings?.DuckAttackMs  ?? 5.0f,
+                        Settings?.DuckReleaseMs ?? 80.0f,
+                        ex => LogProducerError("render", ex));
                 }
                 catch
                 {

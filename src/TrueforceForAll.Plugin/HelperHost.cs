@@ -60,6 +60,9 @@ namespace TrueforceForAll.Plugin
                 CreateNoWindow  = true,
             };
             _helper = Process.Start(psi);
+            // Kill-on-close job: helper dies with SimHub even on taskkill /F,
+            // same orphan protection as the USBPcapCMD capture children.
+            TrueforceForAll.Core.ChildProcessJob.TryAssign(_helper);
             // Order matters: subscribe before EnableRaisingEvents so that if
             // the helper has already exited, the property setter dispatches
             // the event to our handler synchronously. Then a HasExited check

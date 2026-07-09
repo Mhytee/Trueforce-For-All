@@ -146,7 +146,9 @@ namespace TrueforceForAll.Plugin
         // A PC1 BindAddress that does not exist on PC2 would fail the UDP bind and
         // silently kill Forza telemetry, so Forza is split at field level.
         public const string PartialForza = "Forza";
-        public static readonly string[] ForzaPortableFields = { "Enabled", "Port" };
+        // ForwardGapBridge travels: it is a preference (mask replay gaps on the
+        // forwarded copy), not a machine address like BindAddress/Forward*.
+        public static readonly string[] ForzaPortableFields = { "Enabled", "Port", "ForwardGapBridge" };
 
         private static JsonSerializer CreateSerializer()
         {

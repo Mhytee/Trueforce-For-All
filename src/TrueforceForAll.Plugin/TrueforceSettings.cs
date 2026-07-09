@@ -1360,6 +1360,15 @@ namespace TrueforceForAll.Plugin
         /// value the user originally typed into SimHub when they set it up.
         /// Ignored when <see cref="ForwardEnabled"/> is false.</summary>
         public int    ForwardPort    { get; set; } = 0;
+
+        /// <summary>Mask short raceOn=0 gaps (in-game replay loops, rewinds)
+        /// on the forwarded copy so SimHub never sees a disconnect. Every
+        /// reconnect makes ShakeIt tear down and rebuild its audio output 5 s
+        /// later, cutting the shakers mid-replay. Gaps longer than ~15 s
+        /// (real menu stays) still disconnect honestly. Only affects the
+        /// forward path; the plugin's own pause detection always sees the
+        /// game's real session state.</summary>
+        public bool   ForwardGapBridge { get; set; } = true;
     }
 
     public sealed class PerformanceSettings
