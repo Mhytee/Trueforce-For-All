@@ -17267,6 +17267,18 @@ namespace TrueforceForAll.Plugin
             var preservedMachineLocal = Settings;
             Settings = imported;
             PreserveMachineLocalSettings(preservedMachineLocal, Settings);
+            // The cross-wheel FFB policy and any pending prompt are per-PC (Excluded
+            // from backup); a wholesale import would otherwise replace this PC's choice
+            // with the file's. Restore them so the gate below reads this PC's policy.
+            Settings.CrossWheelFfbMode          = preservedMachineLocal.CrossWheelFfbMode;
+            Settings.PendingCrossWheelFfb       = preservedMachineLocal.PendingCrossWheelFfb;
+            Settings.PendingCrossWheelFfbSource = preservedMachineLocal.PendingCrossWheelFfbSource;
+            // Cross-wheel FFB gate, same as the cloud restore: a file made on a
+            // different wheel model does not silently apply its force-feedback tuning.
+            // Restore this PC's FFB and, on the Ask policy, surface the apply-anyway
+            // prompt. preservedMachineLocal holds this PC's real FFB + wheel.
+            StashCrossWheelFfbIfGated(
+                BackupProjection.GateImportedCrossWheelFfb(imported, preservedMachineLocal, Settings));
             // Re-establish active-account slot consistency (re-point its library folder + stash the
             // restored profile into the slot), exactly as the cloud restore remounts the slot.
             try { MountUserSlot(Settings.ActiveSlotKey ?? ""); }

@@ -335,6 +335,48 @@ namespace TrueforceForAll.Plugin
             return result;
         }
 
+        /// <summary>Cross-wheel FFB gate for the MANUAL import path. The cloud restore
+        /// gets this gate inside <see cref="ApplySettings"/>; a file import replaces
+        /// settings wholesale, so it calls this afterward to get identical behavior.
+        /// If the imported file was built on a different wheel model (and the policy is
+        /// not Always), the wheel-specific FFB tuning (Mode B + learned grip) is restored
+        /// to this PC's pre-import values on <paramref name="live"/>, and the imported
+        /// values are handed back so the caller can stash them for an "apply anyway?"
+        /// prompt (Ask) or drop them silently (Never). <paramref name="localBefore"/> is
+        /// the settings snapshot from before the import (this PC's real FFB + wheel).</summary>
+        public static BackupApplyResult GateImportedCrossWheelFfb(
+            TrueforceSettings importedFile, TrueforceSettings localBefore, TrueforceSettings live)
+        {
+            var result = new BackupApplyResult();
+            if (importedFile == null || localBefore == null || live == null) return result;
+            if (live.CrossWheelFfbMode == CrossWheelFfbMode.Always) return result;
+            if (!WheelModelsDiffer(importedFile.LastUsedWheel, localBefore.LastUsedWheel)) return result;
+
+            var ser         = CreateSerializer();
+            var importedJson = JObject.FromObject(importedFile, ser);  // the file's (foreign-wheel) FFB
+            var localJson    = JObject.FromObject(localBefore, ser);   // this PC's FFB
+            var restore = new JObject();
+            var skipped = new JObject();
+            foreach (var key in FfbWheelSpecific)
+            {
+                var imp = importedJson[key];
+                if (imp != null) skipped[key] = imp;
+                var loc = localJson[key];
+                if (loc != null) restore[key] = loc;
+            }
+            if (restore.Count > 0)
+                using (var r = restore.CreateReader())
+                    ser.Populate(r, live);   // put this PC's FFB tuning back onto live
+            if (skipped.Count > 0)
+            {
+                result.FfbGated    = true;
+                result.SkippedFfb  = skipped;
+                result.SourceWheel = string.IsNullOrWhiteSpace(importedFile.LastUsedWheel)
+                    ? null : importedFile.LastUsedWheel;
+            }
+            return result;
+        }
+
         /// <summary>Guard: every public read/write property of TrueforceSettings must be
         /// classified into exactly one bucket. Returns the unclassified property names
         /// (empty = healthy). Surfaced as a DEV-panel self-test so adding a settings field

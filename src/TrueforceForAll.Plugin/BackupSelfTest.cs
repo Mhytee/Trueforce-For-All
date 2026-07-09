@@ -278,6 +278,33 @@ namespace TrueforceForAll.Plugin
                 srcUnknown.SourceWheelModel == null
                 && Math.Abs(tgtUnknown.ModeBSatGain - 0.77f) < 1e-6 && !rUnknown.FfbGated);
 
+            // Manual-import gate: same behavior as the cloud gate, computed on live
+            // settings. `live` simulates the post-replace state (imported FFB, this
+            // PC's wheel + policy). importedFile = the file, localBefore = this PC pre-import.
+            var impFile        = new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.77f };
+            var impLocalBefore = new TrueforceSettings { LastUsedWheel = "G923",  ModeBSatGain = 0.10f };
+            var impLiveMis = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.77f, MasterGain = 0.44f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
+            var impMis = BackupProjection.GateImportedCrossWheelFfb(impFile, impLocalBefore, impLiveMis);
+            Check("import gate: mismatch restores this PC's Mode B", Math.Abs(impLiveMis.ModeBSatGain - 0.10f) < 1e-6);
+            Check("import gate: mismatch leaves non-FFB alone", Math.Abs(impLiveMis.MasterGain - 0.44f) < 1e-6);
+            Check("import gate: mismatch reports FfbGated + source + stashed foreign value",
+                impMis.FfbGated && impMis.SourceWheel == "G PRO"
+                && impMis.SkippedFfb?["ModeBSatGain"] != null
+                && Math.Abs(impMis.SkippedFfb["ModeBSatGain"].Value<float>() - 0.77f) < 1e-6);
+
+            var impLiveMatch = new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.77f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
+            var impMatch = BackupProjection.GateImportedCrossWheelFfb(
+                new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.77f },
+                new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.10f },
+                impLiveMatch);
+            Check("import gate: matching wheel keeps imported FFB (no gate)",
+                Math.Abs(impLiveMatch.ModeBSatGain - 0.77f) < 1e-6 && !impMatch.FfbGated);
+
+            var impLiveAlways = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.77f, CrossWheelFfbMode = CrossWheelFfbMode.Always };
+            var impAlways = BackupProjection.GateImportedCrossWheelFfb(impFile, impLocalBefore, impLiveAlways);
+            Check("import gate: Always keeps imported FFB across wheels",
+                Math.Abs(impLiveAlways.ModeBSatGain - 0.77f) < 1e-6 && !impAlways.FfbGated);
+
             lines.Add(ok ? "ALL PASS" : "FAILURES PRESENT");
             return (ok, lines);
         }
