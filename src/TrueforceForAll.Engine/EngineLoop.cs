@@ -74,6 +74,21 @@ namespace TrueforceForAll.Core
         /// <summary>Diagnostics: the resampler, if this loop owns one.</summary>
         public FrameResampler Resampler => _resampler;
 
+        // Stall settle handshake. The host's watchdog thread detects the
+        // telemetry stall, but the settle itself (resampler reset + the
+        // OnTelemetryStall fan-out) must run on THIS thread, at a tick
+        // boundary: settling from the watchdog thread can interleave with an
+        // in-flight effect tick that already sampled the held pre-stall
+        // frame, and an OnTelemetry(heldFrame) landing after
+        // OnTelemetryStall re-latches the sustained amplitude with nothing
+        // left to silence it (the ring is empty afterwards, so no further
+        // ticks arrive).
+        private volatile bool _stallSettleRequested;
+
+        /// <summary>Any thread: telemetry went stale; reset the resampler and
+        /// silence sustained effects at the top of the next engine tick.</summary>
+        public void RequestStallSettle() => _stallSettleRequested = true;
+
         /// <summary>One engine tick: [every 2nd tick: resample → effects tick]
         /// → ducking → render → silence floor → push. <paramref name="nowTicks"/>
         /// is the clock in the resampler's tick units (Stopwatch in production,
@@ -89,6 +104,25 @@ namespace TrueforceForAll.Core
             try
             {
                 _tick++;
+
+                // Consume a pending stall settle BEFORE sampling: same thread
+                // as the effect ticks, so no stale in-flight frame can land
+                // after the silencing (see RequestStallSettle).
+                if (_stallSettleRequested)
+                {
+                    _stallSettleRequested = false;
+                    _resampler?.Reset();
+                    var settleFx = Effects;
+                    if (settleFx != null)
+                    {
+                        for (int i = 0; i < settleFx.Length; i++)
+                        {
+                            try { settleFx[i].OnTelemetryStall(); }
+                            catch { /* one bad effect must not starve the rest */ }
+                        }
+                    }
+                }
+
                 if (_resampler != null && (_tick % EffectTickDivisor) == 0)
                 {
                     var fx = Effects;

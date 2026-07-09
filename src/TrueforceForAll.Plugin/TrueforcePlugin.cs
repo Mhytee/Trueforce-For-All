@@ -3820,31 +3820,21 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Telemetry feed went stale (the active source stopped
-        /// emitting: game closed, crashed, or its physics page froze). Ask each
-        /// effect that holds a sustained amplitude to fall silent so the wheel
-        /// stops replaying the last frame. Transient effects keep the base
-        /// no-op (they decay on their own). Runs on the DataUpdate tick, which
-        /// keeps firing after frames stop. Since the engine tick, effects tick
-        /// on the producer thread from RESAMPLED frames, and the resampler
-        /// holds-newest through a hard stall: without the reset below it would
-        /// re-feed the last physics frame at 500 Hz and re-latch the very
-        /// amplitudes this just silenced (the shipped AC engine-pulse stall
-        /// fix). Resetting empties the ring, so TrySample returns false until
-        /// fresh frames arrive.</summary>
+        /// emitting: game closed, crashed, or its physics page froze). Hand
+        /// the settle to the engine loop: the resampler holds-newest through
+        /// a hard stall, so both the resampler reset and the OnTelemetryStall
+        /// fan-out must execute ON the engine thread at a tick boundary.
+        /// Settling from this (DataUpdate) thread can interleave with an
+        /// in-flight 500 Hz effect tick that already sampled the held frame,
+        /// and an OnTelemetry(heldFrame) landing after the silencing
+        /// re-latches the sustained amplitude with no recovery (the ring is
+        /// empty afterwards; the shipped AC engine-pulse stall fix would be
+        /// intermittently undone). The next engine tick lands within ~1 ms,
+        /// well inside the 500 ms stall window.</summary>
         private void SettleEffectsOnStall()
         {
-            _engineLoop?.Resampler?.Reset();
-            var fx = _effects;
-            if (fx == null) return;
-            for (int i = 0; i < fx.Length; i++)
-            {
-                try { fx[i].OnTelemetryStall(); }
-                catch (Exception ex)
-                {
-                    SimHub.Logging.Current.Error($"[TF4ALL] {fx[i].Name} stall-settle error", ex);
-                }
-            }
-            SimHub.Logging.Current.Info("[TF4ALL] Telemetry stalled; silenced sustained effects.");
+            _engineLoop?.RequestStallSettle();
+            SimHub.Logging.Current.Info("[TF4ALL] Telemetry stalled; settling sustained effects on the engine tick.");
         }
 
         /// <summary>Toggle the aligned telemetry+FFB capture log (dev CAPTURE
@@ -17627,6 +17617,19 @@ namespace TrueforceForAll.Plugin
                     continue;
                 }
 
+                // Engine loop not built yet: Init starts this thread inside
+                // device bring-up, BEFORE InitPipeline constructs _engineLoop
+                // (tens of ms later, after the orphan sweep and helper spawn).
+                // Without this gate the first tick NREs into the silent
+                // shutdown catch below and the wheel is dead for the session
+                // while the device happily streams keepalives.
+                var loop = _engineLoop;
+                if (loop == null)
+                {
+                    Thread.Sleep(20);
+                    continue;
+                }
+
                 // Auto-ratchet check (cheap when the per-second window hasn't
                 // elapsed). Fires the ring-bumped event on this thread; UI
                 // marshals to its own thread for the modal.
@@ -17646,7 +17649,7 @@ namespace TrueforceForAll.Plugin
                     // Keep the ducker's audio ref current: the capture source
                     // is created after Init and can be retargeted live.
                     _ducking.Audio = _audio;
-                    _engineLoop.RunOneTick(buf, Stopwatch.GetTimestamp(),
+                    loop.RunOneTick(buf, Stopwatch.GetTimestamp(),
                         (Settings?.DuckingEnabled ?? true) ? (Settings?.DuckDepth ?? 0.5f) : 0f,
                         Settings?.DuckAttackMs  ?? 5.0f,
                         Settings?.DuckReleaseMs ?? 80.0f,
