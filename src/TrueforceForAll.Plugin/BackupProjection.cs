@@ -71,6 +71,11 @@ namespace TrueforceForAll.Plugin
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
             "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
             "ModeBGripAutoCal", "CarGripCalibration",
+            // The cross-wheel FFB sync gate is itself a portable preference (a
+            // user choice that should be consistent across their devices). The
+            // FFB fields it gates are Portable above; the gate only affects
+            // whether ApplySettings WRITES them on a mismatched wheel.
+            "OnlyApplyFfbToMatchingWheel",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
@@ -151,6 +156,11 @@ namespace TrueforceForAll.Plugin
             "Presets", "GameDefaults", "CarDefaults", "CarOverrides", "GamePresets",
             // Learned-per-machine redline set (re-learns from telemetry on PC2).
             "GamesWithRedline",
+            // "Apply anyway" retention for a cross-wheel-gated restore: holds
+            // ANOTHER wheel's FFB tuning until the user acts. Per-PC, transient,
+            // and must never travel (it would re-introduce the cross-wheel bleed
+            // the gate exists to prevent).
+            "PendingCrossWheelFfb", "PendingCrossWheelFfbSource",
         };
 
         // Forza is the one PARTIAL field: the listener preference (Enabled + Port)
@@ -161,6 +171,37 @@ namespace TrueforceForAll.Plugin
         // ForwardGapBridge travels: it is a preference (mask replay gaps on the
         // forwarded copy), not a machine address like BindAddress/Forward*.
         public static readonly string[] ForzaPortableFields = { "Enabled", "Port", "ForwardGapBridge" };
+
+        /// <summary>The wheel-specific FFB tuning keys (Mode B feel + learned
+        /// grip calibration): a subset of Portable that ApplySettings WITHHOLDS
+        /// when OnlyApplyFfbToMatchingWheel is on and the backup came from a
+        /// different wheel model. They still travel in the envelope; the gate
+        /// only decides whether they are written onto THIS PC. Kept in sync with
+        /// the ModeB* / CarGripCalibration entries in Portable (a self-test
+        /// asserts the subset relationship).</summary>
+        public static readonly HashSet<string> FfbWheelSpecific = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "ModeBGameEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
+            "ModeBDropFloor", "ModeBEmaMs", "ModeBSign", "ModeBDamper",
+            "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
+            "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
+            "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
+            "ModeBGripAutoCal", "CarGripCalibration",
+        };
+
+        /// <summary>True only when both wheel labels are known AND name a
+        /// different chassis. Unknown on either side (a pre-gate backup, or a PC
+        /// with no wheel detected yet) is NOT "different", so FFB applies: we
+        /// never withhold tuning we can't prove is for the wrong wheel. Compared
+        /// on the short chassis label (LastUsedWheel, e.g. "G PRO"), so console
+        /// transport is already out of the picture.</summary>
+        public static bool WheelModelsDiffer(string sourceWheel, string currentWheel)
+        {
+            if (string.IsNullOrWhiteSpace(sourceWheel) || string.IsNullOrWhiteSpace(currentWheel))
+                return false;
+            return !string.Equals(sourceWheel.Trim(), currentWheel.Trim(),
+                                  StringComparison.OrdinalIgnoreCase);
+        }
 
         private static JsonSerializer CreateSerializer()
         {
@@ -200,6 +241,10 @@ namespace TrueforceForAll.Plugin
                 SchemaVersion = SchemaVersion,
                 CreatedUtc = createdUtc.ToString("o"),
                 DeviceLabel = deviceLabel ?? string.Empty,
+                // Stamp the wheel this FFB tuning was built on so the receiving
+                // PC can gate it (cross-wheel FFB). Null when no wheel is known.
+                SourceWheelModel = string.IsNullOrWhiteSpace(settings.LastUsedWheel)
+                    ? null : settings.LastUsedWheel.Trim(),
                 Settings = portable,
                 Forza = forza,
                 Library = new Dictionary<string, BackupFile>(StringComparer.OrdinalIgnoreCase),
@@ -213,9 +258,10 @@ namespace TrueforceForAll.Plugin
         /// <c>DownloadedCommunityPresets</c> re-references the active slot (this method
         /// replaces the dictionary reference). The on-disk preset library is restored by
         /// the separate library step, not here.</remarks>
-        public static void ApplySettings(BackupEnvelope env, TrueforceSettings live)
+        public static BackupApplyResult ApplySettings(BackupEnvelope env, TrueforceSettings live)
         {
-            if (env == null || live == null) return;
+            var result = new BackupApplyResult();
+            if (env == null || live == null) return result;
 
             if (env.Settings != null)
             {
@@ -225,6 +271,29 @@ namespace TrueforceForAll.Plugin
                 var filtered = new JObject();
                 foreach (var prop in env.Settings.Properties())
                     if (Portable.Contains(prop.Name)) filtered[prop.Name] = prop.Value;
+
+                // Cross-wheel FFB gate: withhold the wheel-specific FFB tuning
+                // (Mode B + learned grip) when the user asked us to AND this
+                // backup was built on a different wheel model. The keys still
+                // arrived in the envelope; we just don't write them onto a PC
+                // running a different wheel. The withheld subset is handed back
+                // so the caller can stash it for an "apply anyway" prompt.
+                if (live.OnlyApplyFfbToMatchingWheel
+                    && WheelModelsDiffer(env.SourceWheelModel, live.LastUsedWheel))
+                {
+                    var skipped = new JObject();
+                    foreach (var key in FfbWheelSpecific)
+                    {
+                        var tok = filtered[key];
+                        if (tok != null) { skipped[key] = tok; filtered.Remove(key); }
+                    }
+                    if (skipped.Count > 0)
+                    {
+                        result.FfbGated    = true;
+                        result.SkippedFfb  = skipped;
+                        result.SourceWheel = env.SourceWheelModel;
+                    }
+                }
                 // Atomicity: Populate writes property-by-property, so a malformed or
                 // cross-version leaf (a since-retyped field, or a tampered cloud blob)
                 // throws MID-stream and leaves `live` half-applied. Validate on a
@@ -264,6 +333,8 @@ namespace TrueforceForAll.Plugin
                 }
                 catch { }
             }
+
+            return result;
         }
 
         /// <summary>Guard: every public read/write property of TrueforceSettings must be
@@ -299,6 +370,24 @@ namespace TrueforceForAll.Plugin
         }
     }
 
+    /// <summary>Outcome of <see cref="BackupProjection.ApplySettings"/>. Tells the
+    /// caller whether the cross-wheel FFB gate withheld the wheel-specific tuning
+    /// so it can stash the skipped keys and prompt "apply anyway".</summary>
+    public sealed class BackupApplyResult
+    {
+        /// <summary>True when the FFB / Mode B keys were withheld because the
+        /// backup was tuned on a different wheel model and the gate is on.</summary>
+        public bool FfbGated { get; set; }
+
+        /// <summary>The withheld FFB keys (Mode B + grip cal) as a JObject, for
+        /// the "apply anyway" retention. Null unless <see cref="FfbGated"/>.</summary>
+        public JObject SkippedFfb { get; set; }
+
+        /// <summary>The wheel model the withheld tuning was built on (the
+        /// envelope's SourceWheelModel). Null unless <see cref="FfbGated"/>.</summary>
+        public string SourceWheel { get; set; }
+    }
+
     /// <summary>Serializable backup payload. Tiny enough (presets are 0.3-2.5 KB JSON,
     /// the whole envelope ~1-3 MB) to store as one JSON object, no zip needed.</summary>
     public sealed class BackupEnvelope
@@ -306,6 +395,13 @@ namespace TrueforceForAll.Plugin
         public int SchemaVersion { get; set; }
         public string CreatedUtc { get; set; }
         public string DeviceLabel { get; set; }
+
+        /// <summary>Short wheel-chassis label the FFB / Mode B tuning in this
+        /// backup was built on ("G PRO" / "RS50" / "G923"), taken from
+        /// LastUsedWheel at build time. Null when no wheel was known. Consumed by
+        /// ApplySettings' cross-wheel FFB gate; older envelopes without it read
+        /// as "unknown" and never gate.</summary>
+        public string SourceWheelModel { get; set; }
 
         /// <summary>Portable top-level settings keys (NO Forza, NO machine/excluded fields).</summary>
         public JObject Settings { get; set; }

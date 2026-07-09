@@ -459,6 +459,9 @@ namespace TrueforceForAll.Plugin
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
                     AutoSyncBackupCheck.IsChecked = _plugin.Settings?.AutoSyncBackupEnabled == true;
+                if (FfbMatchWheelCheck != null)
+                    FfbMatchWheelCheck.IsChecked = _plugin.Settings?.OnlyApplyFfbToMatchingWheel != false;
+                RefreshCrossWheelFfbNotice();
                 RefreshCommunityAuthRow();
 
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
@@ -6322,6 +6325,59 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info("[TF4ALL] Persist AutoSyncBackup failed: " + ex.Message);
             }
             _plugin.UpdateAutoPullTimer();   // start/stop the cloud poll to match the toggle
+        }
+
+        // Cross-wheel FFB gate toggle: FFB tuning still backs up, but with this on
+        // it is not auto-applied on a restore/sync to a different wheel model.
+        private void FfbMatchWheel_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null || FfbMatchWheelCheck == null) return;
+            _plugin.Settings.OnlyApplyFfbToMatchingWheel = FfbMatchWheelCheck.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist FfbMatchWheel failed: " + ex.Message);
+            }
+        }
+
+        // Show/hide the "FFB tuning held back" notice from the pending stash a
+        // cross-wheel-gated restore left. Called from RefreshFromPlugin and after
+        // apply/dismiss.
+        private void RefreshCrossWheelFfbNotice()
+        {
+            if (CrossWheelFfbNotice == null) return;
+            bool pending = _plugin != null && _plugin.HasPendingCrossWheelFfb;
+            CrossWheelFfbNotice.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
+            if (pending && CrossWheelFfbNoticeText != null)
+            {
+                string from = _plugin.PendingCrossWheelFfbSource;
+                string here = _plugin.Settings?.LastUsedWheel;
+                string fromTxt = string.IsNullOrWhiteSpace(from) ? "another wheel" : from;
+                string hereTxt = string.IsNullOrWhiteSpace(here) ? "this wheel" : here;
+                CrossWheelFfbNoticeText.Text =
+                    $"Force feedback tuning from your {fromTxt} was not applied because this PC uses a {hereTxt}. "
+                    + "Your other settings synced normally. Apply the FFB tuning here anyway, or dismiss to keep this PC's tuning.";
+            }
+        }
+
+        private void CrossWheelFfbApply_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            bool applied = _plugin.ApplyPendingCrossWheelFfb();
+            RefreshCrossWheelFfbNotice();
+            if (applied)
+            {
+                // The Mode B / FFB controls now reflect the applied tuning.
+                RefreshFromPlugin();
+                SetBackupStatus("FFB tuning applied.");
+            }
+        }
+
+        private void CrossWheelFfbDismiss_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.DismissPendingCrossWheelFfb();
+            RefreshCrossWheelFfbNotice();
         }
 
         private async void BackupNow_Click(object sender, RoutedEventArgs e)

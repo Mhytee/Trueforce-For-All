@@ -518,6 +518,22 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBSlideCounterGrowth { get; set; } = true;   // counter-force grows with slide depth
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
 
+        // Cross-wheel FFB sync gate. Mode B / FFB tuning is wheel-specific (a
+        // curve dialed in on a G PRO is wrong on a G923), so when this is on the
+        // Mode B settings + CarGripCalibration still BACK UP but are NOT applied
+        // on restore/sync to a device running a different wheel model. Default
+        // on: FFB never silently crosses wheel models. Matched by chassis label
+        // (LastUsedWheel: "G PRO" / "RS50" / "G923"); console transport ignored.
+        public bool OnlyApplyFfbToMatchingWheel { get; set; } = true;
+
+        // "Apply anyway" retention for a cross-wheel-gated restore: the skipped
+        // Mode B / grip keys as a JSON object string, plus the wheel model they
+        // were tuned on. Persisted (survives a restart) so the notice can keep
+        // offering to apply them until the user acts. Per-PC + transient, so
+        // NOT backed up (Excluded). Empty = nothing pending.
+        public string PendingCrossWheelFfb       { get; set; } = "";
+        public string PendingCrossWheelFfbSource { get; set; } = "";
+
         public AudioCaptureSettings AudioCapture { get; set; } = new AudioCaptureSettings();
         public EnginePulseSettings  EnginePulse  { get; set; } = new EnginePulseSettings();
         public RoadBumpsSettings    RoadBumps    { get; set; } = new RoadBumpsSettings();

@@ -226,6 +226,52 @@ namespace TrueforceForAll.Plugin
             Check("reclassification guard: portable key still applied",
                 Math.Abs(reclassTarget.MasterGain - 0.42f) < 1e-6);
 
+            // ---- Cross-wheel FFB gate ----
+            var wheelDate = new DateTime(2026, 4, 4, 0, 0, 0, DateTimeKind.Utc);
+
+            // FfbWheelSpecific must stay a subset of Portable, or the gate would
+            // strip keys ApplySettings never writes (a no-op) or miss ones it does.
+            bool ffbSubset = true;
+            foreach (var k in BackupProjection.FfbWheelSpecific)
+                if (!BackupProjection.Portable.Contains(k)) ffbSubset = false;
+            Check("cross-wheel gate: FfbWheelSpecific is a subset of Portable", ffbSubset);
+
+            // Build stamps SourceWheelModel from LastUsedWheel.
+            var srcGpro = BackupProjection.Build(
+                new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.77f, MasterGain = 0.44f },
+                "PC", wheelDate);
+            Check("cross-wheel gate: Build stamps SourceWheelModel", srcGpro.SourceWheelModel == "G PRO");
+
+            // Matching wheel: FFB applies, not gated.
+            var tgtMatch = new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.10f, OnlyApplyFfbToMatchingWheel = true };
+            var rMatch = BackupProjection.ApplySettings(srcGpro, tgtMatch);
+            Check("cross-wheel gate: matching wheel applies FFB",
+                Math.Abs(tgtMatch.ModeBSatGain - 0.77f) < 1e-6 && !rMatch.FfbGated);
+
+            // Mismatch + toggle ON: Mode B withheld, non-FFB still applied, result reports the stash.
+            var tgtMis = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, MasterGain = 0.10f, OnlyApplyFfbToMatchingWheel = true };
+            var rMis = BackupProjection.ApplySettings(srcGpro, tgtMis);
+            Check("cross-wheel gate: mismatch + on withholds Mode B", Math.Abs(tgtMis.ModeBSatGain - 0.10f) < 1e-6);
+            Check("cross-wheel gate: mismatch + on still applies non-FFB", Math.Abs(tgtMis.MasterGain - 0.44f) < 1e-6);
+            Check("cross-wheel gate: mismatch reports FfbGated + source + stash",
+                rMis.FfbGated && rMis.SourceWheel == "G PRO"
+                && rMis.SkippedFfb != null && rMis.SkippedFfb["ModeBSatGain"] != null);
+
+            // Mismatch + toggle OFF: FFB applies across wheels.
+            var tgtOff = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, OnlyApplyFfbToMatchingWheel = false };
+            var rOff = BackupProjection.ApplySettings(srcGpro, tgtOff);
+            Check("cross-wheel gate: toggle off applies FFB across wheels",
+                Math.Abs(tgtOff.ModeBSatGain - 0.77f) < 1e-6 && !rOff.FfbGated);
+
+            // Unknown source (no wheel known at build): never gates.
+            var srcUnknown = BackupProjection.Build(
+                new TrueforceSettings { LastUsedWheel = "", ModeBSatGain = 0.77f }, "PC", wheelDate);
+            var tgtUnknown = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.10f, OnlyApplyFfbToMatchingWheel = true };
+            var rUnknown = BackupProjection.ApplySettings(srcUnknown, tgtUnknown);
+            Check("cross-wheel gate: unknown source applies FFB (never gates)",
+                srcUnknown.SourceWheelModel == null
+                && Math.Abs(tgtUnknown.ModeBSatGain - 0.77f) < 1e-6 && !rUnknown.FfbGated);
+
             lines.Add(ok ? "ALL PASS" : "FAILURES PRESENT");
             return (ok, lines);
         }

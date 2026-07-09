@@ -17833,6 +17833,93 @@ namespace TrueforceForAll.Plugin
             finally { _backupOp.Release(); }
         }
 
+        // ---- Cross-wheel FFB gate (issue: FFB tuning is wheel-specific) ----
+        // A restore/sync from a device running a different wheel model withholds
+        // the Mode B / grip tuning (BackupProjection's gate). We stash the
+        // withheld keys so the settings UI can offer "apply anyway", and expose
+        // apply/dismiss for those buttons. PendingCrossWheelFfb non-empty is the
+        // signal the UI shows the notice on.
+
+        // Persist the withheld FFB tuning from a cross-wheel-gated restore so the
+        // UI can offer "apply anyway" (it is otherwise gone once the envelope is
+        // applied). A newer gated restore replaces any older pending FFB.
+        private void StashCrossWheelFfbIfGated(BackupApplyResult result)
+        {
+            if (result == null || !result.FfbGated || Settings == null) return;
+            try
+            {
+                Settings.PendingCrossWheelFfb =
+                    result.SkippedFfb?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
+                Settings.PendingCrossWheelFfbSource = result.SourceWheel ?? "";
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] FFB tuning from '{result.SourceWheel}' held back on restore "
+                    + $"(this PC uses '{Settings.LastUsedWheel}'); offering apply-anyway.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Cross-wheel FFB stash failed: " + ex.GetType().Name);
+            }
+        }
+
+        /// <summary>True when a cross-wheel-gated restore is holding FFB tuning
+        /// the user could still choose to apply. Drives the settings-UI notice.</summary>
+        public bool HasPendingCrossWheelFfb =>
+            Settings != null && !string.IsNullOrEmpty(Settings.PendingCrossWheelFfb);
+
+        /// <summary>The wheel model the pending FFB tuning was built on (for the
+        /// notice text), or null when nothing is pending.</summary>
+        public string PendingCrossWheelFfbSource =>
+            HasPendingCrossWheelFfb ? Settings.PendingCrossWheelFfbSource : null;
+
+        /// <summary>"Apply anyway": write the FFB tuning a cross-wheel-gated
+        /// restore held back onto live settings, push it to the wheel, and clear
+        /// the pending state. Only keys still classified FFB-wheel-specific AND
+        /// Portable are written, so a stale stash can't smuggle a since-
+        /// reclassified field onto live. No-op (returns false) when nothing is
+        /// pending or the stash is unreadable.</summary>
+        public bool ApplyPendingCrossWheelFfb()
+        {
+            if (Settings == null || string.IsNullOrEmpty(Settings.PendingCrossWheelFfb)) return false;
+            try
+            {
+                var obj = Newtonsoft.Json.Linq.JObject.Parse(Settings.PendingCrossWheelFfb);
+                var filtered = new Newtonsoft.Json.Linq.JObject();
+                foreach (var prop in obj.Properties())
+                    if (BackupProjection.FfbWheelSpecific.Contains(prop.Name)
+                        && BackupProjection.Portable.Contains(prop.Name))
+                        filtered[prop.Name] = prop.Value;
+                using (var reader = filtered.CreateReader())
+                    new Newtonsoft.Json.JsonSerializer
+                    {
+                        ObjectCreationHandling = Newtonsoft.Json.ObjectCreationHandling.Replace,
+                    }.Populate(reader, Settings);
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Apply-anyway FFB failed: " + ex.Message);
+                return false;
+            }
+            Settings.PendingCrossWheelFfb = "";
+            Settings.PendingCrossWheelFfbSource = "";
+            // Push the freshly-written Mode B core tuning AND feel toggles to the
+            // live model, then persist (the second call's save also writes the
+            // cleared pending fields). CarGripCalibration is consumed on the next
+            // variant load; no live-push method for it.
+            ApplyModeBFromSettings(save: false);
+            ApplyModeBFeel(save: true);
+            return true;
+        }
+
+        /// <summary>"Dismiss": discard the FFB tuning a cross-wheel-gated restore
+        /// held back, keeping this PC's own FFB settings.</summary>
+        public void DismissPendingCrossWheelFfb()
+        {
+            if (Settings == null) return;
+            Settings.PendingCrossWheelFfb = "";
+            Settings.PendingCrossWheelFfbSource = "";
+            PersistSettings();
+        }
+
         // Apply a restored / merged envelope to live state. Marshalled to the UI thread
         // (matching the existing ImportSettings execution model) so the preset-cache
         // rebuild does not run on a threadpool continuation.
@@ -17852,7 +17939,8 @@ namespace TrueforceForAll.Plugin
         // recommended restart.
         private void ApplyRestoredEnvelopeCore(BackupEnvelope env, bool propagateDeletes)
         {
-            BackupProjection.ApplySettings(env, Settings);
+            var ffbGate = BackupProjection.ApplySettings(env, Settings);
+            StashCrossWheelFfbIfGated(ffbGate);
 
             // The bundled preset files are always in current (post-migration) format, so
             // flag the one-time migrations done. Mirrors RestoreAllFromZip and prevents a
