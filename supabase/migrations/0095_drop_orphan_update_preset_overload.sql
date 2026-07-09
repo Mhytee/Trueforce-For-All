@@ -1,0 +1,24 @@
+-- 0095: drop the orphaned 6-arg update_preset overload.
+--
+-- 0019_restore_update_allow_in_packs added p_allow_in_packs to update_preset
+-- as a NEW signature (7-arg) via CREATE OR REPLACE, which in Postgres creates a
+-- second overload rather than replacing the old one. The pre-0019 6-arg
+-- update_preset(uuid, text, text, jsonb, text[], integer) was left orphaned.
+--
+-- It matters because the plugin serializes RPC bodies with
+-- NullValueHandling.Ignore (PresetSharingClient), so an edit that does not
+-- toggle allow_in_packs sends only 6 keys and can bind to this stale overload,
+-- whose effect-tag whitelist was NOT extended by 0094 (it predates the three
+-- new texture tags) and so silently strips 'axleslip' / 'kerbthump' /
+-- 'lockupjudder' on edit.
+--
+-- Dropping it removes the ambiguity: a 6-key edit call now binds to the 7-arg
+-- update_preset with p_allow_in_packs defaulting to null (no change), which is
+-- the tag-aware definition from 0094. Verified before dropping: no edge
+-- function and no other database function references update_preset, so
+-- PostgREST is the only caller.
+--
+-- Idempotent: DROP ... IF EXISTS on the exact 6-arg signature; the 7-arg
+-- overload (..., boolean) is a different arity and is untouched.
+
+drop function if exists public.update_preset(uuid, text, text, jsonb, text[], integer);
