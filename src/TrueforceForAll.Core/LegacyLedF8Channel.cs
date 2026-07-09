@@ -162,19 +162,24 @@ namespace TrueforceForAll.Core
 
         // ---- Send one F8 12 report -----------------------------------------
 
-        /// <summary>Write  00 F8 12 &lt;value&gt; 00 ...  padded to the collection's
-        /// output report length (this is what hidapi does internally too).
-        /// `value` is the LED byte: forza-wheel-leds uses a progressive bitmask
-        /// (1&lt;&lt;n)-1; the firmware decides how that maps onto the strip.</summary>
+        /// <summary>Write the canonical Logitech shift-LED report, padded to the
+        /// collection's output report length. Format from the Linux hid-lg4ff
+        /// driver (lg4ff_set_leds, confirmed identical on G29 and G923, and used
+        /// by Vcha2268/ForzaG29Leds): report ID 0x00, then the 7-byte data
+        /// [F8 12 mask 00 00 00 01]. The trailing 0x01 IS part of the command;
+        /// omitting it left the strip dark. `value` (mask) is a progressive
+        /// bitmask (1&lt;&lt;n)-1; bits 0..4 = the 5 rev LEDs (bit 0 first green,
+        /// bit 4 last red).</summary>
         public bool Send(int value)
         {
             HidStream s = _stream;
             if (s == null) return false;
             var report = new byte[_reportLen];   // zero-filled
-            report[0] = 0x00;                    // report ID (0 / unnumbered, like forza-wheel-leds)
+            report[0] = 0x00;                    // report ID (0 / unnumbered)
             report[1] = CmdPrefix;               // 0xF8
             report[2] = CmdSetLeds;              // 0x12
-            report[3] = (byte)(value & 0xFF);    // LED byte
+            report[3] = (byte)(value & 0xFF);    // LED mask
+            report[7] = 0x01;                    // hid-lg4ff trailing byte (required)
             try
             {
                 s.Write(report);

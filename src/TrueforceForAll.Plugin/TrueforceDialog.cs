@@ -86,6 +86,28 @@ namespace TrueforceForAll.Plugin
         }
 
         private DialogChoice _choice = DialogChoice.Cancel;
+        private CheckBox _checkbox;
+
+        /// <summary>True when the optional checkbox was left ticked (only
+        /// meaningful for <see cref="ShowConfirmWithCheckbox"/>).</summary>
+        public bool CheckboxChecked => _checkbox?.IsChecked == true;
+
+        /// <summary>Yes/No confirm with a checkbox between the body and the
+        /// buttons. Returns true=affirmative, false/null=cancel;
+        /// <paramref name="checkboxChecked"/> reports the box state on an
+        /// affirmative (defaults to <paramref name="checkboxDefault"/>).</summary>
+        public static bool? ShowConfirmWithCheckbox(Window owner, string title, string body,
+            string checkboxLabel, bool checkboxDefault, out bool checkboxChecked,
+            string okLabel = null, string cancelLabel = null)
+        {
+            var dlg = new TrueforceDialog(title, body, okLabel, cancelLabel,
+                                          checkboxLabel, checkboxDefault);
+            if (owner != null) dlg.Owner = owner;
+            else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            bool? r = dlg.ShowDialog();
+            checkboxChecked = dlg.CheckboxChecked;
+            return r;
+        }
 
         /// <summary>Show a modal with three buttons: a primary affirmative, a
         /// secondary affirmative, and Cancel. For "Submit / Always submit /
@@ -195,6 +217,46 @@ namespace TrueforceForAll.Plugin
             };
             primary.Click += (s, e) => { _choice = DialogChoice.Primary; DialogResult = true; Close(); };
             btnRow.Children.Add(primary);
+        }
+
+        // Confirm variant with a checkbox between the body and the buttons
+        // (e.g. "Submit" + a ticked "keep sharing automatically"). Cancel left,
+        // affirmative right; the box state is read via CheckboxChecked.
+        private TrueforceDialog(string title, string body,
+            string okLabel, string cancelLabel, string checkboxLabel, bool checkboxDefault)
+        {
+            var btnRow = BuildChrome(title, body, DialogKind.Confirm);
+            var root = (StackPanel)btnRow.Parent;
+
+            _checkbox = new CheckBox
+            {
+                Content = checkboxLabel,
+                IsChecked = checkboxDefault,
+                Foreground = TextFg,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 14),
+            };
+            // BuildChrome added btnRow as the last child; put the box above it.
+            root.Children.Insert(root.Children.Count - 1, _checkbox);
+
+            var cancel = new Button
+            {
+                Content = string.IsNullOrEmpty(cancelLabel) ? "No" : cancelLabel,
+                Padding = new Thickness(14, 5, 14, 5),
+                Margin = new Thickness(0, 0, 8, 0),
+                Foreground = TextFg, Background = PanelBg, IsCancel = true,
+            };
+            cancel.Click += (s, e) => { DialogResult = false; Close(); };
+            btnRow.Children.Add(cancel);
+
+            var ok = new Button
+            {
+                Content = string.IsNullOrEmpty(okLabel) ? "Yes" : okLabel,
+                Padding = new Thickness(14, 5, 14, 5),
+                Foreground = TextFg, Background = PanelBg, IsDefault = true,
+            };
+            ok.Click += (s, e) => { DialogResult = true; Close(); };
+            btnRow.Children.Add(ok);
         }
 
         private TrueforceDialog(string title, string body, DialogKind kind,

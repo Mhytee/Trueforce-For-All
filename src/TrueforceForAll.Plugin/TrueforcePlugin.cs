@@ -4147,11 +4147,10 @@ namespace TrueforceForAll.Plugin
         // ---- G923 rev LEDs (legacy F8-12 path) ----------------------------
         // The G923 rev strip is driven by the legacy Logitech F8-12 report on
         // the gamepad collection (LegacyLedF8Channel), NOT the G PRO's HID++
-        // 0x807A. It has fewer LEDs than the G PRO's 10; the exact count is
-        // documented for the G-series wheels. VALIDATE against a real G923 and
-        // correct if the strip fills at the wrong rate (the F8 byte is a
-        // bitmask, so a wrong count only mis-scales, it does not break).
-        private const int G923LedCount = 8;
+        // 0x807A. It has 5 shift LEDs (bit 0 first green .. bit 4 last red),
+        // per the Linux hid-lg4ff driver, confirmed identical on the G29 and
+        // G923 (Vcha2268/ForzaG29Leds). The F8 byte is a (1<<n)-1 bitmask.
+        private const int G923LedCount = 5;
         private int _g923OpenState;   // 0 idle, 1 opening, 2 open, 3 failed
 
         private void DriveG923Leds(double pct, bool redline, bool gateOpen)

@@ -9358,8 +9358,15 @@ namespace TrueforceForAll.Plugin
             string body = perGear.Count > 0
                 ? $"Share your redline of {rpm} RPM plus {perGear.Count} per-gear override{(perGear.Count == 1 ? "" : "s")} for '{carDisplay}' (this engine variant) with the community?"
                 : $"Share your redline of {rpm} RPM for '{carDisplay}' (this engine variant) with the community?";
-            if (TrueforceDialog.Show(Window.GetWindow(this), "Share redline", body, DialogKind.Confirm) != true)
+            // Offer to keep sharing automatically. Pre-checked, so submitting
+            // also turns on auto-submit for future car facts unless the user
+            // unchecks it (then they'll be prompted again next time).
+            bool keepSharing;
+            if (TrueforceDialog.ShowConfirmWithCheckbox(Window.GetWindow(this), "Share redline", body,
+                    "Keep sharing my car facts automatically", checkboxDefault: true,
+                    out keepSharing, okLabel: "Submit") != true)
                 return;
+            if (keepSharing) EnableAutoSubmitCarFacts();
             _plugin.SubmitRedlineToCommunity(game, carId, rpm, perGear);
             // Don't fake a local consensus: one submission isn't "the community".
             // Re-fetch the real server consensus, which stays unconfirmed (not
