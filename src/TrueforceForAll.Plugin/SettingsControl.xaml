@@ -3318,8 +3318,10 @@
                     <CheckBox x:Name="CommunityEnabledCheck" Content="Enable community features (online)"
                               Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
                               ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, and sharing presets. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12" TextWrapping="Wrap"
                                Text="Sign-in required to share. Your username isn't shown on submitted data."/>
+                    <TextBlock Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap" Foreground="#E5C04A"
+                               Text="Pre-release: the community backend is in testing. Shared presets and packs are test data and may be reset before the public launch. Your account, achievements, and car data you contribute are kept."/>
                     <!-- ===== Community car facts: apply (read) + auto-submit (write) ===== -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
                         <TextBlock Text="Community car facts" Style="{StaticResource SectionHeaderText}"/>

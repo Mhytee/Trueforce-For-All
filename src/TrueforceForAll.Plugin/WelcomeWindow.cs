@@ -68,6 +68,8 @@ namespace TrueforceForAll.Plugin
                 TextWrapping = TextWrapping.Wrap,
             });
 
+            root.Children.Add(MakePrereleaseNotice());
+
             root.Children.Add(MakeBullet(
                 "Crowd-sourced car data",
                 "Effects like the engine pulse and rev limiter feel best when they know a car's engine and redline. Games don't always report that data in telemetry, and a few don't even give the car a real name, just a code like \"car_123\". Now, drivers can fill in the gaps, building a shared pool everyone benefits from. Saved per tune, so a swapped engine keeps its own redline."));
@@ -153,6 +155,35 @@ namespace TrueforceForAll.Plugin
             style.Setters.Add(new Setter(Control.TemplateProperty, template));
             style.Setters.Add(new Setter(Control.ForegroundProperty, fg));
             return style;
+        }
+
+        // A distinct callout (not one of the green marketing bullets) so the
+        // pre-release state of the community backend is unmissable at first
+        // contact. The reassurance in the last sentence holds only if the
+        // eventual data cleanup stays selective: keep accounts, achievements,
+        // and car facts; reset only the shared preset/pack marketplace.
+        private FrameworkElement MakePrereleaseNotice()
+        {
+            var border = new Border {
+                Background      = new SolidColorBrush(Color.FromRgb(0x39, 0x33, 0x22)),
+                BorderBrush     = HeaderFg,
+                BorderThickness = new Thickness(3, 0, 0, 0),
+                CornerRadius    = new CornerRadius(2),
+                Padding         = new Thickness(12, 10, 12, 10),
+                Margin          = new Thickness(0, 0, 0, 16),
+            };
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock {
+                Text = "Pre-release test backend",
+                Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 3),
+            });
+            stack.Children.Add(new TextBlock {
+                Text = "The community backend is still in testing. Shared presets and packs here are test data and may be reset before the public launch. Your account, achievements, and any car data you contribute are kept.",
+                Foreground = TextFg, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+            });
+            border.Child = stack;
+            return border;
         }
 
         private FrameworkElement MakeBullet(string title, string body)
