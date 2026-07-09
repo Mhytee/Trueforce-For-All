@@ -512,6 +512,47 @@ namespace TrueforceForAll.Plugin
                     ? "off"
                     : ((int)FfbPeakLimitSlider.Value).ToString();
 
+                // Telemetry based FFB (Mode B) tab: global settings, applied
+                // live via ApplyModeBFromSettings / ApplyModeBFeel.
+                var mbs = _plugin.Settings;
+                if (mbs != null && ModeBEnabledCheck != null)
+                {
+                    ModeBEnabledCheck.IsChecked = mbs.ModeBEnabled;
+                    ModeBSignCheck.IsChecked    = mbs.ModeBSign < 0f;
+                    ModeBStrengthSlider.Value   = mbs.ModeBSatGain;
+                    ModeBStrengthText.Text      = mbs.ModeBSatGain.ToString("F2");
+                    ModeBDirSoftSlider.Value    = mbs.ModeBDirSoft;
+                    ModeBDirSoftText.Text       = mbs.ModeBDirSoft.ToString("F2");
+                    ModeBDamperSlider.Value     = mbs.ModeBDamper;
+                    ModeBDamperText.Text        = mbs.ModeBDamper.ToString("F2");
+                    ModeBCenterSlider.Value     = mbs.ModeBCenter;
+                    ModeBCenterText.Text        = mbs.ModeBCenter.ToString("F2");
+                    ModeBLatSlider.Value        = mbs.ModeBLatGain;
+                    ModeBLatText.Text           = mbs.ModeBLatGain.ToString("F2");
+                    ModeBCounterSlider.Value    = mbs.ModeBCounterGain;
+                    ModeBCounterText.Text       = mbs.ModeBCounterGain.ToString("F2");
+                    ModeBPeakSlider.Value       = mbs.ModeBPeakUtil;
+                    ModeBPeakText.Text          = mbs.ModeBPeakUtil.ToString("F2");
+                    ModeBFloorSlider.Value      = mbs.ModeBDropFloor;
+                    ModeBFloorText.Text         = mbs.ModeBDropFloor.ToString("F2");
+                    ModeBRiseSlider.Value       = mbs.ModeBRiseGamma;
+                    ModeBRiseText.Text          = mbs.ModeBRiseGamma.ToString("F2");
+                    ModeBSmoothSlider.Value     = mbs.ModeBEmaMs;
+                    ModeBSmoothText.Text        = mbs.ModeBEmaMs.ToString("F0");
+                    ModeBCompressorCheck.IsChecked  = mbs.ModeBCompressor;
+                    ModeBSuspLoadCheck.IsChecked    = mbs.ModeBSuspensionLoad;
+                    ModeBEarlyPeakCheck.IsChecked   = mbs.ModeBEarlyTorquePeak;
+                    ModeBRoadKickCheck.IsChecked    = mbs.ModeBRoadKick;
+                    ModeBRoadKickGainSlider.Value   = mbs.ModeBRoadKickGain;
+                    ModeBRoadKickGainText.Text      = mbs.ModeBRoadKickGain.ToString("F2");
+                    ModeBSlideGrowthCheck.IsChecked = mbs.ModeBSlideCounterGrowth;
+                    ModeBGripCalCheck.IsChecked     = mbs.ModeBGripAutoCal;
+                }
+                if (ModeBContentionWarning != null)
+                    ModeBContentionWarning.Visibility = _plugin.ModeBContentionDetected
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+
                 // Performance section
                 var perf = _plugin.Settings?.Performance;
                 if (perf != null)
@@ -1240,6 +1281,20 @@ namespace TrueforceForAll.Plugin
                     if (FfbTapPickerBannerButton != null
                         && FfbTapPickerBannerButton.Visibility != want)
                         FfbTapPickerBannerButton.Visibility = want;
+                }
+
+                // Mode B contention warning (Telemetry Based FFB tab). The
+                // plugin latches ModeBContentionDetected when the game keeps
+                // streaming its own FFB while Mode B drives the wheel;
+                // surfaced here so it appears without a tab switch.
+                // Change-only write keeps the 60 Hz tick cheap.
+                if (ModeBContentionWarning != null)
+                {
+                    var want = _plugin.ModeBContentionDetected
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                    if (ModeBContentionWarning.Visibility != want)
+                        ModeBContentionWarning.Visibility = want;
                 }
 
                 // Header update controls. When an update is available, the
@@ -4088,6 +4143,87 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetStopStreamOnPause(StopStreamOnPauseCheck.IsChecked == true);
+        }
+
+        // ---- Telemetry based FFB (Mode B) handlers. Global settings (not
+        // preset-scoped), applied live: the tunables funnel through
+        // ApplyModeBFromSettings, the feel-feature toggles through
+        // ApplyModeBFeel. Checkbox changes persist immediately; slider drags
+        // apply per tick and defer the disk write to the shared debounce. ----
+        private void ModeBEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.ModeBEnabled = ModeBEnabledCheck.IsChecked == true;
+            _plugin.ApplyModeBFromSettings();
+            try { _plugin.PersistSettings(); } catch { }
+        }
+
+        // "Reverse force direction": ModeBSign is a multiplier (1 normal,
+        // -1 flipped), shown as a checkbox. Flip it if the wheel pulls into
+        // the slide instead of countering it.
+        private void ModeBSign_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.ModeBSign = ModeBSignCheck.IsChecked == true ? -1f : 1f;
+            _plugin.ApplyModeBFromSettings();
+            try { _plugin.PersistSettings(); } catch { }
+        }
+
+        // One handler for every Mode B tunable slider (main + Advanced
+        // tuning). Writes all of them back in one pass (cheap, and keeps the
+        // readouts in lockstep), then re-applies live.
+        private void ModeBSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            s.ModeBSatGain     = (float)ModeBStrengthSlider.Value;
+            s.ModeBDirSoft     = (float)ModeBDirSoftSlider.Value;
+            s.ModeBDamper      = (float)ModeBDamperSlider.Value;
+            s.ModeBCenter      = (float)ModeBCenterSlider.Value;
+            s.ModeBLatGain     = (float)ModeBLatSlider.Value;
+            s.ModeBCounterGain = (float)ModeBCounterSlider.Value;
+            s.ModeBPeakUtil    = (float)ModeBPeakSlider.Value;
+            s.ModeBDropFloor   = (float)ModeBFloorSlider.Value;
+            s.ModeBRiseGamma   = (float)ModeBRiseSlider.Value;
+            s.ModeBEmaMs       = (float)ModeBSmoothSlider.Value;
+            ModeBStrengthText.Text = s.ModeBSatGain.ToString("F2");
+            ModeBDirSoftText.Text  = s.ModeBDirSoft.ToString("F2");
+            ModeBDamperText.Text   = s.ModeBDamper.ToString("F2");
+            ModeBCenterText.Text   = s.ModeBCenter.ToString("F2");
+            ModeBLatText.Text      = s.ModeBLatGain.ToString("F2");
+            ModeBCounterText.Text  = s.ModeBCounterGain.ToString("F2");
+            ModeBPeakText.Text     = s.ModeBPeakUtil.ToString("F2");
+            ModeBFloorText.Text    = s.ModeBDropFloor.ToString("F2");
+            ModeBRiseText.Text     = s.ModeBRiseGamma.ToString("F2");
+            ModeBSmoothText.Text   = s.ModeBEmaMs.ToString("F0");
+            _plugin.ApplyModeBFromSettings();
+            SchedulePersistDebounced();
+        }
+
+        // Feel-feature checkboxes (compressor, suspension load, early torque
+        // peak, road kick, slide counter growth, grip auto-cal).
+        private void ModeBFeel_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            s.ModeBCompressor         = ModeBCompressorCheck.IsChecked == true;
+            s.ModeBSuspensionLoad     = ModeBSuspLoadCheck.IsChecked == true;
+            s.ModeBEarlyTorquePeak    = ModeBEarlyPeakCheck.IsChecked == true;
+            s.ModeBRoadKick           = ModeBRoadKickCheck.IsChecked == true;
+            s.ModeBSlideCounterGrowth = ModeBSlideGrowthCheck.IsChecked == true;
+            s.ModeBGripAutoCal        = ModeBGripCalCheck.IsChecked == true;
+            _plugin.ApplyModeBFeel();
+            try { _plugin.PersistSettings(); } catch { }
+        }
+
+        private void ModeBRoadKickGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBRoadKickGainSlider.Value;
+            _plugin.Settings.ModeBRoadKickGain = v;
+            ModeBRoadKickGainText.Text = v.ToString("F2");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
         }
 
         private void StationarySpringStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -10052,6 +10188,10 @@ namespace TrueforceForAll.Plugin
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "MAIRA / TEST   Unlock the iRacing rev/shift-LED section (in Settings).\n" +
             "F8SWEEP / F8   Experimental: sweep the rev LEDs via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
+            "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
+            "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
+            "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP wheel weight, BCENTER centering, BLAT cornering weight, BCS slide counter-force, BDIRK center feel, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
             "TOAST          Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
@@ -10100,6 +10240,47 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null || AccessCodeBox == null) return;
             if (string.IsNullOrEmpty(code)) return;
+
+            // Live Mode B tuning: "NAME value" (e.g. "BSAT 1.2", "BEMA 30",
+            // "MODEB 1"). Two tokens with a numeric second token; single-word
+            // codes below never match. Dispatches to the plugin-side
+            // clamp+apply switch (SetModeBParam) and echoes its status. Names
+            // that map to a Settings field persist; BFULL/BSPD are live-only
+            // model probes.
+            {
+                var parts = code.Split(new[] { ' ', '=', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2 && float.TryParse(parts[1],
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float mbVal))
+                {
+                    string pn = parts[0].ToUpperInvariant();
+                    if (pn == "MODEB" || pn == "BSIGN" || pn == "BSAT"
+                        || pn == "BPEAK" || pn == "BFLOOR" || pn == "BFULL" || pn == "BSPD"
+                        || pn == "BRISE" || pn == "BEMA" || pn == "BDAMP" || pn == "BCENTER"
+                        || pn == "BLAT" || pn == "BCS" || pn == "BDIRK")
+                    {
+                        string st = _plugin.SetModeBParam(pn, mbVal);
+                        if (pn == "MODEB")
+                        {
+                            // Keep the Telemetry Based FFB tab checkbox in
+                            // sync without re-firing its handler (the plugin
+                            // setter already ran above).
+                            var prevSuppress = _suppressEvents;
+                            _suppressEvents = true;
+                            try
+                            {
+                                if (ModeBEnabledCheck != null)
+                                    ModeBEnabledCheck.IsChecked = _plugin.Settings.ModeBEnabled;
+                            }
+                            finally { _suppressEvents = prevSuppress; }
+                        }
+                        AccessCodeBox.Text = string.Empty;
+                        if (AccessCodeStatus != null) AccessCodeStatus.Text = "Set " + st + " (live).";
+                        return;
+                    }
+                }
+            }
+
             // Self-documenting: open the scrollable test-code browser.
             if (code.Equals("HELP", StringComparison.OrdinalIgnoreCase)
                 || code.Equals("CODES", StringComparison.OrdinalIgnoreCase)
@@ -10725,6 +10906,55 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Stream fault forced: status should read 'Stream lost, auto-reconnecting', then recover within a few seconds (watchdog re-attaches the wheel).";
+                return;
+            }
+
+            // Dev/tester: high-rate FFB signal-chain trace (game force vs the
+            // plugin's output vs steering, at the full provider rate). Type
+            // TRACE to start, reproduce the issue, TRACE again to dump the
+            // CSV under Documents\TrueforceForAll.
+            if (code.Equals("TRACE", StringComparison.OrdinalIgnoreCase))
+            {
+                string traceStatus = _plugin.ToggleFfbTrace();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = traceStatus;
+                return;
+            }
+
+            // Motor-characterization sweeps. Plain SWEEP: 15 s log sine, 8 to
+            // 300 Hz, even time per octave. SWEEP1..SWEEP6: one octave band
+            // each (~5 s) so a tester can judge bands independently instead
+            // of tracking seconds inside one long run. The length guard keeps
+            // this from matching F8SWEEP (the legacy rev-LED sweep) or any
+            // longer SWEEP-prefixed input.
+            if (code.StartsWith("SWEEP", StringComparison.OrdinalIgnoreCase)
+                && (code.Length == 5 || (code.Length == 6 && code[5] >= '1' && code[5] <= '6')))
+            {
+                var sweep = _plugin.MotorSweep;
+                string what;
+                if (code.Length == 6)
+                {
+                    // Octave bands: 1:8-16, 2:16-32, 3:32-63, 4:63-125,
+                    // 5:125-250, 6:250-400 (the top band overshoots 300 on
+                    // purpose to find the true ceiling).
+                    float[] edges = { 8f, 16f, 32f, 63f, 125f, 250f, 400f };
+                    int band = code[5] - '1';
+                    sweep.StartHz    = edges[band];
+                    sweep.EndHz      = edges[band + 1];
+                    sweep.DurationMs = 5000;
+                    what = $"Band {band + 1}/6: {edges[band]:0}-{edges[band + 1]:0} Hz for 5 s.";
+                }
+                else
+                {
+                    sweep.StartHz    = 8f;
+                    sweep.EndHz      = 300f;
+                    sweep.DurationMs = 15000;
+                    what = "Full sweep (15 s): 8-300 Hz, even time per octave. For band-by-band judging use SWEEP1..SWEEP6.";
+                }
+                _plugin.TestEffect(sweep);
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = what + " Hands lightly on the rim; rate it strong / buzzy / weak / dead.";
                 return;
             }
 

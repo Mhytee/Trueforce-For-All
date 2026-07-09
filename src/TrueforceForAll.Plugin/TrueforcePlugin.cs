@@ -177,6 +177,12 @@ namespace TrueforceForAll.Plugin
         // no-ops, so DispatchFrame only needs a local snapshot of the field
         // before calling it.
         private GoldenCaptureLog _captureLog;
+
+        // High-rate FFB signal-chain trace (TRACE access code). Null when off.
+        // Written on the FFB provider thread (stream rate), toggled from the UI
+        // thread; the field is read into a local snapshot before use so a
+        // concurrent toggle-off can't NRE the provider. See FfbTrace.
+        private volatile FfbTrace _ffbTrace;
         private FeedbackBoxInjector _feedbackInjector;
         // Reads the wheel's physical steering off its HID controller interface,
         // so the stationary spring has a position to work with even when the
@@ -217,6 +223,7 @@ namespace TrueforceForAll.Plugin
         public AxleSlipEffect     AxleSlip     { get; private set; }
         public KerbThumpEffect    KerbThump    { get; private set; }
         public LockupJudderEffect LockupJudder { get; private set; }
+        public MotorSweepEffect   MotorSweep   { get; private set; }
         public GearShiftEffect    GearShift    { get; private set; }
         public AbsClickEffect     AbsClick     { get; private set; }
         public PitLimiterEffect   PitLimiter   { get; private set; }
@@ -362,6 +369,28 @@ namespace TrueforceForAll.Plugin
         // read/written on the DataUpdate thread (matches its volatile neighbours).
         private volatile bool _telemetryStalled;
         private static readonly long FrameStallTicks = Stopwatch.Frequency / 2; // 500 ms
+
+        // Wheel angular velocity for the FFB velocity damper. d(steer)/dt, in
+        // steer-units (-1..1) per second, EMA-smoothed so the damper torque is
+        // itself clean (a noisy velocity would re-introduce the jitter we're
+        // trying to kill). Written on the telemetry thread, read on the FFB
+        // thread; 32-bit float access is atomic.
+        private volatile float _steerVel;
+        private float _prevSteerForVel;
+        private long  _prevSteerVelTicks;
+
+        // Physical-wheel velocity for the damper, derived on the FFB thread from
+        // the HID steering reader (SteerNorm / LastUpdateTicks). The let-go
+        // oscillation is a fast PHYSICAL wheel swing; Forza's 60 Hz EMA-smoothed
+        // telemetry _steerVel is too lagged (and 8-bit-quantized) to catch it,
+        // so the damper rode the wrong phase. The wheel's own position axis is
+        // higher-resolution and updates at the HID report rate, giving a fresher,
+        // cleaner velocity. Physical steer shares the game-steer sign (hot-lap
+        // trace corr 0.999), so the proven +Kd damper convention is unchanged.
+        // FFB-thread-only (read in MaybeReshapeFfb); no sync needed.
+        private float _physWheelVel;
+        private float _physVelPrevSteer;
+        private long  _physVelPrevTicks;
 
         // Smoothed steering used by the spring. Eased toward _lastSteerNorm on
         // each provider call (~250 Hz) so a low-resolution source (Forza's
@@ -2275,6 +2304,13 @@ namespace TrueforceForAll.Plugin
                     // also reads inactive at a legitimate standstill (grid,
                     // stall), which would drop FFB mid-session.
                     var src = _telemetrySource;
+                    // This zero-return applies to Mode B as well, on every
+                    // Forza title: IsRaceOn is "is the player driving" (1 in
+                    // free-roam too, despite the name), 0 during pause / menu
+                    // / cutscene / replay, exactly when the synthesized force
+                    // should be quiet. Keepalive packets no longer flap the
+                    // flag mid-race (see ForzaUdpTelemetrySource.ShouldEmit),
+                    // so this reads stable while driving.
                     if (src != null && !src.IsSessionActive
                         && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
                     {
@@ -2332,7 +2368,15 @@ namespace TrueforceForAll.Plugin
                             SimHub.Logging.Current.Info(
                                 $"[TF4ALL] ffb-pipeline tick#{diagTick} src={ffbSrc} target={(chosen.HasValue ? chosen.Value.ToString() : "null")} driverDecoded={_driverChannel.FfbSamplesDecoded}");
                     }
-                    return ApplyStationarySpringIfActive(chosen);
+                    // Mode B rides this tail: MaybeReshapeFfb REPLACES the
+                    // game-derived target with the synthesized force while
+                    // Mode B is armed (everything the spring added is
+                    // discarded with it; the spring is also excluded for the
+                    // whole Forza session, and all Mode B games are Forza).
+                    var afterSpring = ApplyStationarySpringIfActive(chosen);
+                    var finalOut    = MaybeReshapeFfb(afterSpring);
+                    TraceFfb(chosen, afterSpring, finalOut);
+                    return finalOut;
                 };
                 _device.FfbScale                 = Settings.FfbScale;
                 _device.FfbInvertSign            = Settings.FfbInvertSign;
@@ -2506,12 +2550,15 @@ namespace TrueforceForAll.Plugin
             Drs          = new DrsEffect();
             Collision    = new CollisionEffect();
             RevLimiter   = new RevLimiterEffect();
+            // Diagnostic-only voice: renders solely during its TestPlay
+            // window (SWEEP access code); telemetry never drives it.
+            MotorSweep   = new MotorSweepEffect();
             Airborne     = new AirborneEffect();
             // Airborne is last: it's a coordinator, not a voice, but it still
             // needs OnTelemetry (to read frame.Airborne) and Reset, both of
             // which the plugin fans out over _effects. Its no-op RenderAdd in
             // the mixer costs nothing.
-            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, AxleSlip, KerbThump, LockupJudder, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, Airborne };
+            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, AxleSlip, KerbThump, LockupJudder, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, MotorSweep, Airborne };
             foreach (var fx in _effects) _mixer.Add(fx);
 
             // Sidechain ducker (Engine assembly): one field per effect, all
@@ -2541,6 +2588,12 @@ namespace TrueforceForAll.Plugin
             {
                 Effects = _effects,
             };
+
+            // Load the persisted Mode B tunables into the live model (arming
+            // happens on game change, once _activeGame is known).
+            ApplyModeBFromSettings();
+            // Push the persisted Mode B feel toggles into the live models.
+            ApplyModeBFeel();
 
             _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
 
@@ -3168,6 +3221,10 @@ namespace TrueforceForAll.Plugin
                 _streamSecondsSinceFlush = 0.0;
             }
 
+            // Grip auto-cal: fold the session's learning into the settings
+            // dict so the next session starts where this one left off.
+            try { FlushGripCal(); } catch { }
+
             // UI changes are written through to Settings on the fly, so just save.
             // Guarded like the ~60 other SaveCommonSettings call sites: a throw here
             // (disk full / settings file locked) must not skip the remaining disposes
@@ -3231,7 +3288,12 @@ namespace TrueforceForAll.Plugin
             // clears the no-FFB notice once force feedback is captured again.
             if (_ffbTap != null)
             {
-                _ffbTap.GameFfbExpected = _telemetrySource?.IsSessionActive ?? false;
+                // Mode B: the game is SUPPOSED to send nothing (in-game FFB
+                // off, synthesis owns the wheel), so an empty tap is correct
+                // and the "no game FFB reaching the plugin" escalation chain
+                // (broad capture retry + user-facing warning) must stay quiet.
+                _ffbTap.GameFfbExpected = _forceModeB == 0
+                    && (_telemetrySource?.IsSessionActive ?? false);
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
             }
@@ -3290,6 +3352,36 @@ namespace TrueforceForAll.Plugin
             // fully back to the game while paused (see UpdateStopStreamOnPauseGate).
             UpdateStopStreamOnPauseGate();
 
+            // Mode B contention watchdog. Mode B's contract is that the game
+            // sends NOTHING to the wheel (in-game FFB off): two writers on
+            // the TrueForce path interleave into jumping/buzzing that reads
+            // as bad tuning (tenth wheel test: GT4 "feels like shit", trace
+            // showed the game streaming full-scale forces the whole time).
+            // The FFB tap sees every game write, so sustained fresh captures
+            // while Mode B streams = the game is fighting us. Name it loudly.
+            if (_forceModeB != 0 && _ffbTap != null)
+            {
+                bool gameWriting = _ffbTap.TryGetFreshFfbTarget(250).HasValue;
+                long nowC = Stopwatch.GetTimestamp();
+                if (!gameWriting) _contentionSinceTicks = 0;
+                else if (_contentionSinceTicks == 0) _contentionSinceTicks = nowC;
+                else if (!_contentionWarned
+                         && (nowC - _contentionSinceTicks) / (double)Stopwatch.Frequency > 3.0)
+                {
+                    _contentionWarned = true;
+                    ModeBContentionDetected = true;
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] Mode B CONTENTION: the game is streaming its own wheel "
+                        + "forces while synthesized FFB is active; the two interleave and the "
+                        + "wheel feels jumpy/buzzy. Fix: in the game's wheel settings set force "
+                        + "feedback / vibration scale to 0 so this plugin is the only writer.");
+                }
+            }
+            else
+            {
+                _contentionSinceTicks = 0;
+            }
+
             // First time we see telemetry for a real game in a session
             // (game != null), nudge the networked-welcome modal so users
             // who never open the Trueforce panel still get the pitch.
@@ -3337,6 +3429,18 @@ namespace TrueforceForAll.Plugin
             {
                 _activeGame = gameName;
                 SwapTelemetrySource(gameName);
+                // Re-arm/disarm Mode B for the new game (Mode B capable games
+                // = synthesized force; everything else = the normal pass-
+                // through path). The contention watchdog latch resets here
+                // explicitly: a capable-to-capable game switch keeps
+                // _forceModeB == 1, so the clean-engage reset inside
+                // ApplyModeBFromSettings would not run, and a warning latched
+                // on the previous game would suppress (and misattribute) the
+                // new game's verdict.
+                _contentionWarned = false;
+                _contentionSinceTicks = 0;
+                ModeBContentionDetected = false;
+                ApplyModeBFromSettings();
                 // Auto-apply the bound game default, UNLESS the user is
                 // offline-editing a preset. In that case we don't clobber
                 // their in-progress edits; the SettingsControl banner stays
@@ -3460,6 +3564,9 @@ namespace TrueforceForAll.Plugin
                 // override to the persisted baseline before we move on.
                 DiscardUnsavedCarDraft(_activeCarId);
                 _activeCarId = carId;
+                // Swap the grip auto-cal learner to the new car (flushes the
+                // outgoing car's learned peak into settings).
+                LoadGripCal(_activeGame, carId);
                 // Drop the prior car's community consensus so the resolver
                 // doesn't briefly attribute it to the new car. The
                 // SettingsControl will re-fetch and re-notify for the new
@@ -3714,10 +3821,120 @@ namespace TrueforceForAll.Plugin
             // actually reports it (AC), so the spring stays disengaged on
             // sources that don't (the freshness check in the provider).
             _lastSpeedKmh = (float)frame.SpeedKmh;
+            // Mode B synthesis inputs: longitudinal accel for the weight-
+            // transfer term, and the front-pair combined slip as the grip
+            // utilization source. Written here (telemetry thread), read on
+            // the FFB thread; slip angle freshness (below) doubles as the
+            // gate for all of them.
+            if (frame.AccelerationSurge.HasValue)
+                _lastSurgeAccel = (float)frame.AccelerationSurge.Value;
+            if (frame.AccelerationSway.HasValue)
+                _lastSwayAccel = (float)frame.AccelerationSway.Value;
+            if (frame.HasTireQuads)
+            {
+                // Load-weighted axle rollups (CtmComposer) instead of plain
+                // pair averages: the loaded outside tire dominates the
+                // reading, so cornering breakaway registers at the tire that
+                // is actually doing the gripping. The EngineLoop recomposes
+                // on its own resampled copy; Compose is stamp-guarded and
+                // deterministic, so composing here too is safe.
+                CtmComposer.Compose(ref frame);
+                _lastFrontCombined = (float)frame.FrontGrip01.Value;
+                _lastRearCombined  = (float)frame.RearGrip01.Value;
+
+                // Grip auto-cal input: the grip-peak learner watches the raw
+                // front channel (it runs its own spike pre-filter). Learning
+                // happens whenever Mode B is live; _mbAutoCalOn only gates
+                // whether the cached divisor leaves 1.0.
+                if (_forceModeB != 0)
+                {
+                    long nowCal = Stopwatch.GetTimestamp();
+                    double dtMsCal = _calPrevTicks == 0
+                        ? 16.7
+                        : (nowCal - _calPrevTicks) * 1000.0 / Stopwatch.Frequency;
+                    _calPrevTicks = nowCal;
+                    _gripCal.Tick(frame.FrontGrip01.Value, _lastSpeedKmh, dtMsCal);
+                    if (_mbAutoCalOn) _mbCalPeak = (float)_gripCal.EffectivePeak;
+                    if (!_calConvergedLogged && _gripCal.Confidence >= 1.0)
+                    {
+                        _calConvergedLogged = true;
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] Grip auto-cal converged for '{_gripCalKey}': "
+                            + $"peak={_gripCal.Peak:0.000} "
+                            + $"({(_mbAutoCalOn ? "applied" : "learned, auto-cal off")})");
+                    }
+                }
+
+                // Road-kick input: one-wheel bump kick from the FL/FR travel
+                // difference rate. Ticked here (telemetry thread) at frame
+                // rate; the FFB provider smooths the cached value to 1 kHz.
+                if (_mbRoadKickOn)
+                {
+                    long nowK = Stopwatch.GetTimestamp();
+                    double dtMsK = _kickPrevTicks == 0
+                        ? 16.0
+                        : (nowK - _kickPrevTicks) * 1000.0 / Stopwatch.Frequency;
+                    _kickPrevTicks = nowK;
+                    _mbKickCached = (float)_roadKick.Tick(
+                        frame.SuspTravelM.FL, frame.SuspTravelM.FR, dtMsK);
+                }
+            }
+            else if (frame.WheelSlip.HasValue)
+            {
+                // Degraded (no quads): rear mirrors front so the rear-excess
+                // counter term stays exactly zero rather than firing on noise.
+                _lastFrontCombined = (float)frame.WheelSlip.Value;   // max-abs all four
+                _lastRearCombined  = _lastFrontCombined;
+            }
+            // Suspension-load input: front suspension compression vs its own
+            // slow baseline = live front-axle load ratio. The baseline EMA
+            // (~3 s) learns the car's ride height, so the ratio reads dive,
+            // kerbs and dips without per-car calibration. Telemetry thread
+            // writes; ComputeModeBForce reads.
+            if (frame.FrontSuspTravelMeters.HasValue)
+            {
+                float travel = (float)frame.FrontSuspTravelMeters.Value;
+                if (travel > 0.001f)
+                {
+                    float baseline = _mbSuspBaseline;
+                    _mbSuspBaseline = baseline <= 0f
+                        ? travel
+                        : baseline + (travel - baseline) * 0.005f;   // ~3 s at 60 Hz
+                    _lastFrontSuspRatio = travel / Math.Max(0.005f, _mbSuspBaseline);
+                }
+            }
             if (frame.SteeringAngle.HasValue)
             {
-                _lastSteerNorm = (float)frame.SteeringAngle.Value;
-                System.Threading.Interlocked.Exchange(ref _lastSteerTicks, Stopwatch.GetTimestamp());
+                float newSteer = (float)frame.SteeringAngle.Value;
+                long nowTicks = Stopwatch.GetTimestamp();
+
+                // Wheel angular velocity for the FFB damper: d(steer)/dt with the
+                // real frame interval, EMA-smoothed. Guard dt to a sane window so a
+                // hitch or the first frame can't spike a huge velocity.
+                if (_prevSteerVelTicks != 0)
+                {
+                    double dt = (nowTicks - _prevSteerVelTicks) / (double)Stopwatch.Frequency;
+                    if (dt > 0.0005 && dt < 0.5)
+                    {
+                        float instVel = (float)((newSteer - _prevSteerForVel) / dt);
+                        _steerVel += (instVel - _steerVel) * 0.3f;
+                    }
+                }
+                _prevSteerForVel  = newSteer;
+                _prevSteerVelTicks = nowTicks;
+
+                _lastSteerNorm = newSteer;
+                System.Threading.Interlocked.Exchange(ref _lastSteerTicks, nowTicks);
+            }
+
+            // Cache the front slip angle for the FFB thread (Forza populates
+            // it; other sources leave it null, so the stamp goes stale). Mode B
+            // uses it for the force DIRECTION, and the tick stamp is the
+            // telemetry-freshness gate its stall ramp ages against.
+            if (frame.FrontSlipAngleRad.HasValue)
+            {
+                _lastFrontSlipAngle = (float)frame.FrontSlipAngleRad.Value;
+                System.Threading.Interlocked.Exchange(ref _lastSlipAngleTicks, Stopwatch.GetTimestamp());
             }
 
             // The FFB tap's "force feedback should be flowing" hint is set from
@@ -3881,6 +4098,600 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 return "FFB capture failed to start: " + ex.Message;
+            }
+        }
+
+        /// <summary>Stamp the high-rate FFB trace (no-op when not armed). Called
+        /// from the provider thread with the three chain stages; reads steer and
+        /// the physical wheel position for phase analysis.</summary>
+        private void TraceFfb(short? rawTap, short? afterSpring, short? finalOut)
+        {
+            var trace = _ffbTrace;
+            if (trace == null) return;
+            var sr = _steeringReader;
+            float phys = (sr != null && sr.LastUpdateTicks != 0) ? sr.SteerNorm : float.NaN;
+            trace.Record(
+                rawTap.HasValue ? (int?)rawTap.Value : null,
+                afterSpring.HasValue ? (int?)afterSpring.Value : null,
+                finalOut.HasValue ? (int?)finalOut.Value : null,
+                _lastSteerNorm, phys, _steerVel, _lastSpeedKmh);
+        }
+
+        /// <summary>Toggle the high-rate FFB signal-chain trace (TRACE access
+        /// code). On: starts recording every provider tick into a ring buffer
+        /// (~30 s window). Off: dumps the captured window to a CSV under
+        /// Documents\TrueforceForAll for offline analysis of oscillations.
+        /// Returns a status line for the access-code UI.</summary>
+        public string ToggleFfbTrace()
+        {
+            var existing = _ffbTrace;
+            if (existing != null)
+            {
+                _ffbTrace = null;   // provider stops recording on its next tick
+                try
+                {
+                    string dir = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "TrueforceForAll");
+                    string path = System.IO.Path.Combine(dir,
+                        "ffb_trace_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
+                    int rows = existing.Dump(path);
+                    return $"FFB trace stopped: {rows} samples -> {path}";
+                }
+                catch (Exception ex)
+                {
+                    return "FFB trace failed to write: " + ex.Message;
+                }
+            }
+
+            // ~30 s at the 1 kHz provider cap (32768 pow2 slots); the ring just
+            // keeps the most recent window if the trace runs longer.
+            _ffbTrace = new FfbTrace(32768);
+            return "FFB trace started (recording every FFB tick). Reproduce the issue, then type TRACE again to save the CSV.";
+        }
+
+        // ---------- Mode B: full force synthesis from telemetry ----------
+        // The game contributes NOTHING in this mode (run the game with its own
+        // FFB off: it then sends no FFB and no stream, and we are the wheel's
+        // only writer). Force = SatForceModel over slip-angle-derived
+        // utilization, with a stall ramp so telemetry loss decays the force
+        // instead of holding it. Toggle: "MODEB 1" / "MODEB 0" access code;
+        // tuning: BSAT / BPEAK / BFLOOR / BFULL / BSPD / BSIGN.
+        private volatile int _forceModeB;
+        private readonly SatForceModel _satModel = new SatForceModel { DropFloor = 0.20 };
+        private float _pModeBSign    = 1f;     // BSIGN: flips SAT direction if Forza's slip sign is inverted vs the wheel
+        private float _pModeBPeakU   = 1.0f;   // BPEAK: combined-slip value treated as the grip limit (u = combined / peak)
+        private float _pModeBEmaMs   = 25f;    // BEMA: input smoothing time constant (raise to calm a noisy slip signal)
+        private float _pModeBDirSoft = 0.12f;  // BDIRK: dir-blend center softness (0 = linear; kills center buzz/ring)
+        // Mode B wheel weight: its OWN damper/centering gains, used by the
+        // damper/center stages in MaybeReshapeFfb only while Mode B is
+        // active. Centering is speed-scaled by the model's trail ramp so a
+        // parked wheel isn't spring-loaded.
+        private float _pModeBDamperGain = 0.15f;   // BDAMP / "Wheel weight" slider
+        private float _pModeBCenterGain = 0.10f;   // BCENTER / "Centering" slider
+        // Per-axle feel terms (ModeBComposer): cornering weight from lateral
+        // g, counter torque from rear utilization excess over the front.
+        private float _pModeBLatGain     = 0.6f;   // BLAT / "Cornering weight" slider
+        private float _pModeBCounterGain = 0.5f;   // BCS  / "Slide counter-force" slider
+        private volatile float _lastSurgeAccel;    // m/s², cached in DispatchFrame
+        private volatile float _lastSwayAccel;     // m/s² lateral, cached in DispatchFrame
+        // Suspension-load feel: front suspension compression over its learned
+        // ride height, the live front-load ratio (1.0 = static, >1 = loaded).
+        private float _mbSuspBaseline;
+        private volatile float _lastFrontSuspRatio = 1f;
+        private volatile bool _mbSuspLoadOn;
+        // Grip utilization source: the game's own per-tire combined slip
+        // (front pair), NOT slip angle. Slip angle correlates with steering
+        // input — a slip-angle threshold makes "grip" break at a fixed wheel
+        // angle regardless of actual tire state (first wheel test caught
+        // this). Combined slip is Forza's tire model's own limit metric
+        // (~1.0 = at the limit, load/surface/speed baked in); slip angle
+        // keeps exactly one job here: the force DIRECTION.
+        private volatile float _lastFrontCombined;
+        private volatile float _lastRearCombined;  // rear pair; == front on degraded sources
+        // Latest front slip angle (rad) cached from DispatchFrame for the FFB
+        // thread. float (32-bit) so the read is atomic even on 32-bit SimHub;
+        // the Stopwatch-tick stamp is Mode B's telemetry-freshness gate (the
+        // stall ramp in ComputeModeBForce ages against it).
+        private volatile float _lastFrontSlipAngle;
+        private long _lastSlipAngleTicks;
+        // FFB-thread state (1 kHz): defensive input EMAs + stall ramp.
+        private float _mbSlipEma;      // signed slip angle (direction only)
+        private float _mbGripEma;      // front combined slip (magnitude)
+        private float _mbGripRearEma;  // rear combined slip (magnitude)
+        private float _mbOverEma;      // rear-excess, asymmetric attack/release
+        private float _mbRamp;
+        private long  _mbPrevTicks;
+
+        /// <summary>Push the persisted Mode B settings into the live model and
+        /// (re)compute whether Mode B is armed: enabled in settings AND the
+        /// active game is Mode B capable (see IsModeBCapableGame and
+        /// TrueforceSettings.ModeBEnabled). Called at Init, on game change,
+        /// and from the settings UI; access codes remain the raw dev override
+        /// on top.</summary>
+        public void ApplyModeBFromSettings(bool save = false)
+        {
+            var s = Settings;
+            if (s == null) return;
+            _satModel.SatGain   = s.ModeBSatGain;
+            _satModel.RiseGamma = s.ModeBRiseGamma;
+            _satModel.DropFloor = s.ModeBDropFloor;
+            _pModeBPeakU   = s.ModeBPeakUtil;
+            _pModeBEmaMs   = s.ModeBEmaMs;
+            _pModeBSign    = s.ModeBSign < 0 ? -1f : 1f;
+            _pModeBDamperGain = s.ModeBDamper;
+            _pModeBCenterGain = s.ModeBCenter;
+            _pModeBLatGain     = s.ModeBLatGain;
+            _pModeBCounterGain = s.ModeBCounterGain;
+            _pModeBDirSoft     = s.ModeBDirSoft;
+
+            bool want = s.ModeBEnabled && IsModeBCapableGame(_activeGame);
+            if (want && _forceModeB == 0)
+            {
+                // Clean engage: ramp from zero, EMAs seeded from current state.
+                // Contention watchdog re-arms so a fixed in-game FFB setting
+                // gets a fresh verdict.
+                _contentionWarned = false;
+                _contentionSinceTicks = 0;
+                ModeBContentionDetected = false;
+                _crashDuck.Reset();
+                _mbRamp = 0f;
+                _mbPrevTicks = 0;
+                _mbSlipEma = _lastFrontSlipAngle;
+                _mbGripEma = _lastFrontCombined;
+                _mbGripRearEma = _lastRearCombined;
+                _mbOverEma = 0f;
+            }
+            _forceModeB = want ? 1 : 0;
+
+            if (save) PersistSettings();
+        }
+
+        // Compressor feel: soft-knee ceiling on the Mode B force so stacked
+        // cornering-weight + counter terms compress into the top of the range
+        // instead of hard-clipping.
+        private volatile bool _mbCompressorOn;
+        private readonly SoftKneeCompressor _mbCompressor =
+            new SoftKneeCompressor { Gain = 1.0, Threshold01 = 0.70, Ceiling01 = 0.95 };
+
+        // Road kick: the model differences per-corner front suspension travel
+        // on the telemetry thread (DispatchFrame); the FFB provider reads the
+        // cached kick and applies its own short EMA so 60 Hz telemetry steps
+        // don't land as steps at 1 kHz.
+        private volatile bool _mbRoadKickOn;
+        private volatile float _pRoadKickGain = 1.0f;
+        private readonly RoadKickModel _roadKick = new RoadKickModel();
+        private volatile float _mbKickCached;   // telemetry thread writes
+        private float _mbKickEma;               // provider thread only
+        private long _kickPrevTicks;            // telemetry thread only
+
+        // Slide-counter growth: counter-force grows with slide depth instead
+        // of arriving in full at the ±0.03 rad dir saturation.
+        private volatile bool _mbSlideGrowthOn;
+
+        // Mode B damper band-limit state (FFB provider thread only). See the
+        // damper block in MaybeReshapeFfb: the raw velocity path self-
+        // oscillated at ~70 Hz through the wheel's physical motion.
+        private float _mbDamperVelLp;
+        private long  _mbDampPrevTicks;
+
+        // Crash duck: impact protection for the synthesized force (Mode B
+        // core behavior, not a feel toggle — a crash buzz can physically
+        // yank hands). Ticked on the FFB thread inside ComputeModeBForce.
+        private readonly CrashDuckModel _crashDuck = new CrashDuckModel();
+
+        // Per-car grip-limit auto-calibration. The learner ALWAYS ticks while
+        // Mode B runs (so seat time accumulates regardless of the checkbox);
+        // the checkbox only gates whether the learned peak is applied as the
+        // utilization divisor. State swaps on car change and persists per
+        // "game|car" in Settings.CarGripCalibration.
+        private volatile bool _mbAutoCalOn;
+        private readonly GripPeakLearner _gripCal = new GripPeakLearner();
+        private volatile float _mbCalPeak = 1f;   // telemetry thread writes
+        private long   _calPrevTicks;             // telemetry thread only
+        private string _gripCalKey;               // settings key of the loaded state
+        private bool   _calConvergedLogged;       // one log line per car per load
+
+        // Mode B contention watchdog state (see DataUpdate). Warned resets on
+        // Mode B re-engage so a fixed in-game setting re-arms the detector.
+        private long _contentionSinceTicks;
+        private bool _contentionWarned;
+        /// <summary>True once sustained game FFB was detected during Mode B
+        /// (diagnostic surface for the settings UI).</summary>
+        public bool ModeBContentionDetected { get; private set; }
+
+        /// <summary>Snapshot the loaded learner into the settings dict.
+        /// Cheap (no disk I/O) — callers decide when settings actually save.</summary>
+        private void FlushGripCal()
+        {
+            if (Settings == null || string.IsNullOrEmpty(_gripCalKey)) return;
+            if (_gripCal.QualifyingSec <= 0.0) return;   // never learned: don't pollute the dict
+            if (Settings.CarGripCalibration == null)
+                Settings.CarGripCalibration = new Dictionary<string, CarGripCal>();
+            Settings.CarGripCalibration[_gripCalKey] = new CarGripCal
+            {
+                Peak          = (float)_gripCal.Peak,
+                QualifyingSec = (float)_gripCal.QualifyingSec,
+            };
+        }
+
+        /// <summary>Swap the learner to the new car: flush the outgoing
+        /// car's state, then restore the incoming car's (or start fresh).</summary>
+        private void LoadGripCal(string game, string carId)
+        {
+            string key = string.IsNullOrEmpty(carId) ? null : (game ?? "") + "|" + carId;
+            if (key == _gripCalKey) return;
+            FlushGripCal();
+            _gripCalKey = key;
+            CarGripCal saved = null;
+            if (key != null) Settings?.CarGripCalibration?.TryGetValue(key, out saved);
+            if (saved != null) _gripCal.Restore(saved.Peak, saved.QualifyingSec);
+            else _gripCal.Reset();
+            _mbCalPeak = (float)_gripCal.EffectivePeak;
+            _calPrevTicks = 0;
+            _calConvergedLogged = _gripCal.Confidence >= 1.0;
+            if (saved != null)
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Grip auto-cal restored for '{key}': peak={_gripCal.Peak:0.000}, "
+                    + $"confidence={_gripCal.Confidence:0.00}");
+        }
+
+        /// <summary>Push the persisted Mode B feel toggles into the live
+        /// models. Called at Init after the models exist and from the settings
+        /// UI on every checkbox change. These are global (not preset-scoped);
+        /// the design's layers 1-5 and 12 live elsewhere on this branch as
+        /// first-class effects (AxleSlip / KerbThump / LockupJudder) and
+        /// DuckFrequencyAware, so this method deliberately does not touch
+        /// them.</summary>
+        public void ApplyModeBFeel(bool save = false)
+        {
+            var s = Settings;
+            if (s == null) return;
+            _mbCompressorOn = s.ModeBCompressor;
+            _mbSuspLoadOn   = s.ModeBSuspensionLoad;
+            // Early torque peak: plateau the SAT rise from 75% utilization
+            // (real pneumatic trail peaks before the grip peak). 1.0 = legacy
+            // shape. Lives on the model, so BPEAK/BRISE still apply below it.
+            _satModel.PlateauStartU = s.ModeBEarlyTorquePeak ? 0.75 : 1.0;
+            // Road kick: reset on disable so a later re-enable can't
+            // difference against week-old travel state.
+            if (_mbRoadKickOn && !s.ModeBRoadKick) { _roadKick.Reset(); _mbKickCached = 0f; }
+            _mbRoadKickOn  = s.ModeBRoadKick;
+            _pRoadKickGain = s.ModeBRoadKickGain;
+            // Slide-counter growth.
+            _mbSlideGrowthOn = s.ModeBSlideCounterGrowth;
+            // Per-car grip auto-cal. Off = nominal divisor (1.0); the learner
+            // keeps accumulating either way so flipping it on later applies
+            // everything learned so far.
+            _mbAutoCalOn = s.ModeBGripAutoCal;
+            _mbCalPeak = s.ModeBGripAutoCal ? (float)_gripCal.EffectivePeak : 1f;
+
+            if (save) PersistSettings();
+        }
+
+        private short? ComputeModeBForce()
+        {
+            long now = Stopwatch.GetTimestamp();
+            long stamp = System.Threading.Interlocked.Read(ref _lastSlipAngleTicks);
+            if (stamp == 0) return null;                    // never saw telemetry: keepalive
+
+            double dtMs = _mbPrevTicks == 0 ? 1.0 : (now - _mbPrevTicks) * 1000.0 / Stopwatch.Frequency;
+            if (dtMs < 0.1) dtMs = 0.1; else if (dtMs > 50.0) dtMs = 50.0;
+            _mbPrevTicks = now;
+
+            // Stall ramp: fresh telemetry ramps force in over ~250 ms; stale
+            // (>150 ms without a slip sample) ramps out over ~100 ms. Never a
+            // step — also gives MODEB-on a soft engage from zero.
+            double ageMs = (now - stamp) * 1000.0 / Stopwatch.Frequency;
+            _mbRamp += ageMs > 150.0 ? (float)(-dtMs / 100.0) : (float)(dtMs / 250.0);
+            if (_mbRamp < 0f) _mbRamp = 0f; else if (_mbRamp > 1f) _mbRamp = 1f;
+            if (_mbRamp <= 0f) return 0;
+
+            // Smooth the INPUTS, not the force (the validated reshape
+            // principle). BEMA raises the time constant when the game's slip
+            // signals are noisy.
+            float alpha = (float)(1.0 - Math.Exp(-dtMs / Math.Max(2f, _pModeBEmaMs)));
+            _mbSlipEma += (_lastFrontSlipAngle - _mbSlipEma) * alpha;
+            // Front grip EMA is ASYMMETRIC (fifth wheel test: "when I catch
+            // traction again on my front wheels it snaps very hard"). Rising
+            // utilization (breaking away) tracks fast — the go-light cue must
+            // be instant. FALLING utilization (re-gripping) is slowed 4x so
+            // the drop factor climbs back from DropFloor over ~150 ms instead
+            // of stepping: weight returns like a tire reloading, not a slam.
+            // Physically this is pneumatic trail rebuilding over the tire's
+            // relaxation length, which is not instantaneous either.
+            float gripAlpha = _lastFrontCombined >= _mbGripEma
+                ? alpha
+                : (float)(1.0 - Math.Exp(-dtMs / (4.0 * Math.Max(2f, _pModeBEmaMs))));
+            _mbGripEma += (_lastFrontCombined - _mbGripEma) * gripAlpha;
+            _mbGripRearEma += (_lastRearCombined - _mbGripRearEma) * alpha;
+
+            // Direction blend through center, v4. v1 hard sign() = spazz;
+            // v2 linear ramp = noise spring at center (buzz + hands-off
+            // ring, sixth test); v3 smoothstep = flat center but a 1.5×
+            // mid-band wall that made ±3° rocking jumpy (seventh test).
+            // v4 rational curve: zero slope at exact center only, near-
+            // linear body. BDIRK tunes the softness live (0 = pure linear).
+            double dir = ModeBComposer.CenterSoftDir(
+                _mbSlipEma * _pModeBSign / 0.03, _pModeBDirSoft);
+
+            // Utilization from the game's grip metric: combined slip with
+            // ~1.0 = at the limit. BPEAK rescales where we treat the limit;
+            // grip auto-cal multiplies in the per-car learned ceiling (1.0
+            // until the learner has near-limit seat time in THIS car). The
+            // noise floor zeroes the fuzz the grip channel emits parked /
+            // dead straight, the other half of the center-buzz fix.
+            double peakDiv = Math.Max(0.2, _pModeBPeakU * (double)_mbCalPeak);
+            double u     = ModeBComposer.UtilizationFloor(_mbGripEma     / peakDiv);
+            double uRear = ModeBComposer.UtilizationFloor(_mbGripRearEma / peakDiv);
+
+            // Load, v1: longitudinal weight transfer only — braking (surge < 0)
+            // loads the front axle, throttle unloads it. ~0.35 of static per g.
+            double load01 = 1.0 - 0.35 * (_lastSurgeAccel / 9.81);
+            // Suspension-load feel: real front load from suspension compression
+            // vs learned ride height replaces the surge approximation — dive,
+            // kerb strikes and crests breathe through the steering weight.
+            if (_mbSuspLoadOn)
+            {
+                double r = _lastFrontSuspRatio;
+                if (r < 0.4) r = 0.4; else if (r > 1.8) r = 1.8;
+                load01 = r;
+            }
+
+            // Per-axle composition (ModeBComposer): cornering weight builds
+            // with lateral g on top of the SAT curve; rear utilization excess
+            // over the front adds counter torque in the (sign-verified) front
+            // slip direction, trail-gated so launch wheelspin stays quiet.
+            // The excess gets its own ASYMMETRIC smoothing on top of the
+            // input EMAs: attack at BEMA (the cue must arrive in time to
+            // catch), release at 4x BEMA so re-grip hands torque back to the
+            // SAT term over ~150 ms instead of stepping (third wheel test:
+            // "no traction then TRACTION").
+            double rawOver = Math.Max(0.0, uRear - u);
+            float overTau = Math.Max(2f, _pModeBEmaMs) * (rawOver > _mbOverEma ? 1f : 4f);
+            _mbOverEma += (float)((rawOver - _mbOverEma) * (1.0 - Math.Exp(-dtMs / overTau)));
+
+            double sat = _satModel.Force01(u, 1.0, load01, _lastSpeedKmh) * dir;
+            double trail = Math.Min(Math.Max((double)_lastSpeedKmh, 0.0) / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
+            // Slide-counter growth: counter strength follows slide depth —
+            // full counter needs ~0.15 rad of front slip, so a shallow drift
+            // asks politely and a deep one yanks toward opposite lock.
+            double slideDepth = _mbSlideGrowthOn
+                ? Math.Min(Math.Abs(_mbSlipEma) / 0.15, 1.0)
+                : 1.0;
+            double f01 = ModeBComposer.Compose(
+                sat, dir, _mbOverEma,
+                latG: Math.Abs(_lastSwayAccel) / 9.81, latGain: _pModeBLatGain,
+                counterGain: _pModeBCounterGain, trail01: trail,
+                slideDepth01: slideDepth);
+            // Road kick: one-wheel bump kick, a signed transient in the
+            // FORCE channel (the whole rim moves — this is a steering event,
+            // not texture). Short EMA melts the 60 Hz telemetry staircase;
+            // trail-gated so a parked car on a kerb edge stays quiet. Added
+            // BEFORE the compressor so the compressor owns the ceiling.
+            if (_mbRoadKickOn)
+            {
+                float kickAlpha = (float)(1.0 - Math.Exp(-dtMs / 8.0));
+                _mbKickEma += (_mbKickCached - _mbKickEma) * kickAlpha;
+                f01 += _mbKickEma * _pRoadKickGain * 0.5 * trail;
+            }
+            if (_mbCompressorOn) f01 = _mbCompressor.Apply(f01);   // soft-knee compressor
+            // Low-speed validity gate (twelfth wheel test: stuck off-road at
+            // crawl speed, slip signals garbage, force buzzing the rim).
+            // Kills ALL slip-derived synthesis below walking pace; identical
+            // from 20 km/h up. Centering/damper live outside f01 and keep
+            // their own behavior.
+            f01 *= ModeBComposer.LowSpeedGate(_lastSpeedKmh);
+            // Crash duck (eleventh wheel test: wall hit buzzed the wheel).
+            // Impacts slam every synthesis input to saturation at once and
+            // the composed force whipsaws; go soft instantly, breathe back
+            // over ~600 ms. Horizontal g only, so kerbs never trigger it.
+            double gMag = Math.Sqrt(
+                (double)_lastSurgeAccel * _lastSurgeAccel
+                + (double)_lastSwayAccel * _lastSwayAccel) / 9.81;
+            f01 *= _crashDuck.Tick(gMag, dtMs);
+            double v = f01 * _mbRamp * 32767.0;
+            if (v > short.MaxValue) v = short.MaxValue;
+            else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        private short? MaybeReshapeFfb(short? target)
+        {
+            bool modeB = _forceModeB != 0;
+            if (modeB)
+            {
+                // Mode B: the game-derived target is REPLACED by synthesis.
+                // Centering and the damper below still apply; they're
+                // wheel-side stability, not game-force conditioning.
+                target = ComputeModeBForce();
+            }
+            // Mode B only on this branch: the design's FORZAFFB Mode A
+            // reshaper profile (slip-saturation reshape, WEIGHT/noise gate,
+            // center-boosted damper) was deliberately not carried over.
+            // With Mode B off, the tapped game force passes through untouched.
+            if (!modeB || !target.HasValue) return target;
+            double v = target.Value;
+
+            // Centering "fight": a directional force toward center
+            // proportional to steering lock, so the wheel resists turning
+            // even when the synthesized load force is light. Speed-scaled by
+            // the model's trail ramp so a parked wheel isn't spring-loaded.
+            // Both stability terms here are gated by the telemetry ramp
+            // (_mbRamp): in menus (raceOn=0) the synthesized force is already
+            // zero, but stale speed/steer snapshots used to keep centering
+            // and the damper alive with no game force masking them, and the
+            // naked damper chattered against HID quantization ("buzzes
+            // out like crazy at center in the menu", ninth wheel test).
+            // Ramp-gated, menus get a true zero stream: wheel free AND silent.
+            float centerGain = _pModeBCenterGain * _mbRamp
+                * (float)Math.Min(_lastSpeedKmh / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
+            if (centerGain != 0f)
+            {
+                float steer = _lastSteerNorm;
+                if (steer > 1f) steer = 1f; else if (steer < -1f) steer = -1f;
+                float dir = steer > 0f ? 1f : -1f;
+                v += centerGain * System.Math.Abs(steer) * dir * 32767.0;
+            }
+
+            // Velocity damper. Adds a torque opposing wheel motion so the
+            // centering force can't ring. Driven by the PHYSICAL wheel
+            // velocity (HID steering reader, ~report-rate, minimal lag)
+            // rather than Forza's 60 Hz EMA-smoothed telemetry steer, because
+            // the let-go oscillation is a fast physical wheel swing a lagged
+            // velocity can't catch. SIGN: a hot-lap trace (2026-06-27) proved
+            // Forza's convention is physical-torque ∝ -(FFB value), and the
+            // physical steer shares the game-steer sign (corr 0.999), so a
+            // force that OPPOSES velocity is +Kd*vel (the original `-=` was
+            // anti-damping and grew the oscillation). Clamped to half scale.
+            float damperGain = _pModeBDamperGain * _mbRamp;
+            if (damperGain != 0f)
+            {
+                // Prefer the physical wheel velocity; fall back to the telemetry
+                // velocity if the HID reader is absent or stale.
+                float vel = _steerVel;
+                var sr = _steeringReader;
+                if (sr != null)
+                {
+                    long t = sr.LastUpdateTicks;
+                    if (t != 0)
+                    {
+                        if (t != _physVelPrevTicks)
+                        {
+                            float ps = sr.SteerNorm;
+                            if (_physVelPrevTicks != 0)
+                            {
+                                double pdt = (t - _physVelPrevTicks) / (double)Stopwatch.Frequency;
+                                if (pdt > 0.0002 && pdt < 0.05)
+                                {
+                                    float inst = (float)((ps - _physVelPrevSteer) / pdt);
+                                    _physWheelVel += (inst - _physWheelVel) * 0.5f; // light EMA
+                                }
+                            }
+                            _physVelPrevSteer = ps;
+                            _physVelPrevTicks = t;
+                        }
+                        // Use physical velocity only while fresh; if the wheel
+                        // stops streaming reports, zero it so a stale velocity
+                        // can't leave a constant offset torque on the wheel.
+                        if (Stopwatch.GetTimestamp() - t <= SteerMaxAgeTicks) vel = _physWheelVel;
+                        else _physWheelVel = 0f;
+                    }
+                }
+
+                // Band-limit the damper velocity (thirteenth wheel test,
+                // trace-proven). The damper is a delayed velocity feedback:
+                // force moves the wheel, HID reports the velocity ~15-20 ms
+                // late, so above ~1/(4·delay) the "opposing" force arrives
+                // more than half a cycle late and PUMPS the motion. The trace
+                // showed a self-sustained ~70 Hz limit cycle (force in phase
+                // with physical velocity, game telemetry frozen) at ±6k LSB,
+                // dead center of the G923's strongest motor band. A ~25 ms
+                // low-pass drops loop gain ~11x at 70 Hz (kills the cycle)
+                // while a genuine hands-off swing (1-3 Hz, what the damper
+                // exists to catch) passes almost untouched. Past the Mode B
+                // gate above this always applies.
+                long nowD = Stopwatch.GetTimestamp();
+                double dtD = _mbDampPrevTicks == 0
+                    ? 1.0
+                    : (nowD - _mbDampPrevTicks) * 1000.0 / Stopwatch.Frequency;
+                if (dtD < 0.1) dtD = 0.1; else if (dtD > 50.0) dtD = 50.0;
+                _mbDampPrevTicks = nowD;
+                float aD = (float)(1.0 - Math.Exp(-dtD / 25.0));
+                _mbDamperVelLp += (vel - _mbDamperVelLp) * aD;
+                vel = _mbDamperVelLp;
+
+                double damp = damperGain * vel * 32767.0;
+                if (damp > 16383.0) damp = 16383.0;
+                else if (damp < -16383.0) damp = -16383.0;
+                v += damp;
+            }
+
+            if (v > short.MaxValue) v = short.MaxValue;
+            else if (v < short.MinValue) v = short.MinValue;
+            return (short)System.Math.Round(v);
+        }
+
+        /// <summary>Live-set one Mode B parameter from the "NAME value" access
+        /// codes (MODEB / BSAT / BPEAK / ...). Applies immediately (the FFB
+        /// thread reads these every tick), writes the matching Settings field
+        /// where one exists, and persists. Values are clamped to sane ranges.
+        /// Returns a human-readable status of what was set.</summary>
+        public string SetModeBParam(string name, float value)
+        {
+            if (_device == null) return "wheel not initialized";
+            float C(float v, float lo, float hi) => v < lo ? lo : (v > hi ? hi : v);
+            switch ((name ?? string.Empty).ToUpperInvariant())
+            {
+                case "MODEB":
+                    bool modeBOn = value >= 0.5f;
+                    if (modeBOn && _forceModeB == 0)
+                    {
+                        // Clean engage: ramp from zero, EMAs from current state.
+                        _mbRamp = 0f;
+                        _mbPrevTicks = 0;
+                        _mbSlipEma = _lastFrontSlipAngle;
+                        _mbGripEma = _lastFrontCombined;
+                        _mbGripRearEma = _lastRearCombined;
+                        _mbOverEma = 0f;
+                    }
+                    _forceModeB = modeBOn ? 1 : 0;
+                    if (Settings != null) { Settings.ModeBEnabled = modeBOn; PersistSettings(); }
+                    return modeBOn
+                        ? "MODE B: force synthesized from telemetry (game FFB ignored). Run the game with its FFB / TrueForce OFF. Tune: BSAT/BPEAK/BFLOOR/BFULL/BSPD, BSIGN -1 if it pulls the wrong way."
+                        : "MODE A: game-FFB mirror path restored.";
+                case "BSIGN":
+                    _pModeBSign = value < 0 ? -1f : 1f;
+                    if (Settings != null) { Settings.ModeBSign = _pModeBSign; PersistSettings(); }
+                    return $"Mode B SAT direction = {(_pModeBSign > 0 ? "+" : "-")} (flip if the wheel pulls INTO the slide)";
+                case "BSAT":
+                    _satModel.SatGain = C(value, 0.05f, 1.5f);
+                    if (Settings != null) { Settings.ModeBSatGain = (float)_satModel.SatGain; PersistSettings(); }
+                    return $"Mode B SAT gain = {_satModel.SatGain:0.00} (peak torque fraction)";
+                case "BPEAK":
+                    _pModeBPeakU = C(value, 0.4f, 2.0f);
+                    if (Settings != null) { Settings.ModeBPeakUtil = _pModeBPeakU; PersistSettings(); }
+                    return $"Mode B grip limit = combined slip {_pModeBPeakU:0.00} (u=1 there)";
+                case "BFLOOR":
+                    _satModel.DropFloor = C(value, 0.05f, 1f);
+                    if (Settings != null) { Settings.ModeBDropFloor = (float)_satModel.DropFloor; PersistSettings(); }
+                    return $"Mode B drop floor = {_satModel.DropFloor:0.00} (torque left past the limit)";
+                case "BFULL":
+                    _satModel.FullU = C(value, 1.1f, 3f);
+                    return $"Mode B full-drop utilization = {_satModel.FullU:0.00}";
+                case "BSPD":
+                    _satModel.SpeedFullKmh = C(value, 10f, 200f);
+                    return $"Mode B trail ramp: full SAT by {_satModel.SpeedFullKmh:0} km/h";
+                case "BRISE":
+                    _satModel.RiseGamma = C(value, 0.3f, 2f);
+                    if (Settings != null) { Settings.ModeBRiseGamma = (float)_satModel.RiseGamma; PersistSettings(); }
+                    return $"Mode B rise gamma = {_satModel.RiseGamma:0.00} (<1 = heavier in normal cornering)";
+                case "BEMA":
+                    _pModeBEmaMs = C(value, 5f, 100f);
+                    if (Settings != null) { Settings.ModeBEmaMs = _pModeBEmaMs; PersistSettings(); }
+                    return $"Mode B input smoothing = {_pModeBEmaMs:0} ms (higher = calmer, laggier)";
+                case "BDAMP":
+                    _pModeBDamperGain = C(value, 0f, 0.6f);
+                    if (Settings != null) { Settings.ModeBDamper = _pModeBDamperGain; PersistSettings(); }
+                    return $"Mode B wheel weight (damping) = {_pModeBDamperGain:0.00}";
+                case "BCENTER":
+                    _pModeBCenterGain = C(value, 0f, 0.5f);
+                    if (Settings != null) { Settings.ModeBCenter = _pModeBCenterGain; PersistSettings(); }
+                    return $"Mode B centering = {_pModeBCenterGain:0.00} (speed-scaled)";
+                case "BLAT":
+                    _pModeBLatGain = C(value, 0f, 2f);
+                    if (Settings != null) { Settings.ModeBLatGain = _pModeBLatGain; PersistSettings(); }
+                    return $"Mode B cornering weight = {_pModeBLatGain:0.00} (+{_pModeBLatGain:0.00}x per lateral g)";
+                case "BCS":
+                    _pModeBCounterGain = C(value, 0f, 1.5f);
+                    if (Settings != null) { Settings.ModeBCounterGain = _pModeBCounterGain; PersistSettings(); }
+                    return $"Mode B slide counter-force = {_pModeBCounterGain:0.00} (rear breakaway pull)";
+                case "BDIRK":
+                    _pModeBDirSoft = C(value, 0f, 0.5f);
+                    if (Settings != null) { Settings.ModeBDirSoft = _pModeBDirSoft; PersistSettings(); }
+                    return $"Mode B center softness = {_pModeBDirSoft:0.00} (0 = linear/legacy; higher = wider flat spot at center; fixes buzz vs jumpy trade)";
+                default:
+                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BCS/BDIRK)";
             }
         }
 
@@ -4364,6 +5175,25 @@ namespace TrueforceForAll.Plugin
                 || game == "WRCGenerations"
                 || game == "TDUSC"
                 || game == "LMU";
+        }
+
+        /// <summary>True if Mode B (synthesized force) may arm for this game.
+        /// FM8 is the origin case: its native Trueforce rides the stream we
+        /// need, so the pass-through path is impossible and Mode B is the only
+        /// option there. The Horizon titles are opt-in ports: FH5/FH6 emit the
+        /// same Sled block (per-tire slip angle, combined slip, suspension
+        /// travel) in their 324-byte Data Out packet, so the tire model has
+        /// every input it needs. Unlike FM8 their normal FFB works, so on
+        /// those titles Mode B REPLACES a working feel and the in-game FFB /
+        /// vibration scales must be set to 0 (the contention watchdog logs if
+        /// the game still writes). FH4 shares the packet format but is
+        /// untested, so it is not listed.</summary>
+        private static bool IsModeBCapableGame(string game)
+        {
+            if (string.IsNullOrEmpty(game)) return false;
+            return game == "FM8"
+                || game == "FH5"
+                || game == "FH6";
         }
 
         /// <summary>Pick the right ITelemetrySource for <paramref name="game"/>
@@ -18144,9 +18974,18 @@ namespace TrueforceForAll.Plugin
             // closed (a pause nulls _activeGame). Only resume when the plugin
             // is still meant to be driving the wheel.
             var src = _telemetrySource;
+            // Mode B exemption: leaving Trueforce mode on pause exists so the
+            // GAME's native FFB can own menus (issue #13, Horizon). In Mode B
+            // there is no game FFB — releasing the wheel hands it to the
+            // firmware autocenter, which rings violently against nothing
+            // (fourth wheel test: menu spazz). Keep streaming instead: the
+            // pause-release in the FFB provider already returns zero force on
+            // raceOn=0, and while we stream the wheel ignores every other
+            // force source, so menus are free AND silent.
             bool canGate = Settings != null && Settings.StopStreamOnPause
                            && Settings.PluginEnabled && _device != null
-                           && src != null && !string.IsNullOrEmpty(_activeGame);
+                           && src != null && !string.IsNullOrEmpty(_activeGame)
+                           && _forceModeB == 0;
             if (!canGate)
             {
                 if (_stopStreamPauseActive)
@@ -18258,7 +19097,14 @@ namespace TrueforceForAll.Plugin
             // Heartbeat for the liveness watchdog: our stream's packets-sent
             // count. Reads the current device each call, so it survives device
             // swaps. While streaming this climbs ~1 kHz.
-            tap.SetSendActivityProbe(() => _device?.PacketsSent ?? 0);
+            // Mode B gate: in full synthesis the game sends NO classic FFB, so
+            // "we're streaming but the capture parses nothing" is the NORMAL
+            // state, and the watchdog would otherwise restart the tap (with
+            // its multi-second bus scans) every ~15 s all session (observed on
+            // FM8, 2026-07-05). Freezing the probe makes the delta read 0 →
+            // watchdog inert; the moment Mode B disarms the count resumes
+            // climbing and the watchdog (and a fresh tap) come right back.
+            tap.SetSendActivityProbe(() => _forceModeB != 0 ? 0 : (_device?.PacketsSent ?? 0));
 
             // The tap healed a drifted address (same wheel identity, new USBPcap
             // location after a replug/re-enumeration). If the user has a manual

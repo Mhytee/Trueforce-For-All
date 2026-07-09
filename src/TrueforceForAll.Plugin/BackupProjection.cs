@@ -61,6 +61,16 @@ namespace TrueforceForAll.Plugin
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
             "DuckingEnabled", "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
             "DuckFrequencyAware",
+            // Telemetry based FFB (Mode B): all global feel choices, same
+            // category as FfbScale. CarGripCalibration travels too: learned
+            // per-car state, but re-learning costs seat time per car (the
+            // CarFacts rationale, not the GamesWithRedline one).
+            "ModeBEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
+            "ModeBDropFloor", "ModeBEmaMs", "ModeBSign", "ModeBDamper",
+            "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
+            "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
+            "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
+            "ModeBGripAutoCal", "CarGripCalibration",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",

@@ -89,6 +89,15 @@ namespace TrueforceForAll.Plugin
         // against the improved heuristic.
         public int CarCylinderCacheVersion { get; set; } = 1;
 
+        // Telemetry based FFB: per-car grip-limit auto-calibration state
+        // (GripPeakLearner), keyed "GameName|CarId". Written as the player
+        // drives (where each car's combined-slip metric actually tops out
+        // plus how much near-limit seat time backs that estimate) so the
+        // next session starts calibrated. Zero user action; the grip
+        // auto-cal checkbox gates application, not learning persistence.
+        public Dictionary<string, CarGripCal> CarGripCalibration { get; set; }
+            = new Dictionary<string, CarGripCal>();
+
         // Car facts layer: community-vetted (or scanner-detected) truth per
         // (game, carId). Replaces the cylinder-only CarCylinderCache as
         // first-class storage for engine layout, redline, and car-name
@@ -472,6 +481,40 @@ namespace TrueforceForAll.Plugin
         // of blending into it. Off = classic full-band ducking.
         public bool  DuckFrequencyAware { get; set; } = false;
 
+        // ---- Telemetry based FFB (Mode B): the wheel's steering force is
+        // built from telemetry (slip angle, tire load, speed) instead of the
+        // game's own FFB. Default OFF (owner decision): it REPLACES the
+        // game's force, so the user opts in from the Telemetry Based FFB tab.
+        // Arms only on Mode B capable games (IsModeBCapableGame: FM8, where
+        // classic FFB is unavailable anyway, plus FH5/FH6, run with in-game
+        // FFB and vibration at 0). Every other game keeps its normal path.
+        // Global-only for now: none of this travels in presets. Defaults are
+        // the first on-wheel-tuned recipe (2026-07-03), G PRO-validated on
+        // FH6 2026-07-08. ----
+        public bool  ModeBEnabled   { get; set; } = false;
+        public float ModeBSatGain   { get; set; } = 1.0f;    // peak torque fraction
+        public float ModeBRiseGamma { get; set; } = 0.5f;    // <1 = weight arrives in normal cornering
+        public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
+        public float ModeBDropFloor { get; set; } = 0.20f;   // torque left past the limit
+        public float ModeBEmaMs     { get; set; } = 40f;     // input smoothing time constant
+        public float ModeBSign      { get; set; } = 1f;      // SAT direction (BSIGN; -1 flips)
+        public float ModeBDamper    { get; set; } = 0.15f;   // wheel weight: velocity damping (Mode B only)
+        public float ModeBCenter    { get; set; } = 0.10f;   // wheel weight: speed-scaled centering (Mode B only)
+        public float ModeBLatGain     { get; set; } = 0.6f;  // cornering weight: +gain per lateral g (BLAT)
+        public float ModeBCounterGain { get; set; } = 0.5f;  // slide counter-force on rear breakaway (BCS)
+        public float ModeBDirSoft     { get; set; } = 0.12f; // center flat-spot width (BDIRK); 0 = raw linear
+
+        // Mode B feel features (the haptic-engine layers 6-11, all validated
+        // on-wheel and graduated to default ON there; the Mode B master
+        // switch above is the real gate).
+        public bool  ModeBCompressor         { get; set; } = true;   // soft-knee ceiling on the force
+        public bool  ModeBSuspensionLoad     { get; set; } = true;   // steering load from suspension compression
+        public bool  ModeBEarlyTorquePeak    { get; set; } = true;   // torque plateaus at 75% utilization
+        public bool  ModeBRoadKick           { get; set; } = true;   // one-wheel bump kick in the force channel
+        public float ModeBRoadKickGain       { get; set; } = 1.0f;   // kick strength
+        public bool  ModeBSlideCounterGrowth { get; set; } = true;   // counter-force grows with slide depth
+        public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
+
         public AudioCaptureSettings AudioCapture { get; set; } = new AudioCaptureSettings();
         public EnginePulseSettings  EnginePulse  { get; set; } = new EnginePulseSettings();
         public RoadBumpsSettings    RoadBumps    { get; set; } = new RoadBumpsSettings();
@@ -853,6 +896,15 @@ namespace TrueforceForAll.Plugin
         // plane, Rotary 2-rotor, etc.) are immutable and live in
         // FiringPatternDb instead.
         public List<CustomEngineDef> CustomEngines { get; set; } = new List<CustomEngineDef>();
+    }
+
+    /// <summary>Persisted per-car grip-calibration snapshot (telemetry based
+    /// FFB). Mirrors GripPeakLearner's export surface: the learned metric
+    /// ceiling and the near-limit seconds that back it (confidence).</summary>
+    public sealed class CarGripCal
+    {
+        public float Peak          { get; set; } = 1.0f;
+        public float QualifyingSec { get; set; }
     }
 
     /// <summary>User-authored engine definition. Stored in

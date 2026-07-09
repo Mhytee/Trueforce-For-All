@@ -3369,6 +3369,171 @@
                 </ScrollViewer>
             </sh:SHTabItem>
 
+            <!-- ============================ TELEMETRY BASED FFB ============================ -->
+            <!-- Mode B: the steering force is synthesized from telemetry instead of
+                 passing the game's FFB through. Global settings (not preset-scoped);
+                 every control applies live via ApplyModeBFromSettings /
+                 ApplyModeBFeel. Forza only (FM8 / FH5 / FH6). -->
+            <sh:SHTabItem x:Name="TelemetryFfbTab" Header="Telemetry Based FFB">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14,12,14,14">
+
+            <Border Style="{StaticResource SectionHeaderBorder}">
+                <TextBlock Text="Telemetry based FFB (Mode B)" Style="{StaticResource SectionHeaderText}"/>
+            </Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10"
+                       Text="The wheel's steering force is built from telemetry: slip angle, tire load, and speed, instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 5 and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel."/>
+
+            <!-- Contention warning. The plugin latches ModeBContentionDetected when
+                 the game keeps streaming its own FFB while Mode B is driving the
+                 wheel; the meter timer + RefreshFromPlugin surface it here. -->
+            <TextBlock x:Name="ModeBContentionWarning" Visibility="Collapsed"
+                       Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
+                       Text="The game is still sending its own force feedback, so two force streams are fighting and the wheel will feel jumpy or buzzy. In the game's wheel settings, set force feedback and vibration strength to 0 so this is the only force on the wheel."/>
+
+            <CheckBox x:Name="ModeBEnabledCheck" Content="Enable telemetry based FFB"
+                      Margin="0,4,0,2" Checked="ModeBEnabled_Changed" Unchecked="ModeBEnabled_Changed"/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                       Text="Forza Motorsport (2023) has native Trueforce, so the plugin starts disabled for that game. Enable the plugin for Forza Motorsport at the top of this panel as well, or this setting does nothing there."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBStrengthSlider" Minimum="0.05" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                            TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Peak steering torque at the grip limit."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Center feel:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBDirSoftSlider" Minimum="0" Maximum="0.5" SmallChange="0.02" LargeChange="0.05"
+                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBDirSoftText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.12"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Size of the calm zone at dead center. Raise if the wheel buzzes or oscillates around straight-ahead; lower toward 0 for a rawer, more connected center (0 = fully raw)."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Wheel weight:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBDamperSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
+                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.15"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Centering:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBCenterSlider" Minimum="0" Maximum="0.5" SmallChange="0.02" LargeChange="0.05"
+                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBCenterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.10"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Caster-style pull toward straight, scaled up with speed (a parked wheel stays free)."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Cornering weight:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBLatSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                            TickFrequency="0.15" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBLatText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.60"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Extra weight per g of cornering load. Fast sweepers get heavy, slow hairpins stay light. 0 = off."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Slide counter-force:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBCounterSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                            TickFrequency="0.15" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBCounterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="When the rear steps out, the wheel pulls toward the counter-steer. 0 = off; raise until slides are catchable by feel."/>
+
+            <CheckBox x:Name="ModeBSignCheck" Content="Reverse force direction"
+                      Margin="0,6,0,2" Checked="ModeBSign_Changed" Unchecked="ModeBSign_Changed"/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                       Text="Flip this if the wheel pulls INTO the slide instead of countering it."/>
+
+            <Expander IsExpanded="False" Margin="0,4,0,4">
+                <Expander.Header>
+                    <TextBlock Text="Advanced tuning" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Grip limit:" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBPeakSlider" Minimum="0.4" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                    TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBPeakText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Where the game's combined-slip metric counts as the grip limit (1.0 = Forza's own limit). Lower = the wheel peaks and washes out earlier."/>
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Slide lightness:" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBFloorSlider" Minimum="0.05" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                    TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBFloorText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.20"/>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Torque left once the front has fully let go. Lower = a more dramatic gone-light cue."/>
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Weight buildup:" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBRiseSlider" Minimum="0.2" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                    TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBRiseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How early weight arrives. Lower = heavier in normal cornering; 1.0 = force grows linearly to the limit."/>
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Smoothing (ms):" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBSmoothSlider" Minimum="5" Maximum="80" SmallChange="5" LargeChange="10"
+                                    TickFrequency="10" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="40"/>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,0" Text="Input smoothing. Higher = calmer wheel, slightly laggier response."/>
+                </StackPanel>
+            </Expander>
+
+            <Expander IsExpanded="False" Margin="0,0,0,4">
+                <Expander.Header>
+                    <TextBlock Text="Feel features" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                               Text="Each box gates one piece of the synthesized feel. Everything applies live, so toggle while driving to A/B it."/>
+                    <CheckBox x:Name="ModeBCompressorCheck" Margin="0,0,0,2" Content="Force compressor"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Soft ceiling on the steering force: stacked cornering weight and counter-force compress into the top of the range instead of clipping flat."/>
+                    <CheckBox x:Name="ModeBSuspLoadCheck" Margin="0,0,0,2" Content="Suspension load"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Steering weight breathes with real front-axle load: braking dive loads up, crests go light."/>
+                    <CheckBox x:Name="ModeBEarlyPeakCheck" Margin="0,0,0,2" Content="Early torque peak"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Steering weight tops out just before the grip limit and holds, like a real tire; the plateau is your approach warning."/>
+                    <CheckBox x:Name="ModeBRoadKickCheck" Margin="0,0,0,2" Content="Road kick (one-wheel bumps)"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="One front wheel hitting a bump or kerb kicks the rim the way a real rack does; both wheels together cancel."/>
+                    <Grid Margin="20,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Road kick strength:" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBRoadKickGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                    TickFrequency="0.25" ValueChanged="ModeBRoadKickGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBRoadKickGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                    </Grid>
+                    <CheckBox x:Name="ModeBSlideGrowthCheck" Margin="0,0,0,2" Content="Slide counter growth"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Counter-steer pull grows with how deep the slide is: a shallow drift asks politely, a big moment yanks toward opposite lock."/>
+                    <CheckBox x:Name="ModeBGripCalCheck" Margin="0,0,0,2" Content="Per-car grip auto-calibration"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,0" Text="Learns where each car's grip actually tops out while you drive (about a lap of pushing) and normalizes the limit feel to it. Automatic, per car, remembered between sessions."/>
+                </StackPanel>
+            </Expander>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </sh:SHTabItem>
+
             <!-- Account tab. Relocated out of Settings so identity, supporter status,
                  cloud backup and Discord live in one place, with the Support card
                  (Patreon / Ko-fi + the Patreon-sourced supporters wall) on top. -->
