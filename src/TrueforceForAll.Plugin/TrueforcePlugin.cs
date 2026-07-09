@@ -3379,7 +3379,13 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
+                // Mode B disarmed (or no tap to probe): clear the whole
+                // contention latch, not just the timer. Leaving the flag set
+                // kept the tab's warning banner up for the rest of the
+                // session after the user turned Mode B off.
                 _contentionSinceTicks = 0;
+                _contentionWarned = false;
+                ModeBContentionDetected = false;
             }
 
             // First time we see telemetry for a real game in a session

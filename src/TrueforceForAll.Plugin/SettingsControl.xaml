@@ -3435,7 +3435,7 @@
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Cornering weight:" Style="{StaticResource LabelText}"/>
-                <Slider     Grid.Column="1" x:Name="ModeBLatSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                <Slider     Grid.Column="1" x:Name="ModeBLatSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                             TickFrequency="0.15" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="2" x:Name="ModeBLatText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.60"/>
             </Grid>
@@ -3479,7 +3479,7 @@
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Weight buildup:" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="ModeBRiseSlider" Minimum="0.2" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                        <Slider     Grid.Column="1" x:Name="ModeBRiseSlider" Minimum="0.2" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                     TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="2" x:Name="ModeBRiseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
                     </Grid>
@@ -3487,7 +3487,7 @@
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Smoothing (ms):" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="ModeBSmoothSlider" Minimum="5" Maximum="80" SmallChange="5" LargeChange="10"
+                        <Slider     Grid.Column="1" x:Name="ModeBSmoothSlider" Minimum="5" Maximum="100" SmallChange="5" LargeChange="10"
                                     TickFrequency="10" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="2" x:Name="ModeBSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="40"/>
                     </Grid>

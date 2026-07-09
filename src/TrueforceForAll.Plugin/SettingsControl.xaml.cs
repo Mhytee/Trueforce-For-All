@@ -4172,6 +4172,11 @@ namespace TrueforceForAll.Plugin
         // One handler for every Mode B tunable slider (main + Advanced
         // tuning). Writes all of them back in one pass (cheap, and keeps the
         // readouts in lockstep), then re-applies live.
+        // INVARIANT: every slider's Min/Max in the XAML must cover the full
+        // clamp range of the matching SetModeBParam access code. WPF clamps a
+        // value loaded above the slider Max down to the Max, and the next
+        // write-all pass here would persist that clamped value, silently
+        // clobbering a dev-code setting outside the slider's range.
         private void ModeBSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
