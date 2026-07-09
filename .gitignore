@@ -36,6 +36,7 @@ __*
 /docs/preset-sharing-design.md
 /docs/troubleshooting-ffb.md
 /docs/agent-audit.md
+/docs/haptic-engine-merge-plan.md
 
 # Local agent orientation file (build/deploy gotchas, architecture map).
 # Per-developer, not a public doc.

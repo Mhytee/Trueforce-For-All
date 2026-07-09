@@ -56,11 +56,12 @@ to end. `RevLimiterEffect` is a good template (telemetry-driven, with its own
 settings section). Grep the codebase for `RevLimiter` to find every spot you
 need to mirror, it currently appears in roughly eight files. The steps:
 
-1. **Effect class** in `src/TrueforceForAll.Plugin/Effects/`. Extend
-   `TelemetryEffect`, implement `OnTelemetry(TelemetryFrame)` to update state
-   and `RenderAdd(float[], int)` to synth into the buffer. Expose `Name`,
+1. **Effect class** in `src/TrueforceForAll.Engine/Effects/` (effects live in
+   the Engine assembly now, not the Plugin). Extend `TelemetryEffect`,
+   implement `OnTelemetry(TelemetryFrame)` to update state and
+   `RenderAdd(float[], int)` to synth into the buffer. Expose `Name`,
    `IsActive`, and (if it ducks other voices or should be duckable)
-   `ActivityLevel`. See `Effects/RevLimiterEffect.cs`.
+   `ActivityLevel`. See `src/TrueforceForAll.Engine/Effects/RevLimiterEffect.cs`.
 2. **Settings class** in `TrueforceSettings.cs`: a `XxxSettings` class with the
    tunables (`Enabled`, `Gain`, plus effect-specific fields). Add a slot for it
    in three places: the global `TrueforceSettings.Xxx`, the preset snapshot

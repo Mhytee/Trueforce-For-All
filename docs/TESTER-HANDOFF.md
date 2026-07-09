@@ -17,10 +17,13 @@ doc is everything you need to get running and to tell us what's different.
 - Mode B (synthesized FFB) is the daily driver on FM8: tire-model steering
   force with peak-and-drop at the grip limit, cornering weight from lateral
   g, counter-steer pull on rear breakaway, suspension-load weight transfer.
-- 12 "Feel layers" exist, each behind its own checkbox (settings page,
-  "Feel layers" section). 1, 3–11 are validated and ship ON. **2 (kerb
-  thump) and 12 (frequency-aware ducking) are still unvalidated** — they
-  ship OFF and we'd love your verdict on both.
+- The old 12 "Feel layers" are gone as a checkbox list: they were promoted
+  into first-class effects and Mode B section settings. Axle slip, kerb
+  thump, and lockup judder each have their own settings section now, and
+  layers 6–11 are fields in the Mode B (Telemetry Based FFB) section. On
+  this merged branch the three new texture effects ship **OFF** pending
+  more testing — tick them on to try them, and we'd love your verdict.
+  Frequency-aware ducking is now a checkbox in the Ducking section (OFF).
 - Per-car grip auto-calibration is live: drive a car hard for about a lap
   and the plugin learns where that car's grip metric really tops out, then
   normalizes the limit feel. Persists per car. Watch the SimHub log for
@@ -28,7 +31,7 @@ doc is everything you need to get running and to tell us what's different.
 - Crash protection (force goes soft on impact, breathes back in ~0.6 s) and
   a low-speed gate (no synthesized force below walking pace, where slip
   data is mathematically garbage) are always-on.
-- 179/179 unit tests green. The full plan lives in
+- 269/269 unit tests green. The full plan lives in
   `docs/haptic-engine-plan.md`; the frequency/feel research in
   `docs/steering-feel-physics.md`.
 
@@ -55,7 +58,9 @@ Manager if it respawns).
 - FM8 wheel settings: **force feedback / vibration scale to 0**. Mode B
   must be the only thing driving the wheel. If the game is still sending,
   the log will shout `Mode B CONTENTION` at you — that's your cue.
-- Mode B arms automatically when SimHub detects FM8. Drive.
+- Mode B is per-game opt-in on this branch and starts **OFF**: tick "Enable
+  telemetry based FFB for this game" in the Telemetry Based FFB tab (or type
+  `MODEB 1`) for FM8, then drive.
 
 ### First-run sanity
 
@@ -91,7 +96,7 @@ Manager if it respawns).
 ## Reporting
 
 - SimHub log: `C:\Program Files (x86)\SimHub\Logs\SimHub.txt` — grep for
-  `[Trueforce]`. Warnings are written to be actionable; read them.
+  `[TF4ALL]`. Warnings are written to be actionable; read them.
 - High-rate trace: type `TRACE` in the access-code box, reproduce the
   problem for up to ~30 s, type `TRACE` again — a CSV lands in
   `Documents\TrueforceForAll\`. Attach it; a trace found and fixed five
@@ -106,7 +111,7 @@ Typed into the box at the bottom of the plugin settings page:
 
 | Code | What |
 |------|------|
-| `MODEB 1` / `MODEB 0` | Force Mode B on/off (auto-arms on FM8 anyway) |
+| `MODEB 1` / `MODEB 0` | Force Mode B on/off for the current game (dev override of the per-game checkbox) |
 | `BSIGN -1` | Flip the synthesized force direction (per-wheel) |
 | `BDIRK 0.2` | Center flat-spot width, live (same as the Center feel slider) |
 | `SWEEP1`..`SWEEP6` | Octave motor sweeps for the band map |

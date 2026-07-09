@@ -30,10 +30,23 @@ REM SimHub's UDP sockets under a dead PID.
 taskkill /IM USBPcapCMD.exe /F >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo Copying plugin DLLs...
-copy /Y "%REPO%\src\TrueforceForAll.Core\bin\Release\netstandard2.0\TrueforceForAll.Core.dll" "%SIMHUB%\TrueforceForAll.Core.dll"
-copy /Y "%REPO%\src\TrueforceForAll.Plugin\bin\x64\Release\net48\TrueforceForAll.Engine.dll" "%SIMHUB%\TrueforceForAll.Engine.dll"
-copy /Y "%REPO%\src\TrueforceForAll.Plugin\bin\x64\Release\net48\User.TrueforceForAll.dll" "%SIMHUB%\User.TrueforceForAll.dll"
+REM All three DLLs are staged into the plugin's own output dir, so copy the
+REM matched set from there. The solution build (Release^|x64) lands in
+REM bin\x64\Release\net48; a direct `dotnet build` of the plugin project
+REM (AnyCPU) lands in bin\Release\net48. Prefer the latter, fall back to the
+REM former, so this works after either build.
+set PLUGINOUT=%REPO%\src\TrueforceForAll.Plugin\bin\Release\net48
+if not exist "%PLUGINOUT%\User.TrueforceForAll.dll" set PLUGINOUT=%REPO%\src\TrueforceForAll.Plugin\bin\x64\Release\net48
+if not exist "%PLUGINOUT%\User.TrueforceForAll.dll" (
+    echo Build output not found. Build the solution or the plugin project in Release first.
+    pause
+    exit /b 1
+)
+
+echo Copying plugin DLLs from "%PLUGINOUT%"...
+copy /Y "%PLUGINOUT%\TrueforceForAll.Core.dll" "%SIMHUB%\TrueforceForAll.Core.dll"
+copy /Y "%PLUGINOUT%\TrueforceForAll.Engine.dll" "%SIMHUB%\TrueforceForAll.Engine.dll"
+copy /Y "%PLUGINOUT%\User.TrueforceForAll.dll" "%SIMHUB%\User.TrueforceForAll.dll"
 
 echo.
 echo Starting SimHub...
