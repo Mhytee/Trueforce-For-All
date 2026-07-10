@@ -12520,37 +12520,118 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Restore: destructive. Replaces ALL current state with archive
-        // contents. Confirm before running; existing user/ folder is moved
-        // aside to .pre-restore-<timestamp>/ as a safety net.
+        // Restore from a backup zip. The options dialog offers two independent
+        // choices: replace vs merge the preset library, and apply vs keep the
+        // backup's settings. Replace moves the current user/ folder aside to
+        // .pre-restore-<timestamp>/ as a safety net; merge is additive and asks
+        // which copy to keep on every name clash.
         private void Restore_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
+            var owner = Window.GetWindow(this);
             var open = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "TF4ALL backup (*.zip)|*.zip|All files (*.*)|*.*",
                 Title  = "Restore from backup",
             };
-            if (open.ShowDialog(Window.GetWindow(this)) != true) return;
+            if (open.ShowDialog(owner) != true) return;
+            string path = open.FileName;
 
-            var confirm = TrueforceDialog.Show(Window.GetWindow(this),
-                "Trueforce For All",
-                "Restore will REPLACE all current TF4ALL settings, presets, defaults, and car tunings with the backup's contents.\n\nYour current data will be moved to a .pre-restore-<timestamp> folder next to the user library as a safety net, but the live state will be the backup's.\n\nContinue?",
-                DialogKind.Destructive, okLabel: "Replace everything", cancelLabel: "Cancel");
-            if (confirm != true) return;
+            var opts = new RestoreOptionsWindow { Owner = owner };
+            if (owner == null) opts.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            if (opts.ShowDialog() != true) return;
+            bool merge = opts.MergeLibrary;
+            bool applySettings = opts.ApplyBackupSettings;
 
             try
             {
-                int n = _plugin.RestoreAllFromZip(open.FileName);
+                if (!merge)
+                {
+                    // Replace: destructive, confirm once more (text adapts to the settings choice).
+                    string body = applySettings
+                        ? "Replace will swap your presets, car tunings, defaults, AND settings for the backup's."
+                        : "Replace will swap your presets, car tunings, and defaults for the backup's, and keep your current settings.";
+                    body += "\n\nYour current library is moved to a .pre-restore-<timestamp> folder next to it as a safety net, but the live state becomes the backup's.\n\nContinue?";
+                    var confirm = TrueforceDialog.Show(owner, "Restore (replace)", body,
+                        DialogKind.Destructive, okLabel: "Replace everything", cancelLabel: "Cancel");
+                    if (confirm != true) return;
+
+                    int n = _plugin.RestoreAllFromZip(path, applySettings);
+                    ClearDirty();
+                    RefreshFromPlugin();
+                    ShowSavedStatus(BackupFileStatus, n == 0
+                        ? "Restore finished. The archive had no preset files."
+                        : $"Restored {n} file(s). Your previous library is kept alongside as a safety net.", null);
+                    return;
+                }
+
+                // Merge: scan for clashes first so the user sees the scope.
+                var scan = _plugin.ScanBackupZipForMerge(path);
+                var conflicts = scan.conflicts;
+                int newCount = scan.newPresets;
+
+                if (newCount == 0 && conflicts.Count == 0 && !applySettings)
+                {
+                    ShowSavedStatus(BackupFileStatus, "Nothing new to merge; your library already has these presets.", null);
+                    return;
+                }
+
+                var parts = new List<string>();
+                if (newCount > 0)        parts.Add($"{newCount} new preset(s) will be added");
+                if (conflicts.Count > 0) parts.Add($"{conflicts.Count} name clash(es) to resolve");
+                if (applySettings)       parts.Add("the backup's settings will be applied");
+                string summary = "Merge: " + (parts.Count > 0 ? string.Join(", ", parts) : "nothing to add") + ".";
+                if (conflicts.Count > 0) summary += "\n\nFor each clash you'll pick which copy to keep.";
+                summary += "\n\nContinue?";
+                if (TrueforceDialog.Show(owner, "Restore (merge)", summary,
+                        DialogKind.Info, okLabel: "Continue", cancelLabel: "Cancel", goldOk: true) != true)
+                    return;
+
+                // Resolve clashes: per-item Keep mine / Use the backup's, with a
+                // "do this for all remaining" checkbox (and a plain 2-button prompt
+                // for the last one, where a batch option is meaningless).
+                var overwrite = new HashSet<string>(StringComparer.Ordinal);
+                bool? batch = null;   // null = ask; true = use backup for all; false = keep mine for all
+                for (int i = 0; i < conflicts.Count; i++)
+                {
+                    var c = conflicts[i];
+                    bool useBackup;
+                    if (batch.HasValue)
+                    {
+                        useBackup = batch.Value;
+                    }
+                    else
+                    {
+                        int remaining = conflicts.Count - i;
+                        string msg = $"A {c.Kind} named \"{c.DisplayName}\" already exists ({i + 1} of {conflicts.Count}).\n\nKeep your copy, or replace it with the backup's?";
+                        if (remaining > 1)
+                        {
+                            bool applyAll;
+                            bool? r = TrueforceDialog.ShowConfirmWithCheckbox(owner, "Name clash", msg,
+                                $"Do this for all {remaining} remaining clashes", false, out applyAll,
+                                okLabel: "Use the backup's", cancelLabel: "Keep mine");
+                            useBackup = (r == true);
+                            if (applyAll) batch = useBackup;
+                        }
+                        else
+                        {
+                            bool? r = TrueforceDialog.Show(owner, "Name clash", msg,
+                                DialogKind.Info, okLabel: "Use the backup's", cancelLabel: "Keep mine");
+                            useBackup = (r == true);
+                        }
+                    }
+                    if (useBackup) overwrite.Add(c.RelPath);
+                }
+
+                int merged = _plugin.MergeBackupFromZip(path, overwrite, applySettings);
                 ClearDirty();
                 RefreshFromPlugin();
-                ShowSavedStatus(BackupFileStatus, n == 0
-                    ? "Restore finished. The archive had no user files; settings were applied."
-                    : $"Restored {n} file(s). Your previous library is kept alongside as a safety net.", null);
+                ShowSavedStatus(BackupFileStatus,
+                    $"Merged {merged} preset(s)" + (applySettings ? " and applied the backup's settings" : "") + ".", null);
             }
             catch (Exception ex)
             {
-                TrueforceDialog.ShowError(Window.GetWindow(this),
+                TrueforceDialog.ShowError(owner,
                     "Couldn't restore. Check the folder and your connection, then try again.",
                     ex);
             }

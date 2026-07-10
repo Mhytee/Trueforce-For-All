@@ -17080,7 +17080,7 @@ namespace TrueforceForAll.Plugin
         /// disk. Returns the number of files restored.
         ///
         /// Destructive: the caller must have confirmed with the user.</summary>
-        public int RestoreAllFromZip(string zipPath)
+        public int RestoreAllFromZip(string zipPath, bool applySettings = true)
         {
             if (string.IsNullOrEmpty(zipPath) || !System.IO.File.Exists(zipPath)) return 0;
 
@@ -17167,7 +17167,9 @@ namespace TrueforceForAll.Plugin
                 // Apply settings JSON via the existing ImportSettings path so
                 // all the live-effect plumbing + re-cache + active-car reload
                 // runs. Any failure here will be caught + rolled back below.
-                if (!string.IsNullOrEmpty(settingsJson))
+                // Skipped when the caller chose "keep my settings" (applySettings
+                // false): the extracted library is still loaded via the else branch.
+                if (applySettings && !string.IsNullOrEmpty(settingsJson))
                 {
                     string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"tf4all-restore-{stamp}.json");
                     System.IO.File.WriteAllText(tmp, settingsJson);
@@ -17235,6 +17237,152 @@ namespace TrueforceForAll.Plugin
 
             SimHub.Logging.Current.Info($"[TF4ALL] Restore extracted {restored} user file(s) from {zipPath} (previous library archived at {safeDir}).");
             return restored;
+        }
+
+        /// <summary>A backup preset that collides with one already in the user's
+        /// library (same path, different content) when MERGING. Surfaced in the
+        /// conflict resolver so the user picks which copy to keep.</summary>
+        public sealed class BackupConflict
+        {
+            public string RelPath { get; set; }      // path under user/, e.g. "games/My Preset.json"
+            public string DisplayName { get; set; }  // human label for the dialog
+            public string Kind { get; set; }         // "game preset" / "car tuning"
+        }
+
+        // Only games/*.json and cars/**/*.json merge: they are the shareable
+        // presets. Defaults files, the installed-packs sidecar, and the README
+        // stay the user's own on a merge (merging presets must not repoint your
+        // per-game/per-car default choices).
+        private static bool IsMergeablePresetRel(string rel) =>
+            rel != null
+            && (rel.StartsWith("games/", StringComparison.Ordinal) || rel.StartsWith("cars/", StringComparison.Ordinal))
+            && rel.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+
+        private static string MergeDisplayName(string rel, out string kind)
+        {
+            string preset = System.IO.Path.GetFileNameWithoutExtension(rel);
+            if (rel.StartsWith("games/", StringComparison.Ordinal)) { kind = "game preset"; return preset; }
+            kind = "car tuning";
+            var parts = rel.Split('/');   // cars/<game>/<carId>/<preset>.json
+            return parts.Length >= 4 ? $"{preset} (car {parts[2]}, {parts[1]})" : preset;
+        }
+
+        private static bool ZipEntryMatchesFile(System.IO.Compression.ZipArchiveEntry entry, string filePath)
+        {
+            try
+            {
+                var fileBytes = System.IO.File.ReadAllBytes(filePath);
+                using (var es = entry.Open())
+                using (var ms = new System.IO.MemoryStream())
+                {
+                    es.CopyTo(ms);
+                    var entryBytes = ms.ToArray();
+                    if (entryBytes.Length != fileBytes.Length) return false;
+                    for (int i = 0; i < entryBytes.Length; i++)
+                        if (entryBytes[i] != fileBytes[i]) return false;
+                    return true;
+                }
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Scan a backup zip against the current user library for a MERGE:
+        /// returns the preset conflicts (same path, different content) to resolve
+        /// plus the count of presets that would merge cleanly (not present today).
+        /// Byte-for-byte identical presets are omitted from both (nothing to do).</summary>
+        public (System.Collections.Generic.List<BackupConflict> conflicts, int newPresets) ScanBackupZipForMerge(string zipPath)
+        {
+            var conflicts = new System.Collections.Generic.List<BackupConflict>();
+            int newPresets = 0;
+            string userRoot = UserPresets.CurrentFolder;
+            if (string.IsNullOrEmpty(userRoot) || string.IsNullOrEmpty(zipPath) || !System.IO.File.Exists(zipPath))
+                return (conflicts, 0);
+            userRoot = userRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+            using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+            using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
+            {
+                foreach (var entry in zip.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name)) continue;
+                    string name = entry.FullName.Replace('\\', '/');
+                    if (!name.StartsWith("user/", StringComparison.Ordinal)) continue;
+                    string rel = name.Substring("user/".Length);
+                    if (!IsMergeablePresetRel(rel)) continue;
+                    if (!SafePath.IsSafeArchivePath(userRoot, rel, out string dest)) continue;
+                    if (!System.IO.File.Exists(dest)) { newPresets++; continue; }
+                    if (ZipEntryMatchesFile(entry, dest)) continue;   // identical -> skip silently
+                    string display = MergeDisplayName(rel, out string kind);
+                    conflicts.Add(new BackupConflict { RelPath = rel, DisplayName = display, Kind = kind });
+                }
+            }
+            return (conflicts, newPresets);
+        }
+
+        /// <summary>Merge a backup zip's presets into the current user library
+        /// WITHOUT wiping it. New presets are added; a colliding preset is written
+        /// only if its rel-path is in <paramref name="overwriteRelPaths"/> (the
+        /// user chose the backup's copy), otherwise the user's copy is kept.
+        /// Byte-identical presets are skipped. Optionally applies the backup's
+        /// settings (same import + cross-wheel gate as a restore). Returns the
+        /// number of preset files written.</summary>
+        public int MergeBackupFromZip(string zipPath, System.Collections.Generic.ISet<string> overwriteRelPaths, bool applySettings)
+        {
+            if (string.IsNullOrEmpty(zipPath) || !System.IO.File.Exists(zipPath)) return 0;
+            overwriteRelPaths = overwriteRelPaths ?? new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+            string userRoot = UserPresets.CurrentFolder;
+            if (string.IsNullOrEmpty(userRoot)) throw new InvalidOperationException("User library folder is not set.");
+            userRoot = userRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+
+            int merged = 0;
+            string settingsJson = null;
+            using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+            using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
+            {
+                foreach (var entry in zip.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name)) continue;
+                    string name = entry.FullName.Replace('\\', '/');
+                    if (name == "GeneralSettings.json")
+                    {
+                        using (var es = entry.Open())
+                        using (var sr = new System.IO.StreamReader(es))
+                            settingsJson = sr.ReadToEnd();
+                        continue;
+                    }
+                    if (!name.StartsWith("user/", StringComparison.Ordinal)) continue;
+                    string rel = name.Substring("user/".Length);
+                    if (!IsMergeablePresetRel(rel)) continue;
+                    if (!SafePath.IsSafeArchivePath(userRoot, rel, out string dest)) continue;
+                    if (System.IO.File.Exists(dest))
+                    {
+                        if (ZipEntryMatchesFile(entry, dest)) continue;      // identical -> skip
+                        if (!overwriteRelPaths.Contains(rel)) continue;      // conflict, keep mine
+                    }
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest));
+                    using (var es = entry.Open())
+                    using (var ws = System.IO.File.Create(dest))
+                        es.CopyTo(ws);
+                    merged++;
+                }
+            }
+
+            if (applySettings && !string.IsNullOrEmpty(settingsJson))
+            {
+                string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                    $"tf4all-merge-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+                System.IO.File.WriteAllText(tmp, settingsJson);
+                try { ImportSettings(tmp); }   // ImportSettings rebuilds the cache + reloads active car
+                finally { try { System.IO.File.Delete(tmp); } catch { } }
+            }
+            else
+            {
+                UserPresets.Reload();
+                RebuildPresetCacheFromFolders();
+                LoadAndMigrateCarPresets();
+                ApplyActiveCarOverride();
+            }
+            SimHub.Logging.Current.Info($"[TF4ALL] Merge added {merged} preset file(s) from {zipPath} (applySettings={applySettings}).");
+            return merged;
         }
 
         // Copy the BackupProjection.MachineLocal-classified properties from one settings object onto
