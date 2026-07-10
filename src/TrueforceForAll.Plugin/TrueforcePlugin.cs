@@ -7885,16 +7885,40 @@ namespace TrueforceForAll.Plugin
             return cand;
         }
 
+        // "Forza_455" -> "Car_455", "Forza_455 (edited)" -> "Car_455 (edited)".
+        // Mirrors the PresetName rewrite in NormalizeForzaInFolder: the ordinal
+        // must end the token (end of string, " " or "("), so a user-typed name
+        // like "Forza_455x" passes through untouched, matching its file.
+        private static string NormalizeForzaOrdinalName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !name.StartsWith("Forza_", StringComparison.Ordinal)) return name;
+            int start = "Forza_".Length;
+            int end = start;
+            while (end < name.Length && char.IsDigit(name[end])) end++;
+            if (end == start) return name;
+            if (end < name.Length && name[end] != ' ' && name[end] != '(') return name;
+            return "Car_" + name.Substring(start);
+        }
+
         private static int NormalizeForzaInStringDict(Dictionary<string, string> d)
         {
             int n = 0;
             foreach (var key in new List<string>(d.Keys))
             {
-                if (!key.StartsWith("Forza_", StringComparison.Ordinal)) continue;
-                string newKey = "Car_" + key.Substring("Forza_".Length);
+                bool forzaKey = key.StartsWith("Forza_", StringComparison.Ordinal);
+                // Binding VALUES follow the same rename as the preset files
+                // they point at ("Forza_455 (edited)" -> "Car_455 (edited)");
+                // a value left on the old name dangles and the car silently
+                // reverts to the factory default. Only ordinal-keyed cars
+                // qualify: on a content-id car a Forza_-looking preset name
+                // is the user's own and its file is not renamed.
+                bool ordinalKey = forzaKey || key.StartsWith("Car_", StringComparison.Ordinal);
                 string val = d[key];
+                string newVal = ordinalKey ? NormalizeForzaOrdinalName(val) : val;
+                if (!forzaKey && string.Equals(newVal, val, StringComparison.Ordinal)) continue;
+                string newKey = forzaKey ? "Car_" + key.Substring("Forza_".Length) : key;
                 d.Remove(key);
-                if (!d.ContainsKey(newKey)) d[newKey] = val;
+                if (!d.ContainsKey(newKey)) d[newKey] = newVal;
                 n++;
             }
             return n;
@@ -7927,7 +7951,24 @@ namespace TrueforceForAll.Plugin
                 bool changed = false;
                 foreach (var p in props)
                 {
-                    if (!p.Name.StartsWith("Forza_", StringComparison.Ordinal)) continue;
+                    bool forzaKey = p.Name.StartsWith("Forza_", StringComparison.Ordinal);
+                    bool ordinalKey = forzaKey || p.Name.StartsWith("Car_", StringComparison.Ordinal);
+                    // The binding VALUE (preset name) gets the same rename as
+                    // the preset file it points at, else it dangles and the
+                    // later stale-binding cleanup drops it, silently
+                    // deselecting the user's tuning for that car.
+                    string val = p.Value != null && p.Value.Type == Newtonsoft.Json.Linq.JTokenType.String
+                        ? (string)p.Value : null;
+                    string newVal = ordinalKey ? NormalizeForzaOrdinalName(val) : val;
+                    bool valChanged = !string.Equals(newVal, val, StringComparison.Ordinal);
+                    if (!forzaKey)
+                    {
+                        if (!valChanged) continue;
+                        p.Value = newVal;
+                        changed = true;
+                        lines.Add($"{label}/car-defaults.json: {p.Name} value -> {newVal}");
+                        continue;
+                    }
                     string newKey = "Car_" + p.Name.Substring("Forza_".Length);
                     if (o[newKey] != null)
                     {
@@ -7936,12 +7977,14 @@ namespace TrueforceForAll.Plugin
                         lines.Add($"{label}/car-defaults.json: dropped {p.Name} (Car_<n> exists)");
                         continue;
                     }
-                    var v = p.Value;
+                    var v = valChanged ? (Newtonsoft.Json.Linq.JToken)newVal : p.Value;
                     string oldName = p.Name;
                     p.Remove();
                     o[newKey] = v;
                     changed = true;
-                    lines.Add($"{label}/car-defaults.json: {oldName} -> {newKey}");
+                    lines.Add(valChanged
+                        ? $"{label}/car-defaults.json: {oldName} -> {newKey} (value {newVal})"
+                        : $"{label}/car-defaults.json: {oldName} -> {newKey}");
                 }
                 if (changed) File.WriteAllText(path, o.ToString(Newtonsoft.Json.Formatting.Indented));
             }
