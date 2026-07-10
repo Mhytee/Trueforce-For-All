@@ -663,15 +663,11 @@ namespace TrueforceForAll.Plugin
                         Dispatcher.BeginInvoke(new Action(MaybeShowIracingTrueforceNotice),
                             System.Windows.Threading.DispatcherPriority.Background);
                 }
-                // Fire the Mode B intro once, when a Mode-B-capable game becomes active.
-                if (!string.Equals(_lastGameForModeBIntro, curGameForNotice, StringComparison.Ordinal))
-                {
-                    _lastGameForModeBIntro = curGameForNotice;
-                    if (_plugin != null && _plugin.ActiveGameSupportsModeB
-                        && _plugin.Settings != null && !_plugin.Settings.HasSeenModeBIntro)
-                        Dispatcher.BeginInvoke(new Action(MaybeShowModeBIntro),
-                            System.Windows.Threading.DispatcherPriority.Background);
-                }
+                // The Mode B intro is NOT fired here. Launching inside a
+                // capable game (e.g. the FH6 profile) would pop it on SimHub's
+                // home screen, stacked over the networked welcome. It now shows
+                // only when the user opens the Telemetry Based FFB tab
+                // (MainTabs_SelectionChanged), so it is always in context.
                 string headerCar =
                     !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName) ? _plugin.ActiveCarDisplayName
                     : !string.IsNullOrEmpty(_plugin.ActiveCarId)        ? _plugin.ActiveCarId
@@ -6792,6 +6788,15 @@ namespace TrueforceForAll.Plugin
                 // user keeps ignoring; refresh the chrome if any badge just cleared.
                 if (_plugin.NoteEffectsViewOpened()) RefreshNewBadges();
             }
+            else if (TelemetryFfbTab != null && ReferenceEquals(MainTabs.SelectedItem, TelemetryFfbTab))
+            {
+                // The one-time Mode B intro shows here, on explicit navigation to the
+                // section, rather than auto-popping on the home screen. Deferred to
+                // Background so the tab paints first and the modal opens over it;
+                // MaybeShowModeBIntro no-ops if already seen or the game can't use it.
+                Dispatcher.BeginInvoke(new Action(MaybeShowModeBIntro),
+                    System.Windows.Threading.DispatcherPriority.Background);
+            }
         }
 
         private int _supportersWallGen;
@@ -8597,10 +8602,10 @@ namespace TrueforceForAll.Plugin
         }
 
         // Telemetry Based FFB (Mode B) intro. Shown once, the first time a
-        // Mode-B-capable game (FM8 / FH5 / FH6) is the active game. Trigger lives
-        // in RefreshFromPlugin (transition into a supported game); this is the
-        // show step, mirroring the iRacing notice above.
-        private string _lastGameForModeBIntro;
+        // Mode-B-capable game (FM8 / FH5 / FH6) is the active game. Trigger is
+        // the user opening the Telemetry Based FFB tab (MainTabs_SelectionChanged),
+        // so it appears in context instead of over SimHub's home screen. The
+        // HasSeenModeBIntro flag keeps it one-time; this is the show step.
         private bool _modeBIntroShowing;
         private void MaybeShowModeBIntro()
         {
@@ -11004,7 +11009,6 @@ namespace TrueforceForAll.Plugin
                 _plugin.Settings.WelcomeNextShowAt       = null;
                 // Also reset the Mode B intro so both first-run modals can be retested.
                 _plugin.Settings.HasSeenModeBIntro       = false;
-                _lastGameForModeBIntro                   = null;
                 try { _plugin.PersistSettings(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 AccessCodeBox.Text = string.Empty;
@@ -11368,7 +11372,6 @@ namespace TrueforceForAll.Plugin
             _plugin.ResetOneTimeNotices();
             // Also clear this session's guards so notices can re-fire without a restart.
             _lastGameForIracingNotice = null;
-            _lastGameForModeBIntro    = null;
             _welcomeTriggeredThisSession = false;
             WelcomeWindow.ShownThisSession = false;
             try { RefreshFromPlugin(); } catch { }
