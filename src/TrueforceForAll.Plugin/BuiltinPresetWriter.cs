@@ -26,6 +26,17 @@ namespace TrueforceForAll.Plugin
             return SafePath.IsTraversalSegment(s) ? "preset" : s;
         }
 
+        /// <summary>The name a GAME preset is loaded under (its file stem) for a
+        /// given raw name. A game-default binding VALUE must use this so it
+        /// resolves to the file the preset was written to; a raw name carrying
+        /// characters SafeFile strips ("GT3: race") would otherwise never match
+        /// the loaded "GT3_ race" and the game would fall back to the factory
+        /// default. Idempotent for already-safe names. NOTE: car presets take
+        /// their runtime name from the file's PresetName field, not the
+        /// filename (BuiltinPresetStore.LoadCarPresets), so car-default bindings
+        /// are NOT sanitized this way.</summary>
+        public static string GamePresetLoadName(string name) => SafeFile(name);
+
         // Write through a temp file + rename so a crash mid-write doesn't leave
         // a truncated/corrupt file (game-defaults.json, car-defaults.json, and
         // preset files are all written here at runtime via Pack Manager). Same

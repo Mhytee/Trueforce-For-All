@@ -1,11 +1,16 @@
 // User preset library facade. The user's own (non-builtin) presets live as
-// data files in the same folder shape as the built-in folder, just under a
-// different, user-writable location:
-//   <SimHub>\PluginsData\Common\TrueforceForAll-Library\
+// data files in the same folder shape as the factory folder, just under a
+// different, user-writable location: the "user" subfolder of the shared
+// TrueforceForAll root (see DefaultFolder / BuiltinPresets.RootFolderName +
+// UserSubfolderName). The sibling "factory" subfolder holds the built-ins.
+//   <SimHub>\PluginsData\Common\TrueforceForAll\user\
 //     game-defaults.json
 //     games/<Preset Name>.json
 //     car-defaults.json
 //     cars/<GameName>/<carId>/<PresetName>.json
+// (The older "TrueforceForAll-Library" / "TrueforceForAll-Presets" folder
+// names are legacy; FoldersRestructuredV3 moves them into this root. A
+// v0.1.25 upgrader never had them, so files are created here directly.)
 //
 // The runtime Settings.Presets / GameDefaults / CarDefaults dicts are rebuilt
 // from `built-in folder + user library` on every Init: user files first, then

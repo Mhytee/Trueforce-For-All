@@ -1714,9 +1714,15 @@ namespace TrueforceForAll.Plugin
             // genuinely-user content from here on. Skipped once stamped.
             if (!Settings.PresetsMigratedV2)
             {
-                MigrateLegacyUserPresetsToFolder();
-                Settings.PresetsMigratedV2 = true;
-                try { PersistSettingsCore(); } catch { }
+                // Latch only when the migration completed with a downgrade
+                // backup in place. A failed backup returns false and keeps the
+                // legacy dicts (the sole v0.1.25-downgrade copy), so leaving the
+                // latch unset retries the backup + clear on the next launch.
+                if (MigrateLegacyUserPresetsToFolder())
+                {
+                    Settings.PresetsMigratedV2 = true;
+                    try { PersistSettingsCore(); } catch { }
+                }
             }
             // One-time car migration: legacy TrueforceCars/*.tfcar.json ->
             // user library cars/ tree + Settings.CarDefaults -> car-defaults.json.
@@ -6639,17 +6645,17 @@ namespace TrueforceForAll.Plugin
         /// files in the user-library folder, then clear the dicts. Built-in
         /// entries are skipped (they re-seed from the built-in folder).
         /// Backs the GeneralSettings.json file up first.</summary>
-        private void MigrateLegacyUserPresetsToFolder()
+        private bool MigrateLegacyUserPresetsToFolder()
         {
             int presetsCount = Settings.Presets?.Count ?? 0;
             int defaultsCount = Settings.GameDefaults?.Count ?? 0;
             if (presetsCount == 0 && defaultsCount == 0)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] User-preset migration: nothing in the legacy dicts to move.");
-                return;
+                return true;   // nothing to move; safe to latch
             }
 
-            BackupSettingsFile("user-preset-migration");
+            bool backedUp = BackupSettingsFile("user-preset-migration");
 
             int migratedPresets = 0, skippedBuiltins = 0, failedPresets = 0, skippedExisting = 0;
             if (Settings.Presets != null)
@@ -6710,7 +6716,14 @@ namespace TrueforceForAll.Plugin
                     }
                     try
                     {
-                        BuiltinPresetWriter.SetGameDefault(UserPresets.CurrentFolder, kv.Key, kv.Value);
+                        // The binding VALUE must be the name the preset loads
+                        // under, which for a game preset is its file stem
+                        // (SafeFile-sanitized). A raw name carrying characters
+                        // SafeFile strips ("GT3: race" -> "GT3_ race.json") would
+                        // otherwise never match the loaded preset and the game
+                        // would silently fall back to the factory default.
+                        BuiltinPresetWriter.SetGameDefault(UserPresets.CurrentFolder, kv.Key,
+                            BuiltinPresetWriter.GamePresetLoadName(kv.Value));
                         migratedDefaults++;
                     }
                     catch (Exception ex)
@@ -6722,6 +6735,23 @@ namespace TrueforceForAll.Plugin
 
             UserPresets.Reload();
 
+            // The library FILES now hold every user preset, so they show in
+            // this build regardless of what follows. Only CLEAR the legacy
+            // dicts once the pre-migration backup exists: while they stay
+            // populated AND the latch stays unset, ShouldSerializePresets keeps
+            // writing them to GeneralSettings.json (repopulated from the folders
+            // by RebuildPresetCacheFromFolders), which is the only thing a
+            // v0.1.25 downgrade can read. If the backup failed, keep them and
+            // return false so the caller leaves the latch unset and retries next
+            // launch; the re-run is idempotent (the ping-pong guard skips the
+            // already-written files).
+            if (!backedUp)
+            {
+                SimHub.Logging.Current.Warn(
+                    $"[TF4ALL] User-game-preset migration: wrote {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}', but the settings backup failed, so the legacy dicts are kept as the downgrade copy and will be cleared on a later launch once a backup succeeds ({skippedBuiltins} factory name(s) + {skippedFactoryDefaults} factory-bound default(s) + {skippedExisting} already-present file(s) skipped; {failedPresets} failed).");
+                return false;
+            }
+
             // Clear the legacy dicts; they're a runtime cache now and will be
             // repopulated by RebuildPresetCacheFromFolders.
             Settings.Presets.Clear();
@@ -6731,6 +6761,7 @@ namespace TrueforceForAll.Plugin
 
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] User-game-preset migration: moved {migratedPresets} preset(s) and {migratedDefaults} game-default(s) to '{UserPresets.CurrentFolder}' (skipped {skippedBuiltins} factory built-in name(s) + {skippedFactoryDefaults} factory-bound default(s) + {skippedExisting} already-present file(s); {failedPresets} failed).");
+            return true;
         }
 
         /// <summary>Rename any leftover bare-"Trueforce" car backup folders to
@@ -7281,13 +7312,15 @@ namespace TrueforceForAll.Plugin
             "F1 25 (default)",
             // Names from the pre-file-based-factory era (before commit
             // c89c3f7). Each was a hard-coded BuiltinPresetJsons entry in
-            // BuiltinPresets.cs at the time. The current shipped factory
-            // files have the " (Built-In)" suffix and live on disk under
-            // factory/games/, so any user-tier file still named with the
-            // old "(default)" suffix is a leftover from a pre-V2 install,
-            // not a user-authored preset. IsFactoryBuiltinName uses this
-            // list to recognise them so the cleanup migration archives
-            // them and lets the file-based factory take over.
+            // BuiltinPresets.cs at the time. The current factory still ships
+            // these four under the SAME "(default)"-suffixed names, now as
+            // files under factory/games/, so BuiltinPresets.IsBuiltin already
+            // recognises them; listing them here too is belt-and-braces that
+            // also works when the factory folder is absent (a DLL-only update).
+            // IsFactoryBuiltinName uses this list so the migration drops the
+            // legacy in-dict copies and the file-based factory takes over.
+            // (The " (Built-In)" suffix is a runtime DISPLAY stamp on car rows
+            // only; shipped game files are never named with it.)
             "Assetto Corsa (default)",
             "Forza Horizon (default)",
             "iRacing (default)",
@@ -7350,21 +7383,27 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Make a timestamped sibling backup of the plugin's
-        /// GeneralSettings.json. Used before destructive migrations.</summary>
-        private void BackupSettingsFile(string tag)
+        /// GeneralSettings.json before a destructive migration. Returns true
+        /// when it is safe to proceed with the destructive step: either a backup
+        /// was written, or there is no settings file on disk to lose. Returns
+        /// false only when a copy was attempted and threw, so the caller can
+        /// hold off on clearing the data the backup was meant to protect.</summary>
+        private bool BackupSettingsFile(string tag)
         {
             try
             {
                 string src = TfPaths.GeneralSettingsFile;
-                if (!File.Exists(src)) return;
+                if (!File.Exists(src)) return true;   // nothing on disk to lose
                 string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 string dst = src + $".bak-{tag}-{ts}";
                 File.Copy(src, dst, overwrite: false);
                 SimHub.Logging.Current.Info($"[TF4ALL] Backed up settings to '{Path.GetFileName(dst)}'.");
+                return true;
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn($"[TF4ALL] Settings backup ({tag}) failed: {ex.Message}");
+                return false;
             }
         }
 
@@ -8385,8 +8424,11 @@ namespace TrueforceForAll.Plugin
 
         // Add the built-in car presets (loaded from the built-in folder via
         // BuiltinPresets.CarPresetJsons) into the in-memory map alongside the
-        // user files. Built-in entries overwrite same-named user entries
-        // (factory wins; user can't normally save with a built-in name).
+        // user files. Factory entries are stamped with a " (Built-In)" suffix
+        // on both PresetName and the perCar dict key (see below), so they
+        // COEXIST with a same-named user entry under a distinct key rather than
+        // overwriting it; the runtime resolver adds the suffix when looking up
+        // a factory binding.
         private void MergeBuiltinCarPresetsInto(Dictionary<string, Dictionary<string, CarPresetEntry>> map)
         {
             foreach (var kv in BuiltinPresets.CarPresetJsons)
