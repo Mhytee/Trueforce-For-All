@@ -17290,14 +17290,15 @@ namespace TrueforceForAll.Plugin
         /// returns the preset conflicts (same path, different content) to resolve
         /// plus the count of presets that would merge cleanly (not present today).
         /// Byte-for-byte identical presets are omitted from both (nothing to do).</summary>
-        public (System.Collections.Generic.List<BackupConflict> conflicts, int newPresets) ScanBackupZipForMerge(string zipPath)
+        public (System.Collections.Generic.List<BackupConflict> conflicts, int newPresets, int newEngines, int newPacks) ScanBackupZipForMerge(string zipPath)
         {
             var conflicts = new System.Collections.Generic.List<BackupConflict>();
             int newPresets = 0;
             string userRoot = UserPresets.CurrentFolder;
             if (string.IsNullOrEmpty(userRoot) || string.IsNullOrEmpty(zipPath) || !System.IO.File.Exists(zipPath))
-                return (conflicts, 0);
+                return (conflicts, 0, 0, 0);
             userRoot = userRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+            string settingsJson = null, packsJson = null;
             using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
             {
@@ -17305,8 +17306,10 @@ namespace TrueforceForAll.Plugin
                 {
                     if (string.IsNullOrEmpty(entry.Name)) continue;
                     string name = entry.FullName.Replace('\\', '/');
+                    if (name == "GeneralSettings.json") { settingsJson = ReadZipEntryText(entry); continue; }
                     if (!name.StartsWith("user/", StringComparison.Ordinal)) continue;
                     string rel = name.Substring("user/".Length);
+                    if (rel == InstalledPacksStore.FileName) { packsJson = ReadZipEntryText(entry); continue; }
                     if (!IsMergeablePresetRel(rel)) continue;
                     if (!SafePath.IsSafeArchivePath(userRoot, rel, out string dest)) continue;
                     if (!System.IO.File.Exists(dest)) { newPresets++; continue; }
@@ -17315,7 +17318,53 @@ namespace TrueforceForAll.Plugin
                     conflicts.Add(new BackupConflict { RelPath = rel, DisplayName = display, Kind = kind });
                 }
             }
-            return (conflicts, newPresets);
+            return (conflicts, newPresets, CountNewBackupEngines(settingsJson), CountNewBackupPacks(packsJson));
+        }
+
+        private static string ReadZipEntryText(System.IO.Compression.ZipArchiveEntry entry)
+        {
+            using (var es = entry.Open())
+            using (var sr = new System.IO.StreamReader(es))
+                return sr.ReadToEnd();
+        }
+
+        // Custom engines live in Settings.CustomEngines (not files); packs live in
+        // installed-packs.json. These count how many of the backup's would be NEW
+        // for the merge summary (identity: engine Id, pack CommunitySourceId/name).
+        private int CountNewBackupEngines(string settingsJson)
+        {
+            if (string.IsNullOrEmpty(settingsJson)) return 0;
+            try
+            {
+                var backupEngines = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(settingsJson)?.CustomEngines;
+                if (backupEngines == null || backupEngines.Count == 0) return 0;
+                var cur = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                foreach (var e in Settings?.CustomEngines ?? new List<CustomEngineDef>())
+                    if (!string.IsNullOrEmpty(e?.Id)) cur.Add(e.Id);
+                int n = 0;
+                foreach (var e in backupEngines)
+                    if (!string.IsNullOrEmpty(e?.Id) && !cur.Contains(e.Id)) n++;
+                return n;
+            }
+            catch { return 0; }
+        }
+
+        private int CountNewBackupPacks(string packsJson)
+        {
+            if (string.IsNullOrEmpty(packsJson)) return 0;
+            try
+            {
+                var backupPacks = Newtonsoft.Json.JsonConvert.DeserializeObject<InstalledPacksFile>(packsJson, SafeJson.Settings)?.Packs;
+                if (backupPacks == null || backupPacks.Count == 0) return 0;
+                var cur = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                foreach (var p in LoadInstalledPacks().Packs ?? new List<InstalledPack>())
+                { string k = p?.CommunitySourceId ?? p?.PackName; if (!string.IsNullOrEmpty(k)) cur.Add(k); }
+                int n = 0;
+                foreach (var p in backupPacks)
+                { string k = p?.CommunitySourceId ?? p?.PackName; if (!string.IsNullOrEmpty(k) && !cur.Contains(k)) n++; }
+                return n;
+            }
+            catch { return 0; }
         }
 
         /// <summary>Merge a backup zip's presets into the current user library
@@ -17333,8 +17382,9 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(userRoot)) throw new InvalidOperationException("User library folder is not set.");
             userRoot = userRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
 
+            var currentEngines = new List<CustomEngineDef>(Settings?.CustomEngines ?? new List<CustomEngineDef>());
             int merged = 0;
-            string settingsJson = null;
+            string settingsJson = null, packsJson = null;
             using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
             {
@@ -17342,15 +17392,10 @@ namespace TrueforceForAll.Plugin
                 {
                     if (string.IsNullOrEmpty(entry.Name)) continue;
                     string name = entry.FullName.Replace('\\', '/');
-                    if (name == "GeneralSettings.json")
-                    {
-                        using (var es = entry.Open())
-                        using (var sr = new System.IO.StreamReader(es))
-                            settingsJson = sr.ReadToEnd();
-                        continue;
-                    }
+                    if (name == "GeneralSettings.json") { settingsJson = ReadZipEntryText(entry); continue; }
                     if (!name.StartsWith("user/", StringComparison.Ordinal)) continue;
                     string rel = name.Substring("user/".Length);
+                    if (rel == InstalledPacksStore.FileName) { packsJson = ReadZipEntryText(entry); continue; }
                     if (!IsMergeablePresetRel(rel)) continue;
                     if (!SafePath.IsSafeArchivePath(userRoot, rel, out string dest)) continue;
                     if (System.IO.File.Exists(dest))
@@ -17366,23 +17411,52 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            // Custom engines (Settings.CustomEngines, not files) merge as a
+            // content-aware UNION regardless of the settings choice. If we applied
+            // the backup's settings, Settings.CustomEngines is now the backup's, so
+            // union this PC's back in; otherwise union the backup's into this PC's.
+            var backupEngines = TryReadBackupEngines(settingsJson);
             if (applySettings && !string.IsNullOrEmpty(settingsJson))
             {
                 string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
                     $"tf4all-merge-{DateTime.Now:yyyyMMdd-HHmmss}.json");
                 System.IO.File.WriteAllText(tmp, settingsJson);
-                try { ImportSettings(tmp); }   // ImportSettings rebuilds the cache + reloads active car
+                try { ImportSettings(tmp); }   // sets Settings.CustomEngines = backup's; rebuilds cache
                 finally { try { System.IO.File.Delete(tmp); } catch { } }
+                if (currentEngines.Count > 0) ImportCommunityCustomEngines(currentEngines);   // union this PC's back
             }
             else
             {
+                if (backupEngines != null && backupEngines.Count > 0) ImportCommunityCustomEngines(backupEngines);
                 UserPresets.Reload();
                 RebuildPresetCacheFromFolders();
                 LoadAndMigrateCarPresets();
                 ApplyActiveCarOverride();
             }
-            SimHub.Logging.Current.Info($"[TF4ALL] Merge added {merged} preset file(s) from {zipPath} (applySettings={applySettings}).");
+
+            // Packs: union the backup's installed-pack records (their presets
+            // already merged as game/car files above). AddOrMergePack dedups by id.
+            int packsMerged = 0;
+            if (!string.IsNullOrEmpty(packsJson))
+            {
+                try
+                {
+                    var backupPacks = Newtonsoft.Json.JsonConvert.DeserializeObject<InstalledPacksFile>(packsJson, SafeJson.Settings)?.Packs;
+                    if (backupPacks != null)
+                        foreach (var p in backupPacks)
+                            if (p != null) { RegisterCommunityPack(p); packsMerged++; }
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Warn($"[TF4ALL] Merge: couldn't union installed packs: {ex.Message}"); }
+            }
+            SimHub.Logging.Current.Info($"[TF4ALL] Merge added {merged} preset file(s), unioned {(backupEngines?.Count ?? 0)} custom engine(s) + {packsMerged} pack record(s) from {zipPath} (applySettings={applySettings}).");
             return merged;
+        }
+
+        private static List<CustomEngineDef> TryReadBackupEngines(string settingsJson)
+        {
+            if (string.IsNullOrEmpty(settingsJson)) return null;
+            try { return Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(settingsJson)?.CustomEngines; }
+            catch { return null; }
         }
 
         // Copy the BackupProjection.MachineLocal-classified properties from one settings object onto

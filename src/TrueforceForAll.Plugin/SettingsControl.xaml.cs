@@ -12569,19 +12569,24 @@ namespace TrueforceForAll.Plugin
                 var scan = _plugin.ScanBackupZipForMerge(path);
                 var conflicts = scan.conflicts;
                 int newCount = scan.newPresets;
+                int newEngines = scan.newEngines;
+                int newPacks = scan.newPacks;
 
-                if (newCount == 0 && conflicts.Count == 0 && !applySettings)
+                if (newCount == 0 && conflicts.Count == 0 && newEngines == 0 && newPacks == 0 && !applySettings)
                 {
-                    ShowSavedStatus(BackupFileStatus, "Nothing new to merge; your library already has these presets.", null);
+                    ShowSavedStatus(BackupFileStatus, "Nothing new to merge; your library already has this backup's contents.", null);
                     return;
                 }
 
                 var parts = new List<string>();
-                if (newCount > 0)        parts.Add($"{newCount} new preset(s) will be added");
-                if (conflicts.Count > 0) parts.Add($"{conflicts.Count} name clash(es) to resolve");
-                if (applySettings)       parts.Add("the backup's settings will be applied");
-                string summary = "Merge: " + (parts.Count > 0 ? string.Join(", ", parts) : "nothing to add") + ".";
-                if (conflicts.Count > 0) summary += "\n\nFor each clash you'll pick which copy to keep.";
+                if (newCount > 0)   parts.Add($"{newCount} preset(s)");
+                if (newEngines > 0) parts.Add($"{newEngines} custom engine(s)");
+                if (newPacks > 0)   parts.Add($"{newPacks} pack(s)");
+                string summary = parts.Count > 0
+                    ? "Merge will add " + string.Join(", ", parts) + "."
+                    : "Merge: nothing new to add.";
+                if (conflicts.Count > 0) summary += $"\n\n{conflicts.Count} preset name clash(es) to resolve; you'll pick which copy to keep for each.";
+                if (applySettings) summary += "\n\nThe backup's settings will also be applied.";
                 summary += "\n\nContinue?";
                 if (TrueforceDialog.Show(owner, "Restore (merge)", summary,
                         DialogKind.Info, okLabel: "Continue", cancelLabel: "Cancel", goldOk: true) != true)
