@@ -1015,16 +1015,28 @@ namespace TrueforceForAll.Plugin
             if (s == null) return;
             if (session != null)
             {
-                // B5/F03: encrypt tokens at rest before persist. Protect
-                // is idempotent (skips already-marked values), so passing
-                // a session whose tokens are already wrapped is a no-op.
-                // Protect returns null on DPAPI failure; in that case
-                // keep the original value rather than dropping the
-                // session entirely.
-                string protectedAccess = DpapiCipher.Protect(session.AccessToken);
-                if (!string.IsNullOrEmpty(protectedAccess)) session.AccessToken = protectedAccess;
+                // B5/F03: encrypt tokens at rest before persist. Protect is
+                // idempotent (an already-"dpapi:"-wrapped value returns
+                // unchanged) and returns null only for an empty input or a
+                // genuine DPAPI failure.
+                string protectedAccess  = DpapiCipher.Protect(session.AccessToken);
                 string protectedRefresh = DpapiCipher.Protect(session.RefreshToken);
-                if (!string.IsNullOrEmpty(protectedRefresh)) session.RefreshToken = protectedRefresh;
+                // M15: fail CLOSED. If a NON-empty token could not be
+                // protected (DPAPI threw), do not persist it in the clear;
+                // drop the whole session so the next launch starts signed
+                // out and the user re-authenticates.
+                bool accessFailed  = !string.IsNullOrEmpty(session.AccessToken)  && string.IsNullOrEmpty(protectedAccess);
+                bool refreshFailed = !string.IsNullOrEmpty(session.RefreshToken) && string.IsNullOrEmpty(protectedRefresh);
+                if (accessFailed || refreshFailed)
+                {
+                    _log?.Invoke("[TF4ALL] Token encryption unavailable (DPAPI); clearing session instead of storing plaintext.");
+                    session = null;
+                }
+                else
+                {
+                    if (!string.IsNullOrEmpty(protectedAccess))  session.AccessToken  = protectedAccess;
+                    if (!string.IsNullOrEmpty(protectedRefresh)) session.RefreshToken = protectedRefresh;
+                }
             }
             s.AuthSession = session;
             try { _persistSettings?.Invoke(); }
