@@ -264,13 +264,18 @@ namespace TrueforceForAll.Plugin
         {
             var btnRow = BuildChrome(title, body, kind);
 
-            bool isConfirm = kind == DialogKind.Confirm || kind == DialogKind.Destructive;
             bool isDestructive = kind == DialogKind.Destructive;
+            // A cancel button is shown for the two-choice kinds (Confirm /
+            // Destructive) OR whenever the caller supplies a cancelLabel on any
+            // kind. Keying off the label too is what makes "Info + cancelLabel"
+            // a real two-button prompt: without it an Info/Warning dialog given
+            // a cancelLabel silently dropped the button and showed only OK.
+            bool hasCancel = kind == DialogKind.Confirm || isDestructive
+                             || !string.IsNullOrEmpty(cancelLabel);
 
-            // Confirm/Destructive: Cancel on the left, affirmative on the
-            // right (where the eye finishes reading). Info/Warning/Error:
-            // single OK on the right.
-            if (isConfirm)
+            // Two buttons: Cancel on the left, affirmative on the right (where
+            // the eye finishes reading). Single-button kinds: just OK on the right.
+            if (hasCancel)
             {
                 var cancel = new Button
                 {
@@ -289,13 +294,13 @@ namespace TrueforceForAll.Plugin
             var ok = new Button
             {
                 Content = string.IsNullOrEmpty(okLabel)
-                    ? (isConfirm ? "Yes" : "OK")
+                    ? (hasCancel ? "Yes" : "OK")
                     : okLabel,
                 Padding = new Thickness(14, 5, 14, 5),
                 Foreground = isDestructive ? DestructiveFg : TextFg,
                 Background = isDestructive ? DestructiveBg : PanelBg,
                 IsDefault  = !isDestructive,   // destructive: Cancel is the default instead
-                IsCancel   = !isConfirm,       // info dialogs: OK doubles as Esc/close
+                IsCancel   = !hasCancel,       // single-OK dialogs: OK doubles as Esc/close
             };
             // Gold accent when the caller opts in (non-destructive only). Uses
             // the shared modal theme so hover/press feedback matches the rest.

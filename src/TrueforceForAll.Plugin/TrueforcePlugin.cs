@@ -1203,7 +1203,8 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Clear the "shown once / dismissed forever" latches so the
         /// one-time notices can appear again (networked welcome, what's new,
-        /// iRacing Trueforce, share CTA, experimental-success report). Persists.</summary>
+        /// iRacing Trueforce, Telemetry Based FFB intro, share CTA,
+        /// experimental-success report). Persists.</summary>
         public void ResetOneTimeNotices()
         {
             if (Settings == null) return;
@@ -1211,6 +1212,10 @@ namespace TrueforceForAll.Plugin
             Settings.WelcomeDeclineCount = 0;
             Settings.WelcomeNextShowAt = null;
             Settings.IRacingTrueforceNoticeDismissed = false;
+            // Re-arm the Telemetry Based FFB (Mode B) intro so it shows again the
+            // next time a supported game's tab is opened. The WELCOME dev code
+            // clears this too; keep the two paths in sync.
+            Settings.HasSeenModeBIntro = false;
             Settings.ExperimentalSuccessReportDismissed = false;
             Settings.ShareCtaDismissed = false;
             Settings.LastSeenVersion = null;

@@ -526,16 +526,19 @@ namespace TrueforceForAll.Plugin
                     // Mode B support (or none is running).
                     string mbGame = _plugin.ActiveGame;
                     bool mbSupported = _plugin.ActiveGameSupportsModeB;
-                    // Conditional view: real controls only when the active game can
-                    // use Mode B; otherwise the explainer panel with the title list.
-                    if (ModeBSupportedPanel != null)
-                        ModeBSupportedPanel.Visibility = mbSupported
-                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-                    if (ModeBUnsupportedPanel != null)
-                        ModeBUnsupportedPanel.Visibility = mbSupported
-                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    // The controls stay visible in every game so the section can be
+                    // seen and pre-tuned without a supported title running. When the
+                    // active game can't feed Mode B, a badge at the top of the tab
+                    // explains why and the per-game Enable box greys out.
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
+                    if (ModeBUnsupportedBadge != null)
+                        ModeBUnsupportedBadge.Visibility = mbSupported
+                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    if (!mbSupported && ModeBUnsupportedBadgeText != null)
+                        ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
+                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Start one of those to turn it on. You can still see and pre-tune the controls below."
+                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. It also enables your wheel's rev lights. Start one of those to turn it on.";
                     if (ModeBGameNote != null)
                     {
                         if (mbSupported)
@@ -544,12 +547,13 @@ namespace TrueforceForAll.Plugin
                             if (mbGame == "FM8")
                                 note += " Forza Motorsport has native Trueforce, so also enable the plugin for it at the top of this panel.";
                             ModeBGameNote.Text = note;
+                            ModeBGameNote.Visibility = System.Windows.Visibility.Visible;
                         }
                         else
                         {
-                            ModeBGameNote.Text = string.IsNullOrEmpty(mbGame)
-                                ? "Start a supported game (Forza Motorsport, or Forza Horizon 4 / 5 / 6) to enable this."
-                                : $"Not available for {ModeBGameDisplayName(mbGame)} yet. Supported: Forza Motorsport and Forza Horizon 4 / 5 / 6.";
+                            // The top badge carries the "not available here" message, so
+                            // hide the per-checkbox note rather than say it twice.
+                            ModeBGameNote.Visibility = System.Windows.Visibility.Collapsed;
                         }
                     }
                     ModeBSignCheck.IsChecked    = mbs.ModeBSign < 0f;
@@ -8622,7 +8626,7 @@ namespace TrueforceForAll.Plugin
                     "This game supports Telemetry Based FFB. Instead of passing the "
                     + "game's own force feedback through, the plugin builds the wheel's steering "
                     + "force from telemetry: slip angle, tire load, and speed.\n\n"
-                    + "It also drives your wheel's rev lights. Rev lights only work with it "
+                    + "It also enables your wheel's rev lights. Rev lights only work with it "
                     + "for now, because writing to them while a game runs its own force feedback "
                     + "makes that force feedback cut out (they share one channel on the wheel). "
                     + "It replaces the game's force feedback, so the lights are free. A custom "
@@ -11013,15 +11017,17 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Networked-welcome + Mode B intro reset: opening the welcome now.";
+                    AccessCodeStatus.Text = "Networked-welcome reset (opening now); Mode B intro re-armed for the Telemetry Based FFB tab.";
                 // Re-trigger via the same gate the normal startup path
                 // uses so any preconditions (backend URL configured,
                 // etc.) apply identically. Clear the per-session guard
                 // first or the reset would no-op after an earlier show.
                 WelcomeWindow.ShownThisSession = false;
                 MaybeShowNetworkedWelcome();
-                // If a Mode-B-capable game is active, re-show its intro too.
-                MaybeShowModeBIntro();
+                // The Mode B intro is NOT force-shown here: it would pop over
+                // whatever screen you're on (and stack on the welcome, which is
+                // the exact behavior we moved it off of). Clearing HasSeenModeBIntro
+                // above re-arms it; it shows when the Telemetry Based FFB tab opens.
                 return;
             }
 

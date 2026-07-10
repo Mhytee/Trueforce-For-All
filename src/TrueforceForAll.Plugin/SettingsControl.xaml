@@ -2657,25 +2657,31 @@
                 <TextBlock Text="Telemetry based FFB" Style="{StaticResource SectionHeaderText}"/>
             </Border>
 
-            <!-- Shown when the active game can't use Mode B: an explainer plus the
-                 list of supported titles, instead of controls that would do nothing. -->
-            <StackPanel x:Name="ModeBUnsupportedPanel" Visibility="Collapsed">
-                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                           Text="Telemetry Based FFB builds the wheel's steering force from the game's telemetry (slip angle, tire load, speed) instead of its own force feedback. It's only available in the few titles that expose the data it needs:"/>
-                <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,2" Text="&#8226;  Forza Motorsport (2023)"/>
-                <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,2" Text="&#8226;  Forza Horizon 4"/>
-                <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,2" Text="&#8226;  Forza Horizon 5"/>
-                <TextBlock Foreground="#E0E0E0" FontSize="12" Margin="12,0,0,10" Text="&#8226;  Forza Horizon 6"/>
-                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" TextWrapping="Wrap"
-                           Text="In these games it also drives your wheel's rev lights. Rev lights only work with Telemetry Based FFB for now: writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel. Replacing the game's force feedback frees the lights."/>
-                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" TextWrapping="Wrap"
-                           Text="We're testing a custom driver that would enable rev lights in every game and let them work without replacing the game's own force feedback, but it needs to be signed by Microsoft first. Start a supported game to set it up."/>
-            </StackPanel>
+            <!-- "Not available here" badge. The controls below stay visible (and
+                 pre-tunable) in every game so the section can be explored without a
+                 supported title running; this badge appears when the active game
+                 can't feed Mode B and explains why the Enable box is greyed out.
+                 Visibility + text set by RefreshFromPlugin. Info-styled to match
+                 the Forza-discovery banner in this tab. -->
+            <Border x:Name="ModeBUnsupportedBadge" Visibility="Collapsed"
+                    Background="#3300A8FF" BorderBrush="#00A8FF" BorderThickness="1"
+                    CornerRadius="3" Padding="9,7" Margin="0,4,0,10">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#9432;" FontSize="14" Foreground="#7FD3FF"
+                               VerticalAlignment="Top" Margin="0,1,8,0"/>
+                    <TextBlock x:Name="ModeBUnsupportedBadgeText" Foreground="#DCEBFA"
+                               FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               MaxWidth="540" Text=""/>
+                </StackPanel>
+            </Border>
 
-            <!-- The real Mode B controls; shown only when the active game supports it. -->
+            <!-- The Mode B controls. Always visible; the Enable box greys out and the
+                 badge above appears when the active game can't use it. -->
             <StackPanel x:Name="ModeBSupportedPanel">
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10"
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
                        Text="The wheel's steering force is built from telemetry: slip angle, tire load, and speed, instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
+                       Text="It also enables your wheel's rev lights. For now rev lights only work with Telemetry Based FFB: writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel, and replacing the game's force feedback frees them. A custom driver that would enable rev lights in every game is in testing, but it needs to be signed by Microsoft first."/>
 
             <!-- Contention warning. The plugin latches ModeBContentionDetected when
                  the game keeps streaming its own FFB while Mode B is driving the
