@@ -12585,7 +12585,7 @@ namespace TrueforceForAll.Plugin
                 string summary = parts.Count > 0
                     ? "Merge will add " + string.Join(", ", parts) + "."
                     : "Merge: nothing new to add.";
-                if (conflicts.Count > 0) summary += $"\n\n{conflicts.Count} preset name clash(es) to resolve; you'll pick which copy to keep for each.";
+                if (conflicts.Count > 0) summary += $"\n\n{conflicts.Count} name clash(es) to resolve; you'll pick which copy to keep for each.";
                 if (applySettings) summary += "\n\nThe backup's settings will also be applied.";
                 summary += "\n\nContinue?";
                 if (TrueforceDialog.Show(owner, "Restore (merge)", summary,

@@ -17318,7 +17318,9 @@ namespace TrueforceForAll.Plugin
                     conflicts.Add(new BackupConflict { RelPath = rel, DisplayName = display, Kind = kind });
                 }
             }
-            return (conflicts, newPresets, CountNewBackupEngines(settingsJson), CountNewBackupPacks(packsJson));
+            var eng = ScanBackupEngines(settingsJson);
+            conflicts.AddRange(eng.conflicts);
+            return (conflicts, newPresets, eng.newEngines, CountNewBackupPacks(packsJson));
         }
 
         private static string ReadZipEntryText(System.IO.Compression.ZipArchiveEntry entry)
@@ -17331,22 +17333,46 @@ namespace TrueforceForAll.Plugin
         // Custom engines live in Settings.CustomEngines (not files); packs live in
         // installed-packs.json. These count how many of the backup's would be NEW
         // for the merge summary (identity: engine Id, pack CommunitySourceId/name).
-        private int CountNewBackupEngines(string settingsJson)
+        private enum EngineMergeStatus { AlreadyHave, New, Conflict }
+
+        // Classify a backup custom engine against this PC's engines. Same Id (or
+        // same name + same content) = already have; same NAME with different content
+        // = a conflict the user resolves; otherwise new. Content = the firing Pattern,
+        // matching the existing MergeImportedCustomEngines dedup signal.
+        private static EngineMergeStatus ClassifyBackupEngine(CustomEngineDef eb, List<CustomEngineDef> current, out CustomEngineDef conflicting)
         {
-            if (string.IsNullOrEmpty(settingsJson)) return 0;
-            try
+            conflicting = null;
+            if (eb == null || string.IsNullOrEmpty(eb.Name)) return EngineMergeStatus.AlreadyHave;
+            current = current ?? new List<CustomEngineDef>();
+            if (!string.IsNullOrEmpty(eb.Id) && current.Any(c => !string.IsNullOrEmpty(c?.Id) && c.Id == eb.Id))
+                return EngineMergeStatus.AlreadyHave;
+            var byName = current.FirstOrDefault(c => string.Equals(c?.Name, eb.Name, StringComparison.Ordinal));
+            if (byName == null) return EngineMergeStatus.New;
+            if (string.Equals(byName.Pattern, eb.Pattern, StringComparison.Ordinal)) return EngineMergeStatus.AlreadyHave;
+            conflicting = byName;
+            return EngineMergeStatus.Conflict;
+        }
+
+        // Backup custom engines for the merge summary + conflict resolver: how many
+        // are new, and which clash by name with different content.
+        private (int newEngines, List<BackupConflict> conflicts) ScanBackupEngines(string settingsJson)
+        {
+            var conflicts = new List<BackupConflict>();
+            if (string.IsNullOrEmpty(settingsJson)) return (0, conflicts);
+            List<CustomEngineDef> backupEngines;
+            try { backupEngines = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(settingsJson)?.CustomEngines; }
+            catch { return (0, conflicts); }
+            if (backupEngines == null) return (0, conflicts);
+            var current = Settings?.CustomEngines ?? new List<CustomEngineDef>();
+            int newEngines = 0;
+            foreach (var eb in backupEngines)
             {
-                var backupEngines = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(settingsJson)?.CustomEngines;
-                if (backupEngines == null || backupEngines.Count == 0) return 0;
-                var cur = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
-                foreach (var e in Settings?.CustomEngines ?? new List<CustomEngineDef>())
-                    if (!string.IsNullOrEmpty(e?.Id)) cur.Add(e.Id);
-                int n = 0;
-                foreach (var e in backupEngines)
-                    if (!string.IsNullOrEmpty(e?.Id) && !cur.Contains(e.Id)) n++;
-                return n;
+                var status = ClassifyBackupEngine(eb, current, out _);
+                if (status == EngineMergeStatus.New) newEngines++;
+                else if (status == EngineMergeStatus.Conflict)
+                    conflicts.Add(new BackupConflict { RelPath = "engine:" + eb.Name, DisplayName = eb.Name, Kind = "custom engine" });
             }
-            catch { return 0; }
+            return (newEngines, conflicts);
         }
 
         private int CountNewBackupPacks(string packsJson)
@@ -17423,16 +17449,38 @@ namespace TrueforceForAll.Plugin
                 System.IO.File.WriteAllText(tmp, settingsJson);
                 try { ImportSettings(tmp); }   // sets Settings.CustomEngines = backup's; rebuilds cache
                 finally { try { System.IO.File.Delete(tmp); } catch { } }
-                if (currentEngines.Count > 0) ImportCommunityCustomEngines(currentEngines);   // union this PC's back
             }
             else
             {
-                if (backupEngines != null && backupEngines.Count > 0) ImportCommunityCustomEngines(backupEngines);
                 UserPresets.Reload();
                 RebuildPresetCacheFromFolders();
                 LoadAndMigrateCarPresets();
                 ApplyActiveCarOverride();
             }
+            // Custom engines: union THIS PC's with the backup's, honoring the same
+            // conflict decisions as presets. Reset the base to this PC's engines
+            // (ImportSettings above may have replaced them with the backup's), then
+            // import the backup engines the user is taking: every new one, plus any
+            // same-name clash the user resolved as "use the backup's" (its old copy
+            // removed first). Keep-mine clashes and identical engines are left out.
+            Settings.CustomEngines = new List<CustomEngineDef>(currentEngines);
+            var enginesToImport = new List<CustomEngineDef>();
+            if (backupEngines != null)
+            {
+                foreach (var eb in backupEngines)
+                {
+                    var status = ClassifyBackupEngine(eb, currentEngines, out var conflicting);
+                    if (status == EngineMergeStatus.New)
+                        enginesToImport.Add(eb);
+                    else if (status == EngineMergeStatus.Conflict && overwriteRelPaths.Contains("engine:" + eb.Name))
+                    {
+                        if (conflicting != null) Settings.CustomEngines.Remove(conflicting);
+                        enginesToImport.Add(eb);
+                    }
+                }
+            }
+            if (enginesToImport.Count > 0) ImportCommunityCustomEngines(enginesToImport);   // dedups + persists
+            else PersistSettingsCore();
 
             // Packs: union the backup's installed-pack records (their presets
             // already merged as game/car files above). AddOrMergePack dedups by id.
