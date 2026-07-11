@@ -4408,11 +4408,11 @@ namespace TrueforceForAll.Plugin
         private float _pModeBPeakU   = 1.0f;   // BPEAK: combined-slip value treated as the grip limit (u = combined / peak)
         private float _pModeBEmaMs   = 25f;    // BEMA: input smoothing time constant (raise to calm a noisy slip signal)
         private float _pModeBDirSoft = 0.12f;  // BDIRK: dir-blend center softness (0 = linear; kills center buzz/ring)
-        // Mode B wheel weight: its OWN damper/centering gains, used by the
+        // Mode B damping + centering: their OWN gains, used by the
         // damper/center stages in MaybeReshapeFfb only while Mode B is
         // active. Centering is speed-scaled by the model's trail ramp so a
         // parked wheel isn't spring-loaded.
-        private float _pModeBDamperGain = 0.15f;   // BDAMP / "Wheel weight" slider
+        private float _pModeBDamperGain = 0.15f;   // BDAMP / "Damping" slider
         private float _pModeBCenterGain = 0.10f;   // BCENTER / "Centering" slider
         // Per-axle feel terms (ModeBComposer): cornering weight from lateral
         // g, counter torque from rear utilization excess over the front.
@@ -4971,7 +4971,7 @@ namespace TrueforceForAll.Plugin
                 case "BDAMP":
                     _pModeBDamperGain = C(value, 0f, 0.6f);
                     if (Settings != null) { Settings.ModeBDamper = _pModeBDamperGain; PersistSettings(); }
-                    return $"Mode B wheel weight (damping) = {_pModeBDamperGain:0.00}";
+                    return $"Mode B damping = {_pModeBDamperGain:0.00}";
                 case "BCENTER":
                     _pModeBCenterGain = C(value, 0f, 0.5f);
                     if (Settings != null) { Settings.ModeBCenter = _pModeBCenterGain; PersistSettings(); }

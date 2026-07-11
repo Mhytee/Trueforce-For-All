@@ -511,8 +511,8 @@ namespace TrueforceForAll.Plugin
         public float ModeBDropFloor { get; set; } = 0.20f;   // torque left past the limit
         public float ModeBEmaMs     { get; set; } = 40f;     // input smoothing time constant
         public float ModeBSign      { get; set; } = 1f;      // SAT direction (BSIGN; -1 flips)
-        public float ModeBDamper    { get; set; } = 0.15f;   // wheel weight: velocity damping (Mode B only)
-        public float ModeBCenter    { get; set; } = 0.10f;   // wheel weight: speed-scaled centering (Mode B only)
+        public float ModeBDamper    { get; set; } = 0.15f;   // "Damping" slider: velocity damping (Mode B only)
+        public float ModeBCenter    { get; set; } = 0.10f;   // "Centering" slider: speed-scaled centering (Mode B only)
         public float ModeBLatGain     { get; set; } = 0.6f;  // cornering weight: +gain per lateral g (BLAT)
         public float ModeBCounterGain { get; set; } = 0.5f;  // slide counter-force on rear breakaway (BCS)
         public float ModeBDirSoft     { get; set; } = 0.12f; // center flat-spot width (BDIRK); 0 = raw linear
