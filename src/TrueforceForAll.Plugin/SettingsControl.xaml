@@ -1736,7 +1736,7 @@
                 <Expander x:Name="BumpsExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="SlipEnabledCheck" Content="Road bumps / kerbs (vertical jolts)"
+                            <CheckBox x:Name="SlipEnabledCheck" Content="Road bumps &amp; kerbs"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="SlipEnabled_Changed" Unchecked="SlipEnabled_Changed"/>
                             <Border x:Name="BumpsNewBadge" Style="{StaticResource NewEffectBadge}">
@@ -2649,7 +2649,7 @@
                  passing the game's FFB through. Global settings (not preset-scoped);
                  every control applies live via ApplyModeBFromSettings /
                  ApplyModeBFeel. Forza only (FM8 / FH5 / FH6). -->
-            <sh:SHTabItem x:Name="TelemetryFfbTab" Header="Telemetry Based FFB">
+            <sh:SHTabItem x:Name="TelemetryFfbTab" Header="Telemetry FFB">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
