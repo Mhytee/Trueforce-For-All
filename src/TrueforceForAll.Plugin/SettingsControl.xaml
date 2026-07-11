@@ -1482,7 +1482,7 @@
                                     <TextBox Grid.Column="2" x:Name="FfbPeakLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1562"/>
                                 </Grid>
                                 <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,0"
-                                           Text="How hard spikes above the threshold get compressed. Peak force during a big hit asymptotes toward threshold plus this value. Transient method only."/>
+                                           Text="How hard spikes above the threshold get compressed. Peak force during a big hit levels off near threshold plus this value. Transient method only."/>
                             </StackPanel>
                         </StackPanel>
                     </StackPanel>
@@ -1501,7 +1501,7 @@
                     <StackPanel Orientation="Horizontal">
                         <CheckBox x:Name="AudioEnabledCheck" Content="Audio rumble"
                                   FontWeight="SemiBold" VerticalAlignment="Center"
-                                  ToolTip="Turns the game's sound (engine, tyres, impacts) into wheel vibration. Works even when a game sends no useful telemetry."
+                                  ToolTip="Turns the game's sound (engine, tires, impacts) into wheel vibration. Works even when a game sends no useful telemetry."
                                   Checked="AudioEnabled_Changed" Unchecked="AudioEnabled_Changed"/>
                         <Border x:Name="AudioNewBadge" Style="{StaticResource NewEffectBadge}">
                             <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
@@ -1630,7 +1630,7 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Electric cars:" Style="{StaticResource LabelText}"
-                                       ToolTip="What EnginePulse does for cars detected as pure electric. Most users prefer the muted hum since real EVs aren't silent (many pump synthetic engine sound). Pick Silent if you want true silence on EVs."/>
+                                       ToolTip="What Engine pulse does for cars detected as pure electric. Most users prefer the muted hum since real EVs aren't silent (many pump synthetic engine sound). Pick Silent if you want true silence on EVs."/>
                             <ComboBox  Grid.Column="1" x:Name="EngineElectricModeCombo" SelectionChanged="EngineElectricMode_Changed">
                                 <ComboBoxItem Content="Muted hum (50%)"/>
                                 <ComboBoxItem Content="Silent (off)"/>
@@ -2086,7 +2086,7 @@
                             <TextBlock Grid.Column="0" Text="Mode:" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="AbsModeCombo" SelectionChanged="AbsMode_Changed">
                                 <ComboBoxItem Content="Pulse (rhythmic)"/>
-                                <ComboBoxItem Content="PerTick (one click per ABS pump)"/>
+                                <ComboBoxItem Content="Per tick (one click per ABS pump)"/>
                             </ComboBox>
                         </Grid>
                         <Grid Margin="0,0,0,8">
@@ -2163,7 +2163,7 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Pulse rate (Hz):" Style="{StaticResource LabelText}"
-                                       ToolTip="How fast the pulse opens / closes. 5–10 Hz feels like a real pit limiter cadence."/>
+                                       ToolTip="How fast the pulse opens / closes. 5-10 Hz feels like a real pit limiter cadence."/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterPulseFreqSlider" Minimum="3" Maximum="15" SmallChange="0.5" LargeChange="2"
                                         TickFrequency="1" ValueChanged="PitLimiterPulseFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="PitLimiterPulseFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6.0"/>
@@ -2654,7 +2654,7 @@
                     <StackPanel Margin="14,12,14,14">
 
             <Border Style="{StaticResource SectionHeaderBorder}">
-                <TextBlock Text="Telemetry based FFB" Style="{StaticResource SectionHeaderText}"/>
+                <TextBlock Text="Telemetry Based FFB" Style="{StaticResource SectionHeaderText}"/>
             </Border>
 
             <!-- "Not available here" badge. The controls below stay visible (and
@@ -2690,7 +2690,7 @@
                        Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
                        Text="The game is still sending its own force feedback, so two force streams are fighting and the wheel will feel jumpy or buzzy. In the game's wheel settings, set force feedback and vibration strength to 0 so this is the only force on the wheel."/>
 
-            <CheckBox x:Name="ModeBEnabledCheck" Content="Enable telemetry based FFB for this game"
+            <CheckBox x:Name="ModeBEnabledCheck" Content="Enable Telemetry Based FFB for this game"
                       Margin="0,4,0,2" Checked="ModeBEnabled_Changed" Unchecked="ModeBEnabled_Changed"/>
             <TextBlock x:Name="ModeBGameNote" Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Enable this per game, for whichever game is running. Set that game's own force feedback and vibration to 0."/>
@@ -2747,7 +2747,7 @@
                             TickFrequency="0.15" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="2" x:Name="ModeBCounterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
             </Grid>
-            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="When the rear steps out, the wheel pulls toward the counter-steer. 0 = off; raise until slides are catchable by feel."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="When the rear steps out, the wheel pulls toward the countersteer. 0 = off; raise until slides are catchable by feel."/>
 
             <CheckBox x:Name="ModeBSignCheck" Content="Reverse force direction"
                       Margin="0,6,0,2" Checked="ModeBSign_Changed" Unchecked="ModeBSign_Changed"/>
@@ -2822,7 +2822,7 @@
                     </Grid>
                     <CheckBox x:Name="ModeBSlideGrowthCheck" Margin="0,0,0,2" Content="Countersteer growth"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Counter-steer pull grows with how deep the slide is: a shallow drift asks politely, a big moment yanks toward opposite lock."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Countersteer pull grows with how deep the slide is: a shallow drift asks politely, a big moment yanks toward opposite lock."/>
                     <CheckBox x:Name="ModeBGripCalCheck" Margin="0,0,0,2" Content="Per-car grip auto-calibration"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,0" Text="Learns where each car's grip actually tops out while you drive (about a lap of pushing) and normalizes the limit feel to it. Automatic, per car, remembered between sessions."/>
@@ -2847,7 +2847,7 @@
                     <StackPanel x:Name="ControlsTabHost" Margin="14,12,14,14">
                         <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Controller bindings" Style="{StaticResource SectionHeaderText}"/></Border>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,12" FontSize="12"
-                            Text="Bind a wheel or button-box control to change master gain on the fly, without opening this panel. Click a field below, then press the button you want to use. Master gain is clamped to 0 - 2."/>
+                            Text="Bind a wheel or button-box control to change master gain on the fly, without opening this panel. Click a field below, then press the button you want to use. Master gain is clamped between 0 and 2."/>
 
                         <!-- How much each press of a bound button moves master gain. -->
                         <Grid Margin="0,0,0,12">
@@ -3449,7 +3449,7 @@
                     </Border>
                     <!-- General cloud-backup description (section intro, above the controls). -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                               Text="Backs up your settings, presets, defaults and car facts. Restore the same setup on another PC by signing in there."/>
+                               Text="Backs up your settings, presets, defaults, and car facts. Restore the same setup on another PC by signing in there."/>
                     <CheckBox x:Name="AutoSyncBackupCheck" Content="Keep my devices in sync"
                               Margin="0,0,0,2" Checked="AutoSyncBackup_Changed" Unchecked="AutoSyncBackup_Changed"
                               ToolTip="Automatically uploads your setup to the cloud as you change it, and pulls those changes down on your other signed-in devices. Sign-in required."/>
@@ -3539,7 +3539,7 @@
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rim/shift LEDs off. These toggles drive them again from your RPM. They link through MAIRA's 'Pass FFB through TF4ALL' passthrough, which isn't in a released MAIRA build yet, so this is a tester feature for now. Click Test to check they light up; if they don't, report it with your logs from Feedback &gt; Report an issue."/>
+                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rev lights off. These toggles drive them again from your RPM. They link through MAIRA's 'Pass FFB through TF4ALL' passthrough, which isn't in a released MAIRA build yet, so this is a tester feature for now. Click Test to check they light up; if they don't, report it with your logs from Feedback &gt; Report an issue."/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <CheckBox x:Name="RpmLedEnabledCheck" Content="Drive the wheel's LEDs in iRacing"
                                   VerticalAlignment="Center"

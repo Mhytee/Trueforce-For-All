@@ -58,7 +58,7 @@
                 <ComboBoxItem Content="V-twin 90° (Ducati, locks at 2)"/>
                 <ComboBoxItem Content="V-twin 60° (Aprilia, KTM, locks at 2)"/>
                 <ComboBoxItem Content="V-twin 45° (Harley, locks at 2)"/>
-                <ComboBoxItem Content="Inline-4 crossplane (Yamaha R1, locks at 4)"/>
+                <ComboBoxItem Content="Inline-4 cross-plane (Yamaha R1, locks at 4)"/>
                 <ComboBoxItem Content="Rotary (rotor count)"/>
                 <ComboBoxItem Content="Parallel twin 180° (MT-07, RS660, locks at 2)"/>
                 <ComboBoxItem Content="V4 Twin Pulse (Panigale, locks at 4)"/>
@@ -98,7 +98,7 @@
         <Grid Grid.Row="6" x:Name="ElectricBehaviorRow" Margin="0,0,0,8" Visibility="Collapsed">
             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Behavior:" Style="{StaticResource LabelText}"
-                       ToolTip="Muted hum keeps the firing-frequency tone at half amplitude (real EVs aren't silent, many pump synthetic sound). Silent fully mutes the engine effect for this car."/>
+                       ToolTip="Muted hum keeps the firing-frequency tone at half amplitude (real EVs aren't silent, and many pump synthetic sound). Silent fully mutes the engine effect for this car."/>
             <ComboBox Grid.Column="1" x:Name="ElectricBehaviorCombo">
                 <ComboBoxItem Content="Muted hum (50%)"/>
                 <ComboBoxItem Content="Silent (off)"/>

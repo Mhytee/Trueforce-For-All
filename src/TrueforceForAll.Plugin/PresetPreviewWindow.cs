@@ -347,7 +347,7 @@ namespace TrueforceForAll.Plugin
 
             int total = (games?.Count ?? 0) + (cars?.Count ?? 0) + (engines?.Count ?? 0);
             bodyPanel.Children.Add(new TextBlock {
-                Text = $"{total} item{(total == 1 ? "" : "s")} bundled. Expand a row to see its tuning; untick anything you don't want, then Download selected.",
+                Text = $"{total} item{(total == 1 ? "" : "s")} bundled. Expand a row to see its tuning; uncheck anything you don't want, then Download selected.",
                 Foreground = MutedFg, FontSize = 11, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8),
             });

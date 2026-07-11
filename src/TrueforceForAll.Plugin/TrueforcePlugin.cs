@@ -725,7 +725,7 @@ namespace TrueforceForAll.Plugin
         {
             get
             {
-                if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return "Reconnecting to wheel...";
+                if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return "Reconnecting to the wheel...";
                 var d = _device;
                 if (d != null && d.StreamFaulted)
                     return "Stream lost, auto-reconnecting (replug the wheel, or close G HUB, if this persists)";
@@ -925,7 +925,7 @@ namespace TrueforceForAll.Plugin
                 // 5. HID stream state.
                 string stream = StreamStatus ?? "";
                 if (!stream.StartsWith("Streaming", StringComparison.OrdinalIgnoreCase))
-                    return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel, check the Diagnostics panel.";
+                    return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel. Check the Diagnostics panel.";
 
                 // 6. No game actually running. _activeGame can be a selected-
                 //    but-closed profile, so gate on _currentGameName, which is

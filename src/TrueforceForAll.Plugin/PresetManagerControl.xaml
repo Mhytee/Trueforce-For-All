@@ -567,7 +567,7 @@
                  PackManagerWindow has, plus the new Create button. -->
             <DockPanel x:Name="PacksPanel" Visibility="Collapsed">
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="A pack bundles several presets at once. Pick an installed pack to set every preset it includes as a default in one go, or to remove the whole bundle (preserving any entries you've edited). Browse the Community pill to find packs other drivers have shared."/>
+                           Text="A pack bundles several presets at once. Pick an installed pack to set every preset it includes as a default in one go, or to remove the whole bundle (preserving any entries you've edited). Browse the Community view to find packs other drivers have shared."/>
                 <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <Button x:Name="PacksCreateBtn"      Content="Create a pack…"   Style="{StaticResource RowButton}" Width="120" Click="CreatePack_Click"

@@ -6562,7 +6562,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             var confirm = TrueforceDialog.Show(Window.GetWindow(this),
                 "Unlink Discord",
-                "Unlink your Discord account from Trueforce? You can re-link any time.",
+                "Unlink your Discord account from Trueforce For All? You can re-link any time.",
                 DialogKind.Destructive, okLabel: "Unlink", cancelLabel: "Cancel");
             if (confirm != true) return;
             if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = false;
@@ -7270,7 +7270,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             var confirm = TrueforceDialog.Show(Window.GetWindow(this),
                 "Unlink Patreon",
-                "Unlink your Patreon account from Trueforce? You can re-link any time.",
+                "Unlink your Patreon account from Trueforce For All? You can re-link any time.",
                 DialogKind.Destructive, okLabel: "Unlink", cancelLabel: "Cancel");
             if (confirm != true) return;
             if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = false;
@@ -8264,7 +8264,7 @@ namespace TrueforceForAll.Plugin
             var confirm1 = TrueforceDialog.Show(Window.GetWindow(this),
                 "Delete account",
                 "Delete the account for " + email + "?\n\n"
-                + "Your presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and carfact contribution history is anonymized.",
+                + "Your presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and car-fact contribution history is anonymized.",
                 DialogKind.Destructive, okLabel: "Delete account", cancelLabel: "Cancel");
             if (confirm1 != true) return;
 
@@ -10397,8 +10397,8 @@ namespace TrueforceForAll.Plugin
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "MAIRA / TEST   Unlock the iRacing rev/shift-LED section (in Settings).\n" +
-            "F8SWEEP / F8   Experimental: sweep the rev LEDs via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
+            "MAIRA / TEST   Unlock the iRacing rev lights section (in Settings).\n" +
+            "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
@@ -11273,8 +11273,8 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = on
-                        ? "Pause behaviour: stop-stream ON (persists). On pause / fast-travel the wheel now reverts to the game's native FFB (auto-center) instead of holding a force. Type NOLOCK again to go back to the default."
-                        : "Pause behaviour: back to default (release FFB to zero while paused).";
+                        ? "Pause behavior: stop-stream ON (persists). On pause / fast-travel the wheel now reverts to the game's native FFB (auto-center) instead of holding a force. Type NOLOCK again to go back to the default."
+                        : "Pause behavior: back to default (release FFB to zero while paused).";
                 return;
             }
 
