@@ -2099,9 +2099,10 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     await _updateChecker.CheckAsync(_updateCheckerCts.Token);
-                    // Beta (supporter) channel: if opted in, refresh entitlement and
-                    // re-select the latest target so a prerelease can surface in the
-                    // banner on the very first check. No-op and no network for Stable.
+                    // Beta (supporter) channel: refresh entitlement, auto-enroll a
+                    // supporter running a beta build, and re-select the latest
+                    // target so a prerelease can surface in the banner on the very
+                    // first check. No-op and no network for Stable on stable.
                     await RefreshUpdateChannelAsync(_updateCheckerCts.Token);
                 }
                 catch (Exception ex)
@@ -2851,7 +2852,13 @@ namespace TrueforceForAll.Plugin
                 var token = _updateCheckerCts?.Token ?? System.Threading.CancellationToken.None;
                 System.Threading.Tasks.Task.Run(async () =>
                 {
-                    try { await _updateChecker.CheckAsync(token); }
+                    try
+                    {
+                        await _updateChecker.CheckAsync(token);
+                        // Entitlement refresh + supporter auto-enroll + channel
+                        // re-select (cheap no-op for Stable users on stable builds).
+                        await RefreshUpdateChannelAsync(token);
+                    }
                     catch (Exception ex)
                     {
                         SimHub.Logging.Current.Info($"[TF4ALL] Periodic update check crashed: {ex.Message}");
@@ -3092,11 +3099,54 @@ namespace TrueforceForAll.Plugin
         /// <summary>Push the effective update channel into the poller. Cheap
         /// (recomputes the "latest" target off the already fetched release list,
         /// no network), so it's safe to call whenever the setting or supporter
-        /// status changes.</summary>
+        /// status changes. Also feeds the switch-back signal: a user who
+        /// EXPLICITLY toggled beta off while running a beta build gets offered
+        /// the newest main release as a downgrade; an auto-enrolled
+        /// non-supporter keeps the flag on and just waits until a main release
+        /// surpasses their beta version.</summary>
         internal void ApplyUpdateChannel()
         {
             var uc = _updateChecker;
-            if (uc != null) uc.IncludePrereleases = BetaChannelAllowed();
+            if (uc == null) return;
+            // Switch-back is offered ONLY on an explicit opt-out: the latch says
+            // beta was acknowledged for this very version, and the flag is now
+            // off. A non-supporter riding a beta build was never enrolled (no
+            // latch), so they wait for a main release to surpass their beta.
+            uc.OfferStableSwitchBack = Settings != null
+                && !Settings.BetaUpdatesEnabled
+                && string.Equals(Settings.BetaAutoEnrolledVersion,
+                                 uc.CurrentVersion.ToString(3), StringComparison.Ordinal);
+            uc.IncludePrereleases = BetaChannelAllowed();
+        }
+
+        /// <summary>Auto-enroll a SUPPORTER running a beta build into the Beta
+        /// update channel: a patron who installed the beta deliberately should
+        /// follow the beta branch without a manual toggle. Non-supporters stay on
+        /// the Stable channel (beta delivery is a Patreon perk); for them a main
+        /// release surfaces once it surpasses the running beta version, per the
+        /// normal newer-than-current rule. The one-shot latch
+        /// (BetaAutoEnrolledVersion) records that beta was acknowledged for this
+        /// version, so a patron who then toggles beta OFF stays off and gets the
+        /// switch-back-to-main offer instead of being re-enrolled. Called from
+        /// RefreshUpdateChannelAsync after every release fetch, once the
+        /// supporter answer is fresh.</summary>
+        internal void MaybeAutoEnrollBetaChannel()
+        {
+            var uc = _updateChecker;
+            var s  = Settings;
+            if (uc == null || s == null || !uc.CurrentVersionIsPrerelease) return;
+            if (!LastKnownSupporter) return;
+            string cur = uc.CurrentVersion.ToString(3);
+            if (string.Equals(s.BetaAutoEnrolledVersion, cur, StringComparison.Ordinal)) return;
+            s.BetaAutoEnrolledVersion = cur;
+            if (!s.BetaUpdatesEnabled)
+            {
+                s.BetaUpdatesEnabled = true;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Beta build v{cur} on a supporter account: update channel switched to Beta automatically.");
+            }
+            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            ApplyUpdateChannel();
         }
 
         /// <summary>Refresh supporter status (only when the Beta opt-in is on, so
@@ -3108,10 +3158,17 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                if (Settings != null && Settings.BetaUpdatesEnabled)
+                // Refresh entitlement when the beta flag is on OR the running
+                // build is itself a beta: the auto-enroll below needs a live
+                // supporter answer on beta builds before the flag exists.
+                // Stable users on stable builds pay no extra network.
+                if (Settings != null
+                    && (Settings.BetaUpdatesEnabled
+                        || _updateChecker?.CurrentVersionIsPrerelease == true))
                     await GetSupporterTierAsync(ct).ConfigureAwait(false);   // refreshes LastKnownSupporter
             }
             catch { /* keep the last-known channel on any entitlement error */ }
+            MaybeAutoEnrollBetaChannel();
             ApplyUpdateChannel();
         }
 

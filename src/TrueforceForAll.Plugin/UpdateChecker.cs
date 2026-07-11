@@ -95,15 +95,45 @@ namespace TrueforceForAll.Plugin
                              ?? new Version(0, 0, 0, 0);
         }
 
-        /// <summary>True iff the latest release tag parses to a higher version
-        /// than the running plugin's assembly version. Returns false on any
-        /// parse failure or when no check has succeeded yet.</summary>
+        /// <summary>True iff the latest eligible release is a higher version than
+        /// the running plugin's assembly version, OR the switch-back case: a beta
+        /// build on the Stable channel offers the newest stable release even
+        /// though it's older (see <see cref="IsDowngrade"/>). Returns false on
+        /// any parse failure or when no check has succeeded yet.</summary>
         public bool IsUpdateAvailable
         {
             get
             {
                 var latest = ParseVersion(LatestVersionTag);
-                return latest != null && latest > CurrentVersion;
+                if (latest == null) return false;
+                return latest > CurrentVersion || IsDowngrade;
+            }
+        }
+
+        /// <summary>True when the RUNNING build matches a GitHub release flagged
+        /// prerelease, i.e. this install came from the beta branch. Computed from
+        /// the fetched release list; false until a check succeeds.</summary>
+        public bool CurrentVersionIsPrerelease { get; private set; }
+
+        /// <summary>Set by the plugin: true when the user EXPLICITLY toggled the
+        /// beta channel off (Settings.BetaUpdatesEnabled == false). Distinguishes
+        /// "I want back on main" from an auto-enrolled non-supporter riding a beta
+        /// build, who keeps the flag on and simply waits until a main release
+        /// surpasses their beta version.</summary>
+        public bool OfferStableSwitchBack { get; set; }
+
+        /// <summary>True when the offered "update" actually moves BACK to the
+        /// newest stable release: the user runs a beta (prerelease) build and has
+        /// explicitly toggled the beta channel off, so the newest eligible release
+        /// is older than the running version. The UI phrases this as switching
+        /// back to the main release rather than an upgrade.</summary>
+        public bool IsDowngrade
+        {
+            get
+            {
+                if (_includePrereleases || !OfferStableSwitchBack || !CurrentVersionIsPrerelease) return false;
+                var latest = ParseVersion(LatestVersionTag);
+                return latest != null && Cmp3(latest, CurrentVersion) < 0;
             }
         }
 
@@ -225,12 +255,17 @@ namespace TrueforceForAll.Plugin
         private void SelectLatest()
         {
             ReleaseInfo latest = null;
+            bool currentIsPre = false;
             foreach (var r in AllReleases)
             {
                 if (r == null || r.Version == null) continue;
+                // Is the RUNNING build one of the prereleases? Drives beta-channel
+                // auto-enroll and the stable-channel switch-back (downgrade) offer.
+                if (r.IsPrerelease && Cmp3(r.Version, CurrentVersion) == 0) currentIsPre = true;
                 if (r.IsPrerelease && !_includePrereleases) continue;
                 if (latest == null || r.Version > latest.Version) latest = r;
             }
+            CurrentVersionIsPrerelease = currentIsPre;
             LatestVersionTag = latest?.TagName;
             ReleaseNotes     = latest?.Body;
             ReleasePageUrl   = latest?.HtmlUrl;
@@ -326,6 +361,16 @@ namespace TrueforceForAll.Plugin
                     return (string)a["browser_download_url"];
             }
             return null;
+        }
+
+        // 3-component version compare (Major/Minor/Build, missing part = 0) so
+        // the 4-part assembly version (0.2.0.0) compares equal to a "v0.2.0"
+        // release tag instead of greater.
+        private static int Cmp3(Version a, Version b)
+        {
+            int c = a.Major.CompareTo(b.Major); if (c != 0) return c;
+            c = a.Minor.CompareTo(b.Minor);     if (c != 0) return c;
+            return Math.Max(a.Build, 0).CompareTo(Math.Max(b.Build, 0));
         }
 
         // Strip leading "v"/"V" + any pre-release suffix ("0.1.0-rc1" → "0.1.0")

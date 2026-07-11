@@ -151,6 +151,10 @@ namespace TrueforceForAll.Plugin
             "Presets", "GameDefaults", "CarDefaults", "CarOverrides", "GamePresets",
             // Learned-per-machine redline set (re-learns from telemetry on PC2).
             "GamesWithRedline",
+            // Beta-build auto-enroll latch: tied to the build installed on THIS
+            // PC. Traveling would pre-latch (or wrongly un-latch) the other PC's
+            // own auto-enroll decision for whatever build IT runs.
+            "BetaAutoEnrolledVersion",
             // Cross-wheel FFB sync policy + "apply anyway" retention. The policy
             // is a per-PC decision tied to THIS device's wheel; the stash holds
             // ANOTHER wheel's withheld tuning until the user acts. Neither

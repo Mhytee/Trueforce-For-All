@@ -300,6 +300,14 @@ namespace TrueforceForAll.Plugin
         // convenience, so it's a perk and not a hard paywall.
         public bool   BetaUpdatesEnabled { get; set; } = false;
 
+        // One-shot latch for the beta-build auto-enroll (X.Y.Z of the build that
+        // was acknowledged). When a SUPPORTER runs a build matching a GitHub
+        // prerelease, the updater flips BetaUpdatesEnabled on automatically once
+        // per version and records it here; toggling beta off afterwards sticks
+        // (no re-enroll) and instead surfaces the switch-back-to-main offer.
+        // Per-install state; excluded from backup.
+        public string BetaAutoEnrolledVersion { get; set; }
+
         // Opt-in standing consent: once on, the user's car-fact corrections
         // (redline, engine layout, car name) are submitted to the community
         // without the per-edit "share this?" prompt. Default off; the user

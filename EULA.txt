@@ -50,7 +50,7 @@ Nothing here restricts the rights that license grants you.
    optional online features (accounts, community presets, car data, cloud
    backup) process personal data as described in the Privacy Policy, shipped
    as PRIVACY.md in the install folder and published at
-   https://github.com/Mhytee/Trueforce-For-All/blob/main/PRIVACY.md
+   https://github.com/Mhytee/Trueforce-For-All/blob/beta/PRIVACY.md
 
 By installing or using the software, you acknowledge that you have read,
 understood, and accept this notice.

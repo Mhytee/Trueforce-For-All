@@ -1358,7 +1358,9 @@ namespace TrueforceForAll.Plugin
                     if (UpdateAvailableButton.Visibility != want) UpdateAvailableButton.Visibility = want;
                     if (hasUpdate && UpdateAvailableButtonText != null)
                     {
-                        string desired = $"Update to v{upd.LatestVersionDisplay}  →";
+                        string desired = upd.IsDowngrade
+                            ? $"Switch back to v{upd.LatestVersionDisplay}  →"
+                            : $"Update to v{upd.LatestVersionDisplay}  →";
                         if (UpdateAvailableButtonText.Text != desired) UpdateAvailableButtonText.Text = desired;
                     }
                 }
@@ -5061,7 +5063,7 @@ namespace TrueforceForAll.Plugin
 
         // Privacy policy: what the online features store, why, and how to
         // remove it. Linked from the Community toggle and the Account tab.
-        internal const string PrivacyPolicyUrl = "https://github.com/Mhytee/Trueforce-For-All/blob/main/PRIVACY.md";
+        internal const string PrivacyPolicyUrl = "https://github.com/Mhytee/Trueforce-For-All/blob/beta/PRIVACY.md";
         private void PrivacyPolicy_Click(object sender, RoutedEventArgs e) => OpenUrl(PrivacyPolicyUrl);
 
         // Reciprocal funnel: TF4ALL points iRacing users at MAIRA, whose
@@ -6761,10 +6763,42 @@ namespace TrueforceForAll.Plugin
         // resulting channel into the update poller immediately (ApplyUpdateChannel
         // ANDs it with live supporter status, so a non-supporter toggling it on gets
         // no prereleases), then refreshes the gate note so the supporter requirement
-        // is visible right away.
+        // is visible right away. Turning it ON is a Patreon perk: rather than a
+        // dead disabled checkbox, a non-supporter's attempt reverts and gets an
+        // actionable link-Patreon / become-a-patron prompt. Turning it OFF is
+        // always allowed (that's the beta build's switch-back-to-main path).
         private void BetaUpdates_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
+
+            if (BetaUpdatesCheck?.IsChecked == true && !_plugin.LastKnownSupporter)
+            {
+                _suppressEvents = true;
+                try { BetaUpdatesCheck.IsChecked = false; }
+                finally { _suppressEvents = false; }
+
+                var choice = TrueforceDialog.ShowChoice(Window.GetWindow(this),
+                    "Beta updates are a supporter perk",
+                    "In-app beta updates are for Patreon supporters. Already a patron? "
+                    + "Link your Patreon account and the toggle unlocks. "
+                    + "Beta builds stay public on GitHub for everyone either way.",
+                    "Link Patreon account", "Become a patron", "Not now");
+                if (choice == DialogChoice.Primary)
+                {
+                    if (!_plugin.AuthIsSignedIn)
+                    {
+                        var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
+                        signIn.ShowDialog();
+                    }
+                    if (_plugin.AuthIsSignedIn) LinkPatreon_Click(null, null);
+                }
+                else if (choice == DialogChoice.Secondary)
+                {
+                    OpenUrl(PatreonUrl);
+                }
+                return;
+            }
+
             _plugin.Settings.BetaUpdatesEnabled = BetaUpdatesCheck?.IsChecked == true;
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
@@ -6793,9 +6827,14 @@ namespace TrueforceForAll.Plugin
         {
             if (BetaUpdatesCheck == null) return;   // panel not built yet
 
+            // The checkbox stays enabled for everyone: a non-supporter turning
+            // beta ON is intercepted in BetaUpdates_Changed with an actionable
+            // link-Patreon / become-a-patron prompt, and turning it OFF (the
+            // beta build's switch-back-to-main path) must always work.
+            BetaUpdatesCheck.IsEnabled = true;
+
             if (_plugin == null || !_plugin.AuthIsSignedIn)
             {
-                BetaUpdatesCheck.IsEnabled = false;
                 SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
                     ? "Sign in and support on Patreon to receive beta updates through the in-app updater."
                     : null);
@@ -6811,13 +6850,14 @@ namespace TrueforceForAll.Plugin
                 if (gen != _betaGatingGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
                 isSupporter = sup;
             }
-            catch { /* on error, gate the toggle closed (safe default) */ }
+            catch { /* on error, keep the last-known gate state */ }
 
-            BetaUpdatesCheck.IsEnabled = isSupporter;
             if (isSupporter)
                 SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
                     ? "You're on the beta channel: the in-app updater will offer pre-release builds."
-                    : null);
+                    : (_plugin.UpdateChecker?.CurrentVersionIsPrerelease == true
+                        ? "Beta is off: the updater offers the newest main release so you can switch back."
+                        : null));
             else
                 SetBetaUpdatesNote("Support on Patreon (Account tab) to receive beta updates in-app.");
 
@@ -14018,8 +14058,13 @@ namespace TrueforceForAll.Plugin
                 // Reset the background re-poll clock so the next automatic check
                 // is measured from this manual one, not from startup.
                 _plugin.MarkUpdateChecked();
+                // Entitlement + supporter auto-enroll + channel re-select, so a
+                // manual check behaves exactly like the startup one.
+                await _plugin.RefreshUpdateChannelAsync(_plugin.UpdateCheckerToken);
                 if (upd.IsUpdateAvailable)
-                    CheckForUpdatesStatus.Text = $"v{upd.LatestVersionDisplay} available";
+                    CheckForUpdatesStatus.Text = upd.IsDowngrade
+                        ? $"v{upd.LatestVersionDisplay} available (back to the main release)"
+                        : $"v{upd.LatestVersionDisplay} available";
                 else if (!string.IsNullOrEmpty(upd.LastError))
                     CheckForUpdatesStatus.Text = "Couldn't reach GitHub";
                 else
