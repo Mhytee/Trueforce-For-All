@@ -1747,7 +1747,7 @@ namespace TrueforceForAll.Plugin
     public sealed class AxleSlipSettings
     {
         public bool  Enabled            { get; set; } = false;
-        public float Gain               { get; set; } = 1.0f;
+        public float Gain               { get; set; } = 0.2f;   // G PRO default (2026-07-11); G923 ran it hotter
         public bool  PredictiveSlip     { get; set; } = true;
         public bool  RevLockedRearPulse { get; set; } = true;
     }
@@ -1755,13 +1755,14 @@ namespace TrueforceForAll.Plugin
     /// <summary>Settings for the kerb thump: a single firm whack the instant
     /// a wheel first touches a kerb, distinct from the rumble that follows.
     /// Scales with speed. Off by default (new effect baseline); needs kerb
-    /// telemetry (Forza games today). Gain ships hot (1.6) per on-wheel
-    /// validation; Freq sits below the 40 Hz gear thud so the two stay
-    /// distinct.</summary>
+    /// telemetry (Forza games today). Gain defaults to 0.2, tuned on a G PRO
+    /// (2026-07-11); the earlier 1.6 was dialed in on a G923, whose weaker
+    /// motor needed it much hotter. Freq sits below the 40 Hz gear thud so
+    /// the two stay distinct.</summary>
     public sealed class KerbThumpSettings
     {
         public bool  Enabled { get; set; } = false;
-        public float Gain    { get; set; } = 1.6f;
+        public float Gain    { get; set; } = 0.2f;   // G PRO default (2026-07-11); G923 ran it hotter
         public float Freq    { get; set; } = 30.0f;
     }
 
@@ -1772,7 +1773,7 @@ namespace TrueforceForAll.Plugin
     public sealed class LockupJudderSettings
     {
         public bool  Enabled { get; set; } = false;
-        public float Gain    { get; set; } = 1.0f;
+        public float Gain    { get; set; } = 0.2f;   // G PRO default (2026-07-11); G923 ran it hotter
     }
 
     public sealed class RevLimiterSettings

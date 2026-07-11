@@ -60,18 +60,18 @@
   },
   "AxleSlip": {
     "Enabled": false,
-    "Gain": 1.0,
+    "Gain": 0.2,
     "PredictiveSlip": true,
     "RevLockedRearPulse": true
   },
   "KerbThump": {
     "Enabled": false,
-    "Gain": 1.6,
+    "Gain": 0.2,
     "Freq": 30.0
   },
   "LockupJudder": {
     "Enabled": false,
-    "Gain": 1.0
+    "Gain": 0.2
   },
   "GearShift": {
     "Enabled": true,
