@@ -186,6 +186,52 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0.9, r, 6);   // max-abs of the slip quad
         }
 
+        // ---- Airborne detection via frozen slip (#31) ----
+
+        [Fact]
+        public void AllSlipFrozen_FirstFrame_NotAirborne()
+        {
+            // No previous frame to compare: the detector must not fire on the
+            // first frame of a session (nothing to be identical to).
+            var slip = TireQuad.Of(0.3, 0.3, 0.3, 0.3);
+            Assert.False(AcSharedMemoryTelemetrySource.AllSlipFrozen(
+                slip, prevSlip: default, prevValid: false, speedKmh: 120.0));
+        }
+
+        [Fact]
+        public void AllSlipFrozen_BelowSpeedGate_NotAirborne()
+        {
+            // A parked car's slip is frozen on every wheel too; the speed gate
+            // keeps that from reading as a jump.
+            var slip = TireQuad.Of(0.2, 0.2, 0.2, 0.2);
+            Assert.False(AcSharedMemoryTelemetrySource.AllSlipFrozen(
+                slip, prevSlip: slip, prevValid: true, speedKmh: 5.0));
+        }
+
+        [Fact]
+        public void AllSlipFrozen_AllFourFrozenAtSpeed_Airborne()
+        {
+            // Above the gate with every entry bit-identical to the previous
+            // physics frame: AC has stopped solving all four contact patches,
+            // the car is off the ground.
+            var prev = TireQuad.Of(0.41, 0.52, 0.63, 0.74);
+            var slip = TireQuad.Of(0.41, 0.52, 0.63, 0.74);
+            Assert.True(AcSharedMemoryTelemetrySource.AllSlipFrozen(
+                slip, prev, prevValid: true, speedKmh: 90.0));
+        }
+
+        [Fact]
+        public void AllSlipFrozen_OneWheelStillSolving_NotAirborne()
+        {
+            // A wheelie / one-corner lift freezes some entries but not all; only
+            // a full four-way freeze is airborne (a single moving entry means a
+            // wheel is still on the ground being solved).
+            var prev = TireQuad.Of(0.41, 0.52, 0.63, 0.74);
+            var slip = TireQuad.Of(0.41, 0.52, 0.63, 0.75);   // RR still moving
+            Assert.False(AcSharedMemoryTelemetrySource.AllSlipFrozen(
+                slip, prev, prevValid: true, speedKmh: 90.0));
+        }
+
         [Fact]
         public void AcShapedFrame_LightsTheCtmRollups()
         {

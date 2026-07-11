@@ -21,6 +21,7 @@ namespace TrueforceForAll.Core.Tests
         private const int OFF_CURRENT_RPM  = 16;
         private const int OFF_ACCEL_Y      = 24;   // heave (m/s^2, up)
         private const int OFF_NORM_SUSP_FL = 68;   // normalized susp travel[4], 0=droop..1=compressed
+        private const int OFF_SURFACE_RUMBLE_FL = 148; // per-tyre surface rumble[4]
         private const int OFF_SLIP_ANGLE_FL = 164; // tyre slip angle[4], radians, signed
         private const int OFF_COMBINED_FL  = 180;  // tyre combined slip[4]
         private const int OFF_SUSP_TRAVEL_M_FL = 196; // suspension travel[4], meters
@@ -209,6 +210,71 @@ namespace TrueforceForAll.Core.Tests
             var f = src.ParsePacket(DashPacket(combinedSlip: 0.7f, suspTravel: 0.0f), HorizonDashLength);
 
             Assert.Equal(0.7, f.WheelSlip.GetValueOrDefault(), 6);   // legacy max-abs, not silenced
+        }
+
+        [Fact]
+        public void Airborne_LoadWeightedSurface_GoesSilent()
+        {
+            // Issue #35: a car in the air spins its unloaded wheels, so the
+            // per-tyre SurfaceRumble[] spikes, but no surface is being touched.
+            // Weighting each wheel's rumble by its suspension load drops the
+            // airborne wheels out, so the surface channel reads ~0 (silent) even
+            // with airborne ducking off. Mirrors the #30 slip test.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);   // grounded: arm the load latch + open settle
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.0f);                    // all four drooped = airborne
+            for (int i = 0; i < 4; i++) PutFloat(b, OFF_SURFACE_RUMBLE_FL + i * 4, 0.8f);
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.True(f.Airborne.GetValueOrDefault());
+            Assert.Equal(0.0, f.SurfaceRumble.GetValueOrDefault(), 6);
+        }
+
+        [Fact]
+        public void OneWheelOnSurface_LoadWeightedSurface_TracksContact()
+        {
+            // Issue #35: one wheel brushing gravel (high rumble, ~0 load as it
+            // skips over the surface) must not read as the whole car on gravel.
+            // The load weighting follows the wheels actually carrying the car,
+            // not the loudest one (the old max-abs took the 0.90 spike at full
+            // strength).
+            var src = NewSource();
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.5f);            // three grounded wheels loaded...
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 0, 0.05f);   // FL grounded, faint rumble
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 4, 0.05f);   // FR grounded, faint rumble
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 8, 0.05f);   // RL grounded, faint rumble
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 12, 0.90f);  // RR spiking...
+            PutFloat(b, OFF_NORM_SUSP_FL + 12, 0.0f);        // ...and lifted (no load)
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.False(f.Airborne.GetValueOrDefault());    // not all four drooped
+            // Grounded three dominate: ~0.05, nowhere near the lifted wheel's 0.90.
+            Assert.InRange(f.SurfaceRumble.GetValueOrDefault(), 0.04, 0.10);
+        }
+
+        [Fact]
+        public void DeadSuspChannel_LoadWeightedSurface_FallsBackToLegacyMax()
+        {
+            // A hypothetical Forza title that never populates normalized
+            // suspension travel leaves the load channel unproven. Rather than
+            // silencing surface rumble forever, the weighting falls back to the
+            // legacy max (issue #35 fallback, mirrors the slip channel).
+            var src = NewSource();
+            var b0 = DashPacket(suspTravel: 0.0f);           // settle; never arms the latch
+            for (int i = 0; i < 4; i++) PutFloat(b0, OFF_SURFACE_RUMBLE_FL + i * 4, 0.6f);
+            src.ParsePacket(b0, HorizonDashLength);
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.0f);
+            for (int i = 0; i < 4; i++) PutFloat(b, OFF_SURFACE_RUMBLE_FL + i * 4, 0.6f);
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.Equal(0.6, f.SurfaceRumble.GetValueOrDefault(), 6);   // legacy max, not silenced
         }
 
         [Fact]

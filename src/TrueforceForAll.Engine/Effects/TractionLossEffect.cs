@@ -6,7 +6,7 @@
 //   A. Direct (preferred). When TelemetryFrame.WheelSlip is supplied, i.e.
 //      the source reads per-wheel slip ratio from the sim's shared memory
 //      directly (AC's wheelSlip[]), we just normalize it. The source has
-//      already load-weighted the four tyres into that scalar (SlipWeighting,
+//      already load-weighted the four tyres into that scalar (LoadWeighting,
 //      issue #30) so an airborne / lifted wheel doesn't buzz. Cleaner, no
 //      cross-coupling between detectors, and matches what the sim itself
 //      considers a slipping tire.
@@ -210,6 +210,21 @@ namespace TrueforceForAll.Plugin.Effects
             // is invalid, and the direct path doesn't need haptics during a
             // shift either. Decay and bail.
             if (string.Equals(f.Gear, "N", StringComparison.OrdinalIgnoreCase))
+            {
+                DecayAndEmit();
+                return;
+            }
+
+            // Airborne: unloaded wheels can't lose traction, but the heuristic
+            // misreads the state, a free-revving engine gives the exact
+            // RPM-rises-while-speed-doesn't wheelspin signature, and a car
+            // rotating in the air gives yaw with near-zero lateral g (issue #34).
+            // Decay and bail like the neutral gate. The direct path's #30
+            // load-weighting already zeroes an airborne reading; this also covers
+            // the heuristic path, which has no per-wheel load to lean on. Airborne
+            // is null on the generic SimHub source until #32 populates it (== true
+            // stays false then, i.e. no-op); AC and Forza set it today.
+            if (f.Airborne == true)
             {
                 DecayAndEmit();
                 return;

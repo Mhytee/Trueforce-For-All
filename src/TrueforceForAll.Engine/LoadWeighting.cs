@@ -1,33 +1,35 @@
-// Load-weighted whole-car slip for the direct traction-loss path
-// (TractionLossEffect, issue #30).
+// Load-weighted whole-car average of a per-tyre channel: each wheel's value
+// weighted by the vertical load it carries. Used by the direct telemetry
+// sources for the traction-loss slip scalar (issue #30) and Forza's
+// surface-rumble scalar (issue #35).
 //
-// The direct sources (AC's wheelSlip[], Forza's TireCombinedSlip[]) used to
-// collapse the four per-wheel values to their MAX before handing the effect a
-// scalar. That let a single unloaded wheel own the reading: a driven wheel
-// spun up in mid-air on a jump, or one corner lifted over a crest / kerb, reads
-// high slip even though the car has lost no grip, and the effect buzzed as if
-// the whole car were sliding.
+// The direct sources used to collapse a channel's four per-wheel values to
+// their MAX before handing the effect a scalar. That let a single unloaded
+// wheel own the reading: a driven wheel spun up in mid-air on a jump, or one
+// corner lifted over a crest / kerb, reads high even though the car has lost no
+// grip and touched no new surface, and the effect fired as if the whole car
+// were sliding / on that surface.
 //
-// Weighting each wheel's slip by the load it is actually carrying fixes that.
-// An unloaded wheel drops out of the reading (airborne and one-wheel lifts go
-// silent), a single slipping wheel contributes only its load share of the car's
-// grip, and a genuine four-wheel slide still reads full strength. This is the
-// #30 remap: it deliberately changes what the scalar means, so it lives behind
-// a named helper both direct sources call rather than being open-coded twice.
+// Weighting each wheel by the load it is actually carrying fixes that. An
+// unloaded wheel drops out of the reading (airborne and one-wheel lifts go
+// silent), a single affected wheel contributes only its load share, and a
+// genuine all-four event still reads full strength. This deliberately changes
+// what the scalar means, so it lives behind one named helper the sources call
+// rather than being open-coded per channel.
 //
 // Distinct from the AC source's GuardByLoad (a binary per-wheel load cutoff on
 // the TireCombinedSlip QUAD, feeding the CTM rollups): this produces the SCALAR
-// WheelSlip the traction effect reads, and weights continuously by load rather
-// than hard-zeroing below a threshold.
+// a whole-car effect reads, and weights continuously by load rather than
+// hard-zeroing below a threshold.
 
 using System;
 
 namespace TrueforceForAll.Core
 {
-    public static class SlipWeighting
+    public static class LoadWeighting
     {
         /// <summary>
-        /// sum(|slip_i| * load_i) / sum(load_i) across the four tyres. Loads are
+        /// sum(|value_i| * load_i) / sum(load_i) across the four tyres. Loads are
         /// only ever used as a ratio to their own sum, so the units cancel: AC's
         /// wheelLoad[] (newtons) and Forza's normalized suspension travel (0..1)
         /// both work unchanged, and the caller need not scale them.
@@ -43,7 +45,7 @@ namespace TrueforceForAll.Core
         /// real load passes the legacy unweighted value (the channel is dead on
         /// this build, so don't go silent).</param>
         public static double Weighted(
-            double slipFL, double slipFR, double slipRL, double slipRR,
+            double valFL, double valFR, double valRL, double valRR,
             double loadFL, double loadFR, double loadRL, double loadRR,
             double minTotalLoad, double fallback)
         {
@@ -58,10 +60,10 @@ namespace TrueforceForAll.Core
             if (!(sum > minTotalLoad)) return fallback;
 
             double weighted =
-                Math.Abs(slipFL) * loadFL +
-                Math.Abs(slipFR) * loadFR +
-                Math.Abs(slipRL) * loadRL +
-                Math.Abs(slipRR) * loadRR;
+                Math.Abs(valFL) * loadFL +
+                Math.Abs(valFR) * loadFR +
+                Math.Abs(valRL) * loadRL +
+                Math.Abs(valRR) * loadRR;
             return weighted / sum;
         }
 

@@ -111,7 +111,7 @@ namespace TrueforceForAll.Core
         /// (e.g. AC's wheelSlip[], Forza's TireCombinedSlip[]), LOAD-WEIGHTED
         /// across the four tyres: sum(|slip_i| * load_i) / sum(load_i), so an
         /// unloaded wheel (airborne, one-wheel lift) contributes nothing and a
-        /// four-wheel slide reads full strength (issue #30, see SlipWeighting).
+        /// four-wheel slide reads full strength (issue #30, see LoadWeighting).
         /// ~0 = grip, &gt;0.05 = noticeable slip, &gt;0.5 = sliding hard. Null
         /// when the source can't measure slip directly; TractionLossEffect falls
         /// back to its yaw-rate / RPM-derivative heuristic in that case.</summary>

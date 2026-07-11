@@ -128,6 +128,47 @@ namespace TrueforceForAll.Core.Tests
             Assert.True(peak < 0.01, $"phantom wheelspin after neutral rev (peak={peak:F3})");
         }
 
+        // Airborne (#34): the wheelspin signature (RPM rising, speed flat, full
+        // throttle) is exactly what a free-revving engine produces mid-jump, so
+        // an airborne frame must gate the heuristic to silence. Same cadence as
+        // Wheelspin_DetectedAtEngineTickRate, which fires without the flag.
+        [Fact]
+        public void Airborne_HeuristicWheelspin_StaysSilent()
+        {
+            var fx = new TractionLossEffect();
+            var frame = new TelemetryFrame
+            {
+                SpeedKmh   = 80,
+                Gear       = "2",
+                Throttle01 = 1.0,
+                MaxRpm     = 8000,
+                Rpms       = 3000,
+                Airborne   = true,
+            };
+            for (int i = 0; i < 500; i++)
+            {
+                frame.Rpms += 6.0;
+                fx.OnTelemetry(frame);
+            }
+            Assert.Equal(0.0, fx.ActivityLevel, 3);
+        }
+
+        // Airborne also bails the direct path: a spiking WheelSlip on a jump
+        // decays like the neutral gate instead of holding the buzz.
+        [Fact]
+        public void Airborne_DirectSlip_DecaysNotHolds()
+        {
+            var fx = new TractionLossEffect();
+            for (int i = 0; i < 3; i++) fx.OnTelemetry(DirectSlip(5.0));
+            double before = fx.ActivityLevel;
+            Assert.InRange(before, 0.5, 0.999);
+
+            var airborne = DirectSlip(5.0);
+            airborne.Airborne = true;
+            fx.OnTelemetry(airborne);
+            Assert.Equal(0.54, fx.ActivityLevel / before, 2);   // same rescaled decay as neutral
+        }
+
         // Same shape for the stall path: OnTelemetryStall must also
         // invalidate the derivative baseline, or telemetry resuming at a
         // different RPM reads as wheelspin.

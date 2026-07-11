@@ -618,10 +618,26 @@ namespace TrueforceForAll.Core
             // slide. Fallback when every wheel is drooped: silent if the channel
             // has proven live (airborne), else the legacy max-abs.
             double slipFallback = _seenSuspLoad ? 0.0 : combinedMax;
-            double weightedSlip = SlipWeighting.Weighted(
+            double weightedSlip = LoadWeighting.Weighted(
                 cmbFL, cmbFR, cmbRL, cmbRR,
                 susFL, susFR, susRL, susRR,
                 MinTotalSuspLoad, slipFallback);
+
+            // Load-weighted surface rumble (issue #35). Same load weighting as
+            // the slip channel above, applied to Forza's per-tyre SurfaceRumble[]
+            // instead of the load-blind max: weight each wheel's rumble by its
+            // suspension compression so a free-spinning airborne wheel or one
+            // wheel brushing gravel no longer reads as the whole car on that
+            // surface. (LoadWeighting is the channel-agnostic sum(|v|*load)/
+            // sum(load); the loads cancel to a ratio, so it serves rumble as
+            // well as slip.) Fallback when every wheel is drooped mirrors the
+            // slip channel: silent once the suspension channel has proven live,
+            // else the legacy max.
+            double surfaceFallback = _seenSuspLoad ? 0.0 : surfaceMax;
+            double weightedSurface = LoadWeighting.Weighted(
+                surFL, surFR, surRL, surRR,
+                susFL, susFR, susRL, susRR,
+                MinTotalSuspLoad, surfaceFallback);
 
             bool anyRumbleStrip = rsFL != 0 || rsFR != 0 || rsRL != 0 || rsRR != 0;
 
@@ -656,7 +672,7 @@ namespace TrueforceForAll.Core
                 // channel). Null on Sled-only packets that lack the dash.
                 SteeringAngle = steerNorm,
 
-                SurfaceRumble = settling ? 0.0 : surfaceMax,
+                SurfaceRumble = settling ? 0.0 : weightedSurface,
                 OnRumbleStrip = !settling && anyRumbleStrip,
                 NumCylinders  = numCyl > 0 ? numCyl : (int?)null,
 
