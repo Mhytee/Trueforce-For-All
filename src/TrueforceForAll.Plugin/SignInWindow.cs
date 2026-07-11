@@ -92,9 +92,34 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(new TextBlock {
                 Text = "New here? There's no separate sign-up. Enter your email and we'll send a 6-digit code that signs you in or creates your account. No password. You can then browse and share presets, vote, and help fill in car data.",
                 Foreground = MutedFg, FontSize = 11,
-                Margin = new Thickness(0, 0, 0, 14),
+                Margin = new Thickness(0, 0, 0, 6),
                 TextWrapping = TextWrapping.Wrap,
             });
+
+            // Moment-of-collection disclosure: this is where the email is
+            // first asked for, so the policy link lives here too.
+            var privacyLine = new TextBlock {
+                FontSize = 10.5, Margin = new Thickness(0, 0, 0, 14),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            privacyLine.Inlines.Add(new System.Windows.Documents.Run(
+                "Your email is used to sign you in and for occasional account notices, nothing else. ")
+            { Foreground = MutedFg });
+            var privacyLink = new System.Windows.Documents.Hyperlink(
+                new System.Windows.Documents.Run("Privacy policy"))
+            { Foreground = HeaderFg };
+            privacyLink.Click += (s, e) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                        SettingsControl.PrivacyPolicyUrl)
+                    { UseShellExecute = true });
+                }
+                catch { }
+            };
+            privacyLine.Inlines.Add(privacyLink);
+            root.Children.Add(privacyLine);
 
             root.Children.Add(new TextBlock {
                 Text = "Email", Foreground = MutedFg, FontSize = 11,

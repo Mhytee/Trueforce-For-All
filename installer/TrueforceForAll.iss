@@ -27,12 +27,12 @@
 ; Shipped built-in presets (data files; loaded at runtime by BuiltinPresets).
 #define BuiltinsDir    "..\builtins"
 
-; Revision of the legal text (EULA.txt + the GPL LICENSE). BUMP THIS whenever
-; you edit EULA.txt or LICENSE. The installer records the revision the user
-; agreed to; on a later update it skips the GPL info + EULA pages only while
-; the stored revision still matches (see ShouldSkipPage). Forgetting to bump it
-; would let a changed EULA go un-reshown on update.
-#define LegalRevision  "1"
+; Revision of the legal text (EULA.txt + the GPL LICENSE + PRIVACY.md). BUMP
+; THIS whenever you edit any of the three. The installer records the revision
+; the user agreed to; on a later update it skips the GPL info + EULA + privacy
+; pages only while the stored revision still matches (see ShouldSkipPage).
+; Forgetting to bump it would let a changed notice go un-reshown on update.
+#define LegalRevision  "2"
 
 [Setup]
 ; AppId is what registers our uninstall entry. Don't change once published.
@@ -102,10 +102,12 @@ Source: "{#PluginBin}\User.TrueforceForAll.dll"; DestDir: "{app}"; Flags: ignore
 Source: "{#PluginBin}\TrueforceForAll.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PluginBin}\TrueforceForAll.Engine.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}"; Flags: ignoreversion
-; GPL-2.0 license + the EULA / safety notice, shipped so they travel with the
-; install (the EULA is also the accept-to-install page; see LicenseFile above).
+; GPL-2.0 license + the EULA / safety notice + the privacy policy, shipped so
+; they travel with the install (the EULA is also the accept-to-install page;
+; see LicenseFile above; EULA clause 8 points at PRIVACY.md).
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\EULA.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\PRIVACY.md"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Factory preset data files -> {app}\PluginsData\Common\TrueforceForAll\factory.
 ; That's the source of truth for shipped built-ins (no longer C# consts);
@@ -695,18 +697,55 @@ begin
   Result := ShouldAutoRelaunchSimHub or CanLaunchNow;
 end;
 
-// Skip the GPL info page and the EULA accept page on an update when the user
-// has already agreed to the same legal text. The revision they agreed to is
-// recorded by RegisterPreviousData; a non-empty match against the current
-// LegalRevision means "same EULA + license, already accepted." First installs
-// (and anyone upgrading from before this feature) have nothing stored, so the
-// pages show; bumping LegalRevision after editing the text re-shows them once.
+// Privacy-policy wizard page: the full PRIVACY.md text, shown right after the
+// EULA accept page (whose clause 8 references it). Follows the exact same
+// LegalRevision skip/re-show logic as the EULA + GPL pages, so it shows on
+// first install and again only when the legal text changes. The memo shows
+// the markdown source with the ** bold markers stripped; headers and tables
+// read fine as plain text.
+var
+  PrivacyPage: TOutputMsgMemoWizardPage;
+
+procedure InitializeWizard;
+var
+  Raw: AnsiString;
+  Txt: String;
+begin
+  PrivacyPage := nil;
+  try
+    ExtractTemporaryFile('PRIVACY.md');
+    if LoadStringFromFile(ExpandConstant('{tmp}\PRIVACY.md'), Raw) then
+    begin
+      Txt := Raw;
+      StringChangeEx(Txt, '**', '', True);
+      PrivacyPage := CreateOutputMsgMemoPage(wpLicense,
+        'Privacy Policy',
+        'How the optional online features handle your data.',
+        'The plugin is fully offline until you opt in to the online features. '
+          + 'This copy is also installed as PRIVACY.md and published in the GitHub repository.',
+        Txt);
+    end;
+  except
+    // A missing/unreadable file must never block installation; the EULA's
+    // clause 8 still points at the installed + published copies.
+    PrivacyPage := nil;
+  end;
+end;
+
+// Skip the GPL info page, the EULA accept page, and the privacy page on an
+// update when the user has already agreed to the same legal text. The
+// revision they agreed to is recorded by RegisterPreviousData; a non-empty
+// match against the current LegalRevision means "same EULA + license +
+// privacy policy, already accepted." First installs (and anyone upgrading
+// from before this feature) have nothing stored, so the pages show; bumping
+// LegalRevision after editing the text re-shows them once.
 function ShouldSkipPage(PageID: Integer): Boolean;
 var
   Stored: string;
 begin
   Result := False;
-  if (PageID = wpInfoBefore) or (PageID = wpLicense) then
+  if (PageID = wpInfoBefore) or (PageID = wpLicense)
+     or ((PrivacyPage <> nil) and (PageID = PrivacyPage.ID)) then
   begin
     Stored := GetPreviousData('AgreedLegalRev', '');
     if (Stored <> '') and (Stored = '{#LegalRevision}') then

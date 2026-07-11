@@ -336,6 +336,13 @@ mechanism (bytes 6-9 as the motor torque target, the rolling window as
 an additive overlay on top) has since been independently confirmed by
 the mescon driver's own implementation on RS50 hardware.
 
+## Privacy
+
+The plugin runs fully offline by default. The optional online features
+(sign-in, community presets, car data, cloud backup) are opt-in; what they
+store, who processes it, and how to export or delete it is covered in
+[PRIVACY.md](PRIVACY.md).
+
 ## License
 
 GPL-2.0-only. See [LICENSE](LICENSE).

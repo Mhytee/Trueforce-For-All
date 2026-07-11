@@ -46,5 +46,11 @@ Nothing here restricts the rights that license grants you.
 7. SEVERABILITY. If any provision of this notice is held invalid or
    unenforceable, the remaining provisions continue in full force.
 
+8. ONLINE FEATURES AND PRIVACY. The software works fully offline. The
+   optional online features (accounts, community presets, car data, cloud
+   backup) process personal data as described in the Privacy Policy, shipped
+   as PRIVACY.md in the install folder and published at
+   https://github.com/Mhytee/Trueforce-For-All/blob/main/PRIVACY.md
+
 By installing or using the software, you acknowledge that you have read,
 understood, and accept this notice.

@@ -84,7 +84,19 @@ namespace TrueforceForAll.Plugin
                 "Earn achievements for things like sharing presets, confirming car data, and supporting the project. Link your Discord account to get a matching role in the community server."));
             root.Children.Add(MakeBullet(
                 "Privacy by default",
-                "All it takes is your email. No personal details, no password, no signup form, just a one-time code."));
+                "Sign-in needs just your email and a one-time code. No password, no signup form. The privacy policy spells out what's stored and how to remove it."));
+
+            // Policy link, indented to align with the bullet bodies.
+            var policyLine = new TextBlock {
+                FontSize = 11, Margin = new Thickness(18, 0, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            var policyLink = new System.Windows.Documents.Hyperlink(
+                new System.Windows.Documents.Run("Read the privacy policy"))
+            { Foreground = HeaderFg };
+            policyLink.Click += (s, e) => OpenUrl(SettingsControl.PrivacyPolicyUrl);
+            policyLine.Inlines.Add(policyLink);
+            root.Children.Add(policyLine);
 
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
@@ -184,6 +196,18 @@ namespace TrueforceForAll.Plugin
             });
             border.Child = stack;
             return border;
+        }
+
+        private static void OpenUrl(string url)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
+                {
+                    UseShellExecute = true,
+                });
+            }
+            catch { }
         }
 
         private FrameworkElement MakeBullet(string title, string body)

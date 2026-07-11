@@ -1,0 +1,165 @@
+# Privacy Policy
+
+**Trueforce For All** (the SimHub plugin). Effective 2026-07-11.
+
+## The short version
+
+The plugin works fully offline. Nothing leaves your PC until you opt in to
+the online features (sign-in, community presets, car data, cloud backup).
+If you do opt in: sign-in needs only an email address, your username appears
+on presets you choose to share, and anti-abuse protection stores a hashed
+form of your IP address and a device code. You can export everything your
+account holds and delete the account yourself, from inside the plugin.
+
+## Who runs this
+
+Trueforce For All is developed and operated by **Mhytee**, an individual,
+who is the data controller for the online features.
+Privacy questions and requests: **mhytee@gmail.com**.
+
+## Offline by default
+
+Without signing in or enabling community features, the plugin makes no
+network requests except an update check against GitHub (see below, and it
+can be turned off in Settings). Your wheel tuning, presets, telemetry, and
+settings stay on your PC. Game telemetry is processed in real time to drive
+the wheel and is never uploaded.
+
+## What each online feature collects
+
+### Signing in
+
+- **Email address.** Used to sign you in (a one-time code, no password) and
+  for occasional account notices such as backup expiry warnings. Nothing
+  else. Sign-in emails are delivered through Resend, our email provider.
+- **Sessions.** Each signed-in device stores a session with its IP address,
+  browser-style user agent, Windows device name, wheel model, plugin
+  version, and last-active time. You can see and revoke every session under
+  Account settings.
+- **Device code.** Each signed-in session also records a one-way code
+  derived from your Windows installation ID and Windows username. It exists
+  to make ban evasion harder. It cannot be reversed into your username. If
+  an account is banned for abuse, the ban covers every device code that
+  account has signed in with, on every machine it used. Other accounts that
+  sign in from the same Windows user account on one of those machines can
+  be affected, since they share its code.
+
+### Community presets, packs, and custom engines
+
+- Anything you **share** is published to signed-in users with your
+  **username** on it, plus the preset content, name, description, and the
+  plugin version that uploaded it.
+- **Votes** you cast are stored against your account but only shown to
+  others as anonymous totals. **Downloads** are recorded per account (this
+  gates voting on things you have actually tried).
+- Every upload, vote, and submission also stores a **hashed form of your IP
+  address**, kept for abuse investigation. The address itself is not written
+  to these records, but the hash is a stable fingerprint derived from it, so
+  treat it as pseudonymous rather than anonymous.
+
+### Community car data (car facts)
+
+Car facts you submit (engine layout, redline, car names) are stored with
+your account id for de-duplication, but the public result is an anonymous
+aggregate. Nobody sees who submitted or confirmed a fact.
+
+### Cloud backup (supporters)
+
+Your settings file is stored in your account's private storage slot. No
+other user or account can read it. It is not end-to-end encrypted, so, as
+with any hosted service, the operator and Supabase (the storage host, listed
+below) can technically access the file. If supporter status lapses, the
+backup is kept for 2 years (with warning emails before removal), then
+deleted. Deleting your account deletes the backup (usually instantly; a
+nightly server job guarantees removal, normally within a day, and the file
+stays unreadable to other users in the meantime).
+
+### Linking Discord
+
+Stores your Discord user id and username, used to grant matching roles in
+the community server and (if the bot is configured) join you to the server.
+Unlink any time from the Account tab.
+
+### Linking Patreon
+
+Stores your Patreon user id and name to verify supporter status. Separate
+from linking: the supporters wall lists active patrons of the campaign by
+first name and last initial only (for example "Caleb P."). If you are a
+patron and want off the wall, email and you will be hidden.
+
+### Reporting content
+
+When you report a community item, the report (including any note you type)
+is forwarded to a private Discord moderation channel so it gets acted on.
+Your identity as the reporter is not included in that forward. The report
+itself is stored on your account; it is included in your data export and
+deleted with your account. Moderation actions against your content leave a
+notice on your account that you can see and appeal in the plugin.
+
+### Update checks
+
+The plugin periodically asks GitHub for the latest release (and downloads
+installers from GitHub when you choose to update). GitHub sees the request
+like any web request (IP address, a user agent containing only the plugin
+version). No account information is sent. Configurable and disableable in
+Settings.
+
+## Who processes the data
+
+| Service | Role |
+|---|---|
+| Supabase | Hosts the database, sign-in, file storage, and server functions (traffic fronted by Cloudflare). Platform request and sign-in logs are retained by Supabase for a limited period. |
+| Resend | Delivers sign-in codes and backup expiry warnings. Retains delivery logs per its own policy. |
+| Discord | Receives role grants and moderation-channel messages described above. |
+| Patreon | Confirms supporter status when you link, and provides the campaign's patron roster for the supporters wall. |
+| GitHub | Serves update checks, downloads, and this repository. |
+
+There is no advertising, no analytics, no crash reporting, and no sale or
+sharing of data beyond the services listed above.
+
+## How long data is kept
+
+| Data | Kept |
+|---|---|
+| Account (email, profile, links, entitlements) | Until you delete the account |
+| Sessions and device metadata | Until sign-out, expiry, revoke, or account deletion |
+| Shared presets, packs, engines | Until you delete them; they survive account deletion but lose your name |
+| Votes and car facts | Anonymized on account deletion (attribution replaced, hashed IP redacted) |
+| Hashed IPs on your content | While the content row lives; redacted on account deletion |
+| Cloud backup | While supported, plus 2 years after supporter status lapses; deleted on account deletion (removal completes within about a day) |
+| Device ban records | For the ban duration; permanent bans persist |
+| Platform logs (Supabase, Resend) | A limited period, per those providers |
+
+## Your controls
+
+All in the plugin's Account tab:
+
+- **Export my data**: a JSON file with your email, profile, uploads, votes,
+  submissions, download history, sessions (including their device codes),
+  linked accounts, supporter status, reports you have filed, and any
+  moderation notices.
+- **Delete account**: removes the account, email, sessions, links, download
+  history, and cloud backup. Presets you shared stay published (people who
+  downloaded them keep them) but your name comes off them; copies people
+  already downloaded keep the name they had at download time. Your votes
+  and car facts are anonymized and their hashed IPs redacted.
+- **Session list**: revoke any device, or sign out everywhere else.
+- **Unlink** Discord or Patreon at any time.
+
+Anything else (including supporters wall removal or questions about a ban
+record): email **mhytee@gmail.com**.
+
+If you are in the EU/UK: the lawful bases are consent (you opt in to each
+online feature), contract (operating the account you asked for), and
+legitimate interest (anti-abuse). You also have the right to complain to
+your local data protection authority.
+
+## Children
+
+The online features are not directed at children under 16.
+
+## Changes
+
+This policy lives in the project repository, so its full history is public.
+Each installer update refreshes the copy of this file in the install folder,
+and changes to the legal text re-show the notice pages on the next update.

@@ -12061,8 +12061,32 @@ namespace TrueforceForAll.Plugin
         internal Task<string> ExportMyDataRawAsync()
             => _presetSharing?.ExportMyDataRawAsync() ?? Task.FromResult<string>(null);
 
-        internal Task<bool> DeleteMyAccountAsync()
-            => _presetSharing?.DeleteMyAccountAsync() ?? Task.FromResult(false);
+        internal async Task<bool> DeleteMyAccountAsync()
+        {
+            if (_presetSharing == null) return false;
+            // RPC first: if it fails, NOTHING has been deleted (including the
+            // backup), so the "try again" dialog stays truthful. On success the
+            // server has already enqueued the uid into backup_delete_queue for
+            // the retention GC (the guaranteed path); the best-effort client
+            // delete below just makes removal immediate while this session's
+            // JWT still passes the backups_delete_own storage policy.
+            bool ok = await _presetSharing.DeleteMyAccountAsync().ConfigureAwait(false);
+            if (ok)
+            {
+                try
+                {
+                    if (_backupClient != null)
+                        await _backupClient.DeleteAsync(timeoutMs: 10000).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Immediate backup delete after account deletion failed (server GC queue covers it): "
+                        + ex.Message);
+                }
+            }
+            return ok;
+        }
 
         internal List<PresetSummary> FetchCommunityPresetsByIds(IList<string> ids)
             => _presetSharing?.FetchPresetsByIds(ids);

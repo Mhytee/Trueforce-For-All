@@ -3305,7 +3305,7 @@
                                     ToolTip="Opens a new GitHub issue. Pre-fills plugin version and active game so you don't have to type it."/>
                             <Button x:Name="ExportLogsButton" Content="Export logs…" Width="120" Height="26"
                                     Click="ExportLogs_Click" Margin="0,0,8,0"
-                                    ToolTip="Zips your SimHub logs + TF4ALL settings to your Desktop. Attach the zip to your GitHub issue so I can debug what's happening on your machine."/>
+                                    ToolTip="Zips your SimHub logs + TF4ALL settings to your Desktop. Attach the zip to your GitHub issue so I can debug what's happening on your machine. The zip includes your settings file (username, game list, tuning); skim it before posting it publicly."/>
                             <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
                                     Click="OpenRepo_Click"
                                     ToolTip="github.com/Mhytee/Trueforce-For-All"/>
@@ -3367,10 +3367,11 @@
                     <CheckBox x:Name="CommunityEnabledCheck" Content="Enable community features (online)"
                               Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
                               ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, and sharing presets. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12" TextWrapping="Wrap"
-                               Text="Sign-in required to share. Your username isn't shown on submitted data."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12" TextWrapping="Wrap">
+                        <Run Text="Sign-in required to share. Anything you share (presets, packs, custom engines) shows your username; car facts and votes never do. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
+                    </TextBlock>
                     <TextBlock Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap" Foreground="#E5C04A"
-                               Text="Pre-release: the community backend is in testing. Shared presets and packs are test data and may be reset before the public launch. Your account, achievements, and car data you contribute are kept."/>
+                               Text="Pre-release: the community backend is in testing. Shared presets, packs, and custom engines are test data and may be reset before the public launch. Your account, achievements, and car data you contribute are kept."/>
                     <!-- ===== Community car facts: apply (read) + auto-submit (write) ===== -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
                         <TextBlock Text="Community car facts" Style="{StaticResource SectionHeaderText}"/>
@@ -3765,15 +3766,18 @@
                         <Button x:Name="AccountExportBtn" Content="Export my data"
                                 Padding="10,3,10,3" Height="24" Margin="0,0,8,0"
                                 Click="AccountExport_Click"
-                                ToolTip="Save a JSON file with everything we have on your account (profile, uploads, votes, submissions)."/>
+                                ToolTip="Save a JSON file with the data your account holds: email, profile, uploads, votes, car-fact submissions, download history, sign-in sessions, linked accounts, supporter status, reports you have filed, and any moderation notices."/>
                         <Button x:Name="AccountDeleteBtn" Content="Delete account"
                                 Padding="10,3,10,3" Height="24"
                                 Background="#8B2E2E" BorderBrush="#8B2E2E"
                                 Click="AccountDelete_Click"
-                                ToolTip="Permanently remove your account. Presets you uploaded stay available for people who downloaded them but lose your name."/>
+                                ToolTip="Permanently remove your account. Presets you uploaded stay available for people who downloaded them but lose your name. Your cloud backup is deleted too."/>
                     </StackPanel>
                     <TextBlock x:Name="AccountExportStatus" FontSize="11" Foreground="#FFB0B0B0"
                                Margin="0,4,0,0" TextWrapping="Wrap" Text=""/>
+                    <TextBlock FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
+                        <Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink><Run Text=": what's stored, why, and how to remove it."/>
+                    </TextBlock>
                 </StackPanel>
             </Expander>
 

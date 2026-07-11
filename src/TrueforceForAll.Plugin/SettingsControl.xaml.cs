@@ -5059,6 +5059,11 @@ namespace TrueforceForAll.Plugin
 
         private void OpenRepo_Click(object sender, RoutedEventArgs e) => OpenUrl(RepoUrl);
 
+        // Privacy policy: what the online features store, why, and how to
+        // remove it. Linked from the Community toggle and the Account tab.
+        internal const string PrivacyPolicyUrl = "https://github.com/Mhytee/Trueforce-For-All/blob/main/PRIVACY.md";
+        private void PrivacyPolicy_Click(object sender, RoutedEventArgs e) => OpenUrl(PrivacyPolicyUrl);
+
         // Reciprocal funnel: TF4ALL points iRacing users at MAIRA, whose
         // "Pass FFB through TF4ALL" toggle is the supported full-feature path.
         private const string MairaRefactoredUrl = "https://github.com/mherbold/MarvinsAIRARefactored/releases/latest";
@@ -6925,11 +6930,24 @@ namespace TrueforceForAll.Plugin
         private int _supportersWallGen;
 
         // Load + render the public supporters wall (first name + last initial, sourced
-        // from Patreon server-side). Public: renders even when signed out. Reloaded each
-        // time the Account tab is shown so a new patron appears without restarting SimHub.
+        // from Patreon server-side). Renders even when signed out, but only when the
+        // community networking master is on: the wall fetch was the one network call
+        // that ignored CommunityEnabled, which broke the privacy policy's "offline
+        // until you opt in" statement. Reloaded each time the Account tab is shown so
+        // a new patron appears without restarting SimHub.
         private async Task RefreshSupportersWallAsync()
         {
             if (SupportersWallPanel == null || _plugin == null) return;
+            if (_plugin.Settings?.CommunityEnabled != true)
+            {
+                SupportersWallPanel.Children.Clear();
+                if (SupportersWallStatus != null)
+                {
+                    SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
+                    SupportersWallStatus.Text = "Turn on community features (Settings tab) to load the supporters wall.";
+                }
+                return;
+            }
             int gen = unchecked(++_supportersWallGen);
             if (SupportersWallStatus != null)
             {
@@ -8385,7 +8403,7 @@ namespace TrueforceForAll.Plugin
             var confirm1 = TrueforceDialog.Show(Window.GetWindow(this),
                 "Delete account",
                 "Delete the account for " + email + "?\n\n"
-                + "Your presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and car-fact contribution history is anonymized.",
+                + "Your presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and car-fact contribution history is anonymized, and your cloud backup is deleted.",
                 DialogKind.Destructive, okLabel: "Delete account", cancelLabel: "Cancel");
             if (confirm1 != true) return;
 
@@ -8410,39 +8428,60 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            bool ok = false;
-            try { ok = await _plugin.DeleteMyAccountAsync(); }
-            catch (Exception ex)
+            // In-flight guard: the backup delete + RPC can take tens of
+            // seconds worst-case; keep the button from starting a second
+            // concurrent deletion and show that something is happening.
+            if (AccountDeleteBtn != null)
             {
-                TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't delete your account. Check your connection and try again.",
-                    ex);
-                return;
+                AccountDeleteBtn.IsEnabled = false;
+                AccountDeleteBtn.Content   = "Deleting…";
             }
-            if (!ok)
+            try
             {
+                bool ok = false;
+                try { ok = await _plugin.DeleteMyAccountAsync(); }
+                catch (Exception ex)
+                {
+                    TrueforceDialog.ShowError(Window.GetWindow(this),
+                        "Couldn't delete your account. Check your connection and try again.",
+                        ex);
+                    return;
+                }
+                if (!ok)
+                {
+                    TrueforceDialog.Show(Window.GetWindow(this),
+                        "Delete account",
+                        "Delete failed. The server might be unreachable; try again.",
+                        DialogKind.Warning);
+                    return;
+                }
+                // Server deleted the auth user; clear local session.
+                _plugin.AuthSignOut();
+                if (_plugin.Settings != null)
+                {
+                    _plugin.Settings.SharingAuthor = "";
+                    try { _plugin.PersistSettings(); }
+                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                }
+                if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
+                if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
+                RefreshAccountRow();
+                if (AccountDetailsExpander?.IsExpanded == true) RefreshAccountStats();
                 TrueforceDialog.Show(Window.GetWindow(this),
                     "Delete account",
-                    "Delete failed. The server might be unreachable; try again.",
-                    DialogKind.Warning);
-                return;
+                    "Account deleted.",
+                    DialogKind.Info);
             }
-            // Server deleted the auth user; clear local session.
-            _plugin.AuthSignOut();
-            if (_plugin.Settings != null)
+            finally
             {
-                _plugin.Settings.SharingAuthor = "";
-                try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                // Restore is required on the failure paths; harmless on
+                // success since the account UI is rebuilt above.
+                if (AccountDeleteBtn != null)
+                {
+                    AccountDeleteBtn.IsEnabled = true;
+                    AccountDeleteBtn.Content   = "Delete account";
+                }
             }
-            if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
-            if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
-            RefreshAccountRow();
-            if (AccountDetailsExpander?.IsExpanded == true) RefreshAccountStats();
-            TrueforceDialog.Show(Window.GetWindow(this),
-                "Delete account",
-                "Account deleted.",
-                DialogKind.Info);
         }
 
         // Plugin-load update notification. Runs once per panel-open
