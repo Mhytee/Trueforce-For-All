@@ -215,10 +215,13 @@ And it doesn't have to be our plugin: the router could feed any program that wan
 to ingest or interact with the FFB signal, which makes it a general force-feedback
 router, not just a Trueforce one.
 
-Our Trueforce-style effects stay Logitech-only for now. Other brands have their
-own high-frequency haptic channels (Fanatec's FullForce, for example), so the
-effects could reach those wheels too, once such a protocol is reverse-engineered
-or opened up by the wheel manufacturer.
+Our Trueforce-style effects are Logitech-only for now, since they ride Logitech's
+own haptic channel. Other brands have their own high-frequency channels, and
+Fanatec's FullForce is where we want to start: there's an open call for captures
+of it, the first step toward finding out whether the protocol can be
+reverse-engineered. We think it's likely, but won't know until the captures are
+in. If it can, our effects could reach Fanatec wheels, and other brands could
+follow as their channels are reverse-engineered or opened up.
 
 ---
 
