@@ -1131,15 +1131,18 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Redline" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <TextBox   Grid.Column="1" x:Name="CarFactsRedlineBox" Width="70" VerticalAlignment="Center"
-                                           KeyDown="CarFactsRedline_KeyDown"/>
+                                           KeyDown="CarFactsRedline_KeyDown"
+                                           ToolTip="The redline start: where the tachometer turns red and you should upshift."/>
                                 <TextBlock Grid.Column="2" Text="RPM" FontSize="11" Opacity="0.6" VerticalAlignment="Center" Margin="4,0,8,0"/>
                                 <Button    Grid.Column="3" x:Name="CarFactsRedlineSetBtn" Content="Set"
                                            Style="{StaticResource EffectSaveButton}" Visibility="Visible"
                                            Click="CarFactsRedlineSet_Click"
-                                           ToolTip="Pin this redline for the current variant (this tune). Wins over the community value for this variant."/>
+                                           ToolTip="Pin the redline start for this variant (this tune). Wins over the community value for this variant."/>
                                 <TextBlock Grid.Column="4" x:Name="CarFactsRedlineSourceText" FontSize="11" Opacity="0.6"
                                            VerticalAlignment="Center" Margin="2,0,0,0"/>
                             </Grid>
+                            <TextBlock Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
+                                       Text="The redline start: where the tachometer turns red and you upshift. Not the rev limiter cutoff (that sits a little higher)."/>
                             <!-- Nudge to contribute when we have no community redline for
                                  this car/variant yet. Gold so it reads as a gentle prompt. -->
                             <TextBlock x:Name="CarFactsNoCommunityNudge" Margin="64,4,0,0" FontSize="11"
@@ -1148,7 +1151,7 @@
                                 <Button x:Name="CarFactsShareBtn" Content="★ Share with community"
                                         Style="{StaticResource HeaderShareButton}" Visibility="Collapsed"
                                         Click="CarFactsShareRedline_Click"
-                                        ToolTip="Submit your redline for this car / variant so other drivers get it too."/>
+                                        ToolTip="Submit this car's redline start for this variant so other drivers get it too."/>
                             </StackPanel>
                             <!-- Per-gear redline overrides (gears 1..N). The redline above
                                  is the default (gear 0); rows here override specific gears,
@@ -1161,7 +1164,7 @@
                                 </Expander.Header>
                                 <StackPanel Margin="0,4,0,0">
                                     <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
-                                               Text="Optional. Buzz at a different RPM in specific gears (e.g. a lower 1st-gear limit). Gears you don't list use the redline above."/>
+                                               Text="Optional. Set a different redline start (where you upshift) for specific gears, e.g. a lower 1st-gear shift point. Gears you don't list use the redline above."/>
                                     <StackPanel x:Name="CarFactsPerGearRows"/>
                                     <Button x:Name="CarFactsAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
                                             Padding="10,2" Margin="0,2,0,0" Click="CarFactsAddGear_Click"/>
@@ -2365,7 +2368,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A hard buzz that engages when RPM reaches the shift point and holds while you sit on (or bounce off) the limiter. A clearer shift cue than the engine-pulse change near redline, for when you run engine pulse low or just want an unmistakable signal. Triggers off RPM, so it works in any game that reports it."/>
+                                   Text="A hard buzz that engages at your redline start (the shift point) and holds while you sit on or bounce off the rev limiter above it. A clearer shift cue than the engine-pulse change near redline, for when you run engine pulse low or just want an unmistakable signal. Triggers off RPM, so it works in any game that reports it."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2376,15 +2379,15 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Engage mode:" Style="{StaticResource LabelText}"
-                                       ToolTip="Auto: prefer the game's reported redline, fall back to community / saved value / 85% of the rev limit. Manual: always use the redline RPM you set below (good for cars where the game reports the wrong redline)."/>
+                                       ToolTip="Auto: prefer the game's reported redline, fall back to community / saved value / 85% of the rev limit. Manual: always use the redline RPM you set below. Good for cars where the game reports the wrong redline."/>
                             <ComboBox  Grid.Column="1" x:Name="RevLimiterEngageModeCombo" SelectionChanged="RevLimiterEngageMode_Changed">
-                                <ComboBoxItem Content="Auto (trust the game)"/><ComboBoxItem Content="Manual (use my redline)"/>
+                                <ComboBoxItem Content="Auto (trust the game)"/><ComboBoxItem Content="Manual (set my own redline)"/>
                             </ComboBox>
                         </Grid>
                         <Grid x:Name="RevLimiterRedlineRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Redline RPM:" Style="{StaticResource LabelText}"
-                                       ToolTip="Absolute RPM at which the limiter buzz fires. In Auto mode this is the fallback when the game doesn't report a redline; in Manual mode it's always used. Range defaults to 500-15000 until telemetry observes a MaxRpm, then it caps at the car's hard rev limit."/>
+                                       ToolTip="RPM where the rev limiter buzz fires. Set it to the redline start (where the tachometer turns red and you upshift), not the hard rev limiter cutoff. In Auto mode this is the fallback when the game doesn't report a redline; in Manual mode it's always used. The slider opens up to the car's max RPM once telemetry observes it."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterRedlineSlider" Minimum="500" Maximum="15000" SmallChange="100" LargeChange="500"
                                         TickFrequency="1000" ValueChanged="RevLimiterRedlineSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="RevLimiterRedlineText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6800"/>
@@ -2397,7 +2400,7 @@
                         <Grid x:Name="RevLimiterRedlineSaveRow" Margin="140,0,0,10" Visibility="Collapsed">
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="Save for this variant" Click="SaveVariantRedline_Click" Padding="10,3" Margin="0,0,8,0"
-                                        ToolTip="Saves this redline just for the current engine variant (this tune). It wins over the community value for this variant; switching to another variant loads that variant's own value."/>
+                                        ToolTip="Saves the redline start shown above for this variant (this tune). It wins over the community value for this variant; switching to another variant loads that variant's own value."/>
                                 <Button Content="Revert" Click="RevertVariantRedline_Click" Padding="10,3"
                                         ToolTip="Discard this unsaved redline change."/>
                             </StackPanel>
@@ -2411,7 +2414,7 @@
                             </Expander.Header>
                             <StackPanel Margin="0,4,0,0">
                                 <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="Optional. Buzz at a different RPM in specific gears (e.g. a lower 1st-gear limit). Gears you don't list use the redline above."/>
+                                           Text="Optional. Set a different redline start (where you upshift) for specific gears, e.g. a lower 1st-gear shift point. Gears you don't list use the redline above."/>
                                 <StackPanel x:Name="RevLimiterPerGearRows"/>
                                 <Button x:Name="RevLimiterAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
                                         Padding="10,2" Margin="0,2,0,0" Click="RevLimiterAddGear_Click"/>
@@ -2429,11 +2432,11 @@
                             <StackPanel>
                                 <TextBlock TextWrapping="Wrap" Foreground="#FFFFE082" FontSize="12">
                                     <Run FontWeight="Bold">Estimated redline.</Run>
-                                    <Run>Rev limiter is firing at 85% of this engine's max RPM because nobody's confirmed a real redline yet. Shift cue may feel early or late.</Run>
+                                    <Run>The buzz is firing at 85% of max RPM because no one has confirmed the real redline start yet (where the tachometer turns red). Set it so the shift cue lands right.</Run>
                                 </TextBlock>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Margin="0,0,12,0" Style="{StaticResource HelpText}">
-                                        <Hyperlink x:Name="RedlineGuessSetValueLink" Click="RedlineGuessSetValue_Click">Set a value</Hyperlink>
+                                        <Hyperlink x:Name="RedlineGuessSetValueLink" Click="RedlineGuessSetValue_Click">Set the redline start</Hyperlink>
                                     </TextBlock>
                                     <TextBlock Style="{StaticResource HelpText}">
                                         <Hyperlink x:Name="RedlineGuessShareLink" Click="RedlineGuessShare_Click">Share with community</Hyperlink>
@@ -2458,7 +2461,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <Button x:Name="RedlineConfirmBtn" Content="Confirm"
                                             Padding="10,2" Margin="0,0,8,0" Click="RedlineConfirm_Click"
-                                            ToolTip="Agree with this value so it counts toward a confirmed community redline once the server records it."/>
+                                            ToolTip="Agree this is the redline start. Your confirmation counts toward a confirmed community redline once the server records it."/>
                                     <Button x:Name="RedlineConfirmDismissBtn" Content="Dismiss"
                                             Padding="10,2" Click="RedlineConfirmDismiss_Click"/>
                                 </StackPanel>

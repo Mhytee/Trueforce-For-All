@@ -5339,12 +5339,19 @@ namespace TrueforceForAll.Plugin
                 && Math.Abs(effectiveRedline.Value - impliedRedline) <= 100)
                 return;
 
+            // Soft guard against the most common car-facts mistake: submitting
+            // the rev LIMITER cutoff instead of the redline start. The limiter
+            // sits above the redline and the plausibility band can't reject it,
+            // so a value sitting right at the observed max RPM is almost
+            // certainly the limiter. Warn once; the user can still submit.
+            if (!ConfirmRedlineNotLimiter(impliedRedline)) return;
+
             string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
             string body = effectiveRedline.HasValue
-                ? $"You're claiming the redline of '{carDisplay}' is {impliedRedline} RPM. "
+                ? $"You're reporting the redline start of '{carDisplay}' as {impliedRedline} RPM. "
                   + $"The community currently says {effectiveRedline.Value} RPM. "
                   + "Submit your value as a correction?"
-                : $"You're claiming the redline of '{carDisplay}' is {impliedRedline} RPM. "
+                : $"You're reporting the redline start of '{carDisplay}' as {impliedRedline} RPM. "
                   + "No one's recorded it yet. Submit yours as the first answer?";
             // Standing auto-submit skips the prompt; otherwise offer Submit /
             // Always submit / Not now. "Always submit" flips the pref on.
@@ -5372,6 +5379,26 @@ namespace TrueforceForAll.Plugin
             MarkRedlineSharedThisSession(game, carId);
             MarkRedlineProfileHandled(impliedRedline, ToGearDict(perGear));
             RefreshActiveCommunityRedlineFromServer();
+        }
+
+        // Soft guard for the redline share flows: warn when the value about to
+        // be submitted sits within 2% of the observed max RPM, because that is
+        // almost certainly the rev limiter cutoff, not the redline start we
+        // want. The community plausibility band can't reject a limiter value,
+        // so this nudge is the only automated defense. Fails open (no ceiling
+        // observed = no warning) and never blocks: the user can submit anyway.
+        // Returns true to proceed with the submit.
+        private bool ConfirmRedlineNotLimiter(int redlineRpm)
+        {
+            double maxRpm = _plugin?.EnginePulse?.ObservedMaxRpm ?? 0;
+            if (maxRpm < 500) return true;                 // no ceiling to compare against
+            if (redlineRpm < maxRpm * 0.98) return true;   // comfortably below the limiter
+            return TrueforceDialog.Show(Window.GetWindow(this),
+                "That looks like the rev limiter",
+                $"{redlineRpm} RPM is right at this car's max RPM ({(int)Math.Round(maxRpm)}), which is "
+                + "usually the rev limiter cutoff, not the redline. The redline is where the tachometer "
+                + "turns red and you should upshift, a little below the limiter. Submit anyway?",
+                DialogKind.Warning, okLabel: "Submit anyway", cancelLabel: "Cancel") == true;
         }
 
         // CONFIRM cases (agrees with detection) and "no data" skip the prompt.
@@ -9294,8 +9321,8 @@ namespace TrueforceForAll.Plugin
             }
             _pendingConfirmSig = commSig;
             string carDisplay = _plugin.ActiveCarDisplayName ?? _plugin.ActiveCarId ?? "this car";
-            string text = $"One driver reported the redline for this variant of '{carDisplay}' as {communityRpm} RPM. "
-                        + "Confirm it to make it official, or set your own redline above to correct it.";
+            string text = $"One driver reported the redline start for this variant of '{carDisplay}' as {communityRpm} RPM. "
+                        + "Confirm it if that matches where your tachometer turns red, or set your own redline above to correct it.";
             if (RedlineConfirmBannerText != null && RedlineConfirmBannerText.Text != text)
                 RedlineConfirmBannerText.Text = text;
             if (RedlineConfirmBanner.Visibility != Visibility.Visible)
@@ -9503,7 +9530,7 @@ namespace TrueforceForAll.Plugin
                             "Thanks for sharing. Your redline will show as a community value once other drivers confirm it.";
                     else
                         CarFactsNoCommunityNudge.Text = s.HasUserRedline
-                            ? "No community redline for this car yet. Share yours to help other drivers."
+                            ? "No community redline for this car yet. Share your redline start to help other drivers."
                             : "No community redline exists for this car yet.";
                 }
                 CarFactsNoCommunityNudge.Visibility = showNudge ? Visibility.Visible : Visibility.Collapsed;
@@ -9580,7 +9607,7 @@ namespace TrueforceForAll.Plugin
                 || rpm < 500 || rpm > 25000)
             {
                 TrueforceDialog.Show(Window.GetWindow(this), "Redline",
-                    "Enter a redline between 500 and 25000 RPM.", DialogKind.Info);
+                    "Enter the redline start (where the tachometer turns red), from 500 to 25000 RPM.", DialogKind.Info);
                 return;
             }
             int? saved = _plugin.SaveActiveVariantUserRedline(rpm);
@@ -9643,10 +9670,11 @@ namespace TrueforceForAll.Plugin
                     DialogKind.Info);
                 return;
             }
+            if (!ConfirmRedlineNotLimiter(rpm)) return;
             string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
             string body = perGear.Count > 0
-                ? $"Share your redline of {rpm} RPM plus {perGear.Count} per-gear override{(perGear.Count == 1 ? "" : "s")} for '{carDisplay}' (this engine variant) with the community?"
-                : $"Share your redline of {rpm} RPM for '{carDisplay}' (this engine variant) with the community?";
+                ? $"Share your redline start of {rpm} RPM plus {perGear.Count} per-gear override{(perGear.Count == 1 ? "" : "s")} for '{carDisplay}' (this engine variant) with the community?"
+                : $"Share your redline start of {rpm} RPM for '{carDisplay}' (this engine variant) with the community?";
             // Offer to keep sharing automatically. Pre-checked, so submitting
             // also turns on auto-submit for future car facts unless the user
             // unchecks it (then they'll be prompted again next time).
