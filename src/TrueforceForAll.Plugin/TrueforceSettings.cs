@@ -290,6 +290,16 @@ namespace TrueforceForAll.Plugin
         // Surfaced as the Settings-tab "Updates" dropdown. Allowed: 0/1/2/6/24.
         public int    UpdateCheckIntervalHours { get; set; } = 2;
 
+        // Opt-in "Beta" update channel. When on AND the signed-in user is a current
+        // supporter, the in-app updater treats GitHub prereleases as eligible
+        // upgrade targets, so testers get pre-release builds through the same
+        // "Update to vX.Y.Z" button as stable. Default off. Enforcement is live:
+        // the updater ANDs this with real supporter status, so a lapsed or
+        // non-supporter never lands on a prerelease even with the flag stored on.
+        // Prereleases stay public on GitHub regardless; this only gates the in-app
+        // convenience, so it's a perk and not a hard paywall.
+        public bool   BetaUpdatesEnabled { get; set; } = false;
+
         // Opt-in standing consent: once on, the user's car-fact corrections
         // (redline, engine layout, car name) are submitted to the community
         // without the per-edit "share this?" prompt. Default off; the user

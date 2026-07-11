@@ -2889,7 +2889,8 @@
                  build. A check always runs at startup and on the header's
                  "Check for updates" link regardless of this; the dropdown only
                  sets the background re-check cadence during a running session. -->
-            <Expander x:Name="UpdatesExpander" IsExpanded="False" Margin="0,0,0,8">
+            <Expander x:Name="UpdatesExpander" IsExpanded="False" Margin="0,0,0,8"
+                      Expanded="UpdatesExpander_Expanded">
                 <Expander.Header>
                     <TextBlock Text="Updates" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
@@ -2909,6 +2910,26 @@
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="The plugin already checks once each time SimHub starts. This adds background re-checks so a fix released mid-session still shows the update banner without a restart. When one's available, an 'Update to vX.Y.Z' button appears in the header up top."/>
+
+                    <!-- Beta (pre-release) updates: a supporter perk. Pre-releases are
+                         always public on GitHub; this only lets supporters pull them
+                         through the in-app updater instead of downloading by hand. The
+                         effect is enforced live against supporter status by the poller. -->
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <CheckBox x:Name="BetaUpdatesCheck" Content="Get beta (pre-release) updates in-app"
+                                  VerticalAlignment="Center"
+                                  Checked="BetaUpdates_Changed" Unchecked="BetaUpdates_Changed"
+                                  ToolTip="Receive pre-release 'beta' builds through the in-app updater, so you can try new effects and fixes before they reach the stable release. A supporter perk; pre-releases stay public on GitHub for everyone."/>
+                        <Border CornerRadius="7" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Background="#33E5C04A" BorderBrush="#FFE5C04A" BorderThickness="1"
+                                ToolTip="A supporter perk. Support on Patreon (Account tab) to receive beta updates in-app.">
+                            <TextBlock Text="Supporter" FontSize="10" FontWeight="SemiBold" Foreground="#FFE5C04A"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="BetaUpdatesNote" Style="{StaticResource HelpText}" Margin="0,4,0,0"
+                               FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" Text=""/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="Beta builds get fixes and new effects first, but are less tested. Pre-releases are always available by hand on GitHub; this just brings them to the in-app updater. Turn it off to return to the stable release next time one ships."/>
                 </StackPanel>
             </Expander>
 
@@ -3768,12 +3789,12 @@
 
                         <TextBlock Text="Support Trueforce For All" FontSize="18" FontWeight="Bold" Margin="0,0,0,6"/>
                         <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.8" Margin="0,0,0,14"
-                                   Text="Trueforce For All is free for everyone, forever. If it has brought your wheel to life in a game that never had Trueforce, you can chip in to help cover the servers and the time that keep it growing. Supporting on Patreon also gets you cloud backup and sync, and a spot on the wall below."/>
+                                   Text="Trueforce For All is free for everyone, forever. If it has brought your wheel to life in a game that never had Trueforce, you can chip in to help cover the servers and the time that keep it growing. Supporting on Patreon also gets you cloud backup and sync, optional beta updates in-app, and a spot on the wall below."/>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <Button x:Name="SupportPatreonButton" Content="Support on Patreon" Style="{StaticResource SupportButton}"
                                     Background="#FFF96854" Click="Patreon_Click"
-                                    ToolTip="Recurring support on Patreon (patreon.com/Mhytee). Also unlocks cloud backup and sync."/>
+                                    ToolTip="Recurring support on Patreon (patreon.com/Mhytee). Also unlocks cloud backup and sync, and optional beta updates in-app."/>
                             <Button x:Name="SupportKofiButton" Content="Tip on Ko-fi" Style="{StaticResource SupportButton}"
                                     Background="#FF29ABE0" Margin="10,0,0,0" Click="Donate_Click"
                                     ToolTip="One-off tip via Ko-fi, no account needed."/>
@@ -3784,7 +3805,7 @@
                         <TextBlock x:Name="SupportOpenStatus" FontSize="11" Foreground="#FF7FB37F"
                                    Margin="0,2,0,0" Text=""/>
                         <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,4,0,16"
-                                   Text="These open in your browser. Patreon is recurring and unlocks cloud backup/sync; Ko-fi and PayPal are one-off tips."/>
+                                   Text="These open in your browser. Patreon is recurring and unlocks cloud backup/sync and in-app beta updates; Ko-fi and PayPal are one-off tips."/>
 
                         <!-- Share. Helping another sim racer find TF4ALL is its own support. -->
                         <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,0,0,10">

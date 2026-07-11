@@ -2096,7 +2096,14 @@ namespace TrueforceForAll.Plugin
             };
             System.Threading.Tasks.Task.Run(async () =>
             {
-                try { await _updateChecker.CheckAsync(_updateCheckerCts.Token); }
+                try
+                {
+                    await _updateChecker.CheckAsync(_updateCheckerCts.Token);
+                    // Beta (supporter) channel: if opted in, refresh entitlement and
+                    // re-select the latest target so a prerelease can surface in the
+                    // banner on the very first check. No-op and no network for Stable.
+                    await RefreshUpdateChannelAsync(_updateCheckerCts.Token);
+                }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info($"[TF4ALL] Update check task crashed: {ex.Message}");
@@ -3005,8 +3012,9 @@ namespace TrueforceForAll.Plugin
             var all = UpdateChecker?.AllReleases;
             var current = UpdateChecker?.CurrentVersion;
             if (all == null || current == null) return false;
+            bool includePre = BetaChannelAllowed();   // beta testers get prerelease notes too
             foreach (var r in all)
-                if (r != null && !r.IsPrerelease && r.Version != null && Compare3(r.Version, current) == 0)
+                if (r != null && (includePre || !r.IsPrerelease) && r.Version != null && Compare3(r.Version, current) == 0)
                     return true;
             return false;
         }
@@ -3059,16 +3067,52 @@ namespace TrueforceForAll.Plugin
             if (!EffectChangelog.TryParseVersion(Settings.LastSeenVersion, out var since) || since == null)
                 return Array.Empty<ReleaseInfo>();
             var current = UpdateChecker.CurrentVersion;
+            bool includePre = BetaChannelAllowed();   // beta testers get prerelease notes too
             var list = new List<ReleaseInfo>();
             foreach (var r in UpdateChecker.AllReleases)
             {
-                if (r == null || r.IsPrerelease || r.Version == null) continue;
+                if (r == null || r.Version == null) continue;
+                if (r.IsPrerelease && !includePre) continue;
                 if (r.Version <= since) continue;
                 if (r.Version > current) continue;
                 list.Add(r);
             }
             list.Sort((a, b) => b.Version.CompareTo(a.Version));
             return list;
+        }
+
+        /// <summary>True when prereleases (the supporter "Beta" channel) should be
+        /// eligible in the in-app updater: the user opted in AND is a current
+        /// supporter. Reads the synchronous LastKnownSupporter cache, so it never
+        /// blocks; callers needing an up-to-date answer refresh entitlement first
+        /// via <see cref="RefreshUpdateChannelAsync"/>.</summary>
+        private bool BetaChannelAllowed()
+            => Settings != null && Settings.BetaUpdatesEnabled && LastKnownSupporter;
+
+        /// <summary>Push the effective update channel into the poller. Cheap
+        /// (recomputes the "latest" target off the already fetched release list,
+        /// no network), so it's safe to call whenever the setting or supporter
+        /// status changes.</summary>
+        internal void ApplyUpdateChannel()
+        {
+            var uc = _updateChecker;
+            if (uc != null) uc.IncludePrereleases = BetaChannelAllowed();
+        }
+
+        /// <summary>Refresh supporter status (only when the Beta opt-in is on, so
+        /// Stable users pay no extra network), then push the resulting channel into
+        /// the poller. Called after the startup update check and whenever the beta
+        /// toggle changes, so a prerelease can surface in the banner without a
+        /// restart.</summary>
+        internal async System.Threading.Tasks.Task RefreshUpdateChannelAsync(System.Threading.CancellationToken ct)
+        {
+            try
+            {
+                if (Settings != null && Settings.BetaUpdatesEnabled)
+                    await GetSupporterTierAsync(ct).ConfigureAwait(false);   // refreshes LastKnownSupporter
+            }
+            catch { /* keep the last-known channel on any entitlement error */ }
+            ApplyUpdateChannel();
         }
 
         /// <summary>Stamps LastSeenVersion to the running build. Hides the

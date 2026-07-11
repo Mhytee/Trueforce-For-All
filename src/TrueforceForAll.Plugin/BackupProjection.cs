@@ -49,7 +49,7 @@ namespace TrueforceForAll.Plugin
             "ShowAchievementCelebrations",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "MotdLevel", "ShowEffectsTabShareButtons",
-            "UpdateCheckIntervalHours",
+            "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",

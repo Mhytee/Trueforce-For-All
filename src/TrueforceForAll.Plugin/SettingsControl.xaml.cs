@@ -455,6 +455,11 @@ namespace TrueforceForAll.Plugin
                 if (UpdateCheckIntervalCombo != null)
                     SelectComboByTag(UpdateCheckIntervalCombo,
                         (_plugin.Settings?.UpdateCheckIntervalHours ?? 2).ToString());
+                if (BetaUpdatesCheck != null)
+                {
+                    BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
+                    _ = RefreshBetaUpdateGatingAsync();
+                }
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
@@ -6718,6 +6723,92 @@ namespace TrueforceForAll.Plugin
             if (AutoSyncBackupCheck != null) AutoSyncBackupCheck.IsEnabled = canUpload;
         }
 
+        private int _betaGatingGen;
+
+        // Beta (pre-release) update channel opt-in. Persists the flag and pushes the
+        // resulting channel into the update poller immediately (ApplyUpdateChannel
+        // ANDs it with live supporter status, so a non-supporter toggling it on gets
+        // no prereleases), then refreshes the gate note so the supporter requirement
+        // is visible right away.
+        private void BetaUpdates_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.BetaUpdatesEnabled = BetaUpdatesCheck?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist BetaUpdatesEnabled failed: " + ex.Message);
+            }
+            _plugin.ApplyUpdateChannel();
+            _ = RefreshBetaUpdateGatingAsync();
+        }
+
+        // Refresh the beta toggle when the Updates section is opened, so its
+        // enabled-state and supporter note reflect current status on view.
+        private void UpdatesExpander_Expanded(object sender, RoutedEventArgs e)
+        {
+            _ = RefreshBetaUpdateGatingAsync();
+        }
+
+        // Gate the "beta updates" toggle on supporter status. Display + convenience
+        // only: the poller itself re-checks live status before landing a prerelease,
+        // and prereleases stay public on GitHub for everyone. Mirrors
+        // RefreshCloudBackupGatingAsync (generation guard drops stale awaits after an
+        // account switch). Also re-affirms the update channel once we have a fresh
+        // supporter answer, so a supporter who just linked Patreon starts seeing beta
+        // targets without a restart.
+        private async Task RefreshBetaUpdateGatingAsync()
+        {
+            if (BetaUpdatesCheck == null) return;   // panel not built yet
+
+            if (_plugin == null || !_plugin.AuthIsSignedIn)
+            {
+                BetaUpdatesCheck.IsEnabled = false;
+                SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
+                    ? "Sign in and support on Patreon to receive beta updates through the in-app updater."
+                    : null);
+                _plugin?.ApplyUpdateChannel();
+                return;
+            }
+
+            int gen = unchecked(++_betaGatingGen);
+            bool isSupporter = false;
+            try
+            {
+                var (sup, _, _) = await _plugin.GetSupporterTierAsync(System.Threading.CancellationToken.None);
+                if (gen != _betaGatingGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
+                isSupporter = sup;
+            }
+            catch { /* on error, gate the toggle closed (safe default) */ }
+
+            BetaUpdatesCheck.IsEnabled = isSupporter;
+            if (isSupporter)
+                SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
+                    ? "You're on the beta channel: the in-app updater will offer pre-release builds."
+                    : null);
+            else
+                SetBetaUpdatesNote("Support on Patreon (Account tab) to receive beta updates in-app.");
+
+            _plugin.ApplyUpdateChannel();
+        }
+
+        // Contextual note under the beta toggle (supporter gate / channel state).
+        // Null or empty hides it.
+        private void SetBetaUpdatesNote(string msg)
+        {
+            if (BetaUpdatesNote == null) return;
+            if (string.IsNullOrEmpty(msg))
+            {
+                BetaUpdatesNote.Visibility = Visibility.Collapsed;
+                BetaUpdatesNote.Text = "";
+            }
+            else
+            {
+                BetaUpdatesNote.Text = msg;
+                BetaUpdatesNote.Visibility = Visibility.Visible;
+            }
+        }
+
         // Contextual note under the cloud-backup buttons (supporter gate / lapsed). Null hides it.
         private void SetCloudBackupMessage(string msg)
         {
@@ -6781,6 +6872,7 @@ namespace TrueforceForAll.Plugin
                 _ = RefreshPatreonRowAsync();
                 _ = RefreshSupporterBadgeAsync();
                 _ = RefreshCloudBackupGatingAsync();
+                _ = RefreshBetaUpdateGatingAsync();
             }
             else if (SupportTab != null && ReferenceEquals(MainTabs.SelectedItem, SupportTab))
             {
@@ -7250,6 +7342,7 @@ namespace TrueforceForAll.Plugin
                     // A successful link may have flipped supporter status and/or auto-linked Discord.
                     _ = RefreshSupporterBadgeAsync();
                     _ = RefreshCloudBackupGatingAsync();
+                    _ = RefreshBetaUpdateGatingAsync();
                     _ = RefreshDiscordRowAsync();
                 }
             }
@@ -7386,6 +7479,7 @@ namespace TrueforceForAll.Plugin
             _ = RefreshPatreonRowAsync();
             _ = RefreshSupporterBadgeAsync();
             _ = RefreshCloudBackupGatingAsync();
+            _ = RefreshBetaUpdateGatingAsync();
         }
 
         // Header-card account chip. Signed out -> "Sign in" (no icon/caret).

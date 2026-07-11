@@ -8,11 +8,13 @@ without SimHub installed can't compile it. There is no GitHub Actions
 workflow for releases. The build, tag, and draft-release flow below is the
 whole process.
 
-The csproj `<Version>` is the single source of truth for the release. It
-populates the assembly version, which is what the in-panel header readout,
-the diagnostics block, the changelog dialog, and the auto-updater all read
-at runtime. The installer build picks it up via the `TRUEFORCEFORALL_VERSION`
-environment variable (step 6 below); set that to the same value.
+`<Version>` in `src/Directory.Build.props` is the single source of truth for the
+release. It is shared by Core, Engine, and Plugin (they ship as a matched set and
+cross-check at load), and it populates the assembly version, which is what the
+in-panel header readout, the diagnostics block, the changelog dialog, and the
+auto-updater all read at runtime. The installer build picks it up via the
+`TRUEFORCEFORALL_VERSION` environment variable (step 6 below); set that to the
+same value.
 
 If you edit `EULA.txt` or `LICENSE`, bump `#define LegalRevision` in
 `installer/TrueforceForAll.iss`. The installer records the revision each user
@@ -22,10 +24,10 @@ after the text changes.
 
 For each release:
 
-1. Bump `<Version>X.Y.Z</Version>` in
-   `src/TrueforceForAll.Plugin/TrueforceForAll.Plugin.csproj`. This drives
-   the assembly version, the in-panel header readout, the auto-updater's
-   "current version," and the User-Agent it sends to GitHub.
+1. Bump `<Version>X.Y.Z</Version>` in `src/Directory.Build.props` (shared by
+   Core, Engine, and Plugin). This drives the assembly version, the in-panel
+   header readout, the auto-updater's "current version," and the User-Agent it
+   sends to GitHub.
 2. Update `README.md` if any user-visible feature changed (especially the
    supported-games or wheels tables, install steps, known limitations).
 3. Changelog / What's new:
@@ -99,3 +101,44 @@ For each release:
 9. After publishing, reload the plugin in SimHub on a test machine to confirm
    the update banner appears and the installer downloads, and that any
    new-effect badges plus the "What's new" banner surface as expected.
+
+## Cutting a beta (pre-release)
+
+Betas ride the exact same build/tag/draft flow above, with two differences: the
+GitHub release is marked as a **pre-release**, and it is **not** set as the
+latest release. That is the whole mechanism. Supporters who turn on "Get beta
+(pre-release) updates in-app" (Settings tab, Updates section) have their in-app
+updater include pre-releases; stable users, and every non-supporter, only ever
+see full releases. Pre-releases stay public on GitHub, so anyone can still
+download one by hand: the supporter perk is only the in-app convenience.
+
+The channel is driven purely by GitHub's pre-release flag, so betas use plain
+version numbers with no `-beta.N` suffix. Each beta is an ordinary version bump.
+The updater compares numeric versions, so a distinct number per build is what
+lets a tester move from one beta to the next.
+
+1. Bump the version in `src/Directory.Build.props` to the next number (a beta is
+   just the next version, e.g. 0.2.0 to 0.3.0). Build, tag, and produce the
+   installer exactly as in steps 1 to 6 above.
+2. Create the release with `--prerelease`, and do NOT set it as latest. Target
+   whichever branch the beta is cut from:
+
+   ```powershell
+   gh release create v0.3.0 installer\output\TrueforceForAll-Setup.exe `
+       --draft --prerelease --target <branch> `
+       --title "v0.3.0-beta: <description>" --notes-file notes.md
+   ```
+
+   The title may read `-beta` for humans; only the numeric tag drives the
+   updater.
+3. Publish the draft with the pre-release box ticked and "Set as the latest
+   release" unticked. Beta-channel supporters get the update banner; stable
+   users do not.
+4. Iterate by cutting the next numeric version the same way (0.3.1, 0.3.2, and
+   so on), each as its own pre-release.
+5. **Promote a beta to stable** by editing the finished pre-release on GitHub:
+   untick "This is a pre-release," tick "Set as the latest release," and save.
+   No rebuild is needed, so the exact binary testers validated becomes the
+   stable release, and stable users are offered it on their next check. (If you
+   would rather ship a fresh build, just cut a normal full release at the next
+   version instead.)
