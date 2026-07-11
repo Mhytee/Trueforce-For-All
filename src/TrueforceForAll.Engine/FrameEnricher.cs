@@ -67,7 +67,7 @@ namespace TrueforceForAll.Core
             // Universal collision derivation: only PC2's opponent-collision
             // signal populates CollisionMagnitude directly; everyone else gets
             // the accel-spike heuristic. Surge catches head-on / rear-end,
-            // sway catches T-bones, heave catches hard landings / curb slams.
+            // sway catches T-bones, heave catches hard landings / kerb slams.
             if (frame.CollisionMagnitude == null)
             {
                 double sway  = frame.AccelerationSway  ?? 0;

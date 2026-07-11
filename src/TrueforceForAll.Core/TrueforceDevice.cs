@@ -200,7 +200,7 @@ namespace TrueforceForAll.Core
 
         // Slew-rate limit (LSB per ms) applied to the captured FFB target
         // BEFORE the smoothing IIR. Caps how fast the input can change in
-        // either direction, so a sudden curb hit (which AC sends as a single
+        // either direction, so a sudden kerb hit (which AC sends as a single
         // large step) gets spread over several ms and lands as a firm push
         // instead of a jolt that yanks the wheel out of your hands. Lets
         // users run a higher FFB scale safely (same average force, much
@@ -211,7 +211,7 @@ namespace TrueforceForAll.Core
         private float _slewLimitedFfb;
 
         // Spike-attenuation cap. Detection sidechains off RAW input slew rate
-        // (rate of change in LSB/ms): a curb / wall hit changes FFB at
+        // (rate of change in LSB/ms): a kerb / wall hit changes FFB at
         // 4000-15000+ LSB/ms while normal cornering inputs change at
         // 100-500 LSB/ms. Above SpikeSlewThresholdLsbPerMs we attenuate; at
         // slew = threshold + cap, gain factor = 0.5; as slew grows, factor
@@ -228,7 +228,7 @@ namespace TrueforceForAll.Core
         public float FfbPeakSoftLimitLsb { get; set; } = 1561.78564f;
         // Below this slew rate, no attenuation regardless of cap setting.
         // 1000 LSB/ms is well above the rates produced by even hard cornering
-        // and well below typical curb-hit slew. Hardcoded; could be exposed
+        // and well below typical kerb-hit slew. Hardcoded; could be exposed
         // if a game's cornering forces exceed this baseline.
         private const float SpikeSlewThresholdLsbPerMs = 1000f;
         // Directionality threshold in [0, 1]. Ratio of |sum of recent signed
@@ -244,7 +244,7 @@ namespace TrueforceForAll.Core
         // stays high through the entire envelope-rise.
         private const float DirectionalityDecayPerTick = 0.909f;  // ~ 1 - 1/11 (TC ≈ 10 ms)
         // Half-life of the spike envelope in ms. Sets how long attenuation
-        // persists after the actual slew event. AC sustains a curb-hit's
+        // persists after the actual slew event. AC sustains a kerb-hit's
         // elevated force for ~50-100 ms; this half-life keeps attenuation
         // active through the whole impact rather than just the slew moment.
         private const float SpikeEnvHalfLifeMs = 70f;

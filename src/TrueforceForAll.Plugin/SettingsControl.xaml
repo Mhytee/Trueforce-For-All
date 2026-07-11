@@ -1452,7 +1452,7 @@
                              it only appears under Transient. -->
                         <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,0">
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                                       Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
+                                       Text="Some games deliver kerb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
                             <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                 <RadioButton x:Name="SpikeModeTransientRadio" GroupName="SpikeMode"
@@ -1736,7 +1736,7 @@
                 <Expander x:Name="BumpsExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="SlipEnabledCheck" Content="Road bumps / curbs (vertical jolts)"
+                            <CheckBox x:Name="SlipEnabledCheck" Content="Road bumps / kerbs (vertical jolts)"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="SlipEnabled_Changed" Unchecked="SlipEnabled_Changed"/>
                             <Border x:Name="BumpsNewBadge" Style="{StaticResource NewEffectBadge}">
@@ -2293,7 +2293,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A thud on impact that hits harder the bigger the crash. Sources: PC2 reads its native impact magnitude directly; other sources derive from sudden lateral/vertical accel spikes above ~5g (well above hard cornering or curbs)."/>
+                                   Text="A thud on impact that hits harder the bigger the crash. Sources: PC2 reads its native impact magnitude directly; other sources derive from sudden lateral/vertical accel spikes above ~5g (well above hard cornering or kerbs)."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2742,7 +2742,7 @@
 
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Slide counter-force:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="0" Text="Countersteer force:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBCounterSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
                             TickFrequency="0.15" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="2" x:Name="ModeBCounterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
@@ -2803,7 +2803,7 @@
                                Text="Each box gates one piece of the synthesized feel. Everything applies live, so toggle while driving to A/B it."/>
                     <CheckBox x:Name="ModeBCompressorCheck" Margin="0,0,0,2" Content="Force compressor"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Soft ceiling on the steering force: stacked cornering weight and counter-force compress into the top of the range instead of clipping flat."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Soft ceiling on the steering force: stacked cornering weight and countersteer force compress into the top of the range instead of clipping flat."/>
                     <CheckBox x:Name="ModeBSuspLoadCheck" Margin="0,0,0,2" Content="Suspension load"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Steering weight breathes with real front-axle load: braking dive loads up, crests go light."/>
@@ -2820,7 +2820,7 @@
                                     TickFrequency="0.25" ValueChanged="ModeBRoadKickGainSlider_ValueChanged" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="2" x:Name="ModeBRoadKickGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                     </Grid>
-                    <CheckBox x:Name="ModeBSlideGrowthCheck" Margin="0,0,0,2" Content="Slide counter growth"
+                    <CheckBox x:Name="ModeBSlideGrowthCheck" Margin="0,0,0,2" Content="Countersteer growth"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Counter-steer pull grows with how deep the slide is: a shallow drift asks politely, a big moment yanks toward opposite lock."/>
                     <CheckBox x:Name="ModeBGripCalCheck" Margin="0,0,0,2" Content="Per-car grip auto-calibration"

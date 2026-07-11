@@ -365,7 +365,7 @@ namespace TrueforceForAll.Plugin
         public double StationarySpringStrength  { get; set; } = 0.5;
         public double StationarySpringCutoffKmh { get; set; } = 12.0;  // spring fully gone at/above this speed
 
-        // FFB spike taming: tames AC's over-the-top curb / collision FFB so
+        // FFB spike taming: tames AC's over-the-top kerb / collision FFB so
         // it lands as a firm shove instead of a wheel-yanking jolt. Two
         // knobs: FfbSpikeMaxLsbPerMs caps slew rate (LSB/ms); FfbPeakSoftLimitLsb
         // sets attenuation strength when slew exceeds the spike-detect
@@ -514,7 +514,7 @@ namespace TrueforceForAll.Plugin
         public float ModeBDamper    { get; set; } = 0.15f;   // "Damping" slider: velocity damping (Mode B only)
         public float ModeBCenter    { get; set; } = 0.10f;   // "Centering" slider: speed-scaled centering (Mode B only)
         public float ModeBLatGain     { get; set; } = 0.6f;  // cornering weight: +gain per lateral g (BLAT)
-        public float ModeBCounterGain { get; set; } = 0.5f;  // slide counter-force on rear breakaway (BCS)
+        public float ModeBCounterGain { get; set; } = 0.5f;  // countersteer force on rear breakaway (BCS)
         public float ModeBDirSoft     { get; set; } = 0.12f; // center flat-spot width (BDIRK); 0 = raw linear
 
         // Mode B feel features (the haptic-engine layers 6-11, all validated
@@ -525,7 +525,7 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBEarlyTorquePeak    { get; set; } = true;   // torque plateaus at 75% utilization
         public bool  ModeBRoadKick           { get; set; } = true;   // one-wheel bump kick in the force channel
         public float ModeBRoadKickGain       { get; set; } = 1.0f;   // kick strength
-        public bool  ModeBSlideCounterGrowth { get; set; } = true;   // counter-force grows with slide depth
+        public bool  ModeBSlideCounterGrowth { get; set; } = true;   // countersteer force grows with slide depth
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
 
         // Cross-wheel FFB sync policy. Mode B / FFB tuning is wheel-specific (a

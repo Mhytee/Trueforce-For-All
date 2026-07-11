@@ -38,7 +38,7 @@ namespace TrueforceForAll.Plugin.Effects
         public float FullSpeedKmh { get; set; } = 120f;
 
         /// <summary>Below this speed kerb entries don't thump at all
-        /// (parking-lot curbs aren't haptic events).</summary>
+        /// (parking-lot kerbs aren't haptic events).</summary>
         public float MinSpeedKmh { get; set; } = 15f;
 
         private const double SampleRateHz = 4000.0;

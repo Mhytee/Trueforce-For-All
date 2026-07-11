@@ -203,7 +203,7 @@ namespace TrueforceForAll.Core
 
         /// <summary>True if any wheel is currently on a rumble strip. Forza's
         /// WheelOnRumbleStrip[] booleans OR'd together. Drives an extra kerb
-        /// pulse in RoadBumpsEffect on rising edge so curb hits feel
+        /// pulse in RoadBumpsEffect on rising edge so kerb hits feel
         /// percussive even when the surface-rumble channel is also active.</summary>
         public bool? OnRumbleStrip;
 

@@ -2,7 +2,7 @@
 // section but with their own oscillators so each can be tuned independently:
 //
 //  A. HEAVE channel (universal). Vertical-acceleration transients
-//     curbs, jump landings, washboard bumps. Driven by
+//     kerbs, jump landings, washboard bumps. Driven by
 //     GameData.NewData.AccelerationHeave or the AC physics page's accGY.
 //     One noise oscillator per RoadBumps instance, freq/waveform/LP user-
 //     tunable. Threshold + FullScale gate the envelope so smooth driving
@@ -190,7 +190,7 @@ namespace TrueforceForAll.Plugin.Effects
         }
 
         /// <summary>Test simulation: 4 quick heave-channel pulses simulating
-        /// curb hits, with a surface-channel ramp-up underneath simulating
+        /// kerb hits, with a surface-channel ramp-up underneath simulating
         /// driving onto rougher pavement (so users can hear/feel both
         /// channels behave during the test).</summary>
         public override void TestUpdate(double phase01)

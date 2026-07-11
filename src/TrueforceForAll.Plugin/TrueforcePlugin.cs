@@ -4417,7 +4417,7 @@ namespace TrueforceForAll.Plugin
         // Per-axle feel terms (ModeBComposer): cornering weight from lateral
         // g, counter torque from rear utilization excess over the front.
         private float _pModeBLatGain     = 0.6f;   // BLAT / "Cornering weight" slider
-        private float _pModeBCounterGain = 0.5f;   // BCS  / "Slide counter-force" slider
+        private float _pModeBCounterGain = 0.5f;   // BCS  / "Countersteer force" slider
         private volatile float _lastSurgeAccel;    // m/s², cached in DispatchFrame
         private volatile float _lastSwayAccel;     // m/s² lateral, cached in DispatchFrame
         // Suspension-load feel: front suspension compression over its learned
@@ -4542,7 +4542,7 @@ namespace TrueforceForAll.Plugin
         private float _mbKickEma;               // provider thread only
         private long _kickPrevTicks;            // telemetry thread only
 
-        // Slide-counter growth: counter-force grows with slide depth instead
+        // Countersteer growth: countersteer force grows with slide depth instead
         // of arriving in full at the ±0.03 rad dir saturation.
         private volatile bool _mbSlideGrowthOn;
 
@@ -4983,7 +4983,7 @@ namespace TrueforceForAll.Plugin
                 case "BCS":
                     _pModeBCounterGain = C(value, 0f, 1.5f);
                     if (Settings != null) { Settings.ModeBCounterGain = _pModeBCounterGain; PersistSettings(); }
-                    return $"Mode B slide counter-force = {_pModeBCounterGain:0.00} (rear breakaway pull)";
+                    return $"Mode B countersteer force = {_pModeBCounterGain:0.00} (rear breakaway pull)";
                 case "BDIRK":
                     _pModeBDirSoft = C(value, 0f, 0.5f);
                     if (Settings != null) { Settings.ModeBDirSoft = _pModeBDirSoft; PersistSettings(); }

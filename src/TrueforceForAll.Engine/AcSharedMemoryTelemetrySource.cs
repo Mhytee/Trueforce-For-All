@@ -4,7 +4,7 @@
 // ≤1 ms of being written and lines up with our 1 kHz Trueforce packet
 // cadence, so events never get aliased against packet boundaries. The
 // fidelity gain over the 60 Hz SimHub IDataPlugin tick is most audible
-// in RoadBumpsEffect (sharp curb leading edges) and TractionLossEffect
+// in RoadBumpsEffect (sharp kerb leading edges) and TractionLossEffect
 // (direct wheelSlip[] reading instead of the heuristic SimHub falls back
 // to).
 //

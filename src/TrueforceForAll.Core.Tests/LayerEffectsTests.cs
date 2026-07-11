@@ -137,7 +137,7 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void KerbThump_SpeedGate_IgnoresParkingLotCurbs()
+        public void KerbThump_SpeedGate_IgnoresParkingLotKerbs()
         {
             var fx = new KerbThumpEffect();
             fx.OnTelemetry(new TelemetryFrame { Events = FrameEvents.RumbleStripStart, SpeedKmh = 8 });

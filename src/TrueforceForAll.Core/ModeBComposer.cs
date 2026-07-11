@@ -9,7 +9,7 @@
 //    as a multiplier on the SAT term so the peak-and-drop shape (lightness
 //    past the limit) is preserved, just scaled.
 //
-//  * Slide counter-force: with front-only utilization, rear breakaway is
+//  * Countersteer force: with front-only utilization, rear breakaway is
 //    invisible — the front keeps grip, u stays low, the wheel stays limp
 //    exactly when it should pull hard toward the counter-steer. The rear's
 //    utilization EXCESS over the front gates an additive torque in the
@@ -108,7 +108,7 @@ namespace TrueforceForAll.Core
         /// "no traction then TRACTION").
         /// <paramref name="latG"/>: |lateral acceleration| in g (≥ 0).
         /// <paramref name="latGain"/>: cornering-weight gain (0 = off).
-        /// <paramref name="counterGain"/>: slide counter-force gain (0 = off).
+        /// <paramref name="counterGain"/>: countersteer force gain (0 = off).
         /// <paramref name="trail01"/>: speed trail ramp, 0 parked → 1 at speed.
         /// <paramref name="slideDepth01"/>: test layer 10 (GAP #2) — scales
         /// the counter term by slide depth so a shallow drift asks politely
