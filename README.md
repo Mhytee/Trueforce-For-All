@@ -2,14 +2,24 @@
 
 **Logitech Trueforce-compatible haptics for any SimHub-supported game.**
 
+> **You are on the beta branch.** This branch carries the next release
+> while it gets tested in the open (currently v0.2.0: community preset
+> sharing, telemetry-based force feedback for the Forza titles, rev
+> lights, and more). Builds from here ship as pre-releases on the
+> [releases page][releases]; anyone can install them, and
+> [Patreon supporters](#supporting-the-project) can receive them through
+> the in-app updater. The stable channel lives on the
+> [`main` branch](https://github.com/Mhytee/Trueforce-For-All/tree/main).
+> Something broken in a beta build? Please [open an issue][issues] or
+> say so in the [Discord][discord].
+
 While official support for Trueforce has been steadily growing, there are still many major titles which are yet to receive support or will never get support. This
-plugin fills those gaps by allowing it to work everywhere SimHub does. Built on top of the wire
+plugin fills those gaps by making the wheel's haptics work everywhere SimHub does. Built on top of the wire
 protocol reverse-engineered by the [mescon Linux driver project][mescon].
 
-> **Status:** Actively in development. The plugin is functional today; the
-> default presets are still being tuned. Feedback welcome.
->
-> Note: My Reddit account was immediately banned after sharing this and all of my posts have been removed across several subreddits. If you find this useful, sharing it on social media (Reddit, Discord, Sim-Racing forums, YouTube, etc) helps other drivers find it. I've appealed the ban and have yet to hear back.
+> **Status:** Actively in development. The plugin is functional today.
+> Feedback is welcome, on [GitHub issues][issues] or in the
+> [Discord server][discord].
 
 For the record on what this project is: Original Windows code built on top of a wire protocol reverse-engineered by the [mescon Linux driver project][mescon] from USB traffic. No Logitech source, firmware, or proprietary assets are used or redistributed. GPL-2.0, same as mescon's work. Logitech trademarks are acknowledged in the section below; this project is unaffiliated.
 
@@ -37,7 +47,7 @@ on a different path than the G PRO and RS50 (a DirectInput-style report
 on a separate USB endpoint), which the plugin taps and mirrors into the
 haptic stream.
 
-Both G923 variants are confirmed working by owners: Trueforce effects
+Both G923 variants are confirmed working by owners: our haptic effects
 and in-game force feedback together. The PlayStation and Xbox variants
 deliver force feedback over different USB paths (the Xbox path was
 decoded from a community-submitted capture and added in 0.1.17); the
@@ -67,21 +77,38 @@ preserves via FFB pass-through. It mixes:
   - **Pit limiter**: configurable pulsing buzz while the limiter is
     engaged.
   - **Rev limiter**: a hard buzz at the shift point and on the limiter,
-    independent of the engine pulse. Fires at the car's real redline
-    where the game reports one (with an optional early/late offset),
-    otherwise at a percentage of the rev limit you set. On by default.
+    independent of the engine pulse. Fires at the car's real redline:
+    the game's reported one where it exists, or the community-confirmed
+    one for that exact car and engine (see
+    [Community features](#community-features)), otherwise an engagement
+    RPM you set directly. On by default.
   - **DRS**: short chirp on the rising edge when the wing opens, plus an
     optional sustained flutter while DRS stays active. Silent on games
     that don't expose the flag.
-  - **Road bumps**: triggered by vertical acceleration so curbs and
+  - **Road bumps**: triggered by vertical acceleration so kerbs and
     rough terrain rumble through the wheel. On Forza, the per-tire
     surface-rumble and rumble-strip fields are read directly for a
     richer, more accurate continuous road feel on top of the heave
     channel.
+  - **Kerb thump**: a firm whack the instant a wheel first catches a
+    kerb, distinct from the rumble that follows it, scaling with speed
+    so a fast strike hits harder. (Per-tire telemetry, currently the
+    Forza titles; off by default.)
   - **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
     lockup, drift). Read directly from per-wheel slip in games that
-    expose it (AC); inferred on the SimHub universal path from
-    wheel-vs-ground speed plus a yaw-rate / lateral-G discrepancy check.
+    expose it (AC and the Forza titles), weighing each tire by load so
+    it reflects how much of the car is actually losing grip; inferred on
+    the SimHub universal path from wheel-vs-ground speed plus a
+    yaw-rate / lateral-G discrepancy check.
+  - **Axle slip**: understeer and oversteer as two distinct feelings
+    instead of one blur: a high scrub texture as the front washes wide,
+    a deeper pulse as the rear steps out. (Per-tire telemetry, currently
+    the Forza titles; off by default.)
+  - **Lockup judder**: when a wheel locks under braking, a coarse
+    pulsing judder kicks in, the feel of a flat-spotted tire skidding
+    rather than rolling, fading as the car slows. A locked wheel becomes
+    something you feel and can correct instead of a silent loss of grip.
+    (Per-tire telemetry, currently the Forza titles; off by default.)
   - **Collision**: amplitude-scaled thud on impact, with a soft-knee
     curve so harder hits feel stronger without becoming unsafe, plus a
     refractory window so multi-frame crashes don't stutter.
@@ -99,21 +126,94 @@ preserves via FFB pass-through. It mixes:
   doesn't expose, and works even for games which do not output telemetry data
   since capture targets the game process directly.
 
-All of it is configurable per-game, per-car, via SimHub's settings UI:
-master gain, individual effect tuning, sidechain ducking between
-continuous and transient effects, and savable preset library.
+All of it is configurable per-game, per-car, from the plugin's tabbed
+panel inside SimHub: master gain (bindable to wheel buttons for
+mid-session nudges), individual effect tuning, precise typed values on
+every slider, sidechain ducking between continuous and transient
+effects, and a preset library with community sharing built in.
+
+## Telemetry Based FFB
+
+In the Forza titles (Forza Motorsport and Forza Horizon 4, 5, and 6) the
+plugin can go a step further and build the entire steering force itself
+from the telemetry the game streams, instead of passing the game's own
+force feedback through. It reads slip angle, tire load, and speed and
+synthesizes the wheel force from the ground up. The result has a real
+sense of the grip limit: the wheel goes light as the front washes wide,
+loads up through a corner, and pulls into a countersteer as the rear
+steps out. A per-car auto-calibration learns where each car's grip tops
+out as you drive.
+
+Because it replaces the game's force feedback wholesale, it is **off by
+default** and lives on its own tab in the plugin; everything else in
+this README works without it. It is also still being dialed in, so
+feedback on how it feels on your wheel is very welcome.
+
+**It also unlocks rev lights.** With Telemetry Based FFB enabled, the
+wheel's rev lights fill and flash with the engine in Forza, honoring the
+car's real redline where the community has confirmed one. Rev lights are
+otherwise hard to deliver on these wheels: the lights and a game's force
+feedback share one control channel, so lighting them while the game
+drives the wheel cuts the force feedback out. When the plugin is
+generating the force itself, the lights are free to run. (A custom
+driver that removes this restriction for every game is in progress; it
+has to be signed by Microsoft before it can ship.)
 
 ## FFB spike reduction
 
 Some games (Assetto Corsa being the worst offender we've seen) deliver
-curb and collision FFB spikes wildly out of proportion to what's safe or
+kerb and collision FFB spikes wildly out of proportion to what's safe or
 comfortable. On a strong wheelbase they can ruin a racing line or cause
 real wrist strain over a session. iRacing has a built-in softener; most
 other games don't. The plugin taps the game's outgoing FFB on the USB
-bus and attenuates spikes only, so curbs land as confident pushes
+bus and attenuates spikes only, so kerbs land as confident pushes
 instead of yanks while sustained cornering load and weight transfer
 pass through untouched. Useful on its own, even with all our other
 effects turned off.
+
+## Community features
+
+Once one driver figures out a car's redline, fixes its name, or picks
+its engine layout, everyone driving that same car gets it automatically.
+Everything here is opt-in, and the plugin works fully offline without it
+(see [Privacy](#privacy)).
+
+- **Community preset browser**, built into the Presets tab. Browse what
+  other drivers have shared for any game or car, sorted by votes and
+  downloads, and download one to try it.
+- **Share your own.** Game presets, car presets, custom engines, and
+  multi-preset packs can all be shared, with a description attached.
+- **Car facts flow back automatically.** Correct a redline, fix a car's
+  name, or pick an engine layout, and the plugin offers to send that
+  fact to the community. The next driver loading the same car gets the
+  correction applied without ever opening a panel.
+- **Downloaded presets stay current.** When a curator updates a preset
+  you downloaded, an "updates available" chip surfaces it; apply updates
+  manually or automatically.
+- **Sign in with just an email.** A one-time code, no password to
+  manage. From the Account tab you can set a display name, see how your
+  shared presets are doing, export your data, or delete your account.
+
+No single bad submission wins out: presets are surfaced by votes, and
+car facts converge as more drivers submit agreeing values.
+
+There is also a **[Discord server][discord]**: a place to hang out, swap
+tunes, ask for help, and get involved. Link your Discord account in the
+plugin and the achievements you earn for contributing (sharing presets,
+getting downloads, submitting car facts other drivers end up using)
+grant matching roles in the server.
+
+## Supporting the project
+
+The plugin is free and stays that way. For anyone who wants to support
+it, there is a **[Patreon][patreon]**. It covers the real costs behind
+the project: hosting for the community backend, the code-signing
+certificate for the upcoming driver, and the time that goes into
+building all this. As a thank-you, supporters get cross-device backup
+and sync of their full setup (sign in on another PC and your tuning
+rides with you), pre-release builds through the in-app updater, and a
+spot on the supporters wall in the plugin. Manual export/import stays
+available to everyone.
 
 ## Install
 
@@ -150,16 +250,18 @@ more responsive, and it needs no SimHub license:
 
 **Assetto Corsa** has a dedicated path: shared memory is read directly at
 AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within
-1 ms of being written). The higher rate makes curb collisions, road-bumps,
+1 ms of being written). The higher rate makes kerb collisions, road-bumps,
 traction-loss and other haptic effects noticeably sharper and more
 responsive than SimHub's 60 Hz feed can deliver.
 
-**Forza Horizon 4, 5 and 6** also have a direct UDP Data Out reader that
-picks up per-tire fields for the surface-texture, rumble strips, and curb
-collision effects. These games send this telemetry once per rendered frame,
-so it tracks your frame rate (often well above 60 Hz), giving more depth in
-surface detail effects than some other titles offer. All three are
-auto-detected from SimHub's game profile.
+**Forza Motorsport and Forza Horizon 4, 5, and 6** also have a direct UDP
+Data Out reader that picks up per-tire fields for the surface-texture,
+rumble-strip, and kerb collision effects, and feeds
+[Telemetry Based FFB](#telemetry-based-ffb). The Horizon games send this
+telemetry once per rendered frame, so it tracks your frame rate (often
+well above 60 Hz), giving more depth in surface detail effects than some
+other titles offer. All four are auto-detected from SimHub's game
+profile.
 
 Additional direct-read titles will be added over time.
 
@@ -172,9 +274,10 @@ big step up in feel.
 ### Forza UDP setup
 
 In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE
-TELEMETRY. Turn DATA OUT ON, set DATA OUT IP ADDRESS to `127.0.0.1`, and
-set DATA OUT IP PORT to match the plugin's Port field in the Forza section
-(`5300` by default). That is the whole setup.
+TELEMETRY. In Forza Motorsport the same settings live under Settings →
+Gameplay & HUD. Turn DATA OUT ON, set DATA OUT IP ADDRESS to `127.0.0.1`,
+and set DATA OUT IP PORT to match the plugin's Port field in the Forza
+section (`5300` by default). That is the whole setup.
 
 #### Also forwarding to SimHub (dashboards, bass shakers, Buttkicker)
 
@@ -244,7 +347,7 @@ here at all, please open an issue and let me know.
 
 If the wheel isn't detected (G HUB still running, USBPcap not installed,
 wheel unplugged) the plugin logs a clear status message and disables itself
-gracefully
+gracefully.
 
 ## Known limitations
 
@@ -264,15 +367,16 @@ gracefully
 The audio-derived effects work in any game at all, since the plugin captures
 the game's audio directly with no SimHub support needed. Games that SimHub
 supports additionally get the telemetry-derived effects (engine pulse, gear
-shifts, ABS, and so on). Assetto Corsa and Forza Horizon 4/5/6 go further
-with a higher-fidelity direct path (see Per-game enhancements).
+shifts, ABS, and so on). Assetto Corsa, Forza Motorsport, and the Forza
+Horizon games go further with a higher-fidelity direct path (see Per-game
+enhancements).
 
 **Do I need to pay for SimHub?**
 SimHub itself is free, and the plugin works without a SimHub license. The
 difference is the telemetry rate: unlicensed, games the plugin doesn't read
 directly run at only 10 Hz, which makes the effects feel coarse. A licensed
 copy lifts that to 60 Hz, which is a big step up in feel. SimHub is cheap and
-well worth it. (Assetto Corsa and Forza Horizon 4/5/6 are read directly from
+well worth it. (Assetto Corsa and the Forza titles are read directly from
 the game, so they run at their full rate regardless of license.)
 
 **Is this anti-cheat safe?**
@@ -285,9 +389,12 @@ editing a config file or flipping an in-game setting before launch, never by
 touching the running game.
 
 **Will it change or replace my normal force feedback?**
-No. The plugin preserves your existing force feedback and layers haptic
-effects on top of it. Your wheelbase's own FFB still comes through, with all
-your usual settings intact.
+Not unless you ask it to. By default the plugin preserves your existing
+force feedback and layers haptic effects on top of it; your wheelbase's own
+FFB still comes through, with all your usual settings intact. The one
+exception is opt-in: [Telemetry Based FFB](#telemetry-based-ffb)
+deliberately replaces the game's force feedback in the Forza titles with a
+force built from telemetry, and it stays off until you turn it on.
 
 **Why does it need USBPcap, and is that safe?**
 USBPcap is an open-source USB capture driver. The plugin uses it to read the
@@ -355,6 +462,9 @@ The wire protocol and init sequence are derived from the
 - **[mescon/logitech-rs50-linux-driver][mescon]**: reverse-engineered
   the wheel's driver and wire protocol. This project would not exist
   without their work.
+- **Andrew Boersma**: built the telemetry-based force feedback engine
+  and the axle slip, kerb thump, and lockup judder effects. The headline
+  features of the 0.2.0 release are his work.
 - **[USBPcap][usbpcap]** by Tomasz Mon: the kernel-mode USB filter that
   lets us tap the wheel's bus traffic for FFB pass-through.
 - **[mdjarv/assettocorsasharedmemory][acshmem]**: community reference
@@ -395,5 +505,8 @@ This project is not affiliated with, endorsed by, or sponsored by Logitech.
 [manteomax]: https://www.manteomax.com/
 [simhub]: https://www.simhubdash.com/
 [releases]: https://github.com/Mhytee/Trueforce-For-All/releases
+[issues]: https://github.com/Mhytee/Trueforce-For-All/issues
+[discord]: https://discord.gg/sfwsDqTsdn
+[patreon]: https://www.patreon.com/Mhytee
 [armando]: https://www.youtube.com/watch?v=p5P_Ww14CNg
 [revasio]: https://www.tiktok.com/@revasio/video/7641185174306180384
