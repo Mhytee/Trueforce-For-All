@@ -13836,7 +13836,7 @@ namespace TrueforceForAll.Plugin
         // process briefly holds the clipboard (overlays, clipboard managers,
         // RDP sessions). A few short retries clears it almost every time;
         // SetDataObject(copy: true) keeps the text available after the
-        // plugin closes.
+        // plugin closes. Used by the share dialog's copy rows.
         internal static bool TryCopyToClipboard(string text)
         {
             for (int attempt = 0; attempt < 5; attempt++)
@@ -13852,22 +13852,6 @@ namespace TrueforceForAll.Plugin
                 }
             }
             return false;
-        }
-
-        private void CopyShareLink_Click(object sender, RoutedEventArgs e)
-        {
-            if (TryCopyToClipboard(RepoUrl))
-            {
-                if (SupportShareStatus != null)
-                {
-                    SupportShareStatus.Text = "Link copied.";
-                    ClearStatusAfter(SupportShareStatus, 3.0, fade: true);
-                }
-            }
-            else
-            {
-                if (SupportShareStatus != null) SupportShareStatus.Text = "Couldn't copy. Link: " + RepoUrl;
-            }
         }
 
         // ---------- Update CTA / modal ----------

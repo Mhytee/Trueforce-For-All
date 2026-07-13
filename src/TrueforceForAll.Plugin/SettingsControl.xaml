@@ -3825,14 +3825,9 @@
                                     Style="{StaticResource EffectsShareButton}"
                                     Click="SharePanelButton_Click" Margin="0,0,8,0" ToolTipService.InitialShowDelay="250"
                                     ToolTip="Post on X, Reddit, or Facebook, or copy the GitHub / Nexus link."/>
-                            <Button x:Name="SupportCopyLinkButton" Content="Copy share link" Width="150" Height="28"
-                                    Click="CopyShareLink_Click" Margin="0,0,8,0"
-                                    ToolTip="Copies the project link to your clipboard."/>
                             <Button x:Name="SupportOpenRepoButton" Content="Open project page" Width="160" Height="28"
                                     Click="OpenRepo_Click"
                                     ToolTip="github.com/Mhytee/Trueforce-For-All"/>
-                            <TextBlock x:Name="SupportShareStatus" Margin="10,0,0,0" VerticalAlignment="Center"
-                                       FontSize="11" Foreground="#FF7FB37F"/>
                         </StackPanel>
 
                         <!-- Supporters wall. Populated DIRECTLY from Patreon (list_supporters),
