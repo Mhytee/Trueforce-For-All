@@ -235,6 +235,20 @@ namespace TrueforceForAll.Plugin
             _motdStrip = new MotdStrip();
             _motdStrip.Init(_plugin);
             _motdStrip.ShareRequested = () => ShowShareDialog();
+            // "link_discord" MOTD action: run the real Discord link flow (which
+            // also joins the server and unlocks roles) instead of opening a bare
+            // invite URL. Sign-in first when needed; the Account-tab handler
+            // takes it from there.
+            _motdStrip.LinkDiscordRequested = () =>
+            {
+                if (_plugin == null) return;
+                if (!_plugin.AuthIsSignedIn)
+                {
+                    var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
+                    signIn.ShowDialog();
+                }
+                if (_plugin.AuthIsSignedIn) LinkDiscord_Click(null, null);
+            };
             MotdStripHost.Content = _motdStrip;
 
             ApplyDevModeVisibility();
