@@ -153,7 +153,11 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="#E5C04A" BorderBrush="#E5C04A" BorderThickness="1" CornerRadius="3" SnapsToDevicePixels="True">
+                        <!-- Padding is template-bound so auto-width users (the
+                             empty-state share CTA) get side breathing room; the
+                             fixed-width users default to Padding=1, unchanged. -->
+                        <Border x:Name="Bd" Background="#E5C04A" BorderBrush="#E5C04A" BorderThickness="1" CornerRadius="3" SnapsToDevicePixels="True"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -681,6 +685,8 @@
                     <Button x:Name="EmptyShareCtaBtn"
                             Visibility="Collapsed"
                             Style="{StaticResource SharePrimaryButton}"
+                            Width="Auto" MaxWidth="360" Padding="14,0"
+                            HorizontalAlignment="Left"
                             Height="28"
                             FontSize="12"
                             Click="EmptyShareCta_Click"
