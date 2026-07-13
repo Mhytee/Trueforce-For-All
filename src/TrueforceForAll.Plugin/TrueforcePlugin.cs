@@ -11514,6 +11514,8 @@ namespace TrueforceForAll.Plugin
                     return "Sign-in expired. Sign in again and retry.";
                 case UploadError.RateLimited:
                     return "Slow down a moment, then try again.";
+                case UploadError.DuplicateName:
+                    return "You already shared an item with this name. Update your existing upload instead, or pick a different name.";
                 case UploadError.ValidationFailed:
                     return "The server rejected this upload. If you've already shared a preset with this name, rename it and try again.";
                 case UploadError.ServerError:
@@ -13255,12 +13257,76 @@ namespace TrueforceForAll.Plugin
         /// the user's library under the supplied preset name. Wraps
         /// CarPresetStore.Save with the curator's author + description so
         /// the row stays attributed in the preset manager Source column.</summary>
+        // ---- Local duplicate-content detection (owner rule 2026-07-13):
+        // the library must never hold two presets with identical tuning under
+        // different names. Game comparison is attribution-blind (a differing
+        // community description is not a different tune); car overrides carry
+        // no attribution inside the Override, so their share-lineage hash is
+        // already content-only. Overwriting an existing NAME (plain save /
+        // preset auto-update) is never blocked; only creating a NEW name is
+        // checked.
+
+        /// <summary>The existing preset an import/save was refused for
+        /// duplicating, for callers that want to phrase the message.</summary>
+        internal string LastLocalDuplicateName { get; private set; }
+
+        internal string FindGamePresetNameWithSameContent(GameSettingsSnapshot candidate, string excludeName = null)
+        {
+            if (candidate == null || Settings?.Presets == null) return null;
+            string hash = PresetBodyHasher.ComputeGameSnapshotContentHash(candidate);
+            if (hash == null) return null;
+            foreach (var kv in Settings.Presets)
+            {
+                if (kv.Value == null) continue;
+                if (excludeName != null
+                    && string.Equals(kv.Key, excludeName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(PresetBodyHasher.ComputeGameSnapshotContentHash(kv.Value), hash,
+                                  StringComparison.Ordinal))
+                    return kv.Key;
+            }
+            return null;
+        }
+
+        internal string FindCarPresetNameWithSameContent(string carId, CarOverride candidate, string excludeName = null)
+        {
+            if (candidate == null || string.IsNullOrEmpty(carId)) return null;
+            string hash = PresetBodyHasher.ComputeCarOverrideHash(candidate);
+            if (hash == null) return null;
+            var all = GetCarPresets(carId);
+            if (all == null) return null;
+            foreach (var kv in all)
+            {
+                if (kv.Value?.Override == null) continue;
+                if (excludeName != null
+                    && string.Equals(kv.Key, excludeName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(PresetBodyHasher.ComputeCarOverrideHash(kv.Value.Override), hash,
+                                  StringComparison.Ordinal))
+                    return kv.Key;
+            }
+            return null;
+        }
+
         public void SaveImportedCommunityCarPreset(string carId, string presetName,
             string gameName, CarOverride ovr, string author, string description,
             string communitySourceId = null, bool? allowInPacks = null)
         {
             if (_carStore == null || string.IsNullOrEmpty(carId)
                 || string.IsNullOrEmpty(presetName) || ovr == null) return;
+            // Content dedup: a NEW name whose tuning already exists for this
+            // car is skipped (re-saves of an existing name pass through).
+            LastLocalDuplicateName = null;
+            var existingForCar = GetCarPresets(carId);
+            if (existingForCar == null || !existingForCar.ContainsKey(presetName))
+            {
+                string dup = FindCarPresetNameWithSameContent(carId, ovr);
+                if (dup != null)
+                {
+                    LastLocalDuplicateName = dup;
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Skipped community car preset '{presetName}' for '{carId}': identical to '{dup}'.");
+                    return;
+                }
+            }
             // Stamp the source id onto the override so the permission
             // gate + pack creator can identify this item by stable
             // server uuid, surviving rename / duplicate / re-import.
@@ -13299,6 +13365,21 @@ namespace TrueforceForAll.Plugin
             // Author's "ok to re-bundle" permission travels with the
             // snapshot so export/import preserves it.
             if (allowInPacks.HasValue) snap.CommunityAllowInPacks = allowInPacks;
+            // Content dedup: a NEW name whose tuning already exists is
+            // skipped (re-saves of an existing name, e.g. the preset
+            // auto-update path, pass through).
+            LastLocalDuplicateName = null;
+            if (!Settings.Presets.ContainsKey(presetName))
+            {
+                string dup = FindGamePresetNameWithSameContent(snap);
+                if (dup != null)
+                {
+                    LastLocalDuplicateName = dup;
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Skipped community game preset '{presetName}': identical to '{dup}'.");
+                    return false;
+                }
+            }
             return PersistGamePresetToFolder(presetName, snap);
         }
 
@@ -14545,6 +14626,22 @@ namespace TrueforceForAll.Plugin
                 fresh.CommunityUploadedBodyHash  = prior.CommunityUploadedBodyHash;
                 fresh.CommunityUploadedVersion   = prior.CommunityUploadedVersion;
             }
+            // New-name saves must not duplicate an existing preset's tuning
+            // (owner rule 2026-07-13); overwriting the same name is the
+            // normal save path and always proceeds. Callers can read
+            // LastLocalDuplicateName to phrase the refusal.
+            LastLocalDuplicateName = null;
+            if (Settings.Presets == null || !Settings.Presets.ContainsKey(presetName))
+            {
+                string dup = FindGamePresetNameWithSameContent(fresh, excludeName: presetName);
+                if (dup != null)
+                {
+                    LastLocalDuplicateName = dup;
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] Refusing to save '{presetName}': identical to existing preset '{dup}'.");
+                    return false;
+                }
+            }
             if (!PersistGamePresetToFolder(presetName, fresh)) return false;
             _activePresetName = presetName;
             PersistSettingsCore();
@@ -15604,6 +15701,13 @@ namespace TrueforceForAll.Plugin
             // resolves at apply time instead of falling through to silence.
             // Local wins on Id collision.
             var customEngineMerge = MergeImportedCustomEngines(file.CustomEngines);
+            // Refuse a file whose tuning is already in the library under any
+            // name (owner rule 2026-07-13) instead of minting "Name (2)". The
+            // thrown message is what the import UI shows.
+            string contentDup = FindGamePresetNameWithSameContent(file.Snapshot);
+            if (contentDup != null)
+                throw new System.IO.InvalidDataException(
+                    $"This preset is already in your library as '{contentDup}'.");
             string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                 file.Snapshot, Newtonsoft.Json.Formatting.Indented);
             // Never clobber an existing user preset of the same name.
@@ -15671,6 +15775,13 @@ namespace TrueforceForAll.Plugin
             // user's library so the override's EnginePulse.CustomEngineId
             // resolves at apply time. Local wins on Id collision.
             var customEngineMerge = MergeImportedCustomEngines(file.CustomEngines);
+
+            // Refuse a file whose tuning is already in this car's library
+            // under any name (owner rule 2026-07-13); see ImportPreset.
+            string carContentDup = FindCarPresetNameWithSameContent(file.CarId, file.Override);
+            if (carContentDup != null)
+                throw new System.IO.InvalidDataException(
+                    $"This car preset is already in your library as '{carContentDup}'.");
 
             // PresetName may be missing on legacy v1 imports, fall back to
             // the carId. IsBuiltin is force-cleared regardless of source.

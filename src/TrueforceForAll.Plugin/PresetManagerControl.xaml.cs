@@ -2756,6 +2756,17 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             shareName = newName.Trim();
                         }
                     }
+                    else
+                    {
+                        // Unchanged uploads never re-share (owner rule,
+                        // 2026-07-13): it would only mint an identical
+                        // duplicate row. No bypass on purpose; name and
+                        // description edits go through Community > Edit….
+                        TrueforceDialog.Show(owner, "Already shared",
+                            "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                            DialogKind.Info);
+                        return;
+                    }
                 }
 
                 var dialog = PresetShareWindow.ForGame(_plugin, shareName, game, body, tags);
@@ -3192,6 +3203,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             shareName = newName.Trim();
                         }
                     }
+                    else
+                    {
+                        // Unchanged uploads never re-share (owner rule,
+                        // 2026-07-13); see the game-preset handler.
+                        TrueforceDialog.Show(owner, "Already shared",
+                            "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                            DialogKind.Info);
+                        return;
+                    }
                 }
 
                 var dialog = PresetShareWindow.ForCar(
@@ -3565,6 +3585,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             if (string.IsNullOrWhiteSpace(newName)) return;
                             shareName = newName.Trim();
                         }
+                    }
+                    else
+                    {
+                        // Unchanged uploads never re-share (owner rule,
+                        // 2026-07-13); see the game-preset handler.
+                        TrueforceDialog.Show(owner, "Already shared",
+                            "'" + baseName + "' is already shared to the community and hasn't changed since. Tweak the engine first, or use Edit… on your upload in the Community list to change its name or description.",
+                            DialogKind.Info);
+                        return;
                     }
                 }
 
@@ -5290,6 +5319,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             return;
                         }
                 }
+                // Identical-content dedup (owner rule 2026-07-13): the same
+                // tuning under a different server id must not pile up either.
+                string dupName = _plugin.FindGamePresetNameWithSameContent(snap);
+                if (dupName != null)
+                {
+                    if (CommunityStatusLabel != null)
+                        CommunityStatusLabel.Text = $"You already have an identical preset: '{dupName}'.";
+                    return;
+                }
 
                 string gpBase = full.Summary.Name + " (community)";
                 string gpName = gpBase;
@@ -5761,6 +5799,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             CommunityStatusLabel.Text = $"You already have this preset as '{kv.Key}'.";
                         return;
                     }
+            }
+            // Identical-content dedup (owner rule 2026-07-13): the same
+            // tuning under a different server id must not pile up either.
+            string carDupName = _plugin.FindCarPresetNameWithSameContent(_plugin.ActiveCarId, apply);
+            if (carDupName != null)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = $"You already have an identical preset: '{carDupName}'.";
+                return;
             }
 
             // Save the preset under a community-distinct name. Append

@@ -692,9 +692,10 @@ namespace TrueforceForAll.Plugin
                 if (string.IsNullOrEmpty(newId))
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = isUpdatePath
-                        ? "Update failed (sign in expired or permission denied)."
-                        : _plugin.DescribeLastUploadError();
+                    // Updates stamp their failure too now (rename collisions
+                    // raise 'duplicate name' since 0099), so both paths get
+                    // the specific reason instead of a fixed guess.
+                    statusText.Text = _plugin.DescribeLastUploadError();
                     uploadBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
                     // Banned account/device: pop the appeal modal right here so the

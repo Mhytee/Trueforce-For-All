@@ -2823,6 +2823,15 @@ namespace TrueforceForAll.Plugin
                         shareName = newName.Trim();
                     }
                 }
+                else
+                {
+                    // Unchanged uploads never re-share (owner rule, 2026-07-13);
+                    // mirrors the Preset Manager handlers.
+                    TrueforceDialog.Show(owner, "Already shared",
+                        "'" + name + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                        DialogKind.Info);
+                    return;
+                }
             }
 
             var dialog = PresetShareWindow.ForGame(_plugin, shareName, game, body, tags);
@@ -2984,6 +2993,15 @@ namespace TrueforceForAll.Plugin
                         if (string.IsNullOrWhiteSpace(newName)) return;
                         shareName = newName.Trim();
                     }
+                }
+                else
+                {
+                    // Unchanged uploads never re-share (owner rule, 2026-07-13);
+                    // mirrors the Preset Manager handlers.
+                    TrueforceDialog.Show(owner, "Already shared",
+                        "'" + pick.Name + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                        DialogKind.Info);
+                    return;
                 }
             }
 
