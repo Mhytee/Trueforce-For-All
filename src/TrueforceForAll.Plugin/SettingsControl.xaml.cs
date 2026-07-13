@@ -2350,9 +2350,9 @@ namespace TrueforceForAll.Plugin
             void CopyLink(string url, TextBlock label)
             {
                 string original = label.Text;
-                try { System.Windows.Clipboard.SetText(url); }
-                catch { /* clipboard is occasionally locked by another app; ignore */ }
-                label.Text = "Link copied";
+                // Retry-based copy; on a genuine failure say so instead of
+                // claiming "Link copied" over an empty clipboard.
+                label.Text = TryCopyToClipboard(url) ? "Link copied" : "Copy failed, try again";
                 var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.6) };
                 t.Tick += (_, __) => { label.Text = original; t.Stop(); };
                 t.Start();
@@ -13832,18 +13832,39 @@ namespace TrueforceForAll.Plugin
         // Copy the project link for sharing. Brief inline confirmation that fades
         // after a few seconds; falls back to showing the URL if the clipboard is
         // locked by another app.
+        // Clipboard.SetText throws CLIPBRD_E_CANT_OPEN whenever another
+        // process briefly holds the clipboard (overlays, clipboard managers,
+        // RDP sessions). A few short retries clears it almost every time;
+        // SetDataObject(copy: true) keeps the text available after the
+        // plugin closes.
+        internal static bool TryCopyToClipboard(string text)
+        {
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    System.Windows.Clipboard.SetDataObject(text, true);
+                    return true;
+                }
+                catch
+                {
+                    System.Threading.Thread.Sleep(60);
+                }
+            }
+            return false;
+        }
+
         private void CopyShareLink_Click(object sender, RoutedEventArgs e)
         {
-            try
+            if (TryCopyToClipboard(RepoUrl))
             {
-                System.Windows.Clipboard.SetText(RepoUrl);
                 if (SupportShareStatus != null)
                 {
                     SupportShareStatus.Text = "Link copied.";
                     ClearStatusAfter(SupportShareStatus, 3.0, fade: true);
                 }
             }
-            catch
+            else
             {
                 if (SupportShareStatus != null) SupportShareStatus.Text = "Couldn't copy. Link: " + RepoUrl;
             }

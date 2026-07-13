@@ -3821,6 +3821,10 @@
                         <TextBlock Style="{StaticResource HelpText}" FontSize="12" Margin="0,0,0,8"
                                    Text="Not into chipping in? Sharing the project helps just as much."/>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <Button x:Name="SupportShareDialogButton" Content="Share TF4ALL…"
+                                    Style="{StaticResource EffectsShareButton}"
+                                    Click="SharePanelButton_Click" Margin="0,0,8,0" ToolTipService.InitialShowDelay="250"
+                                    ToolTip="Post on X, Reddit, or Facebook, or copy the GitHub / Nexus link."/>
                             <Button x:Name="SupportCopyLinkButton" Content="Copy share link" Width="150" Height="28"
                                     Click="CopyShareLink_Click" Margin="0,0,8,0"
                                     ToolTip="Copies the project link to your clipboard."/>
