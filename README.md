@@ -323,6 +323,25 @@ allow this and how.
 - **Armando Ramirez**, [Does Logitech TRUEFORCE Actually Matter in Forza Horizon 6?](https://www.youtube.com/watch?v=p5P_Ww14CNg): The first video walkthrough of the plugin in Forza Horizon 6, including custom presets the creator tuned.
 - **Revasio**, [French installation tutorial on TikTok](https://www.tiktok.com/@revasio/video/7641185174306180384): A walkthrough of installing and setting up the plugin, narrated in French.
 
+## Community
+
+There is a **[Discord server][discord]**: a place to hang out, swap
+tunes, ask for help, and get involved. On the current beta builds you
+can link your Discord account in the plugin, and the achievements you
+earn for contributing grant matching roles in the server.
+
+## Supporting the project
+
+The plugin is free and stays that way. For anyone who wants to support
+it, there is a **[Patreon][patreon]**. It covers the real costs behind
+the project: hosting for the community backend, the code-signing
+certificate for the upcoming driver, and the time that goes into
+building all this. As a thank-you, supporters get cross-device backup
+and sync of their full setup (sign in on another PC and your tuning
+rides with you), pre-release builds through the in-app updater, and a
+spot on the supporters wall in the plugin. Manual export/import stays
+available to everyone.
+
 ## How it works
 
 The wire protocol (init sequence and ep3 streaming format) was
@@ -379,6 +398,8 @@ The wire protocol and init sequence are derived from the
 Logitech, Trueforce, G PRO, RS50, and G923 are trademarks of Logitech.
 This project is not affiliated with, endorsed by, or sponsored by Logitech.
 
+[discord]: https://discord.gg/sfwsDqTsdn
+[patreon]: https://www.patreon.com/Mhytee
 [mescon]: https://github.com/mescon/logitech-rs50-linux-driver
 [usbpcap]: https://github.com/desowin/usbpcap
 [acshmem]: https://github.com/mdjarv/assettocorsasharedmemory
