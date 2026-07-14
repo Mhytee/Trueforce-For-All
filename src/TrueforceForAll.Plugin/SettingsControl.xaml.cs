@@ -8855,17 +8855,15 @@ namespace TrueforceForAll.Plugin
             try
             {
                 string body =
-                    "This game supports Telemetry Based FFB. Instead of passing the "
-                    + "game's own force feedback through, the plugin builds the wheel's steering "
-                    + "force from telemetry: slip angle, tire load, and speed.\n\n"
-                    + "It also enables your wheel's rev lights. Rev lights only work with it "
-                    + "for now, because writing to them while a game runs its own force feedback "
-                    + "makes that force feedback cut out (they share one channel on the wheel). "
-                    + "It replaces the game's force feedback, so the lights are free. A custom "
-                    + "driver that would enable rev lights in every game is in testing, but it "
-                    + "needs to be signed by Microsoft first.\n\n"
-                    + "To use it, open this game's wheel settings and set its force feedback and "
-                    + "vibration strength to 0, so the plugin is the only force on the wheel. "
+                    "Instead of passing this game's own force feedback through, the plugin "
+                    + "can build the steering force itself. There's a real sense of grip. "
+                    + "The wheel goes light as the front washes out and it pulls into a "
+                    + "countersteer as the rear steps out.\n\n"
+                    + "It also unlocks your wheel's rev lights: they share a channel with "
+                    + "game force feedback, so they can only run when the plugin owns the "
+                    + "whole signal, as it does here.\n\n"
+                    + "To try it, set this game's force feedback and vibration to 0 in its "
+                    + "wheel settings, so the plugin is the only force on the wheel. "
                     + "Then activate it below.";
                 bool? r = TrueforceDialog.Show(owner,
                     "Telemetry Based FFB is available",
