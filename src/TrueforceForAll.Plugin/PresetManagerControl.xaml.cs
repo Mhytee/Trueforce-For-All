@@ -3269,8 +3269,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         private void UpdateEmptyShareCta(string kind, string mode, bool trending,
                                          string scopeGame, string scopeCar)
         {
-            if (EmptyShareCtaBtn == null) return;
-            EmptyShareCtaBtn.Visibility = System.Windows.Visibility.Collapsed;
+            if (EmptyShareCtaBtn == null || CommunityEmptyState == null) return;
+            CommunityEmptyState.Visibility = System.Windows.Visibility.Collapsed;
             EmptyShareCtaBtn.Tag = null;
             if (_communityRows.Count > 0) return;
             if (mode == "mine") return;
@@ -3316,7 +3316,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             EmptyShareCtaBtn.Tag = payload;
             EmptyShareCtaBtn.Content = label;
-            EmptyShareCtaBtn.Visibility = System.Windows.Visibility.Visible;
+            CommunityEmptyState.Visibility = System.Windows.Visibility.Visible;
         }
 
         // Bound the preset name in the empty-state share CTA so a long name
@@ -4592,7 +4592,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 if (EmptyShareCtaBtn != null)
                 {
-                    EmptyShareCtaBtn.Visibility = Visibility.Collapsed;
+                    if (CommunityEmptyState != null)
+                        CommunityEmptyState.Visibility = Visibility.Collapsed;
                     EmptyShareCtaBtn.Tag = null;
                 }
             }
