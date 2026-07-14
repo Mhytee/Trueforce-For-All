@@ -3316,6 +3316,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             EmptyShareCtaBtn.Tag = payload;
             EmptyShareCtaBtn.Content = label;
+            if (CommunityEmptyText != null)
+                CommunityEmptyText.Text = kind == "car"
+                    ? "No presets shared for this car yet."
+                    : "No presets shared for this game yet.";
             CommunityEmptyState.Visibility = System.Windows.Visibility.Visible;
         }
 

@@ -756,9 +756,10 @@
                 <StackPanel x:Name="CommunityEmptyState" Visibility="Collapsed"
                             HorizontalAlignment="Center" VerticalAlignment="Center"
                             Margin="0,40,0,0" MaxWidth="420">
-                    <TextBlock Foreground="#FFB0B0B0" FontSize="12" TextWrapping="Wrap"
+                    <TextBlock x:Name="CommunityEmptyText"
+                               Foreground="#FFB0B0B0" FontSize="12" TextWrapping="Wrap"
                                TextAlignment="Center" Margin="0,0,0,10"
-                               Text="Nothing shared for this scope yet. Yours could be the first preset other drivers find here."/>
+                               Text="Nothing shared here yet."/>
                     <Button x:Name="EmptyShareCtaBtn"
                             Style="{StaticResource SharePrimaryButton}"
                             Width="Auto" MaxWidth="360" Padding="14,0"
