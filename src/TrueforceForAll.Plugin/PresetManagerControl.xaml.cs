@@ -1029,7 +1029,11 @@ namespace TrueforceForAll.Plugin
             // On a real view switch, clear the search box and re-default the
             // game filter to the active game (preserving them across an
             // unchanged re-entry so returning to the tab keeps your browse).
-            if (changed) ResetCommunityFilters();
+            // Also when the default scope was never established: the first
+            // entry can land with kind/mode equal to the field defaults
+            // (changed == false), skipping the reset entirely and stranding
+            // an empty filter that reads as a user-broadened browse.
+            if (changed || !_communityScopeEverSet) ResetCommunityFilters();
             // Gate on every view ENTRY, not just on fetch: community may have
             // been disabled (or the user signed out) while this panel was
             // hidden, where RefreshCommunityGate deliberately no-ops. Without
@@ -1135,8 +1139,22 @@ namespace TrueforceForAll.Plugin
             _communitySelectedGames.Clear();
             string ag = _plugin?.ActiveGame;
             if (!string.IsNullOrEmpty(ag)) _communitySelectedGames.Add(ag);
+            // Latch: the default game scope has been established at least
+            // once. While false, an empty game filter means "the active game
+            // wasn't known yet" (fresh session), NOT a user-chosen All-games
+            // browse - so scope healing may adopt the game when it arrives.
+            if (!string.IsNullOrEmpty(ag)) _communityScopeEverSet = true;
             RebuildCommunityGameChips();
         }
+
+        // False until a filter reset ran with a known active game. See
+        // ResetCommunityFilters + the healing in OnActiveCarChanged /
+        // EnterCommunity: without this, opening the panel before the first
+        // game tick left the filter empty, which read as a user-broadened
+        // All-games browse, suppressed the empty-state share CTA, and never
+        // self-healed (the broaden check early-returned the very code that
+        // would have adopted the game).
+        private bool _communityScopeEverSet;
 
         // Search applies to every browse kind; the game chips only to car /
         // game presets. Both hidden in "mine" mode.
@@ -4104,14 +4122,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 || _plugin == null)
                 return;
             // Mine mode is car-independent; a broadened browse/search is scoped
-            // to the chosen games, not the active car. Neither reacts here.
-            if (_communityMode == "mine" || IsCommunityBroadened())
+            // to the chosen games, not the active car. Neither reacts here -
+            // EXCEPT when the "broaden" is really a never-established default
+            // scope (panel opened before the first game tick): adopt the game
+            // now so the view heals without a nav-away round trip.
+            if (_communityMode == "mine") return;
+            bool scopeNeverSet = !_communityScopeEverSet
+                && (_communityKind == "car" || _communityKind == "game")
+                && string.IsNullOrEmpty((_communitySearch ?? "").Trim());
+            if (!scopeNeverSet && IsCommunityBroadened())
                 return;
             // Default (per-car) scope: keep the game filter tracking the new
             // active game so the chips + default scope stay correct.
-            if (gameAlsoChanged) ResetCommunityFilters();
-            bool shouldRefresh =
-                _communityKind == "car"
+            if (gameAlsoChanged || scopeNeverSet) ResetCommunityFilters();
+            bool shouldRefresh = scopeNeverSet
+                || _communityKind == "car"
                 || (_communityKind == "game" && gameAlsoChanged);
             if (shouldRefresh)
                 _ = CommunityRefreshAsync();
