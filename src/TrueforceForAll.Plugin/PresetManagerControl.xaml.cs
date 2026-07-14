@@ -2606,14 +2606,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedGame;
             if (sel == null) return;
-            string suggested = SuggestCopyName(sel.Name, n => _plugin.Settings?.Presets?.ContainsKey(n) == true);
-            string newName = PromptForName("Duplicate preset", "New preset name:", suggested, name =>
-                string.IsNullOrWhiteSpace(name) ? "Enter a name."
-                : (_plugin.Settings?.Presets?.ContainsKey(name) == true)
-                    ? $"A preset named '{name}' already exists." : null);
-            if (newName == null) return;   // cancelled
-            newName = newName.Trim();
-            if (!_plugin.DuplicatePreset(sel.Name, newName))
+            // No name prompt: the duplicate self-names with the numeric-suffix
+            // convention ("Name (2)"), so it can't collide, and the user
+            // renames afterwards if they want something else (owner call
+            // 2026-07-13).
+            string newName = _plugin.DuplicatePreset(sel.Name);
+            if (newName == null)
             {
                 SetLib(GameLibStatus, "Couldn't duplicate. See the SimHub log.");
                 return;
@@ -3363,21 +3361,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedCar;
             if (sel == null) return;
-            // Build the existing-names set for this car so suggestion logic
-            // doesn't propose a name that's already taken.
-            var existing = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var r in _carRows)
-                if (string.Equals(r.CarId, sel.CarId, StringComparison.Ordinal))
-                    existing.Add(r.PresetName);
-            string suggested = SuggestCopyName(sel.PresetName, n => existing.Contains(n));
-            string newName = PromptForName("Duplicate car preset",
-                $"New preset name for '{sel.CarId}':", suggested, name =>
-                    string.IsNullOrWhiteSpace(name) ? "Enter a name."
-                    : existing.Contains(name)
-                        ? $"A preset named '{name}' already exists for this car." : null);
-            if (newName == null) return;   // cancelled
-            newName = newName.Trim();
-            if (!_plugin.DuplicateCarPreset(sel.CarId, sel.PresetName, newName))
+            // No name prompt: self-names with the numeric-suffix convention;
+            // see GameDuplicate_Click (owner call 2026-07-13).
+            string newName = _plugin.DuplicateCarPreset(sel.CarId, sel.PresetName);
+            if (newName == null)
             {
                 SetLib(CarLibStatus, "Couldn't duplicate. See the SimHub log.");
                 return;

@@ -8911,23 +8911,27 @@ namespace TrueforceForAll.Plugin
         /// <summary>Deep-copy a car preset under a new name (same carId).
         /// JSON round-trip clone so the new file is independent. Refuses if
         /// the target already exists.</summary>
-        public bool DuplicateCarPreset(string carId, string sourceName, string newName)
+        public string DuplicateCarPreset(string carId, string sourceName, string newName = null)
         {
-            if (_carStore == null) return false;
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(sourceName) || string.IsNullOrEmpty(newName)) return false;
+            if (_carStore == null) return null;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(sourceName)) return null;
+            // newName null/blank = auto-name with the numeric-suffix
+            // convention; see DuplicatePreset (owner call 2026-07-13).
+            if (string.IsNullOrWhiteSpace(newName))
+                newName = MakeUniqueCarPresetName(carId, ToDiskName(sourceName));
             // sourceName may be a factory display name (suffixed); pull from
             // the merged map (which has both user + suffixed factory entries)
             // and persist the clone as a user file under the on-disk newName.
             string sourceDisk = ToDiskName(sourceName);
             string newDisk    = ToDiskName(newName);
-            if (_carStore.Exists(carId, newDisk)) return false;
+            if (_carStore.Exists(carId, newDisk)) return null;
 
             CarPresetEntry entry = null;
             var all = GetAllCarPresets();
             if (all != null && all.TryGetValue(carId, out var perCarAll))
                 perCarAll.TryGetValue(sourceName, out entry);
 
-            if (entry == null) return false;
+            if (entry == null) return null;
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(entry.Override);
             var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CarOverride>(json, SafeJson.Settings);
             // A duplicate of an imported preset stays attributed to its
@@ -8943,7 +8947,7 @@ namespace TrueforceForAll.Plugin
                 defaultAuthor: CurrentAuthorForStamp());
             RequestAutoBackup();   // new car preset file: arm auto-sync so the duplicate propagates
             SimHub.Logging.Current.Info($"[TF4ALL] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
-            return true;
+            return newDisk;
         }
 
         /// <summary>Re-resolve the active preset for the active car after a
@@ -14914,15 +14918,20 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
-        /// <summary>Deep-copy a preset under a new name. JSON round-trip so the
-        /// clone is independent of the source. Refuses if the target already
-        /// exists in the library.</summary>
-        public bool DuplicatePreset(string sourceName, string newName)
+        /// <summary>Deep-copy a preset. JSON round-trip so the clone is
+        /// independent of the source. newName null/blank = auto-name with the
+        /// library's numeric-suffix convention ("Source (2)", first free
+        /// number): Duplicate is the one sanctioned way to hold two presets
+        /// with identical tuning, so it self-names instead of prompting and
+        /// can never collide (owner call 2026-07-13). Returns the final name,
+        /// or null on failure / explicit-name collision.</summary>
+        public string DuplicatePreset(string sourceName, string newName = null)
         {
-            if (Settings?.Presets == null) return false;
-            if (string.IsNullOrEmpty(sourceName) || string.IsNullOrEmpty(newName)) return false;
-            if (!Settings.Presets.TryGetValue(sourceName, out var snap) || snap == null) return false;
-            if (Settings.Presets.ContainsKey(newName)) return false;
+            if (Settings?.Presets == null) return null;
+            if (string.IsNullOrEmpty(sourceName)) return null;
+            if (!Settings.Presets.TryGetValue(sourceName, out var snap) || snap == null) return null;
+            if (string.IsNullOrWhiteSpace(newName)) newName = MakeUniqueGamePresetName(sourceName);
+            else if (Settings.Presets.ContainsKey(newName)) return null;
 
             // The duplicate always lands in the USER library (a copy of a
             // built-in becomes a normal user preset; the owner uses DEV +
@@ -14946,12 +14955,12 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn($"[TF4ALL] Duplicate '{sourceName}' -> '{newName}' failed: {ex.Message}");
-                return false;
+                return null;
             }
             PersistSettingsCore();
             RequestAutoBackup();   // new preset file: arm auto-sync so the duplicate propagates
             SimHub.Logging.Current.Info($"[TF4ALL] Duplicated preset '{sourceName}' as '{newName}'.");
-            return true;
+            return newName;
         }
 
         /// <summary>Bind a preset to auto-load for any game (not just the
