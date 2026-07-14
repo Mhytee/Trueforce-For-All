@@ -1914,7 +1914,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Feel which axle is letting go: a high scrub texture as the front washes wide, a deep pulse as the rear steps out. The louder axle is the one losing grip. Needs per-tire telemetry (Forza games today)."/>
+                                   Text="Feel which axle is slipping: a high scrub texture as the front washes wide, a deep pulse as the rear steps out. The louder axle is the one losing grip. Needs per-tire telemetry (Forza and Assetto Corsa today)."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -1998,7 +1998,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A flat-spot pulse while a braking tire is locked, slowing with the car the way a real flat spot would. Needs per-tire telemetry (Forza games today)."/>
+                                   Text="A flat-spot pulse while a braking tire is locked, slowing with the car the way a real flat spot would. Needs per-tire telemetry (Forza and Assetto Corsa today)."/>
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>

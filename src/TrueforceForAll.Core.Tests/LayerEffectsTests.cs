@@ -103,6 +103,42 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
+        public void AxleSlip_LockupGate_MutesLockedAxle_KeepsWheelspin()
+        {
+            // Same front utilization; locking under braking (signed slip
+            // ratio -0.9) must be silent, wheelspin (+0.9) keeps the voice.
+            var locked = new AxleSlipEffect { RearAmp = 0f };
+            var fL = Rollups(1.3, 0.3);
+            fL.HasTireQuads = true;
+            fL.TireSlipRatio = TireQuad.Of(-0.9, -0.9, 0, 0);
+            locked.OnTelemetry(fL);
+
+            var spinning = new AxleSlipEffect { RearAmp = 0f };
+            var fS = Rollups(1.3, 0.3);
+            fS.HasTireQuads = true;
+            fS.TireSlipRatio = TireQuad.Of(0.9, 0.9, 0, 0);
+            spinning.OnTelemetry(fS);
+
+            Assert.False(locked.IsActive, "front voice fired on brake lockup");
+            Assert.True(spinning.IsActive, "front voice muted on wheelspin");
+        }
+
+        [Fact]
+        public void AxleSlip_LockupGate_SilencesRevLockedPulse_OnRearLock()
+        {
+            // The old violent-braking signature: a locked rear (near-zero
+            // wheel revs, slip ratio -1) pinned the rev-locked pulse at its
+            // 40 Hz floor at full amplitude. The gate must silence it.
+            var fx = new AxleSlipEffect { RevLockedRearPulse = true, FrontAmp = 0f };
+            var f = Rollups(0.3, 1.5);
+            f.HasTireQuads = true;
+            f.WheelRotRadS = TireQuad.Of(0, 0, 2.0, 2.0);
+            f.TireSlipRatio = TireQuad.Of(0, 0, -1.0, -1.0);
+            fx.OnTelemetry(f);
+            Assert.False(fx.IsActive, "rear pulse fired on rear lockup");
+        }
+
+        [Fact]
         public void AxleSlip_StallAndReset_GoSilent()
         {
             var fx = new AxleSlipEffect();
