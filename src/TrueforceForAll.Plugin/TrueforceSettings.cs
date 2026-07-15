@@ -1758,6 +1758,20 @@ namespace TrueforceForAll.Plugin
         public float Gain               { get; set; } = 0.2f;   // G PRO default (2026-07-11); G923 ran it hotter
         public bool  PredictiveSlip     { get; set; } = true;
         public bool  RevLockedRearPulse { get; set; } = true;
+
+        // Tuning sliders (2026-07-14). Defaults reproduce the previously
+        // hardcoded engine values EXACTLY, so presets saved before these
+        // fields existed deserialize to the same sound. Strengths are
+        // per-voice volumes under the master Gain. Pitches are band CENTERS:
+        // the engine still sweeps a proportional band around them as slip
+        // builds (front 0.75x..1.25x of center, rear 40/55x..70/55x), so
+        // retuning the pitch keeps the climb-with-slip character.
+        public float FrontStrength { get; set; } = 0.30f;
+        public float RearStrength  { get; set; } = 0.35f;
+        public float FrontPitchHz  { get; set; } = 200f;
+        public float RearPitchHz   { get; set; } = 55f;
+        public float JudderDepth   { get; set; } = 0.8f;
+        public float OnsetUtil     { get; set; } = 0.85f;
     }
 
     /// <summary>Settings for the kerb thump: a single firm whack the instant

@@ -885,6 +885,18 @@ namespace TrueforceForAll.Plugin
                     AxleSlipGainText.Text             = axle.Gain.ToString("F2");
                     AxleSlipPredictiveCheck.IsChecked = axle.PredictiveSlip;
                     AxleSlipRevLockedCheck.IsChecked  = axle.RevLockedRearPulse;
+                    AxleSlipFrontStrengthSlider.Value = axle.FrontStrength;
+                    AxleSlipFrontStrengthText.Text    = axle.FrontStrength.ToString("F2");
+                    AxleSlipRearStrengthSlider.Value  = axle.RearStrength;
+                    AxleSlipRearStrengthText.Text     = axle.RearStrength.ToString("F2");
+                    AxleSlipFrontPitchSlider.Value    = axle.FrontPitchHz;
+                    AxleSlipFrontPitchText.Text       = ((int)axle.FrontPitchHz).ToString();
+                    AxleSlipRearPitchSlider.Value     = axle.RearPitchHz;
+                    AxleSlipRearPitchText.Text        = ((int)axle.RearPitchHz).ToString();
+                    AxleSlipJudderSlider.Value        = axle.JudderDepth;
+                    AxleSlipJudderText.Text           = axle.JudderDepth.ToString("F2");
+                    AxleSlipOnsetSlider.Value         = axle.OnsetUtil;
+                    AxleSlipOnsetText.Text            = axle.OnsetUtil.ToString("F2");
                 }
                 // Kerb thump (per-car overridable like the other effects)
                 var kerb = _plugin.ActiveKerbThump;
@@ -10408,6 +10420,60 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin == null) return;
             _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
             _plugin.ActiveAxleSlip.RevLockedRearPulse = AxleSlipRevLockedCheck.IsChecked == true;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipFrontStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipFrontStrengthText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.FrontStrength = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipRearStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipRearStrengthText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.RearStrength = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipFrontPitchSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipFrontPitchText.Text = ((int)v).ToString();
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.FrontPitchHz = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipRearPitchSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipRearPitchText.Text = ((int)v).ToString();
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.RearPitchHz = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipJudderSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipJudderText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.JudderDepth = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipOnsetSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipOnsetText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.OnsetUtil = v;
             Apply(EffectKind.AxleSlip);
         }
         private void AxleSlipTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.AxleSlip);

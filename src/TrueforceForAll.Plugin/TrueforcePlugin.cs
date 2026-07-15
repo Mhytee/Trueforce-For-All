@@ -6510,6 +6510,20 @@ namespace TrueforceForAll.Plugin
             // early warning on or off.
             AxleSlip.PredictiveLeadMs   = s.PredictiveSlip ? 150f : 0f;
             AxleSlip.RevLockedRearPulse = s.RevLockedRearPulse;
+            AxleSlip.FrontAmp = SafeMath.SafeFloat(s.FrontStrength, 0.0f, 1.0f, 0.30f);
+            AxleSlip.RearAmp  = SafeMath.SafeFloat(s.RearStrength,  0.0f, 1.0f, 0.35f);
+            // Pitch sliders move the band CENTER; each band keeps its
+            // proportional width (front 150..250 Hz at the 200 default,
+            // rear 40..70 Hz at 55). The rear min also remains the floor of
+            // the wheelspin-locked pulse.
+            float frontCenter = SafeMath.SafeFloat(s.FrontPitchHz, 100.0f, 350.0f, 200.0f);
+            AxleSlip.FrontFreqMinHz = frontCenter * 0.75f;
+            AxleSlip.FrontFreqMaxHz = frontCenter * 1.25f;
+            float rearCenter = SafeMath.SafeFloat(s.RearPitchHz, 25.0f, 90.0f, 55.0f);
+            AxleSlip.RearFreqMinHz = rearCenter * (40.0f / 55.0f);
+            AxleSlip.RearFreqMaxHz = rearCenter * (70.0f / 55.0f);
+            AxleSlip.JudderMaxDepth = SafeMath.SafeFloat(s.JudderDepth, 0.0f, 1.0f, 0.8f);
+            AxleSlip.OnsetUtil      = SafeMath.SafeFloat(s.OnsetUtil, 0.5f, 0.98f, 0.85f);
         }
         private void ApplyKerbThumpSettings(KerbThumpSettings s)
         {
@@ -6653,7 +6667,9 @@ namespace TrueforceForAll.Plugin
         private static TractionLossSettings Clone(TractionLossSettings s)
             => new TractionLossSettings { Enabled = s.Enabled, Gain = s.Gain, Sensitivity = s.Sensitivity, Waveform = s.Waveform, Freq = s.Freq, NoiseLowpassHz = s.NoiseLowpassHz, NoiseHighpassHz = s.NoiseHighpassHz };
         private static AxleSlipSettings     Clone(AxleSlipSettings s)
-            => new AxleSlipSettings     { Enabled = s.Enabled, Gain = s.Gain, PredictiveSlip = s.PredictiveSlip, RevLockedRearPulse = s.RevLockedRearPulse };
+            => new AxleSlipSettings     { Enabled = s.Enabled, Gain = s.Gain, PredictiveSlip = s.PredictiveSlip, RevLockedRearPulse = s.RevLockedRearPulse,
+                                          FrontStrength = s.FrontStrength, RearStrength = s.RearStrength, FrontPitchHz = s.FrontPitchHz,
+                                          RearPitchHz = s.RearPitchHz, JudderDepth = s.JudderDepth, OnsetUtil = s.OnsetUtil };
         private static KerbThumpSettings    Clone(KerbThumpSettings s)
             => new KerbThumpSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq };
         private static LockupJudderSettings Clone(LockupJudderSettings s)
@@ -14246,7 +14262,13 @@ namespace TrueforceForAll.Plugin
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain, b.Gain)
                 && a.PredictiveSlip     == b.PredictiveSlip
-                && a.RevLockedRearPulse == b.RevLockedRearPulse;
+                && a.RevLockedRearPulse == b.RevLockedRearPulse
+                && EqF2(a.FrontStrength, b.FrontStrength)
+                && EqF2(a.RearStrength,  b.RearStrength)
+                && EqI (a.FrontPitchHz,  b.FrontPitchHz)   // pitches display as integer Hz
+                && EqI (a.RearPitchHz,   b.RearPitchHz)
+                && EqF2(a.JudderDepth,   b.JudderDepth)
+                && EqF2(a.OnsetUtil,     b.OnsetUtil);
         }
         private static bool Eq(KerbThumpSettings a, KerbThumpSettings b)
         {

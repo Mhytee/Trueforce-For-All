@@ -1922,6 +1922,54 @@
                                         TickFrequency="0.25" ValueChanged="AxleSlipGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="AxleSlipGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Front strength:" Style="{StaticResource LabelText}"
+                                       ToolTip="Volume of the high front scrub voice, under the main gain."/>
+                            <Slider     Grid.Column="1" x:Name="AxleSlipFrontStrengthSlider" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.05"
+                                        TickFrequency="0.1" ValueChanged="AxleSlipFrontStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipFrontStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Rear strength:" Style="{StaticResource LabelText}"
+                                       ToolTip="Volume of the deep rear pulse voice, under the main gain."/>
+                            <Slider     Grid.Column="1" x:Name="AxleSlipRearStrengthSlider" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.05"
+                                        TickFrequency="0.1" ValueChanged="AxleSlipRearStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipRearStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.35"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Front pitch (Hz):" Style="{StaticResource LabelText}"
+                                       ToolTip="Center of the front scrub tone (default 200). Lower = smoother rub, higher = sharper hiss. The tone still climbs as the front tires reach the limit."/>
+                            <Slider     Grid.Column="1" x:Name="AxleSlipFrontPitchSlider" Minimum="100" Maximum="350" SmallChange="5" LargeChange="25"
+                                        TickFrequency="25" ValueChanged="AxleSlipFrontPitchSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipFrontPitchText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="200"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Rear pitch (Hz):" Style="{StaticResource LabelText}"
+                                       ToolTip="Center of the rear thump (default 55). Lower = heavier, slower thud. Also the floor for the wheelspin-locked pulse."/>
+                            <Slider     Grid.Column="1" x:Name="AxleSlipRearPitchSlider" Minimum="25" Maximum="90" SmallChange="1" LargeChange="5"
+                                        TickFrequency="5" ValueChanged="AxleSlipRearPitchSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipRearPitchText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="55"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Understeer judder:" Style="{StaticResource LabelText}"
+                                       ToolTip="Depth of the grip-slip-grip chatter once the front is past the limit. 0 = smooth scrub only."/>
+                            <Slider     Grid.Column="1" x:Name="AxleSlipJudderSlider" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.05"
+                                        TickFrequency="0.1" ValueChanged="AxleSlipJudderSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipJudderText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.80"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Onset threshold:" Style="{StaticResource LabelText}"
+                                       ToolTip="How close to the grip limit before the voices start speaking. 0.85 = 85% of the limit; lower = earlier warning."/>
+                            <Slider     Grid.Column="1" x:Name="AxleSlipOnsetSlider" Minimum="0.7" Maximum="0.95" SmallChange="0.01" LargeChange="0.05"
+                                        TickFrequency="0.05" ValueChanged="AxleSlipOnsetSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipOnsetText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.85"/>
+                        </Grid>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="AxleSlipPredictiveCheck"
