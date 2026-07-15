@@ -607,6 +607,38 @@ namespace TrueforceForAll.Plugin
                     },
                 },
             },
+            new ChangelogVersion {
+                Version = new Version(0, 2, 1),
+                Title = "Axle slip tuning + on-by-default effects",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Axle slip is now fully tunable",
+                        Description = "Six new sliders: front and rear strength, front and rear pitch, understeer judder depth, and how close to the limit the voices start speaking.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Axle slip, Kerb thump and Lockup judder are now on by default",
+                        Description = "With strengths and pitches tuned on a G PRO as the new baseline. They only speak where the game's telemetry supports them, and choices you have already made are kept.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Join Discord buttons run the real link flow",
+                        Description = "Community messages pointing at the Discord verify your account, join the server, and unlock your roles instead of opening a bare invite.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Doubled haptics in native Trueforce games while the plugin was disabled",
+                        Description = "On a cold start with the plugin toggled off, the plugin kept streaming to the wheel and collided with the game's own Trueforce. The wheel is now fully released whenever the plugin is disabled.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Axle slip caused violent oscillations under braking",
+                        Description = "A locked tire read as wheelspin and slammed the slip voices on at full strength. Locked tires are now recognized and stay quiet, so braking feel has one owner: the Lockup judder.",
+                    },
+                },
+            },
         };
 
         /// <summary>Returns every changelog version strictly newer than the
