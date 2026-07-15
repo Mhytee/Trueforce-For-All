@@ -60,18 +60,24 @@
   },
   "AxleSlip": {
     "Enabled": false,
-    "Gain": 0.2,
+    "Gain": 0.095,
     "PredictiveSlip": true,
-    "RevLockedRearPulse": true
+    "RevLockedRearPulse": true,
+    "FrontStrength": 0.3,
+    "RearStrength": 0.205,
+    "FrontPitchHz": 200.0,
+    "RearPitchHz": 35.0,
+    "JudderDepth": 0.8,
+    "OnsetUtil": 0.85
   },
   "KerbThump": {
     "Enabled": false,
-    "Gain": 0.2,
+    "Gain": 0.135,
     "Freq": 30.0
   },
   "LockupJudder": {
     "Enabled": false,
-    "Gain": 0.2
+    "Gain": 0.14
   },
   "GearShift": {
     "Enabled": true,

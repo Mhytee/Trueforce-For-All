@@ -6511,15 +6511,17 @@ namespace TrueforceForAll.Plugin
             AxleSlip.PredictiveLeadMs   = s.PredictiveSlip ? 150f : 0f;
             AxleSlip.RevLockedRearPulse = s.RevLockedRearPulse;
             AxleSlip.FrontAmp = SafeMath.SafeFloat(s.FrontStrength, 0.0f, 1.0f, 0.30f);
-            AxleSlip.RearAmp  = SafeMath.SafeFloat(s.RearStrength,  0.0f, 1.0f, 0.35f);
-            // Pitch sliders move the band CENTER; each band keeps its
-            // proportional width (front 150..250 Hz at the 200 default,
-            // rear 40..70 Hz at 55). The rear min also remains the floor of
-            // the wheelspin-locked pulse.
+            AxleSlip.RearAmp  = SafeMath.SafeFloat(s.RearStrength,  0.0f, 1.0f, 0.205f);
+            // Pitch sliders move the band CENTER; each band keeps the
+            // engine's proportional width (front 0.75x..1.25x of center,
+            // rear 40/55x..70/55x, i.e. the original 150..250 / 40..70
+            // shapes). The rear min also remains the floor of the
+            // wheelspin-locked pulse. Fallbacks are the owner-tuned baseline
+            // (2026-07-14), matching the settings-class defaults.
             float frontCenter = SafeMath.SafeFloat(s.FrontPitchHz, 100.0f, 350.0f, 200.0f);
             AxleSlip.FrontFreqMinHz = frontCenter * 0.75f;
             AxleSlip.FrontFreqMaxHz = frontCenter * 1.25f;
-            float rearCenter = SafeMath.SafeFloat(s.RearPitchHz, 25.0f, 90.0f, 55.0f);
+            float rearCenter = SafeMath.SafeFloat(s.RearPitchHz, 25.0f, 90.0f, 35.0f);
             AxleSlip.RearFreqMinHz = rearCenter * (40.0f / 55.0f);
             AxleSlip.RearFreqMaxHz = rearCenter * (70.0f / 55.0f);
             AxleSlip.JudderMaxDepth = SafeMath.SafeFloat(s.JudderDepth, 0.0f, 1.0f, 0.8f);

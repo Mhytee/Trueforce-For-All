@@ -1936,7 +1936,7 @@
                                        ToolTip="Volume of the deep rear pulse voice, under the main gain."/>
                             <Slider     Grid.Column="1" x:Name="AxleSlipRearStrengthSlider" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.05"
                                         TickFrequency="0.1" ValueChanged="AxleSlipRearStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="AxleSlipRearStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.35"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipRearStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.21"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -1952,7 +1952,7 @@
                                        ToolTip="Center of the rear thump (default 55). Lower = heavier, slower thud. Also the floor for the wheelspin-locked pulse."/>
                             <Slider     Grid.Column="1" x:Name="AxleSlipRearPitchSlider" Minimum="25" Maximum="90" SmallChange="1" LargeChange="5"
                                         TickFrequency="5" ValueChanged="AxleSlipRearPitchSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="AxleSlipRearPitchText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="55"/>
+                            <TextBox Grid.Column="2" x:Name="AxleSlipRearPitchText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="35"/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
