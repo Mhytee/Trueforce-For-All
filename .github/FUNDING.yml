@@ -1,7 +1,7 @@
 # Patreon is the primary support channel: it funds the community backend
 # hosting, the driver code-signing certificate, and the games bought for
 # testing, and it unlocks supporter perks in the plugin (cloud backup and
-# sync, beta updates in-app, the supporters wall). Ko-fi stays for one-time
+# sync, the supporters wall, a supporter Discord role). Ko-fi stays for one-time
 # donations. No github: entry on purpose; GitHub Sponsors always sorts to
 # the top of the Sponsor dialog and would upstage Patreon.
 patreon: Mhytee
