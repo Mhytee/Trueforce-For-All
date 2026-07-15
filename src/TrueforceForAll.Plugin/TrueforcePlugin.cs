@@ -2160,11 +2160,10 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     await _updateChecker.CheckAsync(_updateCheckerCts.Token);
-                    // Beta (supporter) channel: refresh entitlement, auto-enroll a
-                    // supporter running a beta build, and re-select the latest
-                    // target so a prerelease can surface in the banner on the very
-                    // first check. No-op and no network for Stable on stable.
-                    await RefreshUpdateChannelAsync(_updateCheckerCts.Token);
+                    // Beta channel: auto-enroll a beta build and re-select the
+                    // latest target so a prerelease can surface in the banner
+                    // on the very first check. No-op for Stable on stable.
+                    RefreshUpdateChannel();
                 }
                 catch (Exception ex)
                 {
@@ -2930,9 +2929,9 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         await _updateChecker.CheckAsync(token);
-                        // Entitlement refresh + supporter auto-enroll + channel
-                        // re-select (cheap no-op for Stable users on stable builds).
-                        await RefreshUpdateChannelAsync(token);
+                        // Beta auto-enroll + channel re-select (cheap no-op
+                        // for Stable users on stable builds).
+                        RefreshUpdateChannel();
                     }
                     catch (Exception ex)
                     {
@@ -3163,30 +3162,27 @@ namespace TrueforceForAll.Plugin
             return list;
         }
 
-        /// <summary>True when prereleases (the supporter "Beta" channel) should be
-        /// eligible in the in-app updater: the user opted in AND is a current
-        /// supporter. Reads the synchronous LastKnownSupporter cache, so it never
-        /// blocks; callers needing an up-to-date answer refresh entitlement first
-        /// via <see cref="RefreshUpdateChannelAsync"/>.</summary>
+        /// <summary>True when prereleases (the "Beta" channel) should be
+        /// eligible in the in-app updater: the user opted in via the Settings
+        /// toggle. Open to everyone; beta testing is participation, not a perk
+        /// (prereleases are public on GitHub regardless).</summary>
         private bool BetaChannelAllowed()
-            => Settings != null && Settings.BetaUpdatesEnabled && LastKnownSupporter;
+            => Settings != null && Settings.BetaUpdatesEnabled;
 
         /// <summary>Push the effective update channel into the poller. Cheap
         /// (recomputes the "latest" target off the already fetched release list,
-        /// no network), so it's safe to call whenever the setting or supporter
-        /// status changes. Also feeds the switch-back signal: a user who
-        /// EXPLICITLY toggled beta off while running a beta build gets offered
-        /// the newest main release as a downgrade; an auto-enrolled
-        /// non-supporter keeps the flag on and just waits until a main release
-        /// surpasses their beta version.</summary>
+        /// no network), so it's safe to call whenever the setting changes. Also
+        /// feeds the switch-back signal: a user who EXPLICITLY toggled beta off
+        /// while running a beta build gets offered the newest main release as a
+        /// downgrade.</summary>
         internal void ApplyUpdateChannel()
         {
             var uc = _updateChecker;
             if (uc == null) return;
             // Switch-back is offered ONLY on an explicit opt-out: the latch says
             // beta was acknowledged for this very version, and the flag is now
-            // off. A non-supporter riding a beta build was never enrolled (no
-            // latch), so they wait for a main release to surpass their beta.
+            // off. A beta build with no latch yet (first run before a successful
+            // release check) just waits for the auto-enroll below.
             uc.OfferStableSwitchBack = Settings != null
                 && !Settings.BetaUpdatesEnabled
                 && string.Equals(Settings.BetaAutoEnrolledVersion,
@@ -3194,23 +3190,20 @@ namespace TrueforceForAll.Plugin
             uc.IncludePrereleases = BetaChannelAllowed();
         }
 
-        /// <summary>Auto-enroll a SUPPORTER running a beta build into the Beta
-        /// update channel: a patron who installed the beta deliberately should
-        /// follow the beta branch without a manual toggle. Non-supporters stay on
-        /// the Stable channel (beta delivery is a Patreon perk); for them a main
-        /// release surfaces once it surpasses the running beta version, per the
-        /// normal newer-than-current rule. The one-shot latch
-        /// (BetaAutoEnrolledVersion) records that beta was acknowledged for this
-        /// version, so a patron who then toggles beta OFF stays off and gets the
-        /// switch-back-to-main offer instead of being re-enrolled. Called from
-        /// RefreshUpdateChannelAsync after every release fetch, once the
-        /// supporter answer is fresh.</summary>
+        /// <summary>Auto-enroll anyone running a beta build into the Beta update
+        /// channel: installing a pre-release is already a statement of intent,
+        /// so the tester follows the beta branch without a manual toggle instead
+        /// of stranding on a stale beta waiting for stable to catch up. The
+        /// one-shot latch (BetaAutoEnrolledVersion) records that beta was
+        /// acknowledged for this version, so a user who then toggles beta OFF
+        /// stays off and gets the switch-back-to-main offer instead of being
+        /// re-enrolled. Called from RefreshUpdateChannel after every release
+        /// fetch (CurrentVersionIsPrerelease needs a fetched list).</summary>
         internal void MaybeAutoEnrollBetaChannel()
         {
             var uc = _updateChecker;
             var s  = Settings;
             if (uc == null || s == null || !uc.CurrentVersionIsPrerelease) return;
-            if (!LastKnownSupporter) return;
             string cur = uc.CurrentVersion.ToString(3);
             if (string.Equals(s.BetaAutoEnrolledVersion, cur, StringComparison.Ordinal)) return;
             s.BetaAutoEnrolledVersion = cur;
@@ -3218,31 +3211,20 @@ namespace TrueforceForAll.Plugin
             {
                 s.BetaUpdatesEnabled = true;
                 SimHub.Logging.Current.Info(
-                    $"[TF4ALL] Beta build v{cur} on a supporter account: update channel switched to Beta automatically.");
+                    $"[TF4ALL] Beta build v{cur}: update channel switched to Beta automatically.");
             }
-            try { this.SaveCommonSettings("GeneralSettings", Settings); } catch { }
+            try { PersistSettingsCore(); } catch { }
             ApplyUpdateChannel();
         }
 
-        /// <summary>Refresh supporter status (only when the Beta opt-in is on, so
-        /// Stable users pay no extra network), then push the resulting channel into
-        /// the poller. Called after the startup update check and whenever the beta
-        /// toggle changes, so a prerelease can surface in the banner without a
-        /// restart.</summary>
-        internal async System.Threading.Tasks.Task RefreshUpdateChannelAsync(System.Threading.CancellationToken ct)
+        /// <summary>Auto-enroll a beta build, then push the resulting channel
+        /// into the poller. Called after each release fetch and whenever the
+        /// beta toggle changes, so a prerelease can surface in the banner
+        /// without a restart. Purely local: the channel depends only on the
+        /// stored toggle (the beta channel is open to everyone), so there is
+        /// no entitlement round-trip.</summary>
+        internal void RefreshUpdateChannel()
         {
-            try
-            {
-                // Refresh entitlement when the beta flag is on OR the running
-                // build is itself a beta: the auto-enroll below needs a live
-                // supporter answer on beta builds before the flag exists.
-                // Stable users on stable builds pay no extra network.
-                if (Settings != null
-                    && (Settings.BetaUpdatesEnabled
-                        || _updateChecker?.CurrentVersionIsPrerelease == true))
-                    await GetSupporterTierAsync(ct).ConfigureAwait(false);   // refreshes LastKnownSupporter
-            }
-            catch { /* keep the last-known channel on any entitlement error */ }
             MaybeAutoEnrollBetaChannel();
             ApplyUpdateChannel();
         }
@@ -5561,11 +5543,27 @@ namespace TrueforceForAll.Plugin
         private void PersistSettingsCore()
         {
             if (Settings == null) return;
+            // Pre-beta restore latch: once the update modal has put the
+            // pre-beta snapshot back on disk, any later persist this session
+            // (including the End() save while the installer closes SimHub)
+            // would clobber the restored file with this session's beta-format
+            // state, so the file on disk wins from here on.
+            if (_suppressSettingsPersist) return;
             lock (_carFactsLock)
             {
                 this.SaveCommonSettings("GeneralSettings", Settings);
             }
         }
+
+        // See PersistSettingsCore. Volatile: set on the UI thread by the
+        // update modal, read by whichever thread persists next. The getter
+        // doubles as the "a restore already ran this session" signal, so a
+        // retried update (e.g. installer cancelled at the UAC prompt) doesn't
+        // restore again and overwrite the undo slot's parked beta data.
+        private volatile bool _suppressSettingsPersist;
+        internal bool SettingsPersistenceSuppressed => _suppressSettingsPersist;
+        internal void SuppressSettingsPersistence() => _suppressSettingsPersist = true;
+        internal void ResumeSettingsPersistence()   => _suppressSettingsPersist = false;
 
         // Build the backup envelope under _carFactsLock: BuildEnvelope walks the
         // whole Settings graph (JObject.FromObject), which must not overlap a

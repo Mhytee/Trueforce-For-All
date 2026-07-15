@@ -10,8 +10,8 @@ Download the pre-release installer here: `[pre-release download link]`, then run
 
 Because the installer is not code-signed yet, Windows SmartScreen may warn about an unknown publisher. Click **More info**, then **Run anyway**. (Code signing is on the roadmap.)
 
-**Staying updated (Patreon supporters).**
-Once you are on a pre-release build, future betas can come to you through the in-app updater instead of downloading each one by hand. In the plugin, open **Settings > Updates** and turn on **Get beta (pre-release) updates in-app**. It is a Patreon supporter perk; the pre-releases stay public on GitHub for everyone either way.
+**Staying updated.**
+Once you are on a pre-release build, future betas come to you through the in-app updater instead of downloading each one by hand; the plugin enrolls you in the beta channel automatically. You can also turn it on or off any time under **Settings > Updates > Get beta (pre-release) updates in-app**. If you later switch back to the stable release, the updater offers to restore the presets and settings you had before your first beta install.
 
 ## Wheels
 

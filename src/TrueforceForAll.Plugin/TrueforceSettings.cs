@@ -294,21 +294,19 @@ namespace TrueforceForAll.Plugin
         // Surfaced as the Settings-tab "Updates" dropdown. Allowed: 0/1/2/6/24.
         public int    UpdateCheckIntervalHours { get; set; } = 2;
 
-        // Opt-in "Beta" update channel. When on AND the signed-in user is a current
-        // supporter, the in-app updater treats GitHub prereleases as eligible
-        // upgrade targets, so testers get pre-release builds through the same
-        // "Update to vX.Y.Z" button as stable. Default off. Enforcement is live:
-        // the updater ANDs this with real supporter status, so a lapsed or
-        // non-supporter never lands on a prerelease even with the flag stored on.
-        // Prereleases stay public on GitHub regardless; this only gates the in-app
-        // convenience, so it's a perk and not a hard paywall.
+        // Opt-in "Beta" update channel, open to everyone. When on, the in-app
+        // updater treats GitHub prereleases as eligible upgrade targets, so
+        // testers get pre-release builds through the same "Update to vX.Y.Z"
+        // button as stable. Default off (betas are less tested; the toggle
+        // confirms that on the way in). Prereleases stay public on GitHub
+        // regardless; this only drives the in-app delivery.
         public bool   BetaUpdatesEnabled { get; set; } = false;
 
         // One-shot latch for the beta-build auto-enroll (X.Y.Z of the build that
-        // was acknowledged). When a SUPPORTER runs a build matching a GitHub
-        // prerelease, the updater flips BetaUpdatesEnabled on automatically once
-        // per version and records it here; toggling beta off afterwards sticks
-        // (no re-enroll) and instead surfaces the switch-back-to-main offer.
+        // was acknowledged). Running a build matching a GitHub prerelease flips
+        // BetaUpdatesEnabled on automatically once per version and records it
+        // here; toggling beta off afterwards sticks (no re-enroll) and instead
+        // surfaces the switch-back-to-main offer.
         // Per-install state; excluded from backup.
         public string BetaAutoEnrolledVersion { get; set; }
 
