@@ -4120,6 +4120,21 @@ namespace TrueforceForAll.Plugin
                 // whether the cached divisor leaves 1.0.
                 if (_forceModeB != 0)
                 {
+                    // RESETGRIP: consumed here, not where it's queued, because
+                    // the learner and the calibration dict are owned by this
+                    // thread (see RequestGripCalReset).
+                    if (_gripCalResetRequested)
+                    {
+                        _gripCalResetRequested = false;
+                        if (!string.IsNullOrEmpty(_gripCalKey))
+                            Settings?.CarGripCalibration?.Remove(_gripCalKey);
+                        _gripCal.Reset();
+                        _mbCalPeak = (float)_gripCal.EffectivePeak;
+                        _calConvergedLogged = false;
+                        ScheduleSettingsFlush();
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to 1.000, confidence 0; re-learning.");
+                    }
                     long nowCal = Stopwatch.GetTimestamp();
                     double dtMsCal = _calPrevTicks == 0
                         ? 16.7
@@ -4745,6 +4760,26 @@ namespace TrueforceForAll.Plugin
         private string _gripCalKey;               // settings key of the loaded state
         private bool   _calConvergedLogged;       // one log line per variant per load
 
+        // RESETGRIP access code. The learner and the calibration dict are
+        // owned by the telemetry thread (Tick / LoadGripCal / FlushGripCal),
+        // and double writes are not atomic on 32-bit SimHub, so the UI thread
+        // only raises this flag; the Mode B tick path consumes it. A variant
+        // swap clears it (a queued reset for a car you left is stale).
+        private volatile bool _gripCalResetRequested;
+
+        /// <summary>Queue a RESETGRIP wipe of the active variant's learned
+        /// grip calibration (peak + confidence): the stored slot is removed
+        /// and the learner starts fresh, for when a tune / tire change left
+        /// the old calibration feeling off. Returns user-facing status.</summary>
+        public string RequestGripCalReset()
+        {
+            string key = _gripCalKey;
+            if (string.IsNullOrEmpty(key))
+                return "No car variant loaded yet. Drive with Telemetry Based FFB active, then run RESETGRIP.";
+            _gripCalResetRequested = true;
+            return $"Grip auto-cal reset queued for '{key}'; applies on the next Telemetry Based FFB tick, then re-learns as you corner.";
+        }
+
         // Mode B contention watchdog state (see DataUpdate). Warned resets on
         // Mode B re-engage so a fixed in-game setting re-arms the detector.
         private long _contentionSinceTicks;
@@ -4770,10 +4805,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Swap the learner to the active VARIANT: flush the outgoing
         /// variant's state, then restore the incoming one (or start fresh).
-        /// Keyed per variant, not per car: different variants (engine swaps /
-        /// tunes) of the same car can run different tires and downforce, so
-        /// the combined-slip ceiling differs and must be learned + stored
-        /// separately. A null / empty variant signature (the car just changed
+        /// Keyed per variant, not per car, but the signature is ENGINE-derived
+        /// (cyl + banded max rpm / redline): engine-visible tunes learn and
+        /// store separately, while a tire-only tune keeps its slot and the
+        /// learner re-converges in place (RESETGRIP wipes it on demand).
+        /// A null / empty variant signature (the car just changed
         /// and telemetry has not resolved the signature yet) parks the learner
         /// with no key until the variant-change detector calls again with the
         /// resolved signature. Runs only on the telemetry thread (the same one
@@ -4786,6 +4822,7 @@ namespace TrueforceForAll.Plugin
             if (key == _gripCalKey) return;
             FlushGripCal();
             _gripCalKey = key;
+            _gripCalResetRequested = false;   // queued reset was for the old variant
             CarGripCal saved = null;
             if (key != null) Settings?.CarGripCalibration?.TryGetValue(key, out saved);
             if (saved != null) _gripCal.Restore(saved.Peak, saved.QualifyingSec);
@@ -6510,6 +6547,22 @@ namespace TrueforceForAll.Plugin
             // early warning on or off.
             AxleSlip.PredictiveLeadMs   = s.PredictiveSlip ? 150f : 0f;
             AxleSlip.RevLockedRearPulse = s.RevLockedRearPulse;
+            AxleSlip.FrontAmp = SafeMath.SafeFloat(s.FrontStrength, 0.0f, 1.0f, 0.30f);
+            AxleSlip.RearAmp  = SafeMath.SafeFloat(s.RearStrength,  0.0f, 1.0f, 0.205f);
+            // Pitch sliders move the band CENTER; each band keeps the
+            // engine's proportional width (front 0.75x..1.25x of center,
+            // rear 40/55x..70/55x, i.e. the original 150..250 / 40..70
+            // shapes). The rear min also remains the floor of the
+            // wheelspin-locked pulse. Fallbacks are the owner-tuned baseline
+            // (2026-07-14), matching the settings-class defaults.
+            float frontCenter = SafeMath.SafeFloat(s.FrontPitchHz, 100.0f, 350.0f, 200.0f);
+            AxleSlip.FrontFreqMinHz = frontCenter * 0.75f;
+            AxleSlip.FrontFreqMaxHz = frontCenter * 1.25f;
+            float rearCenter = SafeMath.SafeFloat(s.RearPitchHz, 25.0f, 90.0f, 35.0f);
+            AxleSlip.RearFreqMinHz = rearCenter * (40.0f / 55.0f);
+            AxleSlip.RearFreqMaxHz = rearCenter * (70.0f / 55.0f);
+            AxleSlip.JudderMaxDepth = SafeMath.SafeFloat(s.JudderDepth, 0.0f, 1.0f, 0.8f);
+            AxleSlip.OnsetUtil      = SafeMath.SafeFloat(s.OnsetUtil, 0.5f, 0.98f, 0.85f);
         }
         private void ApplyKerbThumpSettings(KerbThumpSettings s)
         {
@@ -6653,7 +6706,9 @@ namespace TrueforceForAll.Plugin
         private static TractionLossSettings Clone(TractionLossSettings s)
             => new TractionLossSettings { Enabled = s.Enabled, Gain = s.Gain, Sensitivity = s.Sensitivity, Waveform = s.Waveform, Freq = s.Freq, NoiseLowpassHz = s.NoiseLowpassHz, NoiseHighpassHz = s.NoiseHighpassHz };
         private static AxleSlipSettings     Clone(AxleSlipSettings s)
-            => new AxleSlipSettings     { Enabled = s.Enabled, Gain = s.Gain, PredictiveSlip = s.PredictiveSlip, RevLockedRearPulse = s.RevLockedRearPulse };
+            => new AxleSlipSettings     { Enabled = s.Enabled, Gain = s.Gain, PredictiveSlip = s.PredictiveSlip, RevLockedRearPulse = s.RevLockedRearPulse,
+                                          FrontStrength = s.FrontStrength, RearStrength = s.RearStrength, FrontPitchHz = s.FrontPitchHz,
+                                          RearPitchHz = s.RearPitchHz, JudderDepth = s.JudderDepth, OnsetUtil = s.OnsetUtil };
         private static KerbThumpSettings    Clone(KerbThumpSettings s)
             => new KerbThumpSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq };
         private static LockupJudderSettings Clone(LockupJudderSettings s)
@@ -8986,23 +9041,27 @@ namespace TrueforceForAll.Plugin
         /// <summary>Deep-copy a car preset under a new name (same carId).
         /// JSON round-trip clone so the new file is independent. Refuses if
         /// the target already exists.</summary>
-        public bool DuplicateCarPreset(string carId, string sourceName, string newName)
+        public string DuplicateCarPreset(string carId, string sourceName, string newName = null)
         {
-            if (_carStore == null) return false;
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(sourceName) || string.IsNullOrEmpty(newName)) return false;
+            if (_carStore == null) return null;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(sourceName)) return null;
+            // newName null/blank = auto-name with the numeric-suffix
+            // convention; see DuplicatePreset (owner call 2026-07-13).
+            if (string.IsNullOrWhiteSpace(newName))
+                newName = MakeUniqueCarPresetName(carId, ToDiskName(sourceName));
             // sourceName may be a factory display name (suffixed); pull from
             // the merged map (which has both user + suffixed factory entries)
             // and persist the clone as a user file under the on-disk newName.
             string sourceDisk = ToDiskName(sourceName);
             string newDisk    = ToDiskName(newName);
-            if (_carStore.Exists(carId, newDisk)) return false;
+            if (_carStore.Exists(carId, newDisk)) return null;
 
             CarPresetEntry entry = null;
             var all = GetAllCarPresets();
             if (all != null && all.TryGetValue(carId, out var perCarAll))
                 perCarAll.TryGetValue(sourceName, out entry);
 
-            if (entry == null) return false;
+            if (entry == null) return null;
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(entry.Override);
             var clone = Newtonsoft.Json.JsonConvert.DeserializeObject<CarOverride>(json, SafeJson.Settings);
             // A duplicate of an imported preset stays attributed to its
@@ -9018,7 +9077,7 @@ namespace TrueforceForAll.Plugin
                 defaultAuthor: CurrentAuthorForStamp());
             RequestAutoBackup();   // new car preset file: arm auto-sync so the duplicate propagates
             SimHub.Logging.Current.Info($"[TF4ALL] Duplicated car preset '{carId}/{sourceDisk}' as '{newDisk}'.");
-            return true;
+            return newDisk;
         }
 
         /// <summary>Re-resolve the active preset for the active car after a
@@ -11589,6 +11648,8 @@ namespace TrueforceForAll.Plugin
                     return "Sign-in expired. Sign in again and retry.";
                 case UploadError.RateLimited:
                     return "Slow down a moment, then try again.";
+                case UploadError.DuplicateName:
+                    return "You already shared an item with this name. Update your existing upload instead, or pick a different name.";
                 case UploadError.ValidationFailed:
                     return "The server rejected this upload. If you've already shared a preset with this name, rename it and try again.";
                 case UploadError.ServerError:
@@ -13333,12 +13394,76 @@ namespace TrueforceForAll.Plugin
         /// the user's library under the supplied preset name. Wraps
         /// CarPresetStore.Save with the curator's author + description so
         /// the row stays attributed in the preset manager Source column.</summary>
+        // ---- Local duplicate-content detection (owner rule 2026-07-13):
+        // the library must never hold two presets with identical tuning under
+        // different names. Game comparison is attribution-blind (a differing
+        // community description is not a different tune); car overrides carry
+        // no attribution inside the Override, so their share-lineage hash is
+        // already content-only. Overwriting an existing NAME (plain save /
+        // preset auto-update) is never blocked; only creating a NEW name is
+        // checked.
+
+        /// <summary>The existing preset an import/save was refused for
+        /// duplicating, for callers that want to phrase the message.</summary>
+        internal string LastLocalDuplicateName { get; private set; }
+
+        internal string FindGamePresetNameWithSameContent(GameSettingsSnapshot candidate, string excludeName = null)
+        {
+            if (candidate == null || Settings?.Presets == null) return null;
+            string hash = PresetBodyHasher.ComputeGameSnapshotContentHash(candidate);
+            if (hash == null) return null;
+            foreach (var kv in Settings.Presets)
+            {
+                if (kv.Value == null) continue;
+                if (excludeName != null
+                    && string.Equals(kv.Key, excludeName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(PresetBodyHasher.ComputeGameSnapshotContentHash(kv.Value), hash,
+                                  StringComparison.Ordinal))
+                    return kv.Key;
+            }
+            return null;
+        }
+
+        internal string FindCarPresetNameWithSameContent(string carId, CarOverride candidate, string excludeName = null)
+        {
+            if (candidate == null || string.IsNullOrEmpty(carId)) return null;
+            string hash = PresetBodyHasher.ComputeCarOverrideHash(candidate);
+            if (hash == null) return null;
+            var all = GetCarPresets(carId);
+            if (all == null) return null;
+            foreach (var kv in all)
+            {
+                if (kv.Value?.Override == null) continue;
+                if (excludeName != null
+                    && string.Equals(kv.Key, excludeName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(PresetBodyHasher.ComputeCarOverrideHash(kv.Value.Override), hash,
+                                  StringComparison.Ordinal))
+                    return kv.Key;
+            }
+            return null;
+        }
+
         public void SaveImportedCommunityCarPreset(string carId, string presetName,
             string gameName, CarOverride ovr, string author, string description,
             string communitySourceId = null, bool? allowInPacks = null)
         {
             if (_carStore == null || string.IsNullOrEmpty(carId)
                 || string.IsNullOrEmpty(presetName) || ovr == null) return;
+            // Content dedup: a NEW name whose tuning already exists for this
+            // car is skipped (re-saves of an existing name pass through).
+            LastLocalDuplicateName = null;
+            var existingForCar = GetCarPresets(carId);
+            if (existingForCar == null || !existingForCar.ContainsKey(presetName))
+            {
+                string dup = FindCarPresetNameWithSameContent(carId, ovr);
+                if (dup != null)
+                {
+                    LastLocalDuplicateName = dup;
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Skipped community car preset '{presetName}' for '{carId}': identical to '{dup}'.");
+                    return;
+                }
+            }
             // Stamp the source id onto the override so the permission
             // gate + pack creator can identify this item by stable
             // server uuid, surviving rename / duplicate / re-import.
@@ -13377,6 +13502,21 @@ namespace TrueforceForAll.Plugin
             // Author's "ok to re-bundle" permission travels with the
             // snapshot so export/import preserves it.
             if (allowInPacks.HasValue) snap.CommunityAllowInPacks = allowInPacks;
+            // Content dedup: a NEW name whose tuning already exists is
+            // skipped (re-saves of an existing name, e.g. the preset
+            // auto-update path, pass through).
+            LastLocalDuplicateName = null;
+            if (!Settings.Presets.ContainsKey(presetName))
+            {
+                string dup = FindGamePresetNameWithSameContent(snap);
+                if (dup != null)
+                {
+                    LastLocalDuplicateName = dup;
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Skipped community game preset '{presetName}': identical to '{dup}'.");
+                    return false;
+                }
+            }
             return PersistGamePresetToFolder(presetName, snap);
         }
 
@@ -14161,7 +14301,13 @@ namespace TrueforceForAll.Plugin
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain, b.Gain)
                 && a.PredictiveSlip     == b.PredictiveSlip
-                && a.RevLockedRearPulse == b.RevLockedRearPulse;
+                && a.RevLockedRearPulse == b.RevLockedRearPulse
+                && EqF2(a.FrontStrength, b.FrontStrength)
+                && EqF2(a.RearStrength,  b.RearStrength)
+                && EqI (a.FrontPitchHz,  b.FrontPitchHz)   // pitches display as integer Hz
+                && EqI (a.RearPitchHz,   b.RearPitchHz)
+                && EqF2(a.JudderDepth,   b.JudderDepth)
+                && EqF2(a.OnsetUtil,     b.OnsetUtil);
         }
         private static bool Eq(KerbThumpSettings a, KerbThumpSettings b)
         {
@@ -14623,6 +14769,22 @@ namespace TrueforceForAll.Plugin
                 fresh.CommunityUploadedBodyHash  = prior.CommunityUploadedBodyHash;
                 fresh.CommunityUploadedVersion   = prior.CommunityUploadedVersion;
             }
+            // New-name saves must not duplicate an existing preset's tuning
+            // (owner rule 2026-07-13); overwriting the same name is the
+            // normal save path and always proceeds. Callers can read
+            // LastLocalDuplicateName to phrase the refusal.
+            LastLocalDuplicateName = null;
+            if (Settings.Presets == null || !Settings.Presets.ContainsKey(presetName))
+            {
+                string dup = FindGamePresetNameWithSameContent(fresh, excludeName: presetName);
+                if (dup != null)
+                {
+                    LastLocalDuplicateName = dup;
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] Refusing to save '{presetName}': identical to existing preset '{dup}'.");
+                    return false;
+                }
+            }
             if (!PersistGamePresetToFolder(presetName, fresh)) return false;
             _activePresetName = presetName;
             PersistSettingsCore();
@@ -14895,15 +15057,20 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
-        /// <summary>Deep-copy a preset under a new name. JSON round-trip so the
-        /// clone is independent of the source. Refuses if the target already
-        /// exists in the library.</summary>
-        public bool DuplicatePreset(string sourceName, string newName)
+        /// <summary>Deep-copy a preset. JSON round-trip so the clone is
+        /// independent of the source. newName null/blank = auto-name with the
+        /// library's numeric-suffix convention ("Source (2)", first free
+        /// number): Duplicate is the one sanctioned way to hold two presets
+        /// with identical tuning, so it self-names instead of prompting and
+        /// can never collide (owner call 2026-07-13). Returns the final name,
+        /// or null on failure / explicit-name collision.</summary>
+        public string DuplicatePreset(string sourceName, string newName = null)
         {
-            if (Settings?.Presets == null) return false;
-            if (string.IsNullOrEmpty(sourceName) || string.IsNullOrEmpty(newName)) return false;
-            if (!Settings.Presets.TryGetValue(sourceName, out var snap) || snap == null) return false;
-            if (Settings.Presets.ContainsKey(newName)) return false;
+            if (Settings?.Presets == null) return null;
+            if (string.IsNullOrEmpty(sourceName)) return null;
+            if (!Settings.Presets.TryGetValue(sourceName, out var snap) || snap == null) return null;
+            if (string.IsNullOrWhiteSpace(newName)) newName = MakeUniqueGamePresetName(sourceName);
+            else if (Settings.Presets.ContainsKey(newName)) return null;
 
             // The duplicate always lands in the USER library (a copy of a
             // built-in becomes a normal user preset; the owner uses DEV +
@@ -14927,12 +15094,12 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn($"[TF4ALL] Duplicate '{sourceName}' -> '{newName}' failed: {ex.Message}");
-                return false;
+                return null;
             }
             PersistSettingsCore();
             RequestAutoBackup();   // new preset file: arm auto-sync so the duplicate propagates
             SimHub.Logging.Current.Info($"[TF4ALL] Duplicated preset '{sourceName}' as '{newName}'.");
-            return true;
+            return newName;
         }
 
         /// <summary>Bind a preset to auto-load for any game (not just the
@@ -15682,6 +15849,13 @@ namespace TrueforceForAll.Plugin
             // resolves at apply time instead of falling through to silence.
             // Local wins on Id collision.
             var customEngineMerge = MergeImportedCustomEngines(file.CustomEngines);
+            // Refuse a file whose tuning is already in the library under any
+            // name (owner rule 2026-07-13) instead of minting "Name (2)". The
+            // thrown message is what the import UI shows.
+            string contentDup = FindGamePresetNameWithSameContent(file.Snapshot);
+            if (contentDup != null)
+                throw new System.IO.InvalidDataException(
+                    $"This preset is already in your library as '{contentDup}'.");
             string snapJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                 file.Snapshot, Newtonsoft.Json.Formatting.Indented);
             // Never clobber an existing user preset of the same name.
@@ -15749,6 +15923,13 @@ namespace TrueforceForAll.Plugin
             // user's library so the override's EnginePulse.CustomEngineId
             // resolves at apply time. Local wins on Id collision.
             var customEngineMerge = MergeImportedCustomEngines(file.CustomEngines);
+
+            // Refuse a file whose tuning is already in this car's library
+            // under any name (owner rule 2026-07-13); see ImportPreset.
+            string carContentDup = FindCarPresetNameWithSameContent(file.CarId, file.Override);
+            if (carContentDup != null)
+                throw new System.IO.InvalidDataException(
+                    $"This car preset is already in your library as '{carContentDup}'.");
 
             // PresetName may be missing on legacy v1 imports, fall back to
             // the carId. IsBuiltin is force-cleared regardless of source.

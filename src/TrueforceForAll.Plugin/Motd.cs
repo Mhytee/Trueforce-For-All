@@ -47,7 +47,10 @@ namespace TrueforceForAll.Plugin
         // {years} token, the client substitutes (occurrence year - AnchorYear).
         public int?   AnchorYear      { get; set; }
         // Optional in-plugin action the message's button triggers instead of
-        // opening a URL. null, or "share" (opens the Spread-the-word modal).
+        // opening a URL. null, "share" (opens the Spread-the-word modal), or
+        // "link_discord" (starts the Discord link flow, which also joins the
+        // server and unlocks roles; clients that predate the action fall
+        // through to LinkUrl, so rows keep the plain invite as a fallback).
         public string Action          { get; set; }
 
         // Optional per-user audience filter, evaluated CLIENT-side against local
@@ -64,6 +67,7 @@ namespace TrueforceForAll.Plugin
         [JsonIgnore] public bool IsQuote     => string.Equals(Category, "quote", StringComparison.OrdinalIgnoreCase);
         [JsonIgnore] public bool HasLink     => !string.IsNullOrWhiteSpace(LinkUrl);
         [JsonIgnore] public bool IsShareAction => string.Equals(Action, "share", StringComparison.OrdinalIgnoreCase);
+        [JsonIgnore] public bool IsLinkDiscordAction => string.Equals(Action, "link_discord", StringComparison.OrdinalIgnoreCase);
         // A "nag" is a promotional / call-to-action message (support, share, or any
         // audience-targeted nudge). Weighted down + cooldown-gated in the strip so
         // they stay useful but never constant.

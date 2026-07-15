@@ -235,6 +235,20 @@ namespace TrueforceForAll.Plugin
             _motdStrip = new MotdStrip();
             _motdStrip.Init(_plugin);
             _motdStrip.ShareRequested = () => ShowShareDialog();
+            // "link_discord" MOTD action: run the real Discord link flow (which
+            // also joins the server and unlocks roles) instead of opening a bare
+            // invite URL. Sign-in first when needed; the Account-tab handler
+            // takes it from there.
+            _motdStrip.LinkDiscordRequested = () =>
+            {
+                if (_plugin == null) return;
+                if (!_plugin.AuthIsSignedIn)
+                {
+                    var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
+                    signIn.ShowDialog();
+                }
+                if (_plugin.AuthIsSignedIn) LinkDiscord_Click(null, null);
+            };
             MotdStripHost.Content = _motdStrip;
 
             ApplyDevModeVisibility();
@@ -871,6 +885,18 @@ namespace TrueforceForAll.Plugin
                     AxleSlipGainText.Text             = axle.Gain.ToString("F2");
                     AxleSlipPredictiveCheck.IsChecked = axle.PredictiveSlip;
                     AxleSlipRevLockedCheck.IsChecked  = axle.RevLockedRearPulse;
+                    AxleSlipFrontStrengthSlider.Value = axle.FrontStrength;
+                    AxleSlipFrontStrengthText.Text    = axle.FrontStrength.ToString("F2");
+                    AxleSlipRearStrengthSlider.Value  = axle.RearStrength;
+                    AxleSlipRearStrengthText.Text     = axle.RearStrength.ToString("F2");
+                    AxleSlipFrontPitchSlider.Value    = axle.FrontPitchHz;
+                    AxleSlipFrontPitchText.Text       = ((int)axle.FrontPitchHz).ToString();
+                    AxleSlipRearPitchSlider.Value     = axle.RearPitchHz;
+                    AxleSlipRearPitchText.Text        = ((int)axle.RearPitchHz).ToString();
+                    AxleSlipJudderSlider.Value        = axle.JudderDepth;
+                    AxleSlipJudderText.Text           = axle.JudderDepth.ToString("F2");
+                    AxleSlipOnsetSlider.Value         = axle.OnsetUtil;
+                    AxleSlipOnsetText.Text            = axle.OnsetUtil.ToString("F2");
                 }
                 // Kerb thump (per-car overridable like the other effects)
                 var kerb = _plugin.ActiveKerbThump;
@@ -2336,9 +2362,9 @@ namespace TrueforceForAll.Plugin
             void CopyLink(string url, TextBlock label)
             {
                 string original = label.Text;
-                try { System.Windows.Clipboard.SetText(url); }
-                catch { /* clipboard is occasionally locked by another app; ignore */ }
-                label.Text = "Link copied";
+                // Retry-based copy; on a genuine failure say so instead of
+                // claiming "Link copied" over an empty clipboard.
+                label.Text = TryCopyToClipboard(url) ? "Link copied" : "Copy failed, try again";
                 var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.6) };
                 t.Tick += (_, __) => { label.Text = original; t.Stop(); };
                 t.Start();
@@ -2809,6 +2835,15 @@ namespace TrueforceForAll.Plugin
                         shareName = newName.Trim();
                     }
                 }
+                else
+                {
+                    // Unchanged uploads never re-share (owner rule, 2026-07-13);
+                    // mirrors the Preset Manager handlers.
+                    TrueforceDialog.Show(owner, "Already shared",
+                        "'" + name + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                        DialogKind.Info);
+                    return;
+                }
             }
 
             var dialog = PresetShareWindow.ForGame(_plugin, shareName, game, body, tags);
@@ -2970,6 +3005,15 @@ namespace TrueforceForAll.Plugin
                         if (string.IsNullOrWhiteSpace(newName)) return;
                         shareName = newName.Trim();
                     }
+                }
+                else
+                {
+                    // Unchanged uploads never re-share (owner rule, 2026-07-13);
+                    // mirrors the Preset Manager handlers.
+                    TrueforceDialog.Show(owner, "Already shared",
+                        "'" + pick.Name + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                        DialogKind.Info);
+                    return;
                 }
             }
 
@@ -8823,17 +8867,15 @@ namespace TrueforceForAll.Plugin
             try
             {
                 string body =
-                    "This game supports Telemetry Based FFB. Instead of passing the "
-                    + "game's own force feedback through, the plugin builds the wheel's steering "
-                    + "force from telemetry: slip angle, tire load, and speed.\n\n"
-                    + "It also enables your wheel's rev lights. Rev lights only work with it "
-                    + "for now, because writing to them while a game runs its own force feedback "
-                    + "makes that force feedback cut out (they share one channel on the wheel). "
-                    + "It replaces the game's force feedback, so the lights are free. A custom "
-                    + "driver that would enable rev lights in every game is in testing, but it "
-                    + "needs to be signed by Microsoft first.\n\n"
-                    + "To use it, open this game's wheel settings and set its force feedback and "
-                    + "vibration strength to 0, so the plugin is the only force on the wheel. "
+                    "Instead of passing this game's own force feedback through, the plugin "
+                    + "can build the steering force itself. There's a real sense of grip. "
+                    + "The wheel goes light as the front washes out and it pulls into a "
+                    + "countersteer as the rear steps out.\n\n"
+                    + "It also unlocks your wheel's rev lights: they share a channel with "
+                    + "game force feedback, so they can only run when the plugin owns the "
+                    + "whole signal, as it does here.\n\n"
+                    + "To try it, set this game's force feedback and vibration to 0 in its "
+                    + "wheel settings, so the plugin is the only force on the wheel. "
                     + "Then activate it below.";
                 bool? r = TrueforceDialog.Show(owner,
                     "Telemetry Based FFB is available",
@@ -10380,6 +10422,60 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveAxleSlip.RevLockedRearPulse = AxleSlipRevLockedCheck.IsChecked == true;
             Apply(EffectKind.AxleSlip);
         }
+        private void AxleSlipFrontStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipFrontStrengthText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.FrontStrength = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipRearStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipRearStrengthText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.RearStrength = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipFrontPitchSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipFrontPitchText.Text = ((int)v).ToString();
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.FrontPitchHz = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipRearPitchSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipRearPitchText.Text = ((int)v).ToString();
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.RearPitchHz = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipJudderSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipJudderText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.JudderDepth = v;
+            Apply(EffectKind.AxleSlip);
+        }
+        private void AxleSlipOnsetSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            AxleSlipOnsetText.Text = v.ToString("F2");
+            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.AxleSlip);
+            _plugin.ActiveAxleSlip.OnsetUtil = v;
+            Apply(EffectKind.AxleSlip);
+        }
         private void AxleSlipTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.AxleSlip);
 
         // ---------- Kerb thump ----------
@@ -10604,6 +10700,7 @@ namespace TrueforceForAll.Plugin
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
             "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
             "TOAST          Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
@@ -10768,6 +10865,13 @@ namespace TrueforceForAll.Plugin
             }
             // Dev-only: clear the community car-facts cache (names/engine types/
             // redlines). Refetches per car on the next car open.
+            if (code.Equals("RESETGRIP", StringComparison.OrdinalIgnoreCase))
+            {
+                string gripStatus = _plugin.RequestGripCalReset();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = gripStatus;
+                return;
+            }
             if (code.Equals("CACHEFACTS", StringComparison.OrdinalIgnoreCase))
             {
                 _plugin.Settings.CommunityFactCache?.Clear();
@@ -13818,21 +13922,26 @@ namespace TrueforceForAll.Plugin
         // Copy the project link for sharing. Brief inline confirmation that fades
         // after a few seconds; falls back to showing the URL if the clipboard is
         // locked by another app.
-        private void CopyShareLink_Click(object sender, RoutedEventArgs e)
+        // Clipboard.SetText throws CLIPBRD_E_CANT_OPEN whenever another
+        // process briefly holds the clipboard (overlays, clipboard managers,
+        // RDP sessions). A few short retries clears it almost every time;
+        // SetDataObject(copy: true) keeps the text available after the
+        // plugin closes. Used by the share dialog's copy rows.
+        internal static bool TryCopyToClipboard(string text)
         {
-            try
+            for (int attempt = 0; attempt < 5; attempt++)
             {
-                System.Windows.Clipboard.SetText(RepoUrl);
-                if (SupportShareStatus != null)
+                try
                 {
-                    SupportShareStatus.Text = "Link copied.";
-                    ClearStatusAfter(SupportShareStatus, 3.0, fade: true);
+                    System.Windows.Clipboard.SetDataObject(text, true);
+                    return true;
+                }
+                catch
+                {
+                    System.Threading.Thread.Sleep(60);
                 }
             }
-            catch
-            {
-                if (SupportShareStatus != null) SupportShareStatus.Text = "Couldn't copy. Link: " + RepoUrl;
-            }
+            return false;
         }
 
         // ---------- Update CTA / modal ----------

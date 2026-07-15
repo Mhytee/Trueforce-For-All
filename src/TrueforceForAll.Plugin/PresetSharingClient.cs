@@ -126,6 +126,11 @@ namespace TrueforceForAll.Plugin
         // The account (or its device) is banned from uploading. Server raises
         // 'submitter blocked'. Distinct so the UI can pop the appeal modal.
         Blocked,
+        // The user already has a live upload of this kind with this name
+        // (migration 0099 trigger raises 'duplicate name…'; the backstop
+        // unique index raises 23505). Distinct so the UI can say exactly
+        // that instead of a generic validation error.
+        DuplicateName,
     }
 
     internal sealed class PresetSharingClient
@@ -234,6 +239,14 @@ namespace TrueforceForAll.Plugin
             if (!string.IsNullOrEmpty(detail) &&
                 detail.IndexOf("submitter blocked", StringComparison.OrdinalIgnoreCase) >= 0)
                 LastUploadError = UploadError.Blocked;
+            // Per-owner name uniqueness (migration 0099): the table trigger
+            // raises 'duplicate name: …' (P0001 -> 400); the race-backstop
+            // unique index surfaces as a duplicate-key 23505 (-> 409) whose
+            // detail names the …_owner_name_live_key index.
+            else if (!string.IsNullOrEmpty(detail) &&
+                (detail.IndexOf("duplicate name", StringComparison.OrdinalIgnoreCase) >= 0
+                 || detail.IndexOf("_owner_name_live_key", StringComparison.OrdinalIgnoreCase) >= 0))
+                LastUploadError = UploadError.DuplicateName;
             else if (c == 401 || c == 403) LastUploadError = UploadError.NotAuthenticated;
             else if (c == 429)        LastUploadError = UploadError.RateLimited;
             else if (c >= 400 && c < 500) LastUploadError = UploadError.ValidationFailed;
@@ -419,6 +432,9 @@ namespace TrueforceForAll.Plugin
                         if (!resp.IsSuccessStatusCode)
                         {
                             _log?.Invoke($"[TF4ALL] Update preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            // Stamp so the share modal's update path can say WHY
+                            // (rename collisions raise 'duplicate name', 0099).
+                            StampUploadErrorFromStatus(resp.StatusCode, respBody);
                             return null;
                         }
                         return ParseContentVersionOrZero(respBody);
@@ -1536,6 +1552,7 @@ namespace TrueforceForAll.Plugin
                         if (!resp.IsSuccessStatusCode)
                         {
                             _log?.Invoke($"[TF4ALL] Update game preset failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            StampUploadErrorFromStatus(resp.StatusCode, respBody);
                             return null;
                         }
                         return ParseContentVersionOrZero(respBody);
@@ -1923,6 +1940,7 @@ namespace TrueforceForAll.Plugin
                         if (!resp.IsSuccessStatusCode)
                         {
                             _log?.Invoke($"[TF4ALL] Update engine failed: {(int)resp.StatusCode} {resp.ReasonPhrase} {respBody}");
+                            StampUploadErrorFromStatus(resp.StatusCode, respBody);
                             return null;
                         }
                         return ParseContentVersionOrZero(respBody);

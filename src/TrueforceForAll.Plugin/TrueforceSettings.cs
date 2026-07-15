@@ -100,13 +100,17 @@ namespace TrueforceForAll.Plugin
         public int CarCylinderCacheVersion { get; set; } = 1;
 
         // Telemetry based FFB: per-VARIANT grip-limit auto-calibration state
-        // (GripPeakLearner), keyed "GameName|CarId|VariantSignature" so that
-        // variants of the same car with different tires / grip learn and store
-        // separately. Written as the player drives (where each variant's
-        // combined-slip metric actually tops out plus how much near-limit seat
-        // time backs that estimate) so the next session starts calibrated.
-        // Zero user action; the grip auto-cal checkbox gates application, not
-        // learning persistence.
+        // (GripPeakLearner), keyed "GameName|CarId|VariantSignature". The
+        // signature is ENGINE-derived (cylinders + banded max rpm + banded
+        // redline), so a tune that changes the engine stores separately, but
+        // a tire-only (or aero / suspension) tune keeps the same slot: the
+        // learner re-converges in place (rises within a lap of pushing, falls
+        // over a few minutes of cornering time), and the RESETGRIP access
+        // code wipes the active slot on demand. Written as the player drives
+        // (where each variant's combined-slip metric actually tops out plus
+        // how much near-limit seat time backs that estimate) so the next
+        // session starts calibrated. Zero user action; the grip auto-cal
+        // checkbox gates application, not learning persistence.
         public Dictionary<string, CarGripCal> CarGripCalibration { get; set; }
             = new Dictionary<string, CarGripCal>();
 
@@ -1747,41 +1751,57 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>Settings for the axle-slip texture: feel which axle is letting
     /// go, a high scrub as the front washes wide, a deep pulse as the rear
-    /// steps out. The louder axle is the one losing grip. Off by default (new
-    /// effect baseline); needs per-tire telemetry (Forza games today).
+    /// steps out. The louder axle is the one losing grip. On by default
+    /// (owner's call, 2026-07-14, with the tuned baseline): inert without
+    /// per-tire telemetry (Forza games today), so other games are unaffected.
     /// PredictiveSlip starts the texture a fixed validated 150 ms before the
     /// slip fully develops; RevLockedRearPulse locks the rear pulse rate to
     /// the actual rear wheel rev rate when per-tire data allows.</summary>
     public sealed class AxleSlipSettings
     {
-        public bool  Enabled            { get; set; } = false;
-        public float Gain               { get; set; } = 0.2f;   // G PRO default (2026-07-11); G923 ran it hotter
+        public bool  Enabled            { get; set; } = true;
+        public float Gain               { get; set; } = 0.095f;  // owner-tuned G PRO baseline (2026-07-14)
         public bool  PredictiveSlip     { get; set; } = true;
         public bool  RevLockedRearPulse { get; set; } = true;
+
+        // Tuning sliders (2026-07-14). Defaults are the owner-tuned G PRO
+        // baseline of 2026-07-14 (also baked into the shipped built-in
+        // presets); presets saved before these fields existed deserialize to
+        // this baseline. Strengths are per-voice volumes under the master
+        // Gain. Pitches are band CENTERS: the engine still sweeps a
+        // proportional band around them as slip builds (front 0.75x..1.25x of
+        // center, rear 40/55x..70/55x), so retuning the pitch keeps the
+        // climb-with-slip character.
+        public float FrontStrength { get; set; } = 0.30f;
+        public float RearStrength  { get; set; } = 0.205f;
+        public float FrontPitchHz  { get; set; } = 200f;
+        public float RearPitchHz   { get; set; } = 35f;
+        public float JudderDepth   { get; set; } = 0.8f;
+        public float OnsetUtil     { get; set; } = 0.85f;
     }
 
     /// <summary>Settings for the kerb thump: a single firm whack the instant
     /// a wheel first touches a kerb, distinct from the rumble that follows.
-    /// Scales with speed. Off by default (new effect baseline); needs kerb
-    /// telemetry (Forza games today). Gain defaults to 0.2, tuned on a G PRO
-    /// (2026-07-11); the earlier 1.6 was dialed in on a G923, whose weaker
-    /// motor needed it much hotter. Freq sits below the 40 Hz gear thud so
-    /// the two stay distinct.</summary>
+    /// Scales with speed. On by default (owner's call, 2026-07-14): inert
+    /// without kerb telemetry (Forza games today). Gain defaults to the
+    /// owner-tuned G PRO baseline (2026-07-14); the original 1.6 was dialed
+    /// in on a G923, whose weaker motor needed it much hotter. Freq sits
+    /// below the 40 Hz gear thud so the two stay distinct.</summary>
     public sealed class KerbThumpSettings
     {
-        public bool  Enabled { get; set; } = false;
-        public float Gain    { get; set; } = 0.2f;   // G PRO default (2026-07-11); G923 ran it hotter
+        public bool  Enabled { get; set; } = true;
+        public float Gain    { get; set; } = 0.135f;   // owner-tuned G PRO baseline (2026-07-14)
         public float Freq    { get; set; } = 30.0f;
     }
 
     /// <summary>Settings for the lockup judder: a flat-spot pulse while a
     /// braking tire is locked, slowing with the car the way a real flat spot
-    /// would. Off by default (new effect baseline); needs per-tire telemetry
-    /// (Forza games today).</summary>
+    /// would. On by default (owner's call, 2026-07-14): inert without
+    /// per-tire telemetry (Forza games today).</summary>
     public sealed class LockupJudderSettings
     {
-        public bool  Enabled { get; set; } = false;
-        public float Gain    { get; set; } = 0.2f;   // G PRO default (2026-07-11); G923 ran it hotter
+        public bool  Enabled { get; set; } = true;
+        public float Gain    { get; set; } = 0.14f;   // owner-tuned G PRO baseline (2026-07-14)
     }
 
     public sealed class RevLimiterSettings

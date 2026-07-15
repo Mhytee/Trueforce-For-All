@@ -84,6 +84,19 @@ namespace TrueforceForAll.Plugin.Effects
         /// source has no wheel-rotation quad.</summary>
         public bool RevLockedRearPulse { get; set; } = false;
 
+        /// <summary>Braking-lockup gate. The grip rollups are combined slip
+        /// with the direction stripped, so a tire locking under braking reads
+        /// exactly like wheelspin and used to slam these voices on — worst
+        /// with the rev-locked pulse, whose rate bottoms out at the 40 Hz
+        /// floor on a near-stopped wheel. Each axle's voice fades out as its
+        /// worst tire's SIGNED slip ratio falls from LockupGateStart (fade
+        /// begins) to LockupGateFull (silent) — full mute aligned with the
+        /// sign-aware LockupJudderEffect's engagement, so braking feel has
+        /// exactly one owner. Positive slip (wheelspin) and lateral scrub
+        /// pass untouched; sources without tire quads are unaffected.</summary>
+        public float LockupGateStart { get; set; } = -0.2f;
+        public float LockupGateFull  { get; set; } = -0.5f;
+
         private const double SampleRateHz = 4000.0;
         private const float  AmpEmaAlpha  = 0.25f;   // per 500 Hz telemetry tick
 
@@ -145,6 +158,14 @@ namespace TrueforceForAll.Plugin.Effects
             if (bal > 0) front01 *= 1f - s;
             else if (bal < 0) rear01 *= 1f - s;
 
+            // Braking-lockup gate (see LockupGateStart): the rollups can't
+            // tell lockup from wheelspin, the signed slip ratio can.
+            if (f.HasTireQuads)
+            {
+                front01 *= LockupGate((float)Math.Min(f.TireSlipRatio.FL, f.TireSlipRatio.FR));
+                rear01  *= LockupGate((float)Math.Min(f.TireSlipRatio.RL, f.TireSlipRatio.RR));
+            }
+
             _frontTargetAmp = front01 * FrontAmp;
             _rearTargetAmp  = rear01 * RearAmp;
 
@@ -174,6 +195,13 @@ namespace TrueforceForAll.Plugin.Effects
             float onset = OnsetUtil;
             if (u <= onset) return 0f;
             return Math.Min((u - onset) / Math.Max(0.05f, 1f - onset), 1f);
+        }
+
+        private float LockupGate(float worstSlipRatio)
+        {
+            if (worstSlipRatio >= LockupGateStart) return 1f;
+            float span = Math.Max(0.05f, LockupGateStart - LockupGateFull);
+            return Math.Max(0f, 1f - (LockupGateStart - worstSlipRatio) / span);
         }
 
         private static float Lerp(float a, float b, float t) => a + (b - a) * t;

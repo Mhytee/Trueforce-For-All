@@ -56,6 +56,21 @@ namespace TrueforceForAll.Plugin
             return Sha256Hex(json);
         }
 
+        /// <summary>Attribution-blind hash for LOCAL duplicate detection (no
+        /// two library presets with identical tuning, owner rule 2026-07-13):
+        /// like <see cref="ComputeGameSnapshotBodyHash"/> but also ignoring
+        /// the display metadata (Author / Description / PackName /
+        /// AuthorVersion), so a community copy whose description differs from
+        /// a local one still reads as the same tune. NEVER use this for the
+        /// share-lineage hash (CommunityUploadedBodyHash): that exclusion set
+        /// must stay stable or every stamped preset would read as edited.</summary>
+        public static string ComputeGameSnapshotContentHash(GameSettingsSnapshot snap)
+        {
+            if (snap == null) return null;
+            string json = JsonConvert.SerializeObject(snap, ContentOnlySettings);
+            return Sha256Hex(json);
+        }
+
         public static string ComputeCarOverrideHash(CarOverride ovr)
         {
             if (ovr == null) return null;
@@ -138,6 +153,36 @@ namespace TrueforceForAll.Plugin
                 var properties = base.CreateProperties(type, memberSerialization);
                 return properties
                     .Where(p => !ExcludedFromHash.Contains(p.PropertyName))
+                    .OrderBy(p => p.PropertyName, StringComparer.Ordinal)
+                    .ToList();
+            }
+        }
+
+        // Display metadata additionally ignored by the content-only hash.
+        private static readonly HashSet<string> AttributionFields =
+            new HashSet<string>(StringComparer.Ordinal)
+            { "Author", "Description", "PackName", "AuthorVersion" };
+
+        private static readonly JsonSerializerSettings ContentOnlySettings = new JsonSerializerSettings
+        {
+            ContractResolver = new ContentOnlyContractResolver(),
+            Formatting = Formatting.None,
+            Culture = CultureInfo.InvariantCulture,
+            FloatParseHandling = FloatParseHandling.Double,
+            FloatFormatHandling = FloatFormatHandling.String,
+            DateFormatHandling = DateFormatHandling.IsoDateFormat,
+            DateTimeZoneHandling = DateTimeZoneHandling.Utc,
+            NullValueHandling = NullValueHandling.Include
+        };
+
+        private sealed class ContentOnlyContractResolver : DefaultContractResolver
+        {
+            protected override IList<JsonProperty> CreateProperties(Type type, MemberSerialization memberSerialization)
+            {
+                var properties = base.CreateProperties(type, memberSerialization);
+                return properties
+                    .Where(p => !ExcludedFromHash.Contains(p.PropertyName)
+                             && !AttributionFields.Contains(p.PropertyName))
                     .OrderBy(p => p.PropertyName, StringComparer.Ordinal)
                     .ToList();
             }

@@ -45,6 +45,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Set by the host: invoked when a message's Share button is
         /// clicked (opens the in-plugin Spread-the-word modal).</summary>
         internal Action ShareRequested;
+        internal Action LinkDiscordRequested;
 
         // Daily-flow tuning (docs/motd-design.md). All "random" rolls derive from
         // the LOCAL date, so they're stable within a day (no flicker on re-render)
@@ -462,6 +463,11 @@ namespace TrueforceForAll.Plugin
                 LinkButton.Visibility = Visibility.Visible;
                 LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? "Share" : m.LinkLabel;
             }
+            else if (m.IsLinkDiscordAction)
+            {
+                LinkButton.Visibility = Visibility.Visible;
+                LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? "Link Discord" : m.LinkLabel;
+            }
             else if (m.HasLink)
             {
                 LinkButton.Visibility = Visibility.Visible;
@@ -554,6 +560,7 @@ namespace TrueforceForAll.Plugin
             if (_display.Count == 0) return;
             var m = _display[_index];
             if (m.IsShareAction) ShareRequested?.Invoke();
+            else if (m.IsLinkDiscordAction) LinkDiscordRequested?.Invoke();
             else if (m.HasLink) OpenUrl(m.LinkUrl);
         }
 

@@ -1029,7 +1029,11 @@ namespace TrueforceForAll.Plugin
             // On a real view switch, clear the search box and re-default the
             // game filter to the active game (preserving them across an
             // unchanged re-entry so returning to the tab keeps your browse).
-            if (changed) ResetCommunityFilters();
+            // Also when the default scope was never established: the first
+            // entry can land with kind/mode equal to the field defaults
+            // (changed == false), skipping the reset entirely and stranding
+            // an empty filter that reads as a user-broadened browse.
+            if (changed || !_communityScopeEverSet) ResetCommunityFilters();
             // Gate on every view ENTRY, not just on fetch: community may have
             // been disabled (or the user signed out) while this panel was
             // hidden, where RefreshCommunityGate deliberately no-ops. Without
@@ -1135,8 +1139,22 @@ namespace TrueforceForAll.Plugin
             _communitySelectedGames.Clear();
             string ag = _plugin?.ActiveGame;
             if (!string.IsNullOrEmpty(ag)) _communitySelectedGames.Add(ag);
+            // Latch: the default game scope has been established at least
+            // once. While false, an empty game filter means "the active game
+            // wasn't known yet" (fresh session), NOT a user-chosen All-games
+            // browse - so scope healing may adopt the game when it arrives.
+            if (!string.IsNullOrEmpty(ag)) _communityScopeEverSet = true;
             RebuildCommunityGameChips();
         }
+
+        // False until a filter reset ran with a known active game. See
+        // ResetCommunityFilters + the healing in OnActiveCarChanged /
+        // EnterCommunity: without this, opening the panel before the first
+        // game tick left the filter empty, which read as a user-broadened
+        // All-games browse, suppressed the empty-state share CTA, and never
+        // self-healed (the broaden check early-returned the very code that
+        // would have adopted the game).
+        private bool _communityScopeEverSet;
 
         // Search applies to every browse kind; the game chips only to car /
         // game presets. Both hidden in "mine" mode.
@@ -2606,14 +2624,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedGame;
             if (sel == null) return;
-            string suggested = SuggestCopyName(sel.Name, n => _plugin.Settings?.Presets?.ContainsKey(n) == true);
-            string newName = PromptForName("Duplicate preset", "New preset name:", suggested, name =>
-                string.IsNullOrWhiteSpace(name) ? "Enter a name."
-                : (_plugin.Settings?.Presets?.ContainsKey(name) == true)
-                    ? $"A preset named '{name}' already exists." : null);
-            if (newName == null) return;   // cancelled
-            newName = newName.Trim();
-            if (!_plugin.DuplicatePreset(sel.Name, newName))
+            // No name prompt: the duplicate self-names with the numeric-suffix
+            // convention ("Name (2)"), so it can't collide, and the user
+            // renames afterwards if they want something else (owner call
+            // 2026-07-13).
+            string newName = _plugin.DuplicatePreset(sel.Name);
+            if (newName == null)
             {
                 SetLib(GameLibStatus, "Couldn't duplicate. See the SimHub log.");
                 return;
@@ -2755,6 +2771,17 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             if (string.IsNullOrWhiteSpace(newName)) return;
                             shareName = newName.Trim();
                         }
+                    }
+                    else
+                    {
+                        // Unchanged uploads never re-share (owner rule,
+                        // 2026-07-13): it would only mint an identical
+                        // duplicate row. No bypass on purpose; name and
+                        // description edits go through Community > Edit….
+                        TrueforceDialog.Show(owner, "Already shared",
+                            "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                            DialogKind.Info);
+                        return;
                     }
                 }
 
@@ -3192,6 +3219,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             shareName = newName.Trim();
                         }
                     }
+                    else
+                    {
+                        // Unchanged uploads never re-share (owner rule,
+                        // 2026-07-13); see the game-preset handler.
+                        TrueforceDialog.Show(owner, "Already shared",
+                            "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                            DialogKind.Info);
+                        return;
+                    }
                 }
 
                 var dialog = PresetShareWindow.ForCar(
@@ -3251,8 +3287,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         private void UpdateEmptyShareCta(string kind, string mode, bool trending,
                                          string scopeGame, string scopeCar)
         {
-            if (EmptyShareCtaBtn == null) return;
-            EmptyShareCtaBtn.Visibility = System.Windows.Visibility.Collapsed;
+            if (EmptyShareCtaBtn == null || CommunityEmptyState == null) return;
+            CommunityEmptyState.Visibility = System.Windows.Visibility.Collapsed;
             EmptyShareCtaBtn.Tag = null;
             if (_communityRows.Count > 0) return;
             if (mode == "mine") return;
@@ -3298,7 +3334,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             EmptyShareCtaBtn.Tag = payload;
             EmptyShareCtaBtn.Content = label;
-            EmptyShareCtaBtn.Visibility = System.Windows.Visibility.Visible;
+            if (CommunityEmptyText != null)
+                CommunityEmptyText.Text = kind == "car"
+                    ? "No presets shared for this car yet."
+                    : "No presets shared for this game yet.";
+            CommunityEmptyState.Visibility = System.Windows.Visibility.Visible;
         }
 
         // Bound the preset name in the empty-state share CTA so a long name
@@ -3343,21 +3383,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedCar;
             if (sel == null) return;
-            // Build the existing-names set for this car so suggestion logic
-            // doesn't propose a name that's already taken.
-            var existing = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var r in _carRows)
-                if (string.Equals(r.CarId, sel.CarId, StringComparison.Ordinal))
-                    existing.Add(r.PresetName);
-            string suggested = SuggestCopyName(sel.PresetName, n => existing.Contains(n));
-            string newName = PromptForName("Duplicate car preset",
-                $"New preset name for '{sel.CarId}':", suggested, name =>
-                    string.IsNullOrWhiteSpace(name) ? "Enter a name."
-                    : existing.Contains(name)
-                        ? $"A preset named '{name}' already exists for this car." : null);
-            if (newName == null) return;   // cancelled
-            newName = newName.Trim();
-            if (!_plugin.DuplicateCarPreset(sel.CarId, sel.PresetName, newName))
+            // No name prompt: self-names with the numeric-suffix convention;
+            // see GameDuplicate_Click (owner call 2026-07-13).
+            string newName = _plugin.DuplicateCarPreset(sel.CarId, sel.PresetName);
+            if (newName == null)
             {
                 SetLib(CarLibStatus, "Couldn't duplicate. See the SimHub log.");
                 return;
@@ -3565,6 +3594,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             if (string.IsNullOrWhiteSpace(newName)) return;
                             shareName = newName.Trim();
                         }
+                    }
+                    else
+                    {
+                        // Unchanged uploads never re-share (owner rule,
+                        // 2026-07-13); see the game-preset handler.
+                        TrueforceDialog.Show(owner, "Already shared",
+                            "'" + baseName + "' is already shared to the community and hasn't changed since. Tweak the engine first, or use Edit… on your upload in the Community list to change its name or description.",
+                            DialogKind.Info);
+                        return;
                     }
                 }
 
@@ -4084,14 +4122,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 || _plugin == null)
                 return;
             // Mine mode is car-independent; a broadened browse/search is scoped
-            // to the chosen games, not the active car. Neither reacts here.
-            if (_communityMode == "mine" || IsCommunityBroadened())
+            // to the chosen games, not the active car. Neither reacts here -
+            // EXCEPT when the "broaden" is really a never-established default
+            // scope (panel opened before the first game tick): adopt the game
+            // now so the view heals without a nav-away round trip.
+            if (_communityMode == "mine") return;
+            bool scopeNeverSet = !_communityScopeEverSet
+                && (_communityKind == "car" || _communityKind == "game")
+                && string.IsNullOrEmpty((_communitySearch ?? "").Trim());
+            if (!scopeNeverSet && IsCommunityBroadened())
                 return;
             // Default (per-car) scope: keep the game filter tracking the new
             // active game so the chips + default scope stay correct.
-            if (gameAlsoChanged) ResetCommunityFilters();
-            bool shouldRefresh =
-                _communityKind == "car"
+            if (gameAlsoChanged || scopeNeverSet) ResetCommunityFilters();
+            bool shouldRefresh = scopeNeverSet
+                || _communityKind == "car"
                 || (_communityKind == "game" && gameAlsoChanged);
             if (shouldRefresh)
                 _ = CommunityRefreshAsync();
@@ -4576,7 +4621,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 if (EmptyShareCtaBtn != null)
                 {
-                    EmptyShareCtaBtn.Visibility = Visibility.Collapsed;
+                    if (CommunityEmptyState != null)
+                        CommunityEmptyState.Visibility = Visibility.Collapsed;
                     EmptyShareCtaBtn.Tag = null;
                 }
             }
@@ -5290,6 +5336,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             return;
                         }
                 }
+                // Identical-content dedup (owner rule 2026-07-13): the same
+                // tuning under a different server id must not pile up either.
+                string dupName = _plugin.FindGamePresetNameWithSameContent(snap);
+                if (dupName != null)
+                {
+                    if (CommunityStatusLabel != null)
+                        CommunityStatusLabel.Text = $"You already have an identical preset: '{dupName}'.";
+                    return;
+                }
 
                 string gpBase = full.Summary.Name + " (community)";
                 string gpName = gpBase;
@@ -5761,6 +5816,15 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             CommunityStatusLabel.Text = $"You already have this preset as '{kv.Key}'.";
                         return;
                     }
+            }
+            // Identical-content dedup (owner rule 2026-07-13): the same
+            // tuning under a different server id must not pile up either.
+            string carDupName = _plugin.FindCarPresetNameWithSameContent(_plugin.ActiveCarId, apply);
+            if (carDupName != null)
+            {
+                if (CommunityStatusLabel != null)
+                    CommunityStatusLabel.Text = $"You already have an identical preset: '{carDupName}'.";
+                return;
             }
 
             // Save the preset under a community-distinct name. Append

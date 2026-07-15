@@ -153,7 +153,11 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="#E5C04A" BorderBrush="#E5C04A" BorderThickness="1" CornerRadius="3" SnapsToDevicePixels="True">
+                        <!-- Padding is template-bound so auto-width users (the
+                             empty-state share CTA) get side breathing room; the
+                             fixed-width users default to Padding=1, unchanged. -->
+                        <Border x:Name="Bd" Background="#E5C04A" BorderBrush="#E5C04A" BorderThickness="1" CornerRadius="3" SnapsToDevicePixels="True"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -673,19 +677,6 @@
                     </StackPanel>
                     <TextBlock x:Name="CommunityStatusLabel" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0" FontSize="11" Margin="0,0,8,0" Text=""/>
-                    <!-- Empty-state CTA: when the community list is
-                         empty for the active scope AND the user has a
-                         non-builtin local preset they could share,
-                         CommunityRefreshAsync flips this button visible
-                         so they can publish their tuning in one click. -->
-                    <Button x:Name="EmptyShareCtaBtn"
-                            Visibility="Collapsed"
-                            Style="{StaticResource SharePrimaryButton}"
-                            Height="28"
-                            FontSize="12"
-                            Click="EmptyShareCta_Click"
-                            VerticalAlignment="Center"
-                            ToolTip="Share your local preset so other drivers can find it for this scope."/>
                 </DockPanel>
                 <DockPanel x:Name="CommunityDescriptionRow" DockPanel.Dock="Bottom" Margin="0,8,0,0">
                     <TextBlock x:Name="CommunityDescriptionText" Style="{StaticResource HelpText}"
@@ -697,6 +688,7 @@
                         Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,8,0,0"
                         Padding="16,4" Click="CommunityShowMore_Click"
                         ToolTip="Load the next page of community results."/>
+                <Grid>
                 <DataGrid x:Name="CommunityList"
                           AutoGenerateColumns="False" CanUserAddRows="False"
                           CanUserDeleteRows="False" CanUserResizeRows="False"
@@ -757,6 +749,27 @@
                         <DataGridTextColumn x:Name="CommunitySectionsCol" Header="Sections"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
                     </DataGrid.Columns>
                 </DataGrid>
+                <!-- Empty-state share CTA: centered where results would be.
+                     CommunityRefreshAsync flips this panel visible when the
+                     community list is empty for the active scope AND the user
+                     has a non-builtin local preset they could publish. -->
+                <StackPanel x:Name="CommunityEmptyState" Visibility="Collapsed"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Margin="0,40,0,0" MaxWidth="420">
+                    <TextBlock x:Name="CommunityEmptyText"
+                               Foreground="#FFB0B0B0" FontSize="12" TextWrapping="Wrap"
+                               TextAlignment="Center" Margin="0,0,0,10"
+                               Text="Nothing shared here yet."/>
+                    <Button x:Name="EmptyShareCtaBtn"
+                            Style="{StaticResource SharePrimaryButton}"
+                            Width="Auto" MaxWidth="360" Padding="14,0"
+                            HorizontalAlignment="Center"
+                            Height="28"
+                            FontSize="12"
+                            Click="EmptyShareCta_Click"
+                            ToolTip="Share your local preset so other drivers can find it for this scope."/>
+                </StackPanel>
+                </Grid>
             </DockPanel>
             </Grid>
         </DockPanel>
