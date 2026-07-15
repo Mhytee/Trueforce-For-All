@@ -3083,19 +3083,19 @@ namespace TrueforceForAll.Plugin
             return EffectChangelog.EntriesNewerThan(since);
         }
 
-        /// <summary>True when GitHub has a published (non-prerelease) release whose
-        /// version matches the running build. The What's new modal prefers GitHub
-        /// notes only in that case; a dev build ahead of any release falls back to
-        /// the bundled EffectChangelog, so changelogs can be authored and previewed
-        /// before a public release exists.</summary>
+        /// <summary>True when GitHub has a published release whose version
+        /// matches the running build, prerelease or not: the user is literally
+        /// running it, so its notes are always fair to show. The What's new
+        /// modal prefers GitHub notes only in that case; a dev build ahead of
+        /// any release falls back to the bundled EffectChangelog, so changelogs
+        /// can be authored and previewed before a public release exists.</summary>
         public bool GitHubHasReleaseForCurrentVersion()
         {
             var all = UpdateChecker?.AllReleases;
             var current = UpdateChecker?.CurrentVersion;
             if (all == null || current == null) return false;
-            bool includePre = BetaChannelAllowed();   // beta testers get prerelease notes too
             foreach (var r in all)
-                if (r != null && (includePre || !r.IsPrerelease) && r.Version != null && Compare3(r.Version, current) == 0)
+                if (r != null && r.Version != null && Compare3(r.Version, current) == 0)
                     return true;
             return false;
         }
@@ -3148,12 +3148,16 @@ namespace TrueforceForAll.Plugin
             if (!EffectChangelog.TryParseVersion(Settings.LastSeenVersion, out var since) || since == null)
                 return Array.Empty<ReleaseInfo>();
             var current = UpdateChecker.CurrentVersion;
-            bool includePre = BetaChannelAllowed();   // beta testers get prerelease notes too
+            // Beta testers get prerelease notes too; and the release matching
+            // the RUNNING build always counts even with the channel off (a
+            // beta build that opted out still deserves its own notes, instead
+            // of silently falling back to the offline changelog).
+            bool includePre = BetaChannelAllowed();
             var list = new List<ReleaseInfo>();
             foreach (var r in UpdateChecker.AllReleases)
             {
                 if (r == null || r.Version == null) continue;
-                if (r.IsPrerelease && !includePre) continue;
+                if (r.IsPrerelease && !includePre && Compare3(r.Version, current) != 0) continue;
                 if (r.Version <= since) continue;
                 if (r.Version > current) continue;
                 list.Add(r);
