@@ -43,10 +43,48 @@ namespace TrueforceForAll.Plugin
         // pattern as CarPresetStore / InstalledPacksStore.
         private static void AtomicWriteAllText(string path, string content)
         {
-            string tmp = path + ".tmp";
-            File.WriteAllText(tmp, content);
-            if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
-            else File.Move(tmp, path);
+            // Unique temp per write: with a fixed ".tmp" name, two concurrent
+            // saves of the same file interleave into one temp and the corrupt
+            // result can get promoted over the real file.
+            string tmp = path + "." + Path.GetRandomFileName() + ".tmp";
+            try
+            {
+                File.WriteAllText(tmp, content);
+                if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
+                else File.Move(tmp, path);
+            }
+            finally
+            {
+                // A failed write must not leave its temp behind.
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            }
+            SweepStaleTemps(path);
+        }
+
+        // Delete crash orphans: temps for this file older than an hour (the age
+        // gate keeps a concurrent writer's live temp safe), plus the legacy
+        // fixed-name temp older builds used.
+        private static void SweepStaleTemps(string path)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                var cutoff = DateTime.UtcNow.AddHours(-1);
+                foreach (var stale in Directory.GetFiles(dir, Path.GetFileName(path) + ".*.tmp"))
+                {
+                    if (File.GetLastWriteTimeUtc(stale) < cutoff)
+                    {
+                        try { File.Delete(stale); } catch { }
+                    }
+                }
+                string legacy = path + ".tmp";
+                if (File.Exists(legacy) && File.GetLastWriteTimeUtc(legacy) < cutoff)
+                {
+                    try { File.Delete(legacy); } catch { }
+                }
+            }
+            catch { }
         }
 
         // Rename a file safely on a case-insensitive filesystem (Windows).

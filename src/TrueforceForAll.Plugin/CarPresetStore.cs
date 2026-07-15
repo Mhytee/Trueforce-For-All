@@ -109,7 +109,13 @@ namespace TrueforceForAll.Plugin
         /// merge them in from BuiltinPresets.CarPresetJsons.</summary>
         public Dictionary<string, Dictionary<string, CarPresetEntry>> LoadAll()
         {
-            var result = new Dictionary<string, Dictionary<string, CarPresetEntry>>(StringComparer.Ordinal);
+            // OrdinalIgnoreCase on carId AND preset name: the bake/resolver
+            // paths compare carIds case-insensitively, and AC mod car ids come
+            // from folder names whose case varies between packagings; Ordinal
+            // used to split the same physical car into two rows and miss saved
+            // defaults. Case-variant duplicates merge last-wins (population
+            // uses TryGetValue + indexer, so no duplicate-key throw).
+            var result = new Dictionary<string, Dictionary<string, CarPresetEntry>>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 string root = FolderPath;
@@ -136,7 +142,7 @@ namespace TrueforceForAll.Plugin
                         };
                         if (!result.TryGetValue(f.CarId, out var perCar))
                         {
-                            perCar = new Dictionary<string, CarPresetEntry>(StringComparer.Ordinal);
+                            perCar = new Dictionary<string, CarPresetEntry>(StringComparer.OrdinalIgnoreCase);
                             result[f.CarId] = perCar;
                         }
                         perCar[presetName] = entry;
@@ -274,10 +280,48 @@ namespace TrueforceForAll.Plugin
         // leave a corrupt file. Same pattern as the rest of the persistence layer.
         private static void AtomicWriteAllText(string path, string content)
         {
-            string tmp = path + ".tmp";
-            File.WriteAllText(tmp, content);
-            if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
-            else File.Move(tmp, path);
+            // Unique temp per write: with a fixed ".tmp" name, two concurrent
+            // saves of the same file interleave into one temp and the corrupt
+            // result can get promoted over the real file.
+            string tmp = path + "." + Path.GetRandomFileName() + ".tmp";
+            try
+            {
+                File.WriteAllText(tmp, content);
+                if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
+                else File.Move(tmp, path);
+            }
+            finally
+            {
+                // A failed write must not leave its temp behind.
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            }
+            SweepStaleTemps(path);
+        }
+
+        // Delete crash orphans: temps for this file older than an hour (the age
+        // gate keeps a concurrent writer's live temp safe), plus the legacy
+        // fixed-name temp older builds used.
+        private static void SweepStaleTemps(string path)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                var cutoff = DateTime.UtcNow.AddHours(-1);
+                foreach (var stale in Directory.GetFiles(dir, Path.GetFileName(path) + ".*.tmp"))
+                {
+                    if (File.GetLastWriteTimeUtc(stale) < cutoff)
+                    {
+                        try { File.Delete(stale); } catch { }
+                    }
+                }
+                string legacy = path + ".tmp";
+                if (File.Exists(legacy) && File.GetLastWriteTimeUtc(legacy) < cutoff)
+                {
+                    try { File.Delete(legacy); } catch { }
+                }
+            }
+            catch { }
         }
     }
 }
