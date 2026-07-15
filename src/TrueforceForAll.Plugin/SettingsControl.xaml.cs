@@ -14055,7 +14055,11 @@ namespace TrueforceForAll.Plugin
                                 TextWrapping = TextWrapping.Wrap,
                             };
                             hl.Inlines.Add(new Run("• "));
-                            hl.Inlines.Add(new Run(headline) { FontWeight = FontWeights.Bold });
+                            // Through the inline renderer (re-wrapped in **
+                            // so it keeps the bold weight) instead of a raw
+                            // bold Run: headlines can carry links, like the
+                            // bold Patreon link in the v0.2.1 warning.
+                            AppendInlineMarkdown(hl, "**" + headline + "**");
                             panel.Children.Add(hl);
                             if (desc.Length > 0)
                             {
