@@ -58,7 +58,7 @@
     "Waveform": "Noise"
   },
   "AxleSlip": {
-    "Enabled": false,
+    "Enabled": true,
     "Gain": 0.095,
     "PredictiveSlip": true,
     "RevLockedRearPulse": true,
@@ -70,12 +70,12 @@
     "OnsetUtil": 0.85
   },
   "KerbThump": {
-    "Enabled": false,
+    "Enabled": true,
     "Gain": 0.135,
     "Freq": 30.0
   },
   "LockupJudder": {
-    "Enabled": false,
+    "Enabled": true,
     "Gain": 0.14
   },
   "GearShift": {

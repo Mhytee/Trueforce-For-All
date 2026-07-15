@@ -1747,14 +1747,15 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>Settings for the axle-slip texture: feel which axle is letting
     /// go, a high scrub as the front washes wide, a deep pulse as the rear
-    /// steps out. The louder axle is the one losing grip. Off by default (new
-    /// effect baseline); needs per-tire telemetry (Forza games today).
+    /// steps out. The louder axle is the one losing grip. On by default
+    /// (owner's call, 2026-07-14, with the tuned baseline): inert without
+    /// per-tire telemetry (Forza games today), so other games are unaffected.
     /// PredictiveSlip starts the texture a fixed validated 150 ms before the
     /// slip fully develops; RevLockedRearPulse locks the rear pulse rate to
     /// the actual rear wheel rev rate when per-tire data allows.</summary>
     public sealed class AxleSlipSettings
     {
-        public bool  Enabled            { get; set; } = false;
+        public bool  Enabled            { get; set; } = true;
         public float Gain               { get; set; } = 0.095f;  // owner-tuned G PRO baseline (2026-07-14)
         public bool  PredictiveSlip     { get; set; } = true;
         public bool  RevLockedRearPulse { get; set; } = true;
@@ -1777,25 +1778,25 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>Settings for the kerb thump: a single firm whack the instant
     /// a wheel first touches a kerb, distinct from the rumble that follows.
-    /// Scales with speed. Off by default (new effect baseline); needs kerb
-    /// telemetry (Forza games today). Gain defaults to the owner-tuned G PRO
-    /// baseline (2026-07-14); the original 1.6 was dialed in on a G923, whose
-    /// weaker motor needed it much hotter. Freq sits below the 40 Hz gear
-    /// thud so the two stay distinct.</summary>
+    /// Scales with speed. On by default (owner's call, 2026-07-14): inert
+    /// without kerb telemetry (Forza games today). Gain defaults to the
+    /// owner-tuned G PRO baseline (2026-07-14); the original 1.6 was dialed
+    /// in on a G923, whose weaker motor needed it much hotter. Freq sits
+    /// below the 40 Hz gear thud so the two stay distinct.</summary>
     public sealed class KerbThumpSettings
     {
-        public bool  Enabled { get; set; } = false;
+        public bool  Enabled { get; set; } = true;
         public float Gain    { get; set; } = 0.135f;   // owner-tuned G PRO baseline (2026-07-14)
         public float Freq    { get; set; } = 30.0f;
     }
 
     /// <summary>Settings for the lockup judder: a flat-spot pulse while a
     /// braking tire is locked, slowing with the car the way a real flat spot
-    /// would. Off by default (new effect baseline); needs per-tire telemetry
-    /// (Forza games today).</summary>
+    /// would. On by default (owner's call, 2026-07-14): inert without
+    /// per-tire telemetry (Forza games today).</summary>
     public sealed class LockupJudderSettings
     {
-        public bool  Enabled { get; set; } = false;
+        public bool  Enabled { get; set; } = true;
         public float Gain    { get; set; } = 0.14f;   // owner-tuned G PRO baseline (2026-07-14)
     }
 
