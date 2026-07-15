@@ -13981,6 +13981,29 @@ namespace TrueforceForAll.Plugin
                 }
                 prevWasBlank = false;
 
+                // Blockquote ("> ..." lines), including GitHub alert callouts
+                // ("> [!WARNING]" etc.). Consecutive quote lines collapse into
+                // one left-accented callout box; the quoted content re-enters
+                // this renderer, so headers/bullets/bold inside it work.
+                if (trimmed[0] == '>')
+                {
+                    var quoted = new System.Collections.Generic.List<string>();
+                    int j = i;
+                    while (j < lines.Length)
+                    {
+                        string q = (lines[j] ?? "").TrimStart();
+                        if (q.Length == 0 || q[0] != '>') break;
+                        string innerLine = q.Substring(1);
+                        if (innerLine.StartsWith(" ", StringComparison.Ordinal))
+                            innerLine = innerLine.Substring(1);
+                        quoted.Add(innerLine);
+                        j++;
+                    }
+                    panel.Children.Add(BuildQuoteCallout(quoted));
+                    i = j - 1;   // loop ++ lands on the first non-quote line
+                    continue;
+                }
+
                 // Heading levels 1..3 (deeper levels fall through to plain).
                 int hashCount = 0;
                 while (hashCount < trimmed.Length && trimmed[hashCount] == '#') hashCount++;
@@ -14074,34 +14097,144 @@ namespace TrueforceForAll.Plugin
             return panel;
         }
 
+        // A "> quoted" block as a left-accented callout box. A GitHub alert
+        // marker ("[!WARNING]" etc.) as the first quoted line picks the title
+        // and accent color, echoing how GitHub renders it; a plain quote gets
+        // a neutral bar and no title. Content re-enters RenderReleaseNotes,
+        // so everything the renderer knows works inside the box too.
+        private static Border BuildQuoteCallout(System.Collections.Generic.List<string> quoted)
+        {
+            string title  = null;
+            Color  accent = Color.FromRgb(0x88, 0x88, 0x88);
+            int start = 0;
+            string first = null;
+            for (int k = 0; k < quoted.Count; k++)
+            {
+                if (!string.IsNullOrWhiteSpace(quoted[k])) { first = quoted[k].Trim(); start = k; break; }
+            }
+            if (first != null
+                && first.StartsWith("[!", StringComparison.Ordinal)
+                && first.EndsWith("]", StringComparison.Ordinal))
+            {
+                switch (first.Substring(2, first.Length - 3).ToUpperInvariant())
+                {
+                    case "WARNING":   title = "Warning";   accent = Color.FromRgb(0xE5, 0xC0, 0x4A); break;
+                    case "CAUTION":   title = "Caution";   accent = Color.FromRgb(0xE0, 0x62, 0x5A); break;
+                    case "IMPORTANT": title = "Important"; accent = Color.FromRgb(0xB0, 0x87, 0xE8); break;
+                    case "NOTE":      title = "Note";      accent = Color.FromRgb(0x6C, 0xA0, 0xDD); break;
+                    case "TIP":       title = "Tip";       accent = Color.FromRgb(0x5F, 0xB8, 0x6A); break;
+                }
+                if (title != null) start++;   // the marker line itself isn't content
+            }
+
+            StackPanel inner;
+            string bodyText = string.Join("\n", quoted.Skip(start));
+            inner = string.IsNullOrWhiteSpace(bodyText) ? new StackPanel() : RenderReleaseNotes(bodyText);
+            if (title != null)
+            {
+                inner.Children.Insert(0, new TextBlock
+                {
+                    Text = title,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(accent),
+                    Margin = new Thickness(0, 0, 0, 2),
+                });
+            }
+            return new Border
+            {
+                BorderBrush = new SolidColorBrush(accent),
+                BorderThickness = new Thickness(3, 0, 0, 0),
+                Background = new SolidColorBrush(Color.FromArgb(0x16, accent.R, accent.G, accent.B)),
+                CornerRadius = new CornerRadius(2),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 6, 0, 6),
+                Child = inner,
+            };
+        }
+
         // Append `text` to a TextBlock's Inlines, rendering **bold** runs in
-        // bold. Anything outside ** ** pairs is plain. An unclosed `**` at
-        // the end is treated as literal text rather than dropped, so a body
-        // that opens bold without closing degrades gracefully.
+        // bold and [label](https://url) as clickable links. Anything outside
+        // those is plain. An unclosed `**` stays literal rather than being
+        // dropped, so a body that opens bold without closing degrades
+        // gracefully; a malformed or non-http link stays literal too. Links
+        // may sit inside bold spans (and carry the bold weight); bold markers
+        // inside a link label are consumed as styling, not shown.
         private static void AppendInlineMarkdown(TextBlock tb, string text)
         {
             if (string.IsNullOrEmpty(text)) return;
+            bool bold = false;
+            var sb = new System.Text.StringBuilder();
+            void Flush()
+            {
+                if (sb.Length == 0) return;
+                tb.Inlines.Add(new Run(sb.ToString())
+                {
+                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                });
+                sb.Clear();
+            }
             int i = 0;
             while (i < text.Length)
             {
-                int boldStart = text.IndexOf("**", i, StringComparison.Ordinal);
-                if (boldStart < 0)
+                if (i + 1 < text.Length && text[i] == '*' && text[i + 1] == '*')
                 {
-                    tb.Inlines.Add(new Run(text.Substring(i)));
-                    return;
+                    // Opening bold needs a closer somewhere ahead; otherwise
+                    // the marker is literal text.
+                    if (!bold && text.IndexOf("**", i + 2, StringComparison.Ordinal) < 0)
+                    {
+                        sb.Append("**");
+                        i += 2;
+                        continue;
+                    }
+                    Flush();
+                    bold = !bold;
+                    i += 2;
+                    continue;
                 }
-                if (boldStart > i)
-                    tb.Inlines.Add(new Run(text.Substring(i, boldStart - i)));
-                int boldEnd = text.IndexOf("**", boldStart + 2, StringComparison.Ordinal);
-                if (boldEnd < 0)
+                if (text[i] == '[')
                 {
-                    tb.Inlines.Add(new Run(text.Substring(boldStart)));
-                    return;
+                    int closeBracket = text.IndexOf(']', i + 1);
+                    if (closeBracket > i && closeBracket + 1 < text.Length && text[closeBracket + 1] == '(')
+                    {
+                        int closeParen = text.IndexOf(')', closeBracket + 2);
+                        if (closeParen > closeBracket)
+                        {
+                            string label = text.Substring(i + 1, closeBracket - i - 1).Replace("**", "");
+                            string url   = text.Substring(closeBracket + 2, closeParen - closeBracket - 2);
+                            if (label.Length > 0
+                                && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                                && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+                            {
+                                Flush();
+                                var link = new System.Windows.Documents.Hyperlink(new Run(label)
+                                {
+                                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                                })
+                                {
+                                    NavigateUri = uri,
+                                    Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                                };
+                                link.RequestNavigate += (s, e) =>
+                                {
+                                    try
+                                    {
+                                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                                            e.Uri.AbsoluteUri) { UseShellExecute = true });
+                                    }
+                                    catch { }
+                                };
+                                tb.Inlines.Add(link);
+                                i = closeParen + 1;
+                                continue;
+                            }
+                        }
+                    }
                 }
-                string boldText = text.Substring(boldStart + 2, boldEnd - boldStart - 2);
-                tb.Inlines.Add(new Run(boldText) { FontWeight = FontWeights.Bold });
-                i = boldEnd + 2;
+                sb.Append(text[i]);
+                i++;
             }
+            Flush();
         }
 
         // Manual "Check for updates" link in the header. The plugin already
