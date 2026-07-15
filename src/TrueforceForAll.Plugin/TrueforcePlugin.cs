@@ -790,20 +790,81 @@ namespace TrueforceForAll.Plugin
             }
 
             if (wasEnabled == enabled) return;
-            if (!enabled)
+            bool effective;
+            lock (_enableDeviceLock)
             {
-                _device?.SendStopCommand();
-                _device?.Pause();
-                SimHub.Logging.Current.Info(
-                    $"[Trueforce] Plugin disabled{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
+                // Act on the CURRENT flag, not the captured argument: two
+                // opposite toggles racing (UI click vs the per-game auto
+                // toggle on the data thread) both reach here, and acting on
+                // the re-read value makes them converge on whichever settings
+                // write landed last instead of leaving the device matching
+                // the loser.
+                effective = Settings.PluginEnabled;
+                if (!effective)
+                {
+                    _device?.SendStopCommand();
+                    _device?.Pause();
+                }
+                else
+                {
+                    _device?.Resume();
+                    _device?.SendStartCommand();
+                }
             }
-            else
+            SimHub.Logging.Current.Info(
+                $"[Trueforce] Plugin {(effective ? "enabled" : "disabled")}{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
+        }
+
+        // Serializes the device Stop/Pause vs Resume/Start decision between the
+        // live toggle (SetPluginEnabled), the transitionless reconciler below,
+        // and the StopStreamOnPause gate edges, so an enable racing a
+        // bring-up/import reconcile can't be swallowed by a stale read of the
+        // flag (both sides re-read or act on the latest Settings.PluginEnabled
+        // inside the lock, and the loser of the race runs second and wins).
+        // Only ever wraps non-blocking flag flips; never taken with another
+        // lock held.
+        private readonly object _enableDeviceLock = new object();
+
+        /// <summary>Push Settings.PluginEnabled to the device without
+        /// requiring a transition. SetPluginEnabled covers live toggles but
+        /// early-returns when the value did not change, so every path that
+        /// lands PluginEnabled without going through it must call this:
+        /// device bring-up with the toggle already off (issue #37) and
+        /// settings import. Otherwise the device keeps its previous pause
+        /// state: streaming ep3 keepalives while "disabled" (the issue #37
+        /// doubled haptics in native-Trueforce games) or paused while
+        /// "enabled" (silently dead wheel).</summary>
+        private void SyncDeviceToPluginEnabled(string context)
+        {
+            var dev = _device;
+            if (Settings == null || dev == null) return;
+            string outcome = null;
+            lock (_enableDeviceLock)
             {
-                _device?.Resume();
-                _device?.SendStartCommand();
-                SimHub.Logging.Current.Info(
-                    $"[Trueforce] Plugin enabled{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
+                if (!Settings.PluginEnabled)
+                {
+                    // Same sequence as the toggle-off path; redundant Stops
+                    // are harmless (already exercised when the user disables
+                    // during a StopStreamOnPause hold).
+                    dev.SendStopCommand();
+                    dev.Pause();
+                    outcome = "plugin is disabled; left Trueforce mode so the wheel stays on native FFB";
+                }
+                else if (dev.IsPaused && !_stopStreamPauseActive)
+                {
+                    // Enabled but the device sits paused (e.g. cold start with
+                    // the toggle off, then an import lands "enabled"). Same
+                    // sequence as the toggle-on path. Skipped while the
+                    // StopStreamOnPause gate deliberately holds the wheel out
+                    // of Trueforce mode for a game pause; that gate resumes it
+                    // on its own edge.
+                    dev.Resume();
+                    dev.SendStartCommand();
+                    outcome = "plugin is enabled; resumed the Trueforce stream";
+                }
             }
+            if (outcome != null)
+                SimHub.Logging.Current.Info($"[Trueforce] {context}: {outcome}.");
         }
 
         public void SetFfbScale(float v)
@@ -922,13 +983,16 @@ namespace TrueforceForAll.Plugin
             {
                 if (_stopStreamPauseActive)
                 {
-                    if (Settings != null && Settings.PluginEnabled && _device != null)
+                    lock (_enableDeviceLock)
                     {
-                        _ffbTap?.ClearLastFfbTarget();
-                        _device.Resume();
-                        _device.SendStartCommand();
+                        if (Settings != null && Settings.PluginEnabled && _device != null)
+                        {
+                            _ffbTap?.ClearLastFfbTarget();
+                            _device.Resume();
+                            _device.SendStartCommand();
+                        }
+                        _stopStreamPauseActive = false;
                     }
-                    _stopStreamPauseActive = false;
                 }
                 _resumeCandidateSinceTicks = 0;
                 return;
@@ -947,9 +1011,16 @@ namespace TrueforceForAll.Plugin
                 _resumeCandidateSinceTicks = 0;   // cancel any pending resume
                 if (!_stopStreamPauseActive)
                 {
-                    _device.SendStopCommand();
-                    _device.Pause();
-                    _stopStreamPauseActive = true;
+                    // Commands + flag under the enable lock, so the reconciler
+                    // can never observe "paused but gate flag not yet set" and
+                    // resume a stream this gate is deliberately holding out of
+                    // Trueforce mode (issue #13 exposure).
+                    lock (_enableDeviceLock)
+                    {
+                        _device.SendStopCommand();
+                        _device.Pause();
+                        _stopStreamPauseActive = true;
+                    }
                     SimHub.Logging.Current.Info(
                         "[TF4ALL] Pause: left Trueforce mode so the wheel reverts to native FFB (issue #13).");
                 }
@@ -980,11 +1051,27 @@ namespace TrueforceForAll.Plugin
             // the pause / transition so the first force we emit is the game's
             // current FFB, not a stale captured snapshot.
             _ffbTap?.ClearLastFfbTarget();
-            _device.Resume();
-            _device.SendStartCommand();
-            _stopStreamPauseActive = false;
+            bool resumed = false;
+            lock (_enableDeviceLock)
+            {
+                // Re-read the master toggle inside the lock: a disable (live
+                // toggle, or an import reconcile) landing after canGate was
+                // computed must not be overwritten by this resume, or the
+                // keepalive pump would run while "disabled" (the issue #37
+                // shape). Skipping still clears the gate flag: the disable owns
+                // the paused device now, and re-enabling goes through
+                // SetPluginEnabled's own Resume.
+                if (Settings != null && Settings.PluginEnabled && _device != null)
+                {
+                    _device.Resume();
+                    _device.SendStartCommand();
+                    resumed = true;
+                }
+                _stopStreamPauseActive = false;
+            }
             _resumeCandidateSinceTicks = 0;
-            SimHub.Logging.Current.Info("[TF4ALL] Resume: restarted Trueforce stream.");
+            if (resumed)
+                SimHub.Logging.Current.Info("[TF4ALL] Resume: restarted Trueforce stream.");
         }
 
         // Fast gate on the baseline FFB path: when the spring is off AND no
@@ -1767,6 +1854,20 @@ namespace TrueforceForAll.Plugin
 
                 _streamStatus = "Streaming (4 kHz, 1000 packets/s)";
                 SimHub.Logging.Current.Info("[Trueforce] Stream started.");
+
+                // Master toggle may already be off at bring-up (persisted from
+                // a prior session, e.g. auto-disabled for a native-Trueforce
+                // game), and StartStream just force-reset the pause flag.
+                // Without this reconcile the pump emits keepalives at 1 kHz on
+                // ep3 forever while "disabled", and a native-Trueforce game's
+                // own ep3 stream interleaves with ours at the wheel as harsh
+                // garbage vibrations (issue #37). Mirrors the toggle-off wire
+                // sequence (Stop, then Pause; StreamTick dispatches the pending
+                // Stop before the pause gate). Also covers the recovery
+                // watchdog and the manual reconnect, which re-attach through
+                // this same path and would otherwise un-pause a disabled
+                // plugin.
+                SyncDeviceToPluginEnabled("Bring-up");
             }
             catch (Exception ex)
             {
@@ -6507,6 +6608,10 @@ namespace TrueforceForAll.Plugin
             var imported = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(json);
             if (imported == null) throw new System.IO.InvalidDataException("File did not contain valid TrueforceSettings JSON.");
             Settings = imported;
+            // The imported file replaced Settings wholesale, so PluginEnabled can flip without a
+            // SetPluginEnabled transition. Reconcile the device NOW, before the throw-capable
+            // remainder, or a later throw strands the device on the pre-import pause state.
+            SyncDeviceToPluginEnabled("Settings import");
             _mixer.MasterGain = Settings.MasterGain;
             if (_audio != null)
             {
@@ -6908,7 +7013,10 @@ namespace TrueforceForAll.Plugin
             while (!_shuttingDown)
             {
                 // Master disable: skip rendering entirely. The wheel was told
-                // to Stop in SetPluginEnabled, so it's running on native FFB.
+                // to Stop by SetPluginEnabled (live toggle) or by
+                // SyncDeviceToPluginEnabled (bring-up with the toggle already
+                // off, or a settings import; issue #37), so it's running on
+                // native FFB.
                 // Sleep ~the duration of one batch (4 samples × 0.25 ms) before
                 // re-checking, to avoid a hot spin.
                 if (Settings != null && !Settings.PluginEnabled)

@@ -422,6 +422,18 @@ namespace TrueforceForAll.Core
         public void Pause()  => _paused = true;
         public void Resume() => _paused = false;
 
+        /// <summary>True while sample emission is paused (Pause(), or a
+        /// dispatched protocol Stop), or when a Stop is queued but not yet
+        /// dispatched: StreamTick sets _paused from the command byte AFTER
+        /// its ~1 ms USB write, so for one tick a freshly queued Stop can
+        /// coexist with a stale _paused == false, and a reconciler reading
+        /// bare _paused there would skip a needed resume. "Paused or about
+        /// to be" is the steady state the caller actually needs. Lets the
+        /// plugin's enable-state reconciler resume only a genuinely paused
+        /// device instead of sending a Start at an already-running
+        /// stream.</summary>
+        public bool IsPaused => _paused || _pendingCommand == 0x04;
+
         // Clear FFB filter state. Called on car / game switch so the new car's
         // first frames don't get blended with the previous car's last sample
         // through the IIR / slew / spike-envelope chain.
