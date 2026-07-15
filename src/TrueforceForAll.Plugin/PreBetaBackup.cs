@@ -13,11 +13,15 @@
 // On-disk layout, sibling to the data it mirrors so it survives plugin
 // updates and reinstalls:
 //   <SimHub>\PluginsData\Common\TrueforceForAll-PreBetaBackup\
-//     manifest.json                          fromVersion + UTC timestamp
+//     manifest.json                          fromVersion + UTC stamp + layout
 //     TrueforcePlugin.GeneralSettings.json   settings snapshot
-//     data\...                               TrueforceForAll root minus factory
-// The factory subfolder is skipped: it is installer-owned and the stable
-// installer lays down its own set.
+//     data\...                               plugin-owned folders, Common-relative
+// data\ holds Common-relative copies ("common-v1" in the manifest), so one
+// backup format serves every plugin generation regardless of its disk
+// layout; the 0.2.x factory subfolder is skipped as installer-owned (the
+// stable installer lays down its own set). Restore still reads the legacy
+// 0.2.2 format (no Layout field, data\ mapped onto the TrueforceForAll
+// root) for backups taken by that build.
 
 using System;
 using System.IO;
@@ -29,16 +33,34 @@ namespace TrueforceForAll.Plugin
     {
         public string   FromVersion { get; set; }
         public DateTime TakenUtc    { get; set; }
+        // Backup format marker. "common-v1": data\ mirrors paths relative to
+        // PluginsData\Common, so ONE format serves every plugin generation
+        // regardless of its on-disk layout (0.1.x: TrueforceForAll-Library;
+        // 0.2.x: the TrueforceForAll root). Null/absent = the legacy 0.2.2
+        // format whose data\ mapped directly onto the TrueforceForAll root.
+        public string   Layout      { get; set; }
     }
 
     internal static class PreBetaBackup
     {
-        internal const string FolderName = "TrueforceForAll-PreBetaBackup";
+        internal const string FolderName   = "TrueforceForAll-PreBetaBackup";
+        internal const string CommonLayout = "common-v1";
         private  const string ManifestName  = "manifest.json";
         private  const string DataSubfolder = "data";
 
         private static string Root     => Path.Combine(TfPaths.CommonRoot, FolderName);
         private static string DataRoot => Path.Combine(TfPaths.CommonRoot, BuiltinPresets.RootFolderName);
+
+        // Every data folder the plugin owns under PluginsData\Common, across
+        // generations, so take/park cover whichever layout is live. The
+        // factory subfolder inside the 0.2.x root is installer-owned and
+        // always skipped.
+        private static readonly string[] OwnedDataFolders =
+        {
+            BuiltinPresets.RootFolderName,   // 0.2.x root (user, accounts, caches)
+            "TrueforceForAll-Library",       // 0.1.x car-preset library
+            "TrueforceCars",                 // pre-rebrand legacy car presets
+        };
 
         private static void Log(string msg)
         {
@@ -75,13 +97,19 @@ namespace TrueforceForAll.Plugin
                     }
                     catch { /* keep the raw copy; worst case the restored install re-offers the beta */ }
                 }
-                if (Directory.Exists(DataRoot))
-                    CopyTree(DataRoot, Path.Combine(tmp, DataSubfolder),
-                             skipTopLevel: BuiltinPresets.FactorySubfolderName);
+                foreach (var name in OwnedDataFolders)
+                {
+                    string live = Path.Combine(TfPaths.CommonRoot, name);
+                    if (!Directory.Exists(live)) continue;
+                    CopyTree(live, Path.Combine(tmp, DataSubfolder, name),
+                             skipTopLevel: name == BuiltinPresets.RootFolderName
+                                 ? BuiltinPresets.FactorySubfolderName : null);
+                }
                 var manifest = new PreBetaBackupManifest
                 {
                     FromVersion = fromVersion,
                     TakenUtc    = DateTime.UtcNow,
+                    Layout      = CommonLayout,
                 };
                 File.WriteAllText(Path.Combine(tmp, ManifestName),
                                   JsonConvert.SerializeObject(manifest, Formatting.Indented));
@@ -139,6 +167,8 @@ namespace TrueforceForAll.Plugin
         /// file (unknown-field tolerant either way).</summary>
         internal static void Restore(string runningVersion3)
         {
+            var manifest = TryRead();   // callers gate on this; re-read for the layout switch
+
             string undo = Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-PreRestore.bak");
             try { if (Directory.Exists(undo)) Directory.Delete(undo, true); } catch { }
             Directory.CreateDirectory(undo);
@@ -146,9 +176,21 @@ namespace TrueforceForAll.Plugin
             if (File.Exists(TfPaths.GeneralSettingsFile))
                 File.Copy(TfPaths.GeneralSettingsFile,
                           Path.Combine(undo, Path.GetFileName(TfPaths.GeneralSettingsFile)), true);
-            if (Directory.Exists(DataRoot))
-                MoveTopLevel(DataRoot, Path.Combine(undo, DataSubfolder),
-                             skip: BuiltinPresets.FactorySubfolderName);
+            foreach (var name in OwnedDataFolders)
+            {
+                string live = Path.Combine(TfPaths.CommonRoot, name);
+                if (!Directory.Exists(live)) continue;
+                if (name == BuiltinPresets.RootFolderName)
+                    // Park the root's contents but leave the installer-owned
+                    // factory subfolder in place.
+                    MoveTopLevel(live, Path.Combine(undo, DataSubfolder, name),
+                                 skip: BuiltinPresets.FactorySubfolderName);
+                else
+                {
+                    Directory.CreateDirectory(Path.Combine(undo, DataSubfolder));
+                    Directory.Move(live, Path.Combine(undo, DataSubfolder, name));
+                }
+            }
 
             string settingsSnapshot = Path.Combine(Root, Path.GetFileName(TfPaths.GeneralSettingsFile));
             if (File.Exists(settingsSnapshot))
@@ -164,9 +206,14 @@ namespace TrueforceForAll.Plugin
                 catch { /* keep the raw restore; worst case a cancelled installer re-enrolls */ }
             }
 
+            // Common-relative layout copies back under Common verbatim; the
+            // legacy 0.2.2 layout mapped data\ straight onto the 0.2.x root.
             string dataSnapshot = Path.Combine(Root, DataSubfolder);
             if (Directory.Exists(dataSnapshot))
-                CopyTree(dataSnapshot, DataRoot, skipTopLevel: null);
+                CopyTree(dataSnapshot,
+                         string.Equals(manifest?.Layout, CommonLayout, StringComparison.Ordinal)
+                             ? TfPaths.CommonRoot : DataRoot,
+                         skipTopLevel: null);
 
             Log($"Pre-beta backup restored; the replaced beta-era data is parked at {undo}");
         }
