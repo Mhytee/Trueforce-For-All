@@ -472,7 +472,7 @@ namespace TrueforceForAll.Plugin
                 if (BetaUpdatesCheck != null)
                 {
                     BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
-                    _ = RefreshBetaUpdateGatingAsync();
+                    RefreshBetaUpdateNote();
                 }
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
@@ -6801,115 +6801,75 @@ namespace TrueforceForAll.Plugin
             if (AutoSyncBackupCheck != null) AutoSyncBackupCheck.IsEnabled = canUpload;
         }
 
-        private int _betaGatingGen;
-
-        // Beta (pre-release) update channel opt-in. Persists the flag and pushes the
-        // resulting channel into the update poller immediately (ApplyUpdateChannel
-        // ANDs it with live supporter status, so a non-supporter toggling it on gets
-        // no prereleases), then refreshes the gate note so the supporter requirement
-        // is visible right away. Turning it ON is a Patreon perk: rather than a
-        // dead disabled checkbox, a non-supporter's attempt reverts and gets an
-        // actionable link-Patreon / become-a-patron prompt. Turning it OFF is
-        // always allowed (that's the beta build's switch-back-to-main path).
+        // Beta (pre-release) update channel opt-in, open to everyone. Turning it
+        // ON asks one confirmation (beta builds are less tested than stable);
+        // turning it OFF is always silent, since that's the beta build's
+        // switch-back-to-main path. Persists the flag and pushes the resulting
+        // channel into the update poller immediately, so a prerelease can
+        // surface in the banner without a restart.
         private void BetaUpdates_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
 
-            if (BetaUpdatesCheck?.IsChecked == true && !_plugin.LastKnownSupporter)
+            // Confirm only a real off-to-on flip, not the panel-load sync of
+            // the checkbox to an already-on setting (e.g. after auto-enroll).
+            if (BetaUpdatesCheck?.IsChecked == true && !_plugin.Settings.BetaUpdatesEnabled)
             {
-                _suppressEvents = true;
-                try { BetaUpdatesCheck.IsChecked = false; }
-                finally { _suppressEvents = false; }
-
-                var choice = TrueforceDialog.ShowChoice(Window.GetWindow(this),
-                    "Beta updates are a supporter perk",
-                    "In-app beta updates are for Patreon supporters. Already a patron? "
-                    + "Link your Patreon account and the toggle unlocks. "
-                    + "Beta builds stay public on GitHub for everyone either way.",
-                    "Link Patreon account", "Become a patron", "Not now");
-                if (choice == DialogChoice.Primary)
+                bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
+                    "Get beta updates?",
+                    "Beta builds bring new effects and fixes first, but they are "
+                    + "less tested than stable releases. You can switch back to "
+                    + "the main release any time by turning this off.",
+                    DialogKind.Confirm, "Get beta updates", "Not now");
+                if (ok != true)
                 {
-                    if (!_plugin.AuthIsSignedIn)
-                    {
-                        var signIn = new SignInWindow(_plugin) { Owner = Window.GetWindow(this) };
-                        signIn.ShowDialog();
-                    }
-                    if (_plugin.AuthIsSignedIn) LinkPatreon_Click(null, null);
+                    _suppressEvents = true;
+                    try { BetaUpdatesCheck.IsChecked = false; }
+                    finally { _suppressEvents = false; }
+                    return;
                 }
-                else if (choice == DialogChoice.Secondary)
-                {
-                    OpenUrl(PatreonUrl);
-                }
-                return;
             }
 
             _plugin.Settings.BetaUpdatesEnabled = BetaUpdatesCheck?.IsChecked == true;
+            // Unticking on a beta build is an explicit opt-out: stamp the
+            // enroll latch so a later release check can't re-enroll this
+            // version behind the user's back (see AcknowledgeBetaOptOut).
+            if (BetaUpdatesCheck?.IsChecked != true) _plugin.AcknowledgeBetaOptOut();
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Persist BetaUpdatesEnabled failed: " + ex.Message);
             }
             _plugin.ApplyUpdateChannel();
-            _ = RefreshBetaUpdateGatingAsync();
+            RefreshBetaUpdateNote();
         }
 
-        // Refresh the beta toggle when the Updates section is opened, so its
-        // enabled-state and supporter note reflect current status on view.
+        // Refresh the beta note when the Updates section is opened, so it
+        // reflects the current channel state on view.
         private void UpdatesExpander_Expanded(object sender, RoutedEventArgs e)
         {
-            _ = RefreshBetaUpdateGatingAsync();
+            RefreshBetaUpdateNote();
         }
 
-        // Gate the "beta updates" toggle on supporter status. Display + convenience
-        // only: the poller itself re-checks live status before landing a prerelease,
-        // and prereleases stay public on GitHub for everyone. Mirrors
-        // RefreshCloudBackupGatingAsync (generation guard drops stale awaits after an
-        // account switch). Also re-affirms the update channel once we have a fresh
-        // supporter answer, so a supporter who just linked Patreon starts seeing beta
-        // targets without a restart.
-        private async Task RefreshBetaUpdateGatingAsync()
+        // Contextual note under the "beta updates" toggle. Purely local: the
+        // channel is open to everyone, so this depends only on the toggle and
+        // on whether the running build is itself a prerelease. Also re-affirms
+        // the update channel so the poller matches what the note says.
+        private void RefreshBetaUpdateNote()
         {
             if (BetaUpdatesCheck == null) return;   // panel not built yet
 
-            // The checkbox stays enabled for everyone: a non-supporter turning
-            // beta ON is intercepted in BetaUpdates_Changed with an actionable
-            // link-Patreon / become-a-patron prompt, and turning it OFF (the
-            // beta build's switch-back-to-main path) must always work.
-            BetaUpdatesCheck.IsEnabled = true;
+            SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
+                ? "You're on the beta channel: the in-app updater will offer pre-release builds."
+                : (_plugin?.UpdateChecker?.CurrentVersionIsPrerelease == true
+                    ? "Beta is off: the updater offers the newest main release so you can switch back."
+                    : null));
 
-            if (_plugin == null || !_plugin.AuthIsSignedIn)
-            {
-                SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
-                    ? "Sign in and support on Patreon to receive beta updates through the in-app updater."
-                    : null);
-                _plugin?.ApplyUpdateChannel();
-                return;
-            }
-
-            int gen = unchecked(++_betaGatingGen);
-            bool isSupporter = false;
-            try
-            {
-                var (sup, _, _) = await _plugin.GetSupporterTierAsync(System.Threading.CancellationToken.None);
-                if (gen != _betaGatingGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
-                isSupporter = sup;
-            }
-            catch { /* on error, keep the last-known gate state */ }
-
-            if (isSupporter)
-                SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
-                    ? "You're on the beta channel: the in-app updater will offer pre-release builds."
-                    : (_plugin.UpdateChecker?.CurrentVersionIsPrerelease == true
-                        ? "Beta is off: the updater offers the newest main release so you can switch back."
-                        : null));
-            else
-                SetBetaUpdatesNote("Support on Patreon (Account tab) to receive beta updates in-app.");
-
-            _plugin.ApplyUpdateChannel();
+            _plugin?.ApplyUpdateChannel();
         }
 
-        // Contextual note under the beta toggle (supporter gate / channel state).
-        // Null or empty hides it.
+        // Contextual note under the beta toggle (channel state). Null or empty
+        // hides it.
         private void SetBetaUpdatesNote(string msg)
         {
             if (BetaUpdatesNote == null) return;
@@ -6988,7 +6948,6 @@ namespace TrueforceForAll.Plugin
                 _ = RefreshPatreonRowAsync();
                 _ = RefreshSupporterBadgeAsync();
                 _ = RefreshCloudBackupGatingAsync();
-                _ = RefreshBetaUpdateGatingAsync();
             }
             else if (SupportTab != null && ReferenceEquals(MainTabs.SelectedItem, SupportTab))
             {
@@ -7471,7 +7430,6 @@ namespace TrueforceForAll.Plugin
                     // A successful link may have flipped supporter status and/or auto-linked Discord.
                     _ = RefreshSupporterBadgeAsync();
                     _ = RefreshCloudBackupGatingAsync();
-                    _ = RefreshBetaUpdateGatingAsync();
                     _ = RefreshDiscordRowAsync();
                 }
             }
@@ -7608,7 +7566,6 @@ namespace TrueforceForAll.Plugin
             _ = RefreshPatreonRowAsync();
             _ = RefreshSupporterBadgeAsync();
             _ = RefreshCloudBackupGatingAsync();
-            _ = RefreshBetaUpdateGatingAsync();
         }
 
         // Header-card account chip. Signed out -> "Sign in" (no icon/caret).
@@ -14024,6 +13981,29 @@ namespace TrueforceForAll.Plugin
                 }
                 prevWasBlank = false;
 
+                // Blockquote ("> ..." lines), including GitHub alert callouts
+                // ("> [!WARNING]" etc.). Consecutive quote lines collapse into
+                // one left-accented callout box; the quoted content re-enters
+                // this renderer, so headers/bullets/bold inside it work.
+                if (trimmed[0] == '>')
+                {
+                    var quoted = new System.Collections.Generic.List<string>();
+                    int j = i;
+                    while (j < lines.Length)
+                    {
+                        string q = (lines[j] ?? "").TrimStart();
+                        if (q.Length == 0 || q[0] != '>') break;
+                        string innerLine = q.Substring(1);
+                        if (innerLine.StartsWith(" ", StringComparison.Ordinal))
+                            innerLine = innerLine.Substring(1);
+                        quoted.Add(innerLine);
+                        j++;
+                    }
+                    panel.Children.Add(BuildQuoteCallout(quoted));
+                    i = j - 1;   // loop ++ lands on the first non-quote line
+                    continue;
+                }
+
                 // Heading levels 1..3 (deeper levels fall through to plain).
                 int hashCount = 0;
                 while (hashCount < trimmed.Length && trimmed[hashCount] == '#') hashCount++;
@@ -14117,34 +14097,144 @@ namespace TrueforceForAll.Plugin
             return panel;
         }
 
+        // A "> quoted" block as a left-accented callout box. A GitHub alert
+        // marker ("[!WARNING]" etc.) as the first quoted line picks the title
+        // and accent color, echoing how GitHub renders it; a plain quote gets
+        // a neutral bar and no title. Content re-enters RenderReleaseNotes,
+        // so everything the renderer knows works inside the box too.
+        private static Border BuildQuoteCallout(System.Collections.Generic.List<string> quoted)
+        {
+            string title  = null;
+            Color  accent = Color.FromRgb(0x88, 0x88, 0x88);
+            int start = 0;
+            string first = null;
+            for (int k = 0; k < quoted.Count; k++)
+            {
+                if (!string.IsNullOrWhiteSpace(quoted[k])) { first = quoted[k].Trim(); start = k; break; }
+            }
+            if (first != null
+                && first.StartsWith("[!", StringComparison.Ordinal)
+                && first.EndsWith("]", StringComparison.Ordinal))
+            {
+                switch (first.Substring(2, first.Length - 3).ToUpperInvariant())
+                {
+                    case "WARNING":   title = "Warning";   accent = Color.FromRgb(0xE5, 0xC0, 0x4A); break;
+                    case "CAUTION":   title = "Caution";   accent = Color.FromRgb(0xE0, 0x62, 0x5A); break;
+                    case "IMPORTANT": title = "Important"; accent = Color.FromRgb(0xB0, 0x87, 0xE8); break;
+                    case "NOTE":      title = "Note";      accent = Color.FromRgb(0x6C, 0xA0, 0xDD); break;
+                    case "TIP":       title = "Tip";       accent = Color.FromRgb(0x5F, 0xB8, 0x6A); break;
+                }
+                if (title != null) start++;   // the marker line itself isn't content
+            }
+
+            StackPanel inner;
+            string bodyText = string.Join("\n", quoted.Skip(start));
+            inner = string.IsNullOrWhiteSpace(bodyText) ? new StackPanel() : RenderReleaseNotes(bodyText);
+            if (title != null)
+            {
+                inner.Children.Insert(0, new TextBlock
+                {
+                    Text = title,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(accent),
+                    Margin = new Thickness(0, 0, 0, 2),
+                });
+            }
+            return new Border
+            {
+                BorderBrush = new SolidColorBrush(accent),
+                BorderThickness = new Thickness(3, 0, 0, 0),
+                Background = new SolidColorBrush(Color.FromArgb(0x16, accent.R, accent.G, accent.B)),
+                CornerRadius = new CornerRadius(2),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 6, 0, 6),
+                Child = inner,
+            };
+        }
+
         // Append `text` to a TextBlock's Inlines, rendering **bold** runs in
-        // bold. Anything outside ** ** pairs is plain. An unclosed `**` at
-        // the end is treated as literal text rather than dropped, so a body
-        // that opens bold without closing degrades gracefully.
+        // bold and [label](https://url) as clickable links. Anything outside
+        // those is plain. An unclosed `**` stays literal rather than being
+        // dropped, so a body that opens bold without closing degrades
+        // gracefully; a malformed or non-http link stays literal too. Links
+        // may sit inside bold spans (and carry the bold weight); bold markers
+        // inside a link label are consumed as styling, not shown.
         private static void AppendInlineMarkdown(TextBlock tb, string text)
         {
             if (string.IsNullOrEmpty(text)) return;
+            bool bold = false;
+            var sb = new System.Text.StringBuilder();
+            void Flush()
+            {
+                if (sb.Length == 0) return;
+                tb.Inlines.Add(new Run(sb.ToString())
+                {
+                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                });
+                sb.Clear();
+            }
             int i = 0;
             while (i < text.Length)
             {
-                int boldStart = text.IndexOf("**", i, StringComparison.Ordinal);
-                if (boldStart < 0)
+                if (i + 1 < text.Length && text[i] == '*' && text[i + 1] == '*')
                 {
-                    tb.Inlines.Add(new Run(text.Substring(i)));
-                    return;
+                    // Opening bold needs a closer somewhere ahead; otherwise
+                    // the marker is literal text.
+                    if (!bold && text.IndexOf("**", i + 2, StringComparison.Ordinal) < 0)
+                    {
+                        sb.Append("**");
+                        i += 2;
+                        continue;
+                    }
+                    Flush();
+                    bold = !bold;
+                    i += 2;
+                    continue;
                 }
-                if (boldStart > i)
-                    tb.Inlines.Add(new Run(text.Substring(i, boldStart - i)));
-                int boldEnd = text.IndexOf("**", boldStart + 2, StringComparison.Ordinal);
-                if (boldEnd < 0)
+                if (text[i] == '[')
                 {
-                    tb.Inlines.Add(new Run(text.Substring(boldStart)));
-                    return;
+                    int closeBracket = text.IndexOf(']', i + 1);
+                    if (closeBracket > i && closeBracket + 1 < text.Length && text[closeBracket + 1] == '(')
+                    {
+                        int closeParen = text.IndexOf(')', closeBracket + 2);
+                        if (closeParen > closeBracket)
+                        {
+                            string label = text.Substring(i + 1, closeBracket - i - 1).Replace("**", "");
+                            string url   = text.Substring(closeBracket + 2, closeParen - closeBracket - 2);
+                            if (label.Length > 0
+                                && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                                && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+                            {
+                                Flush();
+                                var link = new System.Windows.Documents.Hyperlink(new Run(label)
+                                {
+                                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                                })
+                                {
+                                    NavigateUri = uri,
+                                    Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                                };
+                                link.RequestNavigate += (s, e) =>
+                                {
+                                    try
+                                    {
+                                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                                            e.Uri.AbsoluteUri) { UseShellExecute = true });
+                                    }
+                                    catch { }
+                                };
+                                tb.Inlines.Add(link);
+                                i = closeParen + 1;
+                                continue;
+                            }
+                        }
+                    }
                 }
-                string boldText = text.Substring(boldStart + 2, boldEnd - boldStart - 2);
-                tb.Inlines.Add(new Run(boldText) { FontWeight = FontWeights.Bold });
-                i = boldEnd + 2;
+                sb.Append(text[i]);
+                i++;
             }
+            Flush();
         }
 
         // Manual "Check for updates" link in the header. The plugin already
@@ -14167,9 +14257,9 @@ namespace TrueforceForAll.Plugin
                 // Reset the background re-poll clock so the next automatic check
                 // is measured from this manual one, not from startup.
                 _plugin.MarkUpdateChecked();
-                // Entitlement + supporter auto-enroll + channel re-select, so a
-                // manual check behaves exactly like the startup one.
-                await _plugin.RefreshUpdateChannelAsync(_plugin.UpdateCheckerToken);
+                // Beta auto-enroll + channel re-select, so a manual check
+                // behaves exactly like the startup one.
+                _plugin.RefreshUpdateChannel();
                 if (upd.IsUpdateAvailable)
                     CheckForUpdatesStatus.Text = upd.IsDowngrade
                         ? $"v{upd.LatestVersionDisplay} available (back to the main release)"
@@ -14335,6 +14425,34 @@ namespace TrueforceForAll.Plugin
                     if (confirm != true) return;
                 }
 
+                // Stable -> beta crossing: snapshot presets + settings before
+                // the beta's one-way migrations run, so the switch-back offer
+                // can restore them later (see PreBetaBackup). The reverse
+                // crossing (the switch-back itself) asks up front whether to
+                // put that snapshot back; both file operations run after the
+                // download succeeds, right before the installer launches.
+                bool crossingToBeta = !upd.CurrentVersionIsPrerelease && upd.LatestIsPrerelease;
+                bool restoreBackup  = false;
+                // The persistence-suppressed check skips the prompt when a
+                // restore already ran this session (installer launch was
+                // cancelled): the disk is already restored, so a retry should
+                // just download and launch again.
+                if (upd.IsDowngrade && !_plugin.SettingsPersistenceSuppressed)
+                {
+                    var backup = PreBetaBackup.TryRead();
+                    if (backup != null && PreBetaBackup.IsCompatibleWith(upd.LatestVersionTag, backup))
+                    {
+                        var pick = TrueforceDialog.Show(Window.GetWindow(this),
+                            "Restore your pre-beta backup?",
+                            $"Your presets and settings were backed up before your first beta install "
+                            + $"(v{backup.FromVersion}, {backup.TakenUtc:yyyy-MM-dd}). Restore them so the "
+                            + "main release picks up exactly where you left off? Anything added or "
+                            + "changed while on the beta will be replaced.",
+                            DialogKind.Confirm, okLabel: "Restore backup", cancelLabel: "Keep current data");
+                        restoreBackup = pick == true;
+                    }
+                }
+
                 updateBtn.IsEnabled = false;
                 dismissBtn.IsEnabled = false;
 
@@ -14383,6 +14501,58 @@ namespace TrueforceForAll.Plugin
                                 }
                             });
                         }, _plugin.UpdateCheckerToken);
+                    }
+
+                    if (crossingToBeta)
+                    {
+                        status.Text = "Backing up your presets and settings...";
+                        // Flush in-memory state first so the snapshot is current.
+                        _plugin.PersistSettings();
+                        bool ok = await Task.Run(() =>
+                            PreBetaBackup.TryTake(upd.CurrentVersion.ToString(3)));
+                        if (!ok)
+                        {
+                            var cont = TrueforceDialog.Show(Window.GetWindow(this),
+                                "Backup didn't complete",
+                                "Couldn't back up your presets and settings before the beta "
+                                + "install (see the SimHub log). You can still update; switching "
+                                + "back to the main release later just won't offer an automatic "
+                                + "restore.",
+                                DialogKind.Destructive, okLabel: "Update anyway", cancelLabel: "Cancel");
+                            if (cont != true)
+                            {
+                                status.Text = "Update cancelled.";
+                                progress.Visibility = Visibility.Collapsed;
+                                updateBtn.IsEnabled = true;
+                                dismissBtn.IsEnabled = true;
+                                return;
+                            }
+                        }
+                    }
+
+                    if (restoreBackup)
+                    {
+                        status.Text = "Restoring your pre-beta presets and settings...";
+                        // From here the restored files on disk are the source of
+                        // truth; block every later persist (including the End()
+                        // save when the installer closes SimHub) so this
+                        // session's beta-format state can't clobber them.
+                        _plugin.SuppressSettingsPersistence();
+                        try
+                        {
+                            string runningVersion = upd.CurrentVersion.ToString(3);
+                            await Task.Run(() => PreBetaBackup.Restore(runningVersion));
+                        }
+                        catch (Exception rex)
+                        {
+                            _plugin.ResumeSettingsPersistence();
+                            TrueforceDialog.LogError("Pre-beta restore", rex);
+                            status.Text = "Restore failed; update cancelled. See the SimHub log.";
+                            progress.Visibility = Visibility.Collapsed;
+                            updateBtn.IsEnabled = true;
+                            dismissBtn.IsEnabled = true;
+                            return;
+                        }
                     }
 
                     status.Text = "Launching installer...";

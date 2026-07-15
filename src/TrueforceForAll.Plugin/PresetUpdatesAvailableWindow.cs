@@ -42,6 +42,7 @@ namespace TrueforceForAll.Plugin
         public PresetUpdatesAvailableWindow(
             List<(PresetSummary Server, DownloadedPresetRecord Local)> updates)
         {
+            updates = updates ?? new List<(PresetSummary Server, DownloadedPresetRecord Local)>();
             Title         = "Community preset updates";
             Width         = 540;
             Height        = 460;

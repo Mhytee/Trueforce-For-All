@@ -106,11 +106,11 @@ For each release:
 
 Betas ride the exact same build/tag/draft flow above, with two differences: the
 GitHub release is marked as a **pre-release**, and it is **not** set as the
-latest release. That is the whole mechanism. Supporters who turn on "Get beta
-(pre-release) updates in-app" (Settings tab, Updates section) have their in-app
-updater include pre-releases; stable users, and every non-supporter, only ever
-see full releases. Pre-releases stay public on GitHub, so anyone can still
-download one by hand: the supporter perk is only the in-app convenience.
+latest release. That is the whole mechanism. The beta channel is open to
+everyone: anyone who turns on "Get beta (pre-release) updates in-app" (Settings
+tab, Updates section) has their in-app updater include pre-releases, and anyone
+already running a pre-release build is enrolled in the channel automatically.
+Stable users only ever see full releases.
 
 The channel is driven purely by GitHub's pre-release flag, so betas use plain
 version numbers with no `-beta.N` suffix. Each beta is an ordinary version bump.
@@ -132,7 +132,7 @@ lets a tester move from one beta to the next.
    The title may read `-beta` for humans; only the numeric tag drives the
    updater.
 3. Publish the draft with the pre-release box ticked and "Set as the latest
-   release" unticked. Beta-channel supporters get the update banner; stable
+   release" unticked. Beta-channel users get the update banner; stable
    users do not.
 4. Iterate by cutting the next numeric version the same way (0.3.1, 0.3.2, and
    so on), each as its own pre-release.

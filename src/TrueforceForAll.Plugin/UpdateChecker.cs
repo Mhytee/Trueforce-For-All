@@ -68,14 +68,13 @@ namespace TrueforceForAll.Plugin
 
         private bool _includePrereleases;
 
-        /// <summary>The update channel. When true (the supporter "Beta" channel),
-        /// prereleases are eligible to be the "latest" upgrade target; when false
-        /// (Stable, the default) they're skipped. Assigning re-runs the latest
-        /// selection over the already fetched <see cref="AllReleases"/>, so a
-        /// channel switch at runtime refreshes the banner/modal with no network
-        /// round-trip. The plugin sets this from Settings.BetaUpdatesEnabled AND
-        /// live supporter status, so a lapsed or non-supporter never lands on a
-        /// prerelease even if the stored flag is on.</summary>
+        /// <summary>The update channel. When true (the "Beta" channel, an
+        /// opt-in open to everyone), prereleases are eligible to be the
+        /// "latest" upgrade target; when false (Stable, the default) they're
+        /// skipped. Assigning re-runs the latest selection over the already
+        /// fetched <see cref="AllReleases"/>, so a channel switch at runtime
+        /// refreshes the banner/modal with no network round-trip. The plugin
+        /// sets this from Settings.BetaUpdatesEnabled.</summary>
         public bool IncludePrereleases
         {
             get => _includePrereleases;
@@ -115,11 +114,16 @@ namespace TrueforceForAll.Plugin
         /// the fetched release list; false until a check succeeds.</summary>
         public bool CurrentVersionIsPrerelease { get; private set; }
 
+        /// <summary>True when the release currently offered as "latest" is a
+        /// GitHub prerelease, i.e. accepting the update moves this install onto
+        /// the beta branch. Drives the pre-beta backup in the update modal
+        /// (a stable-to-beta crossing snapshots user data first).</summary>
+        public bool LatestIsPrerelease { get; private set; }
+
         /// <summary>Set by the plugin: true when the user EXPLICITLY toggled the
-        /// beta channel off (Settings.BetaUpdatesEnabled == false). Distinguishes
-        /// "I want back on main" from an auto-enrolled non-supporter riding a beta
-        /// build, who keeps the flag on and simply waits until a main release
-        /// surpasses their beta version.</summary>
+        /// beta channel off (Settings.BetaUpdatesEnabled == false) after having
+        /// been enrolled on this very build. Distinguishes "I want back on main"
+        /// from a beta build that simply hasn't been auto-enrolled yet.</summary>
         public bool OfferStableSwitchBack { get; set; }
 
         /// <summary>True when the offered "update" actually moves BACK to the
@@ -266,6 +270,7 @@ namespace TrueforceForAll.Plugin
                 if (latest == null || r.Version > latest.Version) latest = r;
             }
             CurrentVersionIsPrerelease = currentIsPre;
+            LatestIsPrerelease = latest?.IsPrerelease == true;
             LatestVersionTag = latest?.TagName;
             ReleaseNotes     = latest?.Body;
             ReleasePageUrl   = latest?.HtmlUrl;

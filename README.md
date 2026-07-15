@@ -6,9 +6,8 @@
 > while it gets tested in the open (currently v0.2.0: community preset
 > sharing, telemetry-based force feedback for the Forza titles, rev
 > lights, and more). Builds from here ship as pre-releases on the
-> [releases page][releases]; anyone can install them, and
-> [Patreon supporters](#supporting-the-project) can receive them through
-> the in-app updater. The stable channel lives on the
+> [releases page][releases]; anyone can install them and receive
+> future betas through the in-app updater. The stable channel lives on the
 > [`main` branch](https://github.com/Mhytee/Trueforce-For-All/tree/main).
 > Something broken in a beta build? Please [open an issue][issues] or
 > say so in the [Discord][discord].
@@ -211,9 +210,8 @@ the project: hosting for the community backend, the code-signing
 certificate for the upcoming driver, and the time that goes into
 building all this. As a thank-you, supporters get cross-device backup
 and sync of their full setup (sign in on another PC and your tuning
-rides with you), pre-release builds through the in-app updater, and a
-spot on the supporters wall in the plugin. Manual export/import stays
-available to everyone.
+rides with you) and a spot on the supporters wall in the plugin.
+Manual export/import stays available to everyone.
 
 ## Install
 
