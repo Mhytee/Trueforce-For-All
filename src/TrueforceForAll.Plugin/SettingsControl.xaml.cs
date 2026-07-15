@@ -6831,6 +6831,10 @@ namespace TrueforceForAll.Plugin
             }
 
             _plugin.Settings.BetaUpdatesEnabled = BetaUpdatesCheck?.IsChecked == true;
+            // Unticking on a beta build is an explicit opt-out: stamp the
+            // enroll latch so a later release check can't re-enroll this
+            // version behind the user's back (see AcknowledgeBetaOptOut).
+            if (BetaUpdatesCheck?.IsChecked != true) _plugin.AcknowledgeBetaOptOut();
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
@@ -14403,7 +14407,8 @@ namespace TrueforceForAll.Plugin
                         _plugin.SuppressSettingsPersistence();
                         try
                         {
-                            await Task.Run(() => PreBetaBackup.Restore());
+                            string runningVersion = upd.CurrentVersion.ToString(3);
+                            await Task.Run(() => PreBetaBackup.Restore(runningVersion));
                         }
                         catch (Exception rex)
                         {

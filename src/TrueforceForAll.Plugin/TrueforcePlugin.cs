@@ -3229,6 +3229,21 @@ namespace TrueforceForAll.Plugin
             ApplyUpdateChannel();
         }
 
+        /// <summary>Explicit beta opt-out on a beta build: stamp the enroll
+        /// latch to the running version so the next release check can't
+        /// silently re-enroll this install, and so the switch-back offer
+        /// unlocks even when this install was never auto-enrolled (settings
+        /// wiped, or freshly restored from a pre-beta backup). No-op on
+        /// stable builds and before the first successful release fetch.
+        /// The caller persists.</summary>
+        internal void AcknowledgeBetaOptOut()
+        {
+            var uc = _updateChecker;
+            var s  = Settings;
+            if (uc == null || s == null || !uc.CurrentVersionIsPrerelease) return;
+            s.BetaAutoEnrolledVersion = uc.CurrentVersion.ToString(3);
+        }
+
         /// <summary>Stamps LastSeenVersion to the running build. Hides the
         /// banner permanently for this version. Idempotent.</summary>
         public void DismissChangelog()

@@ -130,8 +130,14 @@ namespace TrueforceForAll.Plugin
         /// entries out first, so the snapshot copies into a clean root with no
         /// beta-era leftovers merged in. Factory built-ins are untouched
         /// (installer-owned). Throws on failure; the caller surfaces it and
-        /// the undo slot holds whatever was parked before the throw.</summary>
-        internal static void Restore()
+        /// the undo slot holds whatever was parked before the throw.
+        /// <paramref name="runningVersion3"/> is stamped into the restored
+        /// file's enroll latch: if the user cancels the installer and relaunches
+        /// still on this beta build, the latch blocks the auto-enroll from
+        /// silently re-enrolling them and keeps the switch-back offer up so
+        /// they can retry the downgrade. Inert once the stable build loads the
+        /// file (unknown-field tolerant either way).</summary>
+        internal static void Restore(string runningVersion3)
         {
             string undo = Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-PreRestore.bak");
             try { if (Directory.Exists(undo)) Directory.Delete(undo, true); } catch { }
@@ -146,7 +152,17 @@ namespace TrueforceForAll.Plugin
 
             string settingsSnapshot = Path.Combine(Root, Path.GetFileName(TfPaths.GeneralSettingsFile));
             if (File.Exists(settingsSnapshot))
+            {
                 File.Copy(settingsSnapshot, TfPaths.GeneralSettingsFile, true);
+                try
+                {
+                    var jo = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(TfPaths.GeneralSettingsFile));
+                    jo["BetaUpdatesEnabled"]      = false;   // defensive re-do of the take-time normalization
+                    jo["BetaAutoEnrolledVersion"] = runningVersion3;
+                    File.WriteAllText(TfPaths.GeneralSettingsFile, jo.ToString(Formatting.Indented));
+                }
+                catch { /* keep the raw restore; worst case a cancelled installer re-enrolls */ }
+            }
 
             string dataSnapshot = Path.Combine(Root, DataSubfolder);
             if (Directory.Exists(dataSnapshot))
