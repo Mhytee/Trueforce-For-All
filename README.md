@@ -336,10 +336,9 @@ The plugin is free and stays that way. For anyone who wants to support
 it, there is a **[Patreon][patreon]**. It covers the real costs behind
 the project: hosting for the community backend, the code-signing
 certificate for the upcoming driver, and the time that goes into
-building all this. As a thank-you, supporters get cross-device backup
+building all this. As a thank-you, supporters get a special Discord Role, Supporter Badge in Plugin, cross-device backup
 and sync of their full setup (sign in on another PC and your tuning
-rides with you), pre-release builds through the in-app updater, and a
-spot on the supporters wall in the plugin. Manual export/import stays
+rides with you), and a spot on the supporters wall in the plugin. Manual export/import stays
 available to everyone.
 
 ## How it works
