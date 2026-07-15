@@ -1564,6 +1564,10 @@ namespace TrueforceForAll.Plugin
             {
                 Logger = msg => SimHub.Logging.Current.Info($"[Trueforce] {msg}"),
             };
+            // Apply the stored update channel before the first fetch, so a
+            // beta opt-in survives restarts (the fetch's latest-selection
+            // honors it).
+            ApplyUpdateChannel();
             System.Threading.Tasks.Task.Run(async () =>
             {
                 try { await _updateChecker.CheckAsync(_updateCheckerCts.Token); }
@@ -2181,6 +2185,17 @@ namespace TrueforceForAll.Plugin
             int aBuild = a.Build < 0 ? 0 : a.Build;
             int bBuild = b.Build < 0 ? 0 : b.Build;
             return aBuild.CompareTo(bBuild);
+        }
+
+        /// <summary>Push the effective update channel into the poller. Cheap
+        /// (recomputes the "latest" target off the already fetched release
+        /// list, no network), so it's safe to call whenever the beta toggle
+        /// changes as well as before the first fetch.</summary>
+        internal void ApplyUpdateChannel()
+        {
+            var uc = _updateChecker;
+            if (uc == null) return;
+            uc.IncludePrereleases = Settings != null && Settings.BetaUpdatesEnabled;
         }
 
         /// <summary>Filter the fetched GitHub release list to the releases

@@ -338,9 +338,8 @@ the project: hosting for the community backend, the code-signing
 certificate for the upcoming driver, and the time that goes into
 building all this. As a thank-you, supporters get cross-device backup
 and sync of their full setup (sign in on another PC and your tuning
-rides with you), pre-release builds through the in-app updater, and a
-spot on the supporters wall in the plugin. Manual export/import stays
-available to everyone.
+rides with you) and a spot on the supporters wall in the plugin.
+Manual export/import stays available to everyone.
 
 ## How it works
 

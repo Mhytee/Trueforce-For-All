@@ -292,6 +292,8 @@ namespace TrueforceForAll.Plugin
                     RpmLedEnabledCheck.IsChecked = _plugin.Settings?.RpmLedsEnabled == true;
                 if (MairaPassthroughCheck != null)
                     MairaPassthroughCheck.IsChecked = _plugin.Settings?.MairaFfbPassthrough == true;
+                if (BetaUpdatesCheck != null)
+                    BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
                 if (RpmLedStatusText != null)
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
 
@@ -2131,6 +2133,40 @@ namespace TrueforceForAll.Plugin
             _plugin.SetStationarySpringCutoffKmh(e.NewValue);
             _plugin.PersistSettings();
         }
+        // Beta (pre-release) update channel opt-in, open to everyone. Turning
+        // it ON asks one confirmation (beta builds are less tested than
+        // stable); turning it OFF is always silent. Persists the flag and
+        // pushes the resulting channel into the update poller immediately, so
+        // a pre-release can surface on the update button without a restart.
+        private void BetaUpdates_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+
+            // Confirm only a real off-to-on flip, not the panel-load sync of
+            // the checkbox to an already-on setting.
+            if (BetaUpdatesCheck?.IsChecked == true && !_plugin.Settings.BetaUpdatesEnabled)
+            {
+                var ok = MessageBox.Show(Window.GetWindow(this),
+                    "Beta builds bring new effects and fixes first, but they are less "
+                    + "tested than stable releases. You can switch back to the stable "
+                    + "release any time by turning this off.\n\nGet beta updates?",
+                    "Trueforce For All: beta updates",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (ok != MessageBoxResult.Yes)
+                {
+                    bool prevSuppress = _suppressEvents;
+                    _suppressEvents = true;
+                    try { BetaUpdatesCheck.IsChecked = false; }
+                    finally { _suppressEvents = prevSuppress; }
+                    return;
+                }
+            }
+
+            _plugin.Settings.BetaUpdatesEnabled = BetaUpdatesCheck?.IsChecked == true;
+            _plugin.PersistSettings();
+            _plugin.ApplyUpdateChannel();
+        }
+
         private void FfbSkipPassthrough_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -6069,6 +6105,29 @@ namespace TrueforceForAll.Plugin
                 }
                 prevWasBlank = false;
 
+                // Blockquote ("> ..." lines), including GitHub alert callouts
+                // ("> [!WARNING]" etc.). Consecutive quote lines collapse into
+                // one left-accented callout box; the quoted content re-enters
+                // this renderer, so headers/bullets/bold inside it work.
+                if (trimmed[0] == '>')
+                {
+                    var quoted = new System.Collections.Generic.List<string>();
+                    int j = i;
+                    while (j < lines.Length)
+                    {
+                        string q = (lines[j] ?? "").TrimStart();
+                        if (q.Length == 0 || q[0] != '>') break;
+                        string innerLine = q.Substring(1);
+                        if (innerLine.StartsWith(" ", StringComparison.Ordinal))
+                            innerLine = innerLine.Substring(1);
+                        quoted.Add(innerLine);
+                        j++;
+                    }
+                    panel.Children.Add(BuildQuoteCallout(quoted));
+                    i = j - 1;   // loop ++ lands on the first non-quote line
+                    continue;
+                }
+
                 // Heading levels 1..3 (deeper levels fall through to plain).
                 int hashCount = 0;
                 while (hashCount < trimmed.Length && trimmed[hashCount] == '#') hashCount++;
@@ -6120,7 +6179,11 @@ namespace TrueforceForAll.Plugin
                                 TextWrapping = TextWrapping.Wrap,
                             };
                             hl.Inlines.Add(new Run("• "));
-                            hl.Inlines.Add(new Run(headline) { FontWeight = FontWeights.Bold });
+                            // Through the inline renderer (re-wrapped in **
+                            // so it keeps the bold weight) instead of a raw
+                            // bold Run: headlines can carry links, like the
+                            // bold Patreon link in the v0.2.1 warning.
+                            AppendInlineMarkdown(hl, "**" + headline + "**");
                             panel.Children.Add(hl);
                             if (desc.Length > 0)
                             {
@@ -6162,34 +6225,144 @@ namespace TrueforceForAll.Plugin
             return panel;
         }
 
+        // A "> quoted" block as a left-accented callout box. A GitHub alert
+        // marker ("[!WARNING]" etc.) as the first quoted line picks the title
+        // and accent color, echoing how GitHub renders it; a plain quote gets
+        // a neutral bar and no title. Content re-enters RenderReleaseNotes,
+        // so everything the renderer knows works inside the box too.
+        private static Border BuildQuoteCallout(System.Collections.Generic.List<string> quoted)
+        {
+            string title  = null;
+            Color  accent = Color.FromRgb(0x88, 0x88, 0x88);
+            int start = 0;
+            string first = null;
+            for (int k = 0; k < quoted.Count; k++)
+            {
+                if (!string.IsNullOrWhiteSpace(quoted[k])) { first = quoted[k].Trim(); start = k; break; }
+            }
+            if (first != null
+                && first.StartsWith("[!", StringComparison.Ordinal)
+                && first.EndsWith("]", StringComparison.Ordinal))
+            {
+                switch (first.Substring(2, first.Length - 3).ToUpperInvariant())
+                {
+                    case "WARNING":   title = "Warning";   accent = Color.FromRgb(0xE5, 0xC0, 0x4A); break;
+                    case "CAUTION":   title = "Caution";   accent = Color.FromRgb(0xE0, 0x62, 0x5A); break;
+                    case "IMPORTANT": title = "Important"; accent = Color.FromRgb(0xB0, 0x87, 0xE8); break;
+                    case "NOTE":      title = "Note";      accent = Color.FromRgb(0x6C, 0xA0, 0xDD); break;
+                    case "TIP":       title = "Tip";       accent = Color.FromRgb(0x5F, 0xB8, 0x6A); break;
+                }
+                if (title != null) start++;   // the marker line itself isn't content
+            }
+
+            StackPanel inner;
+            string bodyText = string.Join("\n", quoted.Skip(start));
+            inner = string.IsNullOrWhiteSpace(bodyText) ? new StackPanel() : RenderReleaseNotes(bodyText);
+            if (title != null)
+            {
+                inner.Children.Insert(0, new TextBlock
+                {
+                    Text = title,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(accent),
+                    Margin = new Thickness(0, 0, 0, 2),
+                });
+            }
+            return new Border
+            {
+                BorderBrush = new SolidColorBrush(accent),
+                BorderThickness = new Thickness(3, 0, 0, 0),
+                Background = new SolidColorBrush(Color.FromArgb(0x16, accent.R, accent.G, accent.B)),
+                CornerRadius = new CornerRadius(2),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 6, 0, 6),
+                Child = inner,
+            };
+        }
+
         // Append `text` to a TextBlock's Inlines, rendering **bold** runs in
-        // bold. Anything outside ** ** pairs is plain. An unclosed `**` at
-        // the end is treated as literal text rather than dropped, so a body
-        // that opens bold without closing degrades gracefully.
+        // bold and [label](https://url) as clickable links. Anything outside
+        // those is plain. An unclosed `**` stays literal rather than being
+        // dropped, so a body that opens bold without closing degrades
+        // gracefully; a malformed or non-http link stays literal too. Links
+        // may sit inside bold spans (and carry the bold weight); bold markers
+        // inside a link label are consumed as styling, not shown.
         private static void AppendInlineMarkdown(TextBlock tb, string text)
         {
             if (string.IsNullOrEmpty(text)) return;
+            bool bold = false;
+            var sb = new System.Text.StringBuilder();
+            void Flush()
+            {
+                if (sb.Length == 0) return;
+                tb.Inlines.Add(new Run(sb.ToString())
+                {
+                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                });
+                sb.Clear();
+            }
             int i = 0;
             while (i < text.Length)
             {
-                int boldStart = text.IndexOf("**", i, StringComparison.Ordinal);
-                if (boldStart < 0)
+                if (i + 1 < text.Length && text[i] == '*' && text[i + 1] == '*')
                 {
-                    tb.Inlines.Add(new Run(text.Substring(i)));
-                    return;
+                    // Opening bold needs a closer somewhere ahead; otherwise
+                    // the marker is literal text.
+                    if (!bold && text.IndexOf("**", i + 2, StringComparison.Ordinal) < 0)
+                    {
+                        sb.Append("**");
+                        i += 2;
+                        continue;
+                    }
+                    Flush();
+                    bold = !bold;
+                    i += 2;
+                    continue;
                 }
-                if (boldStart > i)
-                    tb.Inlines.Add(new Run(text.Substring(i, boldStart - i)));
-                int boldEnd = text.IndexOf("**", boldStart + 2, StringComparison.Ordinal);
-                if (boldEnd < 0)
+                if (text[i] == '[')
                 {
-                    tb.Inlines.Add(new Run(text.Substring(boldStart)));
-                    return;
+                    int closeBracket = text.IndexOf(']', i + 1);
+                    if (closeBracket > i && closeBracket + 1 < text.Length && text[closeBracket + 1] == '(')
+                    {
+                        int closeParen = text.IndexOf(')', closeBracket + 2);
+                        if (closeParen > closeBracket)
+                        {
+                            string label = text.Substring(i + 1, closeBracket - i - 1).Replace("**", "");
+                            string url   = text.Substring(closeBracket + 2, closeParen - closeBracket - 2);
+                            if (label.Length > 0
+                                && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                                && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+                            {
+                                Flush();
+                                var link = new System.Windows.Documents.Hyperlink(new Run(label)
+                                {
+                                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                                })
+                                {
+                                    NavigateUri = uri,
+                                    Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                                };
+                                link.RequestNavigate += (s, e) =>
+                                {
+                                    try
+                                    {
+                                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                                            e.Uri.AbsoluteUri) { UseShellExecute = true });
+                                    }
+                                    catch { }
+                                };
+                                tb.Inlines.Add(link);
+                                i = closeParen + 1;
+                                continue;
+                            }
+                        }
+                    }
                 }
-                string boldText = text.Substring(boldStart + 2, boldEnd - boldStart - 2);
-                tb.Inlines.Add(new Run(boldText) { FontWeight = FontWeights.Bold });
-                i = boldEnd + 2;
+                sb.Append(text[i]);
+                i++;
             }
+            Flush();
         }
 
         // Manual "Check for updates" link in the header. The plugin already
@@ -6416,6 +6589,38 @@ namespace TrueforceForAll.Plugin
                                 }
                             });
                         }, _plugin.UpdateCheckerToken);
+                    }
+
+                    // Stable -> beta crossing: snapshot presets + settings
+                    // before the beta's one-way migrations run, so the beta
+                    // build's switch-back flow can offer to restore them
+                    // later (see PreBetaBackup). Runs after the download
+                    // succeeds, right before the installer launches.
+                    if (upd.LatestIsPrerelease)
+                    {
+                        status.Text = "Backing up your presets and settings...";
+                        // Flush in-memory state first so the snapshot is current.
+                        _plugin.PersistSettings();
+                        bool ok = await Task.Run(() =>
+                            PreBetaBackup.TryTake(upd.CurrentVersion.ToString(3)));
+                        if (!ok)
+                        {
+                            var cont = MessageBox.Show(Window.GetWindow(this),
+                                "Couldn't back up your presets and settings before the beta "
+                                + "install (see the SimHub log). You can still update; switching "
+                                + "back to the stable release later just won't offer an automatic "
+                                + "restore.\n\nUpdate anyway?",
+                                "Trueforce For All: backup didn't complete",
+                                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                            if (cont != MessageBoxResult.Yes)
+                            {
+                                status.Text = "Update cancelled.";
+                                progress.Visibility = Visibility.Collapsed;
+                                updateBtn.IsEnabled = true;
+                                dismissBtn.IsEnabled = true;
+                                return;
+                            }
+                        }
                     }
 
                     status.Text = "Launching installer...";

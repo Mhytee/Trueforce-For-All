@@ -66,6 +66,32 @@ namespace TrueforceForAll.Plugin
         public IReadOnlyList<ReleaseInfo> AllReleases { get; private set; }
             = Array.Empty<ReleaseInfo>();
 
+        private bool _includePrereleases;
+
+        /// <summary>The update channel. When true (the "Beta" channel, an
+        /// opt-in open to everyone), prereleases are eligible to be the
+        /// "latest" upgrade target; when false (Stable, the default) they're
+        /// skipped. Assigning re-runs the latest selection over the already
+        /// fetched <see cref="AllReleases"/>, so a channel switch at runtime
+        /// refreshes the update button with no network round-trip. The
+        /// plugin sets this from Settings.BetaUpdatesEnabled.</summary>
+        public bool IncludePrereleases
+        {
+            get => _includePrereleases;
+            set
+            {
+                if (_includePrereleases == value) return;
+                _includePrereleases = value;
+                SelectLatest();
+            }
+        }
+
+        /// <summary>True when the release currently offered as "latest" is a
+        /// GitHub prerelease, i.e. accepting the update moves this install
+        /// onto the beta branch. Drives the pre-beta backup in the update
+        /// modal (a stable-to-beta crossing snapshots user data first).</summary>
+        public bool LatestIsPrerelease { get; private set; }
+
         public Action<string> Logger { get; set; }
 
         public UpdateChecker()
@@ -148,20 +174,12 @@ namespace TrueforceForAll.Plugin
                         }
                         AllReleases = list;
 
-                        // "Latest" for the update-available check = newest
-                        // non-prerelease. Prereleases shouldn't surface as
-                        // upgrade targets for regular users.
-                        ReleaseInfo latest = null;
-                        foreach (var r in list)
-                        {
-                            if (r.IsPrerelease) continue;
-                            if (latest == null || r.Version > latest.Version) latest = r;
-                        }
-                        LatestVersionTag = latest?.TagName;
-                        ReleaseNotes     = latest?.Body;
-                        ReleasePageUrl   = latest?.HtmlUrl;
-                        DownloadUrl      = latest?.DownloadUrl;
-                        LastError        = null;
+                        // Pick the newest release eligible for the current
+                        // channel (Stable skips prereleases; Beta includes
+                        // them). Factored out so a channel switch at runtime
+                        // can re-select without a new fetch.
+                        SelectLatest();
+                        LastError = null;
 
                         Log($"Update check OK: parsed={list.Count} latest={LatestVersionTag} current={CurrentVersion} hasUpdate={IsUpdateAvailable}");
                     }
@@ -176,6 +194,28 @@ namespace TrueforceForAll.Plugin
                 LastError = ex.Message;
                 Log($"Update check failed: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+
+        /// <summary>Pick the newest release eligible for the current channel
+        /// and publish it into the Latest* / DownloadUrl fields the update
+        /// button and modal read. On Stable, prereleases are skipped; on Beta
+        /// they count. Operates purely on the cached <see cref="AllReleases"/>,
+        /// so it's cheap and safe to call on a channel switch as well as
+        /// after each fetch.</summary>
+        private void SelectLatest()
+        {
+            ReleaseInfo latest = null;
+            foreach (var r in AllReleases)
+            {
+                if (r == null || r.Version == null) continue;
+                if (r.IsPrerelease && !_includePrereleases) continue;
+                if (latest == null || r.Version > latest.Version) latest = r;
+            }
+            LatestIsPrerelease = latest?.IsPrerelease == true;
+            LatestVersionTag = latest?.TagName;
+            ReleaseNotes     = latest?.Body;
+            ReleasePageUrl   = latest?.HtmlUrl;
+            DownloadUrl      = latest?.DownloadUrl;
         }
 
         /// <summary>Download the installer .exe to %TEMP% and return its path.

@@ -1938,6 +1938,17 @@
                         ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
             </StackPanel>
 
+            <!-- Updates: the beta (pre-release) channel opt-in, open to
+                 everyone. Pre-releases are always public on GitHub; this
+                 pulls them through the in-app updater instead of downloading
+                 each one by hand. -->
+            <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Updates" Style="{StaticResource SectionHeaderText}"/></Border>
+            <CheckBox x:Name="BetaUpdatesCheck" Content="Get beta (pre-release) updates in-app"
+                      Margin="0,0,0,2" Checked="BetaUpdates_Changed" Unchecked="BetaUpdates_Changed"
+                      ToolTip="Receive pre-release 'beta' builds through the in-app updater, so you can try new effects and fixes before they reach the stable release."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,16"
+                       Text="Beta builds get fixes and new effects first, but are less tested. Before your first beta install, your presets and settings are backed up automatically, so you can switch back to the stable release later and pick up where you left off. Turn this off any time to return to stable updates."/>
+
             <!-- Support development -->
             <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Support development" Style="{StaticResource SectionHeaderText}"/></Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" FontSize="12"

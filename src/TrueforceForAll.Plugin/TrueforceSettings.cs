@@ -309,6 +309,14 @@ namespace TrueforceForAll.Plugin
         // updates this to the running build.
         public string LastSeenVersion { get; set; }
 
+        // Opt-in "Beta" update channel, open to everyone. When on, the in-app
+        // updater treats GitHub prereleases as eligible upgrade targets, so
+        // testers get pre-release builds through the same update button as
+        // stable releases. Default off (betas are less tested; the toggle
+        // confirms that on the way in). Prereleases stay public on GitHub
+        // regardless; this only drives the in-app delivery.
+        public bool BetaUpdatesEnabled { get; set; } = false;
+
         // ---- One-and-done "spread the word" prompt (see ShouldShowShareCta) ----
 
         // Cumulative seconds the plugin was actively driving the wheel with a
