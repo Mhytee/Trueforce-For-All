@@ -1973,7 +1973,7 @@
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="AxleSlipPredictiveCheck"
-                                      Content="Predictive onset" VerticalAlignment="Center"
+                                      Content="Early warning" VerticalAlignment="Center"
                                       Checked="AxleSlipPredictive_Changed" Unchecked="AxleSlipPredictive_Changed"/>
                         </Grid>
                         <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,8" TextWrapping="Wrap"
