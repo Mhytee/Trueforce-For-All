@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
 
   <!-- Single source of truth for the assembly version across Core, Engine, and
        Plugin. Each ships as its own DLL and they must be deployed as a matched
@@ -7,7 +7,7 @@
        fails silently as a dead wheel). CI can still override for a release via
        -p:Version=X.Y.Z. Keep this in step with the release version. -->
   <PropertyGroup>
-    <Version Condition="'$(Version)' == ''">0.2.0</Version>
+    <Version Condition="'$(Version)' == ''">0.2.1</Version>
   </PropertyGroup>
 
 </Project>
