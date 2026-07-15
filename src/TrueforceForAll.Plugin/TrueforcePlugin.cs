@@ -4120,6 +4120,21 @@ namespace TrueforceForAll.Plugin
                 // whether the cached divisor leaves 1.0.
                 if (_forceModeB != 0)
                 {
+                    // RESETGRIP: consumed here, not where it's queued, because
+                    // the learner and the calibration dict are owned by this
+                    // thread (see RequestGripCalReset).
+                    if (_gripCalResetRequested)
+                    {
+                        _gripCalResetRequested = false;
+                        if (!string.IsNullOrEmpty(_gripCalKey))
+                            Settings?.CarGripCalibration?.Remove(_gripCalKey);
+                        _gripCal.Reset();
+                        _mbCalPeak = (float)_gripCal.EffectivePeak;
+                        _calConvergedLogged = false;
+                        ScheduleSettingsFlush();
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to 1.000, confidence 0; re-learning.");
+                    }
                     long nowCal = Stopwatch.GetTimestamp();
                     double dtMsCal = _calPrevTicks == 0
                         ? 16.7
@@ -4745,6 +4760,26 @@ namespace TrueforceForAll.Plugin
         private string _gripCalKey;               // settings key of the loaded state
         private bool   _calConvergedLogged;       // one log line per variant per load
 
+        // RESETGRIP access code. The learner and the calibration dict are
+        // owned by the telemetry thread (Tick / LoadGripCal / FlushGripCal),
+        // and double writes are not atomic on 32-bit SimHub, so the UI thread
+        // only raises this flag; the Mode B tick path consumes it. A variant
+        // swap clears it (a queued reset for a car you left is stale).
+        private volatile bool _gripCalResetRequested;
+
+        /// <summary>Queue a RESETGRIP wipe of the active variant's learned
+        /// grip calibration (peak + confidence): the stored slot is removed
+        /// and the learner starts fresh, for when a tune / tire change left
+        /// the old calibration feeling off. Returns user-facing status.</summary>
+        public string RequestGripCalReset()
+        {
+            string key = _gripCalKey;
+            if (string.IsNullOrEmpty(key))
+                return "No car variant loaded yet. Drive with Telemetry Based FFB active, then run RESETGRIP.";
+            _gripCalResetRequested = true;
+            return $"Grip auto-cal reset queued for '{key}'; applies on the next Telemetry Based FFB tick, then re-learns as you corner.";
+        }
+
         // Mode B contention watchdog state (see DataUpdate). Warned resets on
         // Mode B re-engage so a fixed in-game setting re-arms the detector.
         private long _contentionSinceTicks;
@@ -4770,10 +4805,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Swap the learner to the active VARIANT: flush the outgoing
         /// variant's state, then restore the incoming one (or start fresh).
-        /// Keyed per variant, not per car: different variants (engine swaps /
-        /// tunes) of the same car can run different tires and downforce, so
-        /// the combined-slip ceiling differs and must be learned + stored
-        /// separately. A null / empty variant signature (the car just changed
+        /// Keyed per variant, not per car, but the signature is ENGINE-derived
+        /// (cyl + banded max rpm / redline): engine-visible tunes learn and
+        /// store separately, while a tire-only tune keeps its slot and the
+        /// learner re-converges in place (RESETGRIP wipes it on demand).
+        /// A null / empty variant signature (the car just changed
         /// and telemetry has not resolved the signature yet) parks the learner
         /// with no key until the variant-change detector calls again with the
         /// resolved signature. Runs only on the telemetry thread (the same one
@@ -4786,6 +4822,7 @@ namespace TrueforceForAll.Plugin
             if (key == _gripCalKey) return;
             FlushGripCal();
             _gripCalKey = key;
+            _gripCalResetRequested = false;   // queued reset was for the old variant
             CarGripCal saved = null;
             if (key != null) Settings?.CarGripCalibration?.TryGetValue(key, out saved);
             if (saved != null) _gripCal.Restore(saved.Peak, saved.QualifyingSec);

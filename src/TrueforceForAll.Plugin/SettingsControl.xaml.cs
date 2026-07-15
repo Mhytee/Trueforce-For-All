@@ -10700,6 +10700,7 @@ namespace TrueforceForAll.Plugin
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
             "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
             "TOAST          Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
@@ -10864,6 +10865,13 @@ namespace TrueforceForAll.Plugin
             }
             // Dev-only: clear the community car-facts cache (names/engine types/
             // redlines). Refetches per car on the next car open.
+            if (code.Equals("RESETGRIP", StringComparison.OrdinalIgnoreCase))
+            {
+                string gripStatus = _plugin.RequestGripCalReset();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = gripStatus;
+                return;
+            }
             if (code.Equals("CACHEFACTS", StringComparison.OrdinalIgnoreCase))
             {
                 _plugin.Settings.CommunityFactCache?.Clear();
