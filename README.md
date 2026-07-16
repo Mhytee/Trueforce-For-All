@@ -1,6 +1,6 @@
 # Trueforce For All
 
-**Logitech Trueforce-compatible haptics for any SimHub-supported game.**
+**Logitech Trueforce-compatible haptics for any game.**
 
 While official support for Trueforce has been steadily growing, there are still many major titles which are yet to receive support or will never get support. This
 plugin fills those gaps by allowing it to work everywhere SimHub does. Built on top of the wire
