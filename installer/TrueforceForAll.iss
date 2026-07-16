@@ -700,30 +700,121 @@ end;
 // Privacy-policy wizard page: the full PRIVACY.md text, shown right after the
 // EULA accept page (whose clause 8 references it). Follows the exact same
 // LegalRevision skip/re-show logic as the EULA + GPL pages, so it shows on
-// first install and again only when the legal text changes. The memo shows
-// the markdown source with the ** bold markers stripped; headers and tables
-// read fine as plain text.
+// first install and again only when the legal text changes. The memo is a
+// plain-text rendering of the markdown: bold markers stripped, headers
+// uppercased, and table rows flattened to "Name: description" bullet lines
+// (raw pipes and # marks read as markdown soup in the memo).
+
+// True for the |---|---| ruler line under a markdown table header row.
+function IsTableSeparatorLine(Line: String): Boolean;
+var
+  S: String;
+  I: Integer;
+begin
+  Result := False;
+  S := Trim(Line);
+  if (S = '') or (S[1] <> '|') then Exit;
+  for I := 1 to Length(S) do
+    if (S[I] <> '|') and (S[I] <> '-') and (S[I] <> ':') and (S[I] <> ' ') then
+      Exit;
+  Result := True;
+end;
+
+// "| Cell A | Cell B |" -> "Cell A: Cell B".
+function RenderTableRow(Line: String): String;
+var
+  Rest, Cell: String;
+  P: Integer;
+begin
+  Result := '';
+  Rest := Trim(Line);
+  if (Rest <> '') and (Rest[1] = '|') then
+    Delete(Rest, 1, 1);
+  if (Rest <> '') and (Rest[Length(Rest)] = '|') then
+    SetLength(Rest, Length(Rest) - 1);
+  repeat
+    P := Pos('|', Rest);
+    if P > 0 then
+    begin
+      Cell := Trim(Copy(Rest, 1, P - 1));
+      Delete(Rest, 1, P);
+    end
+    else
+    begin
+      Cell := Trim(Rest);
+      Rest := '';
+    end;
+    if Cell <> '' then
+    begin
+      if Result = '' then
+        Result := Cell
+      else
+        Result := Result + ': ' + Cell;
+    end;
+  until Rest = '';
+end;
+
+function MarkdownToPlainText(Md: String): String;
+var
+  Src, Dst: TStringList;
+  I, J: Integer;
+  S, T: String;
+begin
+  StringChangeEx(Md, '**', '', True);
+  Src := TStringList.Create;
+  Dst := TStringList.Create;
+  try
+    Src.Text := Md;
+    for I := 0 to Src.Count - 1 do
+    begin
+      S := Src[I];
+      T := Trim(S);
+      if IsTableSeparatorLine(S) then
+        Continue;
+      if (T <> '') and (T[1] = '|') then
+      begin
+        // Drop the header row (the row a ruler line sits under); the
+        // surrounding prose already introduces each table.
+        if (I + 1 < Src.Count) and IsTableSeparatorLine(Src[I + 1]) then
+          Continue;
+        Dst.Add('- ' + RenderTableRow(S));
+        Continue;
+      end;
+      if (T <> '') and (T[1] = '#') then
+      begin
+        J := 1;
+        while (J <= Length(T)) and (T[J] = '#') do
+          J := J + 1;
+        Dst.Add(Uppercase(Trim(Copy(T, J, Length(T)))));
+        Continue;
+      end;
+      Dst.Add(S);
+    end;
+    Result := Dst.Text;
+  finally
+    Dst.Free;
+    Src.Free;
+  end;
+end;
+
 var
   PrivacyPage: TOutputMsgMemoWizardPage;
 
 procedure InitializeWizard;
 var
   Raw: AnsiString;
-  Txt: String;
 begin
   PrivacyPage := nil;
   try
     ExtractTemporaryFile('PRIVACY.md');
     if LoadStringFromFile(ExpandConstant('{tmp}\PRIVACY.md'), Raw) then
     begin
-      Txt := Raw;
-      StringChangeEx(Txt, '**', '', True);
       PrivacyPage := CreateOutputMsgMemoPage(wpLicense,
         'Privacy Policy',
         'How the optional online features handle your data.',
         'The plugin is fully offline until you opt in to the online features. '
           + 'This copy is also installed as PRIVACY.md and published in the GitHub repository.',
-        Txt);
+        MarkdownToPlainText(Raw));
     end;
   except
     // A missing/unreadable file must never block installation; the EULA's
