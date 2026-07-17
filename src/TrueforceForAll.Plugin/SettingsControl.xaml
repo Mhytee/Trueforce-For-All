@@ -2471,9 +2471,11 @@
                         <!-- Coverage badge: shown when the rev-limiter cascade fell
                              all the way to the 0.85 × MaxRpm estimate (no telemetry
                              redline, no CarFacts, no preset, no legacy Threshold).
-                             Tells the user the shift cue is a guess and offers two
-                             affordances: focus the slider to fix it locally, or
-                             share via the redline submission flow. -->
+                             Tells the user the shift cue is a guess and offers ONE
+                             affordance: focus the slider to set it. Setting is the
+                             whole story (auto-submit carries it to the community by
+                             itself); a separate share link would reframe saving a
+                             value as a contribution act and add pressure. -->
                         <Border x:Name="RedlineGuessBadge" Visibility="Collapsed"
                                 Background="#33D89F00" BorderBrush="#FFD89F00" BorderThickness="1"
                                 CornerRadius="3" Padding="10,8" Margin="140,0,0,10">
@@ -2486,35 +2488,14 @@
                                     <TextBlock Margin="0,0,12,0" Style="{StaticResource HelpText}">
                                         <Hyperlink x:Name="RedlineGuessSetValueLink" Click="RedlineGuessSetValue_Click">Set the redline start</Hyperlink>
                                     </TextBlock>
-                                    <TextBlock Style="{StaticResource HelpText}">
-                                        <Hyperlink x:Name="RedlineGuessShareLink" Click="RedlineGuessShare_Click">Share with community</Hyperlink>
-                                    </TextBlock>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <!-- Community-redline CONFIRM prompt. Non-modal: surfaced
-                             inline (NOT a popup off the meter tick) when the
-                             community redline for this variant is still unconfirmed
-                             (a single submitter) and the user hasn't set their own.
-                             Confirm makes the user a second supporter so it becomes
-                             confirmed consensus; correcting is just setting your own
-                             redline above. The tick toggles it via
-                             UpdateRedlineConfirmPrompt. -->
-                        <Border x:Name="RedlineConfirmBanner" Visibility="Collapsed"
-                                Background="#2633C2FF" BorderBrush="#FF4FB0E0" BorderThickness="1"
-                                CornerRadius="3" Padding="10,8" Margin="140,0,0,10">
-                            <StackPanel>
-                                <TextBlock x:Name="RedlineConfirmBannerText" TextWrapping="Wrap"
-                                           Foreground="#FFD4ECFA" FontSize="12"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <Button x:Name="RedlineConfirmBtn" Content="Confirm"
-                                            Padding="10,2" Margin="0,0,8,0" Click="RedlineConfirm_Click"
-                                            ToolTip="Agree this is the redline start. Your confirmation counts toward a confirmed community redline once the server records it."/>
-                                    <Button x:Name="RedlineConfirmDismissBtn" Content="Dismiss"
-                                            Padding="10,2" Click="RedlineConfirmDismiss_Click"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                        <!-- (The community-redline Confirm banner was retired with the
+                             set-not-share framing pass: the cascade applies community
+                             values directly, corrections are just setting your own
+                             redline, and agreement accrues from other drivers'
+                             auto-submitted saves rather than a dedicated prompt.) -->
                         <Grid x:Name="RevLimiterOffsetRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Redline offset:" Style="{StaticResource LabelText}"
@@ -3408,7 +3389,7 @@
                               Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
                               ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, and sharing presets. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12" TextWrapping="Wrap">
-                        <Run Text="Sign-in required to share. Anything you share (presets, packs, custom engines) shows your username; car facts and votes never do. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
+                        <Run Text="Sign-in is only needed for presets. Anything you share there (presets, packs, custom engines) shows your username; car facts are anonymous and need no account. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
                     </TextBlock>
                     <TextBlock Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap" Foreground="#E5C04A"
                                Text="Pre-release: the community backend is in testing. Shared presets, packs, and custom engines are test data and may be reset before the public launch. Your account, achievements, and car data you contribute are kept."/>
@@ -3424,17 +3405,19 @@
                               ToolTip="Apply community-sourced car facts to your cars: human-readable names, engine types, and redlines. Uses a local cache, so it keeps working offline and only refreshes from the server every few days (or when you hit the refresh icon). Turn off to ignore community car facts entirely and use only your own values."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
                                Text="Cached locally and refreshed at most weekly per car, so it works offline and keeps server traffic low."/>
-                    <!-- Auto-submit car-fact corrections. Off by default; the user opts in via
-                         the "Always submit" button in a share prompt or here. Gated by the
-                         community master toggle + sign-in just like the per-edit prompts. -->
+                    <!-- Car-data sharing. ON by default (opt-out posture; the welcome
+                         modal is the disclosure). This checkbox is the opt-out; gated by
+                         the community master toggle; no sign-in needed (signed-out
+                         submissions use the anon fallback id). Toggling here also
+                         answers the residual consent ask (CarFactsConsentGate). -->
                     <CheckBox x:Name="AutoSubmitCarFactsCheck"
-                              Content="Auto-submit my car fact corrections to the community"
+                              Content="Share my car data with the community"
                               Margin="0,0,0,2"
                               Checked="AutoSubmitCarFacts_Changed"
                               Unchecked="AutoSubmitCarFacts_Changed"
-                              ToolTip="When on, your redline, engine-type, and car-name corrections are shared with the community without asking each time. Requires community features on and being signed in. Turn off to be asked each time."/>
+                              ToolTip="When on, your redline and engine-type corrections are submitted automatically, and naming a car offers a share prompt. Needs community features on; no account required. Turn off to stop sharing car data."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="Shares the same corrections the per-edit prompt would, just without asking. Submitted as your signed-in account; your username isn't shown on car-fact submissions."/>
+                               Text="Submissions are anonymous and work without an account; signed-in contributions count toward achievements."/>
 
                     <!-- ===== Community presets: share buttons + auto-update of downloads ===== -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">

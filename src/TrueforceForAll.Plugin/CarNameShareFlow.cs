@@ -6,9 +6,10 @@ namespace TrueforceForAll.Plugin
     /// <summary>Shared "set the car's official name" flow used by BOTH rename
     /// entry points (the Settings header button and the Preset Manager row
     /// button) so they can't drift apart. Writes the name locally first (so the
-    /// user always sees it), then, only when community sharing is on AND the
-    /// user is signed in, offers a confirm/correct submission of the OFFICIAL
-    /// name for the user's language.
+    /// user always sees it), then, once the car-data sharing consent is
+    /// granted (CarFactsConsentGate; no sign-in needed, no username shown),
+    /// offers a confirm/correct submission of the OFFICIAL name for the
+    /// user's language.
     ///
     /// Names are NOT auto-submittable. Unlike measured facts (redline, engine
     /// layout) a name is editorial, so every contribution goes through the
@@ -31,11 +32,13 @@ namespace TrueforceForAll.Plugin
             // and returns false on invalid input.
             if (!plugin.WriteCarNameFact(game, carId, newName)) return;
 
-            // Community contribution gate: sharing on AND signed in. submit_car_fact
-            // needs auth.uid(), so a signed-out share drops silently. Skip the
-            // modal entirely in that case (matches the engine / redline paths).
-            if (plugin.Settings?.CommunityEnabled != true) return;
-            if (!plugin.AuthIsSignedIn) return;
+            // Community contribution gate: the one-time anonymous-sharing
+            // consent (which may itself enable community features on first
+            // ask). A name save is a fact-worthy moment, so an unasked user
+            // gets the consent modal here; a declined user skips silently.
+            // The confirm/correct modal below still runs regardless of
+            // auto-submit: a name is editorial, so it always needs eyes.
+            if (!CarFactsConsentGate.EnsureConsent(owner, plugin)) return;
 
             // Per-language consensus: what does the community already call this
             // car in the user's language? Frames the confirm/correct modal.

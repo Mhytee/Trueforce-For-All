@@ -170,26 +170,31 @@ namespace TrueforceForAll.Plugin
         // collides with an existing Car_<n> is merged, never dropped).
         public bool ForzaCarIdsNormalizedV1 { get; set; } = false;
 
-        // Community backend settings. Defaults are inert: CommunityEnabled
-        // is off, no HTTP calls are made. Enabling it activates fire-and-
-        // forget submission of User-source CarFacts corrections + (later)
-        // pulls of trusted consensus entries on startup. See
-        // supabase/README.md for the schema and setup.
+        // Community backend settings. ON BY DEFAULT (owner decision
+        // 2026-07-16): car facts are trivial non-personal data (redlines,
+        // engine types, car names), so the posture is opt-out with
+        // disclosure, not a consent ceremony. The networked welcome modal is
+        // the disclosure moment (it says sharing is on and where the off
+        // switch lives); PRIVACY.md documents what is sent. Existing
+        // installs whose settings file carries the old explicit false get a
+        // one-time welcome re-pitch (CommunityDefaultOnRepitchedV1) because
+        // the old pitch required an account and this one doesn't.
         //
-        // Identity (submitter_id) is derived server-side from a hash of the
-        // client IP and a rotating salt, so the plugin holds no persistent
-        // submitter id and cannot frame another user. Anti-spam is enforced
-        // server-side via a per-IP rate limit. The anon API key shipped to
-        // the backend is treated as PUBLIC by the schema design - the only
-        // operations it can perform are: SELECT from car_fact_consensus,
-        // and CALL submit_car_fact (car-fact consensus is confirm/correct
-        // based, not voted).
+        // Car facts are account-FREE (since 0100): no username is ever shown
+        // to other users, and no account is needed to contribute. Signed-in
+        // submissions still carry the user token so the server keys them to
+        // the account (achievements, moderation, export/delete); signed-out
+        // submissions fall back to CarFactsAnonId, a client-minted random
+        // GUID prefixed 'anon:' server-side, rate-limited per id AND per
+        // hashed client IP. Consensus reads work on the plain anon key.
+        // Account features (preset browser/sharing, votes, backup) still
+        // require sign-in.
         //
         // Backend URL + anon key are blank by default. For release builds
         // they get baked in as CommunityClient constants and the toggle is
         // the only switch users see. For dev builds the user can override
         // via these fields to point at a staging project.
-        public bool   CommunityEnabled         { get; set; } = false;
+        public bool   CommunityEnabled         { get; set; } = true;
 
         // Show the preset "Share" buttons on the active car/game header card (the
         // Effects tab). Default on for discovery; a user who uses community data but
@@ -312,11 +317,38 @@ namespace TrueforceForAll.Plugin
 
         // Opt-in standing consent: once on, the user's car-fact corrections
         // (redline, engine layout, car name) are submitted to the community
-        // without the per-edit "share this?" prompt. Default off; the user
-        // turns it on by picking "Always submit" in that prompt, or via the
-        // Settings checkbox. Still gated by CommunityEnabled + sign-in exactly
-        // like the prompts, so it never sends anything the prompt wouldn't have.
-        public bool   AutoSubmitCarFacts { get; set; } = false;
+        // without per-edit prompts. Default ON (same opt-out posture as
+        // CommunityEnabled; the welcome modal is the disclosure); the
+        // Settings checkbox withdraws it. Submissions never show a username,
+        // need no account, and are gated by CommunityEnabled; car names
+        // additionally keep their confirm/correct modal because a name is
+        // editorial, not measured.
+        public bool   AutoSubmitCarFacts { get; set; } = true;
+
+        // Latch for the "share car data with the community?" consent modal
+        // (CarFactsConsentGate). With sharing on by default the modal is a
+        // residual path: it only fires for upgraders who had community ON
+        // but sharing OFF in their stored settings (they answered a stricter
+        // pitch, so their next fact-worthy save asks once). True once
+        // answered either way; explicit Share/Confirm clicks may re-offer.
+        public bool   CarFactsConsentAsked { get; set; } = false;
+
+        // Fallback submitter identity for SIGNED-OUT car-fact submissions: a
+        // random GUID minted when consent is granted, sent as
+        // submit_car_fact's p_anon_id so consensus can count distinct
+        // contributors without requiring an account. Ignored server-side
+        // when a user token rides the request (signed-in submissions are
+        // keyed to the account for achievements). Never derived from
+        // hardware. Travels in backups so one human stays one contributor
+        // across PCs.
+        public string CarFactsAnonId { get; set; } = "";
+
+        // One-time latch for the community-default flip: existing installs
+        // whose settings file carries CommunityEnabled=false from the old
+        // opt-in default get the networked welcome re-shown once (the old
+        // pitch required an account; the new proceed doesn't). Fresh
+        // installs never need the reset (community already on).
+        public bool   CommunityDefaultOnRepitchedV1 { get; set; } = false;
 
         // Single "last view was online" latch for the Preset Manager: true when
         // the user left the manager in Community / My uploads, so the next open
@@ -762,13 +794,11 @@ namespace TrueforceForAll.Plugin
         // EXCLUDED from backup (transient local UI state; resets on account switch).
         public bool AchievementUnseen { get; set; } = false;
 
-        // Welcome modal lifecycle. We show the pitch up to TWO times:
-        // first plugin load (DeclineCount==0, NextShowAt==null), then
-        // again after WelcomeReshowDays (~14 days) if the user picked
-        // "Maybe later". A second decline flips HasSeenNetworkedWelcome
-        // true and we never nag again. "Sign in now" (whether or not the
-        // sign-in flow completes) counts as action-taken and stops the
-        // pitch immediately.
+        // Welcome modal lifecycle. The welcome is a PROCEED (disclosure +
+        // optional account): shown once, latched on any dismissal.
+        // DeclineCount / NextShowAt are legacy from the old up-to-two-
+        // pitches consent flow; NextShowAt is still honored as a show gate
+        // for settings files mid-cadence, DeclineCount is only ever reset.
         public bool      HasSeenNetworkedWelcome { get; set; } = false;
         public int       WelcomeDeclineCount     { get; set; } = 0;
         public DateTime? WelcomeNextShowAt       { get; set; } = null;

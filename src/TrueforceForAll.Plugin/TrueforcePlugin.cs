@@ -1,4 +1,4 @@
-// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
+﻿// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
 //
 // Lifecycle:
 //   Init: load settings → discover wheel → open + init + start stream →
@@ -106,11 +106,6 @@ namespace TrueforceForAll.Plugin
         // identity change so a different user on the same install
         // sees their own pitch.
         private bool _initWelcomePromptOffered;
-
-        // Days between "Maybe later" and the next pitch. Same value as
-        // SettingsControl's local const; centralizing here removes the
-        // duplication and lets the init-side path use it too.
-        internal const int WelcomeReshowDays = 14;
 
         // Sibling community-name cache. Same shape + same lifecycle as the
         // engine-layout cache: populated by SettingsControl after a per-car
@@ -1948,6 +1943,41 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Warn($"[TF4ALL] Forza car-id normalization failed: {ex.Message}");
                 }
                 Settings.ForzaCarIdsNormalizedV1 = true;
+                try { PersistSettingsCore(); } catch { }
+            }
+
+            // Anon car facts (0100): whenever sharing is on (the default, or
+            // an old opt-in), treat the consent question as answered and make
+            // sure the anon id exists (covers fresh installs, the upgrade
+            // path, and a restored backup missing the id).
+            if (Settings.AutoSubmitCarFacts)
+            {
+                if (!Settings.CarFactsConsentAsked)
+                {
+                    Settings.CarFactsConsentAsked = true;
+                    try { PersistSettingsCore(); } catch { }
+                }
+                EnsureCarFactsAnonId();
+            }
+
+            // Default-on re-pitch: CommunityEnabled's default flipped to ON,
+            // but existing settings files carry an explicit false from the
+            // old opt-in default. Re-show the networked welcome once for
+            // those installs; any dismissal of it enables community +
+            // sharing (the old pitch required an account, the new one
+            // doesn't, so one more look is fair). Community-on users are NOT
+            // re-pitched: they accepted a stricter pitch already, and if
+            // their stored AutoSubmitCarFacts is false the consent gate asks
+            // once at their next fact-worthy save instead.
+            if (!Settings.CommunityDefaultOnRepitchedV1)
+            {
+                if (!Settings.CommunityEnabled)
+                {
+                    Settings.HasSeenNetworkedWelcome = false;
+                    Settings.WelcomeDeclineCount     = 0;
+                    Settings.WelcomeNextShowAt       = null;
+                }
+                Settings.CommunityDefaultOnRepitchedV1 = true;
                 try { PersistSettingsCore(); } catch { }
             }
 
@@ -10439,6 +10469,21 @@ namespace TrueforceForAll.Plugin
             return e;
         }
 
+        /// <summary>Mint the car-fact fallback submitter id on first consent:
+        /// a random GUID, never derived from hardware or the account, sent as
+        /// submit_car_fact's p_anon_id. Only used server-side when the request
+        /// carries no user token (signed-in submissions are keyed to the
+        /// account instead). Idempotent; persists only when it actually
+        /// minted. Travels in backups (BackupProjection Portable) so one
+        /// human counts as one contributor across PCs.</summary>
+        internal void EnsureCarFactsAnonId()
+        {
+            if (Settings == null) return;
+            if (!string.IsNullOrEmpty((Settings.CarFactsAnonId ?? "").Trim())) return;
+            Settings.CarFactsAnonId = Guid.NewGuid().ToString("N");
+            try { PersistSettingsCore(); } catch { }
+        }
+
         /// <summary>Fire-and-forget submission of a redline correction.
         /// Mirrors <see cref="SubmitEngineLayoutToCommunity"/>: gated by
         /// CommunityEnabled, plumbs the active car's variant signature
@@ -10448,7 +10493,10 @@ namespace TrueforceForAll.Plugin
         {
             _community?.SubmitRedlineAsync(game, carId, rpm,
                 ComputeActiveCarVariantSignature(game, carId), perGear);
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 
@@ -11077,34 +11125,13 @@ namespace TrueforceForAll.Plugin
             return rpm;
         }
 
-        // NOTE: "adopt community redline" was retired. In Auto the cascade already
-        // applies the community value directly (so copying it into a local pin was
-        // ceremony), and the useful community action is now Confirm (re-submit the
-        // value so it reaches confirmed consensus), handled in the UI via
-        // SubmitRedlineToCommunity. The dismissed-profile plumbing below is reused
-        // to suppress a repeat Confirm prompt for a value the user dismissed.
-
-        /// <summary>The community redline PROFILE signature the user declined for
-        /// the active variant (per-gear-aware), or null. The UI compares it to the
-        /// live community profile so a repeat offer is suppressed only while the
-        /// community profile is unchanged.</summary>
-        public string GetActiveVariantDeclinedCommunityProfileSig()
-            => FindActiveStoredVariant()?.DeclinedCommunityRedlineSig;
-
-        /// <summary>Record that the user dismissed the community redline PROFILE
-        /// (overall + per-gear) for the active variant, keyed by its signature so
-        /// a later community shift in any gear re-surfaces the offer.</summary>
-        public void DeclineCommunityRedlineProfileForActiveVariant(string profileSig)
-        {
-            if (Settings == null || string.IsNullOrEmpty(profileSig)) return;
-            lock (_carFactsLock)
-            {
-                var variant = FindActiveStoredVariant();
-                if (variant == null) return;
-                variant.DeclinedCommunityRedlineSig = profileSig;
-            }
-            ScheduleCarFactsFlush();
-        }
+        // NOTE: "adopt community redline" was retired (in Auto the cascade already
+        // applies the community value directly, so copying it into a local pin was
+        // ceremony), and the Confirm banner that replaced it was retired too with
+        // the set-not-share framing pass: agreement now accrues from other
+        // drivers' auto-submitted saves. The variant model's
+        // DeclinedCommunityRedlineSig field is vestigial (nothing reads or
+        // writes it anymore); kept so existing CarFacts files round-trip.
 
         /// <summary>The value currently pinned for the active variant: the user's
         /// own redline, else a previously-adopted community value. Drives the
@@ -11624,7 +11651,10 @@ namespace TrueforceForAll.Plugin
         {
             _community?.SubmitEngineLayoutAsync(game, carId, layout,
                 ComputeActiveCarVariantSignature(game, carId));
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 
@@ -11640,7 +11670,10 @@ namespace TrueforceForAll.Plugin
             _community?.SubmitCustomEngineAsync(game, carId,
                 name, pattern, isElectric, electricMode,
                 ComputeActiveCarVariantSignature(game, carId));
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 
@@ -13279,8 +13312,7 @@ namespace TrueforceForAll.Plugin
         // owned by the SimHub main window so it works even when the
         // user hasn't navigated to the Trueforce panel yet. Mirrors
         // the SettingsControl version's latch behavior (consume on
-        // commit, not on display) and the cancelled-sign-in feedback
-        // toast so the user knows their choice registered.
+        // commit, not on display).
         private void MaybeShowNetworkedWelcomeFromInit()
         {
             if (Settings == null) return;
@@ -13313,53 +13345,39 @@ namespace TrueforceForAll.Plugin
             // the dialog isn't off-screen.
             if (owner == null)
                 welcome.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
-            bool? ok = welcome.ShowDialog();
+            welcome.ShowDialog();
 
-            bool signInCancelled = false;
-            if (ok == true && welcome.SignInRequested)
-            {
-                if (!AuthIsSignedIn)
-                {
-                    try
-                    {
-                        var signIn = new SignInWindow(this) { Owner = owner };
-                        if (owner == null)
-                            signIn.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
-                        bool? signedIn = signIn.ShowDialog();
-                        if (signedIn != true || !AuthIsSignedIn) signInCancelled = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        SimHub.Logging.Current.Info(
-                            "[TF4ALL] Init sign-in failed: " + ex.Message);
-                        signInCancelled = true;
-                    }
-                }
-                if (!signInCancelled)
-                {
-                    Settings.HasSeenNetworkedWelcome = true;
-                    Settings.WelcomeNextShowAt       = null;
-                    if (Settings.CommunityEnabled != true) SetCommunityEnabled(true);
-                    try { PersistSettingsCore(); } catch { }
-                    return;
-                }
-            }
-
-            // "Maybe later" path - including the case where the user
-            // clicked Sign in now but cancelled the sign-in dialog.
-            // Mirrors the SettingsControl version so semantics line up.
-            Settings.WelcomeDeclineCount++;
-            if (Settings.WelcomeDeclineCount >= 2)
-            {
-                Settings.HasSeenNetworkedWelcome = true;
-                Settings.WelcomeNextShowAt       = null;
-            }
-            else
-            {
-                Settings.WelcomeNextShowAt =
-                    DateTime.UtcNow.AddDays(WelcomeReshowDays);
-            }
+            // The welcome is a PROCEED, not a consent gate: any dismissal
+            // latches it and leaves the default-on community + car-data
+            // sharing in place (the modal's disclosure line is the sharing
+            // notice; opt-out lives in Settings). Mirrors the
+            // SettingsControl version so semantics line up.
+            Settings.HasSeenNetworkedWelcome = true;
+            Settings.WelcomeNextShowAt       = null;
+            if (Settings.CommunityEnabled != true) SetCommunityEnabled(true);
+            if (Settings.AutoSubmitCarFacts != true) Settings.AutoSubmitCarFacts = true;
+            Settings.CarFactsConsentAsked = true;
+            EnsureCarFactsAnonId();
             try { PersistSettingsCore(); } catch { }
+
+            // Optional account, run after the proceed commit so cancelling
+            // changes nothing. (Username bootstrap is a SettingsControl
+            // concern; the panel runs it on its next account refresh.)
+            if (welcome.SignInRequested && !AuthIsSignedIn)
+            {
+                try
+                {
+                    var signIn = new SignInWindow(this) { Owner = owner };
+                    if (owner == null)
+                        signIn.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
+                    signIn.ShowDialog();
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Init sign-in failed: " + ex.Message);
+                }
+            }
         }
 
         // ---- Community auth passthroughs ----------------------------------
@@ -13668,7 +13686,10 @@ namespace TrueforceForAll.Plugin
         public void SubmitCarNameToCommunity(string game, string carId, string name)
         {
             _community?.SubmitCarNameAsync(game, carId, name, CommunityNameLocaleSig());
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 

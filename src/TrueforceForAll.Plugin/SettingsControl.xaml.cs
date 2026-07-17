@@ -34,10 +34,12 @@ namespace TrueforceForAll.Plugin
         // Drives the engine-pulse panel's "Car's redline" line.
         private RedlineConsensus _engineRedlineCache;
         // Variants (game/carId/sig) the user shared a redline for THIS session.
-        // Used to soften the "no community redline yet" nudge into a "pending
-        // confirmation" message: a fresh submission isn't consensus yet, so the
-        // community readout legitimately still shows nothing, but nagging the
+        // Suppresses the share invite + Share button + Confirm prompt right
+        // after a submission: a fresh submission isn't consensus yet, so the
+        // community readout legitimately still shows nothing, but inviting the
         // user to "share yours" right after they did would read as a bug.
+        // (Deliberately NO thank-you line: sharing is the silent default, and
+        // a gold confirmation would re-add the ceremony auto-submit removed.)
         private readonly System.Collections.Generic.HashSet<string> _redlineSharedThisSession
             = new System.Collections.Generic.HashSet<string>();
         private string _lastShownCarId;
@@ -1292,10 +1294,8 @@ namespace TrueforceForAll.Plugin
             // different redline.
             RefreshRedlineLive();
             // Hide the per-variant save controls once a draft is cleared (e.g.
-            // a variant change discarded it), and surface the "adopt community
-            // redline?" prompt when arriving at a variant where it differs.
+            // a variant change discarded it).
             UpdateRedlineSaveControls();
-            UpdateRedlineConfirmPrompt();
             RefreshCarFactsPanel();
 
             var src = _plugin?.AudioCapture;
@@ -5195,11 +5195,10 @@ namespace TrueforceForAll.Plugin
         //   Correct:    detection present, user's saved values disagree.
         // Custom-engine submission flow. Fires from the engine save path
         // when ActiveEngine.Layout == Custom. Resolves the user's
-        // CustomEngineId to a CustomEngineDef in their library, frames
-        // the share modal as First / Confirming / Alternative based on
-        // what (if anything) the community currently has for this car,
-        // submits via SubmitCustomEngineAsync if they accept. Receivers
-        // synthesize the def transiently - no library import.
+        // CustomEngineId to a CustomEngineDef in their library, then runs
+        // the one-time car-data consent gate and submits silently via
+        // SubmitCustomEngineAsync. Receivers synthesize the def
+        // transiently - no library import.
         private void MaybePromptToSubmitCustomEngineData(string carId, string game)
         {
             if (_plugin == null) return;
@@ -5229,66 +5228,10 @@ namespace TrueforceForAll.Plugin
             string dedupeKey = carId + "|custom|" + def.Id;
             if (!_enginePromptedThisSession.Add(dedupeKey)) return;
 
-            // Standing auto-submit: skip the consensus fetch + share modal and
-            // submit straight away (still gated above by CommunityEnabled +
-            // sign-in, so this never sends what the prompt wouldn't have).
-            if (_plugin.Settings?.AutoSubmitCarFacts == true)
-            {
-                ShareCustomEngineToCommunity(game, carId, def);
-                return;
-            }
-
-            // Fetch current consensus to frame First / Confirming /
-            // Alternative copy in the share modal. Confirming is when
-            // the consensus is also CUSTOM with the same name (close-enough
-            // dedupe - different patterns with same name are still
-            // separate consensus rows server-side).
-            var consensus = _plugin.FetchEngineLayoutConsensus(game, carId);
-            CarFactsShareWindow.ShareState shareState;
-            string consensusDisplay = null;
-            int supportingSubs = 0;
-            if (consensus == null)
-            {
-                shareState = CarFactsShareWindow.ShareState.First;
-            }
-            else
-            {
-                supportingSubs = consensus.SupportingSubmissions;
-                bool sameCustom = string.Equals(consensus.Layout, "CUSTOM",
-                                                StringComparison.OrdinalIgnoreCase)
-                                  && consensus.Custom != null
-                                  && string.Equals(consensus.Custom.Name, defName,
-                                                   StringComparison.Ordinal);
-                if (sameCustom)
-                {
-                    shareState = CarFactsShareWindow.ShareState.Confirming;
-                    consensusDisplay = defName + " (custom)";
-                }
-                else
-                {
-                    shareState = CarFactsShareWindow.ShareState.Alternative;
-                    if (string.Equals(consensus.Layout, "CUSTOM",
-                                      StringComparison.OrdinalIgnoreCase)
-                        && consensus.Custom != null)
-                        consensusDisplay = consensus.Custom.Name + " (custom)";
-                    else if (Enum.TryParse<Effects.EngineLayout>(consensus.Layout, true,
-                                                                  out var consLayout))
-                        consensusDisplay = Effects.FiringPatternDb.LayoutDisplayName(consLayout);
-                    else
-                        consensusDisplay = consensus.Layout;
-                }
-            }
-
-            string userValueDisplay = defName + " (custom)";
-            var dialog = new CarFactsShareWindow(
-                _plugin.ActiveCarDisplayName, carId, userValueDisplay,
-                shareState, consensusDisplay, supportingSubs)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            bool? ok = dialog.ShowDialog();
-            if (ok != true) return;
-            if (dialog.AlwaysChosen) EnableAutoSubmitCarFacts();
+            // One-time consent gate (replaces the old per-fact share modal).
+            // Once granted, measured facts submit silently from here on.
+            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin)) return;
+            SyncAutoSubmitCheckboxFromSettings();
 
             ShareCustomEngineToCommunity(game, carId, def);
         }
@@ -5337,17 +5280,12 @@ namespace TrueforceForAll.Plugin
         private void MaybePromptToSubmitRedlineData(string carId, int? overrideRedline = null)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
-            // Community sharing disabled = the underlying submit call
-            // will no-op anyway. Bail before opening the share dialog
-            // so the user isn't asked to share into a network call that
-            // silently drops, AND so the per-car dedupe slot stays free
-            // for the next session after they re-enable Community.
-            if (_plugin.Settings?.CommunityEnabled != true) return;
-            // Signed-out users get the same treatment - the submit RPC
-            // requires auth.uid() and silently drops without it.
-            // Skip the modal entirely; the dedupe slot stays free so
-            // a future signed-in session will surface the prompt.
-            if (!_plugin.AuthIsSignedIn) return;
+            // Consent settled as "no" (or granted but community turned off):
+            // nothing can be submitted. Bail before burning the per-car
+            // dedupe slot so a future consenting session still engages.
+            // Sign-in is NOT required: signed-out submissions use the
+            // anon fallback id; signed-in ones are keyed to the account.
+            if (!CarFactsConsentGate.CanSubmitOrAsk(_plugin)) return;
             string game = _plugin.ActiveGame;
             if (string.IsNullOrEmpty(game)) return;
             var rl = _plugin.ActiveRevLimiter;
@@ -5397,22 +5335,11 @@ namespace TrueforceForAll.Plugin
             // certainly the limiter. Warn once; the user can still submit.
             if (!ConfirmRedlineNotLimiter(impliedRedline)) return;
 
-            string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
-            string body = effectiveRedline.HasValue
-                ? $"You're reporting the redline start of '{carDisplay}' as {impliedRedline} RPM. "
-                  + $"The community currently says {effectiveRedline.Value} RPM. "
-                  + "Submit your value as a correction?"
-                : $"You're reporting the redline start of '{carDisplay}' as {impliedRedline} RPM. "
-                  + "No one's recorded it yet. Submit yours as the first answer?";
-            // Standing auto-submit skips the prompt; otherwise offer Submit /
-            // Always submit / Not now. "Always submit" flips the pref on.
-            if (_plugin.Settings?.AutoSubmitCarFacts != true)
-            {
-                var choice = TrueforceDialog.ShowChoice(Window.GetWindow(this),
-                    "Help the community", body, "Submit", "Always submit", "Not now");
-                if (choice == DialogChoice.Cancel) return;
-                if (choice == DialogChoice.Secondary) EnableAutoSubmitCarFacts();
-            }
+            // One-time consent gate (replaces the old per-value Submit /
+            // Always submit / Not now prompt). Once granted, redline saves
+            // submit silently from here on.
+            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin)) return;
+            SyncAutoSubmitCheckboxFromSettings();
 
             // Include the user's per-gear overrides (snapped to 50) so this path
             // submits the SAME payload shape as the explicit Share button -
@@ -5424,11 +5351,8 @@ namespace TrueforceForAll.Plugin
                     if (g != null && g.Gear >= 1 && g.Gear <= 16 && g.Rpm >= 500 && g.Rpm <= 25000)
                         perGear.Add(new GearRedline { Gear = g.Gear, Rpm = (int)Math.Round(g.Rpm / 50.0) * 50 });
             _plugin.SubmitRedlineToCommunity(game, carId, impliedRedline, perGear);
-            // A single submission is NOT consensus, so don't fake a community
-            // value locally. Re-fetch the real server consensus; it stays
-            // unconfirmed (not "the community") until other drivers agree.
+            // Don't fake a local consensus: re-fetch the real server value.
             MarkRedlineSharedThisSession(game, carId);
-            MarkRedlineProfileHandled(impliedRedline, ToGearDict(perGear));
             RefreshActiveCommunityRedlineFromServer();
         }
 
@@ -5459,13 +5383,11 @@ namespace TrueforceForAll.Plugin
         private void MaybePromptToSubmitEngineData(string carId)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
-            // Community sharing off: skip the share dialog entirely so
-            // we don't hand the user a modal that submits into a no-op
-            // and burns the dedupe slot. Mirrors the redline path.
-            if (_plugin.Settings?.CommunityEnabled != true) return;
-            // Signed-out users: same skip. submit_car_fact requires
-            // auth.uid() so the share would silently drop.
-            if (!_plugin.AuthIsSignedIn) return;
+            // Consent settled as "no" (or granted but community turned off):
+            // bail before burning the dedupe slot. Mirrors the redline path.
+            // Sign-in is NOT required: signed-out submissions use the
+            // anon fallback id; signed-in ones are keyed to the account.
+            if (!CarFactsConsentGate.CanSubmitOrAsk(_plugin)) return;
             var state = GetEngineSubmitState();
             if (state == EngineSubmitState.None) return;
 
@@ -5499,60 +5421,11 @@ namespace TrueforceForAll.Plugin
             // auto-detect: nothing to share.
             if (ep != null && ep.AutoLayout.HasValue && ep.AutoLayout.Value == userLayout) return;
 
-            // Standing auto-submit: skip the consensus fetch + share modal and
-            // submit straight away (still gated above by CommunityEnabled +
-            // sign-in, so this never sends what the prompt wouldn't have).
-            if (_plugin.Settings?.AutoSubmitCarFacts == true)
-            {
-                ShareEngineLayoutToCommunity(game, carId, userLayout);
-                return;
-            }
-
-            string layoutText = Effects.FiringPatternDb.LayoutDisplayName(userLayout);
-
-            // Fetch current consensus (best-effort, 2s timeout) so the
-            // share window can frame the contribution as First / Confirming
-            // / Alternative based on what the community already has. Null
-            // result -> First state.
-            var consensus = _plugin.FetchEngineLayoutConsensus(game, carId);
-            string userLayoutEnum = userLayout.ToString().ToUpperInvariant();
-            CarFactsShareWindow.ShareState shareState;
-            string consensusDisplay = null;
-            int supportingSubs = 0;
-            if (consensus == null)
-            {
-                shareState = CarFactsShareWindow.ShareState.First;
-            }
-            else
-            {
-                supportingSubs = consensus.SupportingSubmissions;
-                bool sameAsConsensus = string.Equals(consensus.Layout,
-                    userLayoutEnum, System.StringComparison.OrdinalIgnoreCase);
-                if (sameAsConsensus)
-                {
-                    shareState = CarFactsShareWindow.ShareState.Confirming;
-                    consensusDisplay = layoutText;
-                }
-                else
-                {
-                    shareState = CarFactsShareWindow.ShareState.Alternative;
-                    // Map consensus enum-name back to a friendly display by
-                    // round-tripping through Effects.EngineLayout enum.
-                    consensusDisplay = consensus.Layout;
-                    if (Enum.TryParse<Effects.EngineLayout>(consensus.Layout, true, out var consLayout))
-                        consensusDisplay = Effects.FiringPatternDb.LayoutDisplayName(consLayout);
-                }
-            }
-
-            var dialog = new CarFactsShareWindow(
-                _plugin.ActiveCarDisplayName, carId, layoutText,
-                shareState, consensusDisplay, supportingSubs)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            bool? ok = dialog.ShowDialog();
-            if (ok != true) return;
-            if (dialog.AlwaysChosen) EnableAutoSubmitCarFacts();
+            // One-time consent gate (replaces the old First / Confirming /
+            // Alternative share modal and its consensus fetch). Once granted,
+            // layout corrections submit silently from here on.
+            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin)) return;
+            SyncAutoSubmitCheckboxFromSettings();
 
             ShareEngineLayoutToCommunity(game, carId, userLayout);
         }
@@ -5597,27 +5470,17 @@ namespace TrueforceForAll.Plugin
             RenderEngineCommunityRow();
         }
 
-        // Flip on standing auto-submit (the user picked "Always submit" /
-        // "Always share" in a share prompt), persist it, and sync the Settings
-        // checkbox if the panel is built. Downstream submits stay gated by
-        // CommunityEnabled + sign-in, so this never sends what a prompt wouldn't.
-        private void EnableAutoSubmitCarFacts()
+        // Sync the Settings checkbox to the persisted AutoSubmitCarFacts
+        // value after the consent gate may have flipped it (the gate has no
+        // access to this panel's controls; the community checkbox syncs
+        // itself via the CommunityEnabledChanged event).
+        private void SyncAutoSubmitCheckboxFromSettings()
         {
-            if (_plugin?.Settings == null) return;
-            _plugin.Settings.AutoSubmitCarFacts = true;
-            try { _plugin.PersistSettings(); }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Info(
-                    "[TF4ALL] Persist AutoSubmitCarFacts failed: " + ex.Message);
-            }
-            if (AutoSubmitCarFactsCheck != null)
-            {
-                bool prev = _suppressEvents;
-                _suppressEvents = true;
-                try { AutoSubmitCarFactsCheck.IsChecked = true; }
-                finally { _suppressEvents = prev; }
-            }
+            if (AutoSubmitCarFactsCheck == null || _plugin?.Settings == null) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try { AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings.AutoSubmitCarFacts; }
+            finally { _suppressEvents = prev; }
         }
 
         // ---------- Community context row on the Engine pulse panel ----------
@@ -6405,6 +6268,11 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null) return;
             if (AutoSubmitCarFactsCheck == null) return;
             _plugin.Settings.AutoSubmitCarFacts = AutoSubmitCarFactsCheck.IsChecked == true;
+            // Toggling here answers the one-time consent ask either way (never
+            // re-ask someone who already decided in Settings); turning it on
+            // needs the anon submitter id minted.
+            _plugin.Settings.CarFactsConsentAsked = true;
+            if (_plugin.Settings.AutoSubmitCarFacts) _plugin.EnsureCarFactsAnonId();
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
@@ -8750,18 +8618,11 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
-        // Number of days to wait before re-prompting after a "Maybe later"
-        // dismissal. Two declines total then we stop forever.
-        // Backed by TrueforcePlugin.WelcomeReshowDays so the init-side
-        // path and the panel-side path share the same cadence.
-        private const int WelcomeReshowDays = TrueforcePlugin.WelcomeReshowDays;
-
-        // Conditional welcome modal. Shown up to twice:
-        //   * First plugin load with backend configured + HasSeen=false +
-        //     NextShowAt==null
-        //   * After "Maybe later" + WelcomeReshowDays elapsed
-        // "Sign in now" or a second decline locks HasSeen=true and we
-        // never show again.
+        // Conditional welcome modal. Shown once (backend configured +
+        // HasSeen=false), latched on ANY dismissal: the welcome is a
+        // proceed with an optional account, not a consent gate, so there
+        // is no decline / re-show cadence anymore. WelcomeNextShowAt is
+        // still honored as a gate for legacy mid-cadence settings files.
         // iRacing app.ini Trueforce notice. Re-fires each time iRacing becomes
         // the active game until the user dismisses it for good. Trigger lives in
         // RefreshFromPlugin (transition into "IRacing"); this is the show step.
@@ -8899,80 +8760,52 @@ namespace TrueforceForAll.Plugin
             _welcomeTriggeredThisSession = true;
 
             var welcome = new WelcomeWindow { Owner = owner };
-            bool? ok = welcome.ShowDialog();
+            welcome.ShowDialog();
 
-            // User picked "Sign in now": run sign-in BEFORE committing
-            // HasSeenNetworkedWelcome or enabling Community, so a
-            // cancelled sign-in doesn't silently flip Community on and
-            // remove the welcome forever. authConfirmed is the explicit
-            // gate; only on a true value do we treat the welcome as
-            // accepted. A cancelled sign-in just falls through to the
-            // "Maybe later" decline path below; closing the dialog is
-            // self-evident, so we don't pop a separate confirmation.
-            bool authConfirmed = false;
-            if (ok == true && welcome.SignInRequested)
+            // The welcome is a PROCEED, not a consent gate: community
+            // features and car-data sharing are the default posture, so ANY
+            // dismissal (either button, Esc, the X) latches the welcome and
+            // leaves them on. The modal's disclosure line is the sharing
+            // notice, so the consent modal must never re-ask. Opt-out lives
+            // in Settings.
+            _plugin.Settings.HasSeenNetworkedWelcome = true;
+            _plugin.Settings.WelcomeNextShowAt = null;
+            if (_plugin.Settings.CommunityEnabled != true)
+            {
+                _plugin.SetCommunityEnabled(true);
+                if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
+            }
+            if (_plugin.Settings.AutoSubmitCarFacts != true)
+            {
+                _plugin.Settings.AutoSubmitCarFacts = true;
+                SyncAutoSubmitCheckboxFromSettings();
+            }
+            _plugin.Settings.CarFactsConsentAsked = true;
+            _plugin.EnsureCarFactsAnonId();
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+            RefreshAccountRow();
+
+            // Optional account: run sign-in AFTER the proceed commit, so a
+            // cancelled sign-in changes nothing (the Account tab remains).
+            if (welcome.SignInRequested)
             {
                 if (_plugin.AuthIsSignedIn)
                 {
-                    // Already signed in (e.g., session restored from a
-                    // prior install): treat the welcome click as
-                    // confirmation. Still run username bootstrap because
-                    // the restored session may not have a server-side
-                    // username yet (so we don't latch HasSeen=true and
-                    // then surface "set a username first" on the user's
-                    // first upload).
+                    // Already signed in (e.g. session restored from a prior
+                    // install): still run username bootstrap so the first
+                    // upload doesn't surface "set a username first".
                     BootstrapUsernameAfterSignIn();
-                    authConfirmed = true;
                 }
                 else
                 {
                     var signIn = new SignInWindow(_plugin) { Owner = owner };
                     bool? signedIn = signIn.ShowDialog();
                     if (signedIn == true && _plugin.AuthIsSignedIn)
-                    {
                         BootstrapUsernameAfterSignIn();
-                        authConfirmed = true;
-                    }
                 }
-            }
-
-            if (authConfirmed)
-            {
-                // Commit the welcome only after the user authenticated.
-                // Auto-enable Community here is consent: they completed
-                // sign-in, so the community pipeline is OK to wake up.
-                _plugin.Settings.HasSeenNetworkedWelcome = true;
-                _plugin.Settings.WelcomeNextShowAt = null;
-                if (_plugin.Settings.CommunityEnabled != true)
-                {
-                    _plugin.SetCommunityEnabled(true);
-                    if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
-                }
-                try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 RefreshAccountRow();
-                return;
             }
-
-            // "Maybe later" path covers three cases: (1) user clicked
-            // Maybe later directly, (2) user clicked Sign in now but
-            // cancelled the sign-in dialog, (3) sign-in dialog
-            // completed but auth state never flipped (verify-otp
-            // failure). Treat all as a decline so the welcome re-shows
-            // later, and importantly: do not touch CommunityEnabled.
-            _plugin.Settings.WelcomeDeclineCount++;
-            if (_plugin.Settings.WelcomeDeclineCount >= 2)
-            {
-                _plugin.Settings.HasSeenNetworkedWelcome = true;
-                _plugin.Settings.WelcomeNextShowAt = null;
-            }
-            else
-            {
-                _plugin.Settings.WelcomeNextShowAt =
-                    DateTime.UtcNow.AddDays(WelcomeReshowDays);
-            }
-            try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the
@@ -9373,130 +9206,12 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
         }
 
-        // Inline (NON-MODAL) "confirm this community redline" prompt. When the
-        // community redline for the active variant is still UNCONFIRMED (a single
-        // submitter), the cascade already uses it, but we invite the user to either
-        // confirm it (become the second supporter, turning it into confirmed
-        // consensus) or correct it (just set their own redline above). Surfaced
-        // inline - never a modal off the 60fps tick - so it can't jump in
-        // unprompted on another tab. Replaced the old "adopt" banner: in Auto the
-        // community value is applied anyway, so the useful action is growing
-        // consensus, not copying the value into a local pin.
-        //
-        // The tick toggles it; the buttons do the work. Idempotent, so no
-        // once-per-arrival key is needed.
-        private string _pendingConfirmSig;   // community profile sig currently offered (for Dismiss)
-
-        private void UpdateRedlineConfirmPrompt()
-        {
-            if (RedlineConfirmBanner == null) return;
-            if (!ShouldOfferRedlineConfirm(out string commSig, out int communityRpm))
-            {
-                _pendingConfirmSig = null;
-                if (RedlineConfirmBanner.Visibility != Visibility.Collapsed)
-                    RedlineConfirmBanner.Visibility = Visibility.Collapsed;
-                return;
-            }
-            _pendingConfirmSig = commSig;
-            string carDisplay = _plugin.ActiveCarDisplayName ?? _plugin.ActiveCarId ?? "this car";
-            string text = $"One driver reported the redline start for this variant of '{carDisplay}' as {communityRpm} RPM. "
-                        + "Confirm it if that matches where your tachometer turns red, or set your own redline above to correct it.";
-            if (RedlineConfirmBannerText != null && RedlineConfirmBannerText.Text != text)
-                RedlineConfirmBannerText.Text = text;
-            if (RedlineConfirmBanner.Visibility != Visibility.Visible)
-                RedlineConfirmBanner.Visibility = Visibility.Visible;
-        }
-
-        // Offer the confirm prompt only in Auto mode, only when there's an
-        // UNCONFIRMED community redline (a single submitter) the user hasn't
-        // overridden with their own value, isn't their own submission this session,
-        // and hasn't already dismissed.
-        private bool ShouldOfferRedlineConfirm(out string commSig, out int communityRpm)
-        {
-            commSig = null; communityRpm = 0;
-            if (_plugin == null) return false;
-            var rl = _plugin.ActiveRevLimiter;
-            if (rl == null || rl.EngageMode == RevLimiterEngageMode.Redline) return false;  // Auto only
-            if (_plugin.Settings?.CommunityEnabled != true) return false;
-            var consensus = _plugin.GetActiveVariantCommunityConsensus();
-            if (consensus == null || consensus.Rpm < 500 || consensus.Rpm > 25000) return false;
-            // Only while UNCONFIRMED; a confirmed value needs no nudge. (Single
-            // source of truth for the confirmed threshold lives in the plugin.)
-            if (_plugin.IsActiveCommunityRedlineConfirmed()) return false;
-            // The user already has their own value -> they've decided; no nudge.
-            if (_plugin.GetActiveVariantPinnedRedline().HasValue) return false;
-            var userGears = _plugin.GetActiveVariantPerGearRedlines();
-            if (userGears != null && userGears.Count > 0) return false;
-            // Don't ask the user to confirm their OWN submission. The session latch
-            // covers the immediate post-share window (before the server reflects
-            // it); the durable dismissed/submitted sig (below) covers across
-            // restarts so a lone self-submission never re-nags next session.
-            if (WasRedlineSharedThisSession()) return false;
-            communityRpm = consensus.Rpm;
-            commSig = RedlineProfileSig(consensus.Rpm, consensus.Gears);
-            string dismissed = _plugin.GetActiveVariantDeclinedCommunityProfileSig();
-            if (dismissed != null && dismissed == commSig) return false;
-            return true;
-        }
-
-        // Stable signature of a redline profile: overall, then "gear:rpm" pairs
-        // sorted by gear. Server values are already canonical, so this is stable
-        // across calls and matches the dismissed-profile sig.
-        private static string RedlineProfileSig(int overall,
-            System.Collections.Generic.IReadOnlyDictionary<int, int> gears)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.Append(overall);
-            if (gears != null)
-            {
-                var keys = new System.Collections.Generic.List<int>(gears.Keys);
-                keys.Sort();
-                foreach (var g in keys)
-                    if (g >= 1) sb.Append(';').Append(g).Append(':').Append(gears[g]);
-            }
-            return sb.ToString();
-        }
-
-        private void RedlineConfirm_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            if (!_plugin.AuthIsSignedIn)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Confirm redline",
-                    "Sign in on the Account tab to confirm community values.", DialogKind.Info);
-                return;
-            }
-            var consensus = _plugin.GetActiveVariantCommunityConsensus();
-            if (consensus == null || consensus.Rpm < 500 || consensus.Rpm > 25000) return;
-            // Confirm = re-submit the SAME profile as your own, so you become a
-            // second distinct supporter and it becomes confirmed consensus.
-            var perGear = new System.Collections.Generic.List<GearRedline>();
-            if (consensus.Gears != null)
-                foreach (var kv in consensus.Gears)
-                    if (kv.Key >= 1 && kv.Key <= 16 && kv.Value >= 500 && kv.Value <= 25000)
-                        perGear.Add(new GearRedline { Gear = kv.Key, Rpm = kv.Value });
-            _plugin.SubmitRedlineToCommunity(game, carId, consensus.Rpm, perGear);
-            MarkRedlineSharedThisSession(game, carId);
-            MarkRedlineProfileHandled(consensus.Rpm, consensus.Gears);
-            RefreshActiveCommunityRedlineFromServer();
-            if (RedlineConfirmBanner != null) RedlineConfirmBanner.Visibility = Visibility.Collapsed;
-            _pendingConfirmSig = null;
-            // Neutral copy: the submit is fire-and-forget, so don't assert a server
-            // outcome. It becomes confirmed once the server records your agreement.
-            TrueforceDialog.Show(Window.GetWindow(this), "Thanks",
-                "Thanks for confirming. It counts toward the community value once the server records it.", DialogKind.Info);
-        }
-
-        private void RedlineConfirmDismiss_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            if (!string.IsNullOrEmpty(_pendingConfirmSig))
-                _plugin.DeclineCommunityRedlineProfileForActiveVariant(_pendingConfirmSig);
-            _pendingConfirmSig = null;
-            if (RedlineConfirmBanner != null) RedlineConfirmBanner.Visibility = Visibility.Collapsed;
-        }
+        // (The inline "confirm this community redline" banner was retired with
+        // the set-not-share framing pass. The cascade applies community values
+        // directly, corrections are just setting your own redline, and with
+        // auto-submit on by default agreement accrues from other drivers'
+        // saves; a dedicated confirm affordance was community chrome asking
+        // users to interact for the system's sake.)
 
         // ---- Car Facts summary panel (active card) ----
 
@@ -9591,26 +9306,16 @@ namespace TrueforceForAll.Plugin
                     (s.HasUserRedline && communityOn && !autoSubmit && !WasRedlineSharedThisSession())
                         ? Visibility.Visible : Visibility.Collapsed;
 
-            // Surface that we have nothing from the community yet. When the user
-            // has their own value, gently invite a share (the button is right
-            // there). When they don't, keep it purely factual: no "set one then
-            // share" pressure that implies sharing is required. Opted-in only.
+            // Surface that we have nothing from the community yet. Purely
+            // factual: no thank-you after a submission, no "share yours"
+            // invite. Setting a redline is just saving a value; with
+            // auto-submit on it reaches the community by itself, and framing
+            // it as an act of sharing only adds pressure.
             if (CarFactsNoCommunityNudge != null)
             {
                 bool showNudge = communityOn && !s.CommunityRedline.HasValue;
                 if (showNudge)
-                {
-                    if (WasRedlineSharedThisSession())
-                        // They just submitted: it isn't consensus yet (support
-                        // floor), so the community line is legitimately empty.
-                        // Say so plainly rather than re-nagging them to share.
-                        CarFactsNoCommunityNudge.Text =
-                            "Thanks for sharing. Your redline will show as a community value once other drivers confirm it.";
-                    else
-                        CarFactsNoCommunityNudge.Text = s.HasUserRedline
-                            ? "No community redline for this car yet. Share your redline start to help other drivers."
-                            : "No community redline exists for this car yet.";
-                }
+                    CarFactsNoCommunityNudge.Text = "No community redline exists for this car yet.";
                 CarFactsNoCommunityNudge.Visibility = showNudge ? Visibility.Visible : Visibility.Collapsed;
             }
             // (The old "Use community value" link was removed with adopt: in Auto
@@ -9734,44 +9439,21 @@ namespace TrueforceForAll.Plugin
             if (!rl.HasValue || rl.Value < 500 || rl.Value > 25000) return;
             int rpm = (int)Math.Round(rl.Value / 50.0) * 50;
 
-            if (_plugin.Settings?.CommunityEnabled != true)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Share redline",
-                    "Turn on 'Enable community features (online)' first to share your redline with the community.",
-                    DialogKind.Info);
-                return;
-            }
-            if (!_plugin.AuthIsSignedIn)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Share redline",
-                    "Sign in on the Account tab to share your redline with the community.",
-                    DialogKind.Info);
-                return;
-            }
+            // Consent gate replaces the old community-off / sign-in dead-end
+            // dialogs AND the share-confirm-with-checkbox modal: an explicit
+            // Share click re-offers the one-time ask (and the enable-community
+            // funnel) even after an earlier decline, then submits directly.
+            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin,
+                    explicitAction: true)) return;
+            SyncAutoSubmitCheckboxFromSettings();
             if (!ConfirmRedlineNotLimiter(rpm)) return;
-            string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
-            string body = perGear.Count > 0
-                ? $"Share your redline start of {rpm} RPM plus {perGear.Count} per-gear override{(perGear.Count == 1 ? "" : "s")} for '{carDisplay}' (this engine variant) with the community?"
-                : $"Share your redline start of {rpm} RPM for '{carDisplay}' (this engine variant) with the community?";
-            // Offer to keep sharing automatically. Pre-checked, so submitting
-            // also turns on auto-submit for future car facts unless the user
-            // unchecks it (then they'll be prompted again next time).
-            bool keepSharing;
-            if (TrueforceDialog.ShowConfirmWithCheckbox(Window.GetWindow(this), "Share redline", body,
-                    "Keep sharing my car facts automatically", checkboxDefault: true,
-                    out keepSharing, okLabel: "Submit") != true)
-                return;
-            if (keepSharing) EnableAutoSubmitCarFacts();
             _plugin.SubmitRedlineToCommunity(game, carId, rpm, perGear);
-            // Don't fake a local consensus: one submission isn't "the community".
-            // Re-fetch the real server consensus, which stays unconfirmed (not
-            // shown as community) until other drivers confirm the same value.
+            // Don't fake a local consensus: re-fetch the real server value.
             MarkRedlineSharedThisSession(game, carId);
-            MarkRedlineProfileHandled(rpm, ToGearDict(perGear));
             RefreshActiveCommunityRedlineFromServer();
-            TrueforceDialog.Show(Window.GetWindow(this), "Shared",
-                "Thanks. Your redline was submitted to the community. It'll show as a community value once other drivers confirm it.",
-                DialogKind.Info);
+            // No confirmation dialog: the Share button hides (session latch)
+            // and the community line updates from the refetch, which is
+            // feedback enough. Setting car facts is saving, not a ceremony.
         }
 
         // Active variant key (game/carId/sig) for the shared-this-session latch.
@@ -9794,28 +9476,6 @@ namespace TrueforceForAll.Plugin
         {
             string k = ActiveRedlineShareKey();
             return k != null && _redlineSharedThisSession.Contains(k);
-        }
-
-        private static System.Collections.Generic.Dictionary<int, int> ToGearDict(
-            System.Collections.Generic.IEnumerable<GearRedline> perGear)
-        {
-            var d = new System.Collections.Generic.Dictionary<int, int>();
-            if (perGear != null)
-                foreach (var g in perGear)
-                    if (g != null && g.Gear >= 1) d[g.Gear] = g.Rpm;
-            return d;
-        }
-
-        // Durably record that the user has acted on (submitted or confirmed) this
-        // redline profile, so the Confirm prompt is never re-offered for it -
-        // including across restarts (the session latch only covers this session).
-        // Reuses the dismissed-profile field; the effect is identical (this profile
-        // is handled, don't nudge about it).
-        private void MarkRedlineProfileHandled(int overallRpm,
-            System.Collections.Generic.IReadOnlyDictionary<int, int> gears)
-        {
-            if (_plugin == null) return;
-            _plugin.DeclineCommunityRedlineProfileForActiveVariant(RedlineProfileSig(overallRpm, gears));
         }
 
         // Re-pull the real community redline consensus from the server and push it
@@ -10078,16 +9738,6 @@ namespace TrueforceForAll.Plugin
             catch { }
         }
 
-        private void RedlineGuessShare_Click(object sender, RoutedEventArgs e)
-        {
-            // Same share path the per-car save uses. Gated on
-            // CommunityEnabled + AuthIsSignedIn inside MaybePromptToSubmitRedlineData,
-            // which also handles the "no live carId" case.
-            if (_plugin == null) return;
-            string carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(carId)) return;
-            MaybePromptToSubmitRedlineData(carId);
-        }
         private void RevLimiterWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
