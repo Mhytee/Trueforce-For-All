@@ -33,15 +33,6 @@ namespace TrueforceForAll.Plugin
         // Sibling redline cache, populated by the same per-car fetch loop.
         // Drives the engine-pulse panel's "Car's redline" line.
         private RedlineConsensus _engineRedlineCache;
-        // Variants (game/carId/sig) the user shared a redline for THIS session.
-        // Suppresses the share invite + Share button + Confirm prompt right
-        // after a submission: a fresh submission isn't consensus yet, so the
-        // community readout legitimately still shows nothing, but inviting the
-        // user to "share yours" right after they did would read as a bug.
-        // (Deliberately NO thank-you line: sharing is the silent default, and
-        // a gold confirmation would re-add the ceremony auto-submit removed.)
-        private readonly System.Collections.Generic.HashSet<string> _redlineSharedThisSession
-            = new System.Collections.Generic.HashSet<string>();
         private string _lastShownCarId;
         private string _lastShownGame;
         // Last text we pushed into the CarFacts name / redline boxes. The 16ms
@@ -178,7 +169,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.PitLimiter:     return "Pit limiter";
                 case EffectKind.Drs:            return "DRS";
                 case EffectKind.Collision:      return "Collision";
-                case EffectKind.RevLimiter:     return "Rev limiter";
+                case EffectKind.RevLimiter:     return "Redline buzz";
                 case EffectKind.Airborne:       return "Airborne ducking";
                 case EffectKind.AxleSlip:       return "Axle slip";
                 case EffectKind.KerbThump:      return "Kerb thump";
@@ -935,46 +926,8 @@ namespace TrueforceForAll.Plugin
                     RevLimiterActiveAmpSlider.Value     = rl.ActiveAmp;
                     RevLimiterActiveAmpText.Text        = rl.ActiveAmp.ToString("F2");
 
-                    // Engage mode collapsed to Auto/Manual. Legacy
-                    // Percentage maps to Auto (its old behaviour
-                    // becomes the auto-cascade fallback); legacy
-                    // Redline maps to Manual.
-                    RevLimiterEngageModeCombo.SelectedIndex =
-                        rl.EngageMode == RevLimiterEngageMode.Redline ? 1 : 0;
-                    // Slider max snaps to the observed MaxRpm when
-                    // we have it (caps the slider at the car's hard
-                    // rev limit so the user can't accidentally set a
-                    // redline above the limiter); falls back to
-                    // 15000 RPM when no MaxRpm is observed yet.
-                    double observedMax = _plugin?.EnginePulse?.ObservedMaxRpm ?? 0;
-                    bool haveRealMax = observedMax >= 1000;
-                    double sliderMax = haveRealMax ? observedMax : 15000;
-                    RevLimiterRedlineSlider.Maximum = sliderMax;
-                    // Pre-fill rules:
-                    //   1. Manual mode: the saved absolute RedlineRpm.
-                    //   2. Else the live resolved redline (CarFacts /
-                    //      telemetry / Threshold-percent of MaxRpm) so Auto
-                    //      shows what the buzz will actually fire at and tracks
-                    //      tune / variant changes.
-                    //   3. Else, before telemetry, Threshold * observed MaxRpm
-                    //      (or the 0.85 default), and finally the slider minimum
-                    //      so we never show a misleading estimate with no MaxRpm.
-                    int rpmValue;
-                    bool manualMode = rl.EngageMode == RevLimiterEngageMode.Redline;
-                    int? eff = _plugin?.RevLimiter?.EffectiveRedlineRpm;
-                    if (manualMode && rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
-                        rpmValue = rl.RedlineRpm.Value;
-                    else if (eff.HasValue && eff.Value >= 500)
-                        rpmValue = eff.Value;
-                    else if (haveRealMax && rl.Threshold >= 0.50f && rl.Threshold <= 1.00f
-                             && Math.Abs(rl.Threshold - 0.85f) > 0.0001f)
-                        rpmValue = (int)Math.Round(observedMax * rl.Threshold);
-                    else if (haveRealMax)
-                        rpmValue = (int)Math.Round(observedMax * 0.85);
-                    else
-                        rpmValue = (int)RevLimiterRedlineSlider.Minimum;
-                    RevLimiterRedlineSlider.Value = rpmValue;
-                    RevLimiterRedlineText.Text    = rpmValue.ToString();
+                    // (The engage-mode combo and redline slider were retired:
+                    // the redline is edited in the Car facts panel only.)
                     RevLimiterOffsetSlider.Value = rl.RedlineOffsetRpm;
                     RevLimiterOffsetText.Text    = FormatRedlineOffset(rl.RedlineOffsetRpm);
                 }
@@ -1287,15 +1240,6 @@ namespace TrueforceForAll.Plugin
             // flag flips with each ResolveEffectiveRedline call.
             RefreshRedlineGuessBadge();
 
-            // Keep the redline slider's range + displayed value tracking live
-            // telemetry between full RefreshFromPlugin passes (those only run
-            // on car change). In Auto the buzz is derived, so the number must
-            // move when a tune raises MaxRpm or a variant swap loads a
-            // different redline.
-            RefreshRedlineLive();
-            // Hide the per-variant save controls once a draft is cleared (e.g.
-            // a variant change discarded it).
-            UpdateRedlineSaveControls();
             RefreshCarFactsPanel();
 
             var src = _plugin?.AudioCapture;
@@ -5267,16 +5211,11 @@ namespace TrueforceForAll.Plugin
         }
 
         // Same shape as MaybePromptToSubmitEngineData but for the redline
-        // fact. We derive an "implied redline" from the active RevLimiter
-        // settings and the live telemetry, then compare to the current
-        // community/variant value. Gated by TELEMETRY SHAPE, not by game:
-        // any source that reports MaxRpm but no usable redline puts us on
-        // the percentage path, and the user's Threshold is then their
-        // implicit claim about the rev ceiling (engagement at MaxRpm *
-        // Threshold). When the source DOES report a redline (AC,
-        // iRacing) the game itself is the source of truth and Offset is
-        // personal shift-cue preference, not a redline claim - so the
-        // prompt stays silent.
+        // fact. Gated by TELEMETRY SHAPE, not by game: any source that
+        // reports MaxRpm but no usable redline is where a user's saved
+        // value is a genuine claim worth submitting. When the source DOES
+        // report a redline (AC, iRacing) the game itself is the source of
+        // truth - so the prompt stays silent.
         private void MaybePromptToSubmitRedlineData(string carId, int? overrideRedline = null)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
@@ -5288,24 +5227,24 @@ namespace TrueforceForAll.Plugin
             if (!CarFactsConsentGate.CanSubmitOrAsk(_plugin)) return;
             string game = _plugin.ActiveGame;
             if (string.IsNullOrEmpty(game)) return;
-            var rl = _plugin.ActiveRevLimiter;
             var ep = _plugin.EnginePulse;
-            if (rl == null || ep == null) return;
+            if (ep == null) return;
 
             // Only relevant when the game doesn't expose its own redline
             // (Forza family). With a telemetry redline the game itself
             // is the source of truth - no community correction needed.
             if (ep.ObservedRedlineRpm >= 500) return;
-            // The claimed value: an explicit per-variant save passes it in;
-            // otherwise the Manual-mode RedlineRpm the user tuned. Auto mode
-            // without either falls back to 0.85 * MaxRpm (the documented
-            // default), and there's nothing to claim about that.
+            // The claimed value: an explicit Car facts Set passes it in;
+            // otherwise the variant's saved user redline. The 0.85 * MaxRpm
+            // fallback is a guess, not a claim, so nothing is submitted
+            // when the user never set anything.
             int claimed;
             if (overrideRedline.HasValue) claimed = overrideRedline.Value;
             else
             {
-                if (!rl.RedlineRpm.HasValue) return;
-                claimed = rl.RedlineRpm.Value;
+                int? userRl = _plugin.GetActiveVariantUserRedline();
+                if (!userRl.HasValue) return;
+                claimed = userRl.Value;
             }
             if (claimed < 500 || claimed > 25000) return;
             // Snap to 50 RPM bands: precise enough to be useful, coarse enough
@@ -5352,7 +5291,6 @@ namespace TrueforceForAll.Plugin
                         perGear.Add(new GearRedline { Gear = g.Gear, Rpm = (int)Math.Round(g.Rpm / 50.0) * 50 });
             _plugin.SubmitRedlineToCommunity(game, carId, impliedRedline, perGear);
             // Don't fake a local consensus: re-fetch the real server value.
-            MarkRedlineSharedThisSession(game, carId);
             RefreshActiveCommunityRedlineFromServer();
         }
 
@@ -9142,69 +9080,10 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveRevLimiter.Gain = v;
             Apply(EffectKind.RevLimiter);
         }
-        private void RevLimiterRedlineSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            int rpm = (int)Math.Round(e.NewValue);
-            RevLimiterRedlineText.Text = rpm.ToString();
-            var rl = _plugin.ActiveRevLimiter;
-            if (rl.EngageMode == RevLimiterEngageMode.Redline)
-            {
-                // Manual mode: a fixed absolute redline (global / per-car preset).
-                _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
-                rl.RedlineRpm = rpm >= 500 ? (int?)rpm : null;
-                Apply(EffectKind.RevLimiter);
-            }
-            else
-            {
-                // Auto mode: a PER-VARIANT redline. Dragging previews it live;
-                // "Save for this variant" commits it to the CarFacts layer. It's
-                // not a preset edit, so it doesn't touch the section draft/dirty.
-                _plugin.SetRedlinePreview(rpm);
-                UpdateRedlineSaveControls();
-            }
-        }
-
-        // Show the per-variant "Save / Revert" controls only while an unsaved
-        // Auto-mode redline draft is in flight.
-        private void UpdateRedlineSaveControls()
-        {
-            if (RevLimiterRedlineSaveRow == null) return;
-            bool auto = _plugin?.ActiveRevLimiter != null
-                && _plugin.ActiveRevLimiter.EngageMode != RevLimiterEngageMode.Redline;
-            bool show = auto && (_plugin?.HasRedlinePreview ?? false);
-            var want = show ? Visibility.Visible : Visibility.Collapsed;
-            if (RevLimiterRedlineSaveRow.Visibility != want)
-                RevLimiterRedlineSaveRow.Visibility = want;
-        }
-
-        private void SaveVariantRedline_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            int rpm = (int)Math.Round(RevLimiterRedlineSlider.Value);
-            int? saved = _plugin.SaveActiveVariantUserRedline(rpm);
-            if (saved == null)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Save redline",
-                    "Couldn't identify this car's engine variant yet. Drive for a moment so "
-                    + "the plugin sees the rev range, then save again.", DialogKind.Info);
-                return;
-            }
-            UpdateRedlineSaveControls();
-            RefreshFromPlugin();
-            // Offer to share the value with the community (rounded to 50 RPM).
-            string carId = _plugin.ActiveCarId;
-            if (!string.IsNullOrEmpty(carId))
-                MaybePromptToSubmitRedlineData(carId, saved.Value);
-        }
-
-        private void RevertVariantRedline_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            _plugin.ClearRedlinePreview();
-            UpdateRedlineSaveControls();
-            RefreshFromPlugin();
-        }
+        // (The redline slider, its Manual mode, and the per-variant draft
+        // Save/Revert row were retired with the car-facts centralization:
+        // the Car facts panel's redline box + Set button is the single
+        // editor, committing straight to the variant.)
 
         // (The inline "confirm this community redline" banner was retired with
         // the set-not-share framing pass. The cascade applies community values
@@ -9215,14 +9094,21 @@ namespace TrueforceForAll.Plugin
 
         // ---- Car Facts summary panel (active card) ----
 
-        // Render the at-a-glance facts. Cheap visibility toggle always; the
-        // fuller summary only while the expander is open. Skips the name /
-        // redline boxes while they're focused so it doesn't clobber an edit.
+        // Render the at-a-glance facts. The expander is ALWAYS visible (people
+        // open the plugin before starting the game; they should discover that
+        // car facts exist and that a wrong-feeling rev limiter or shift lights
+        // get fixed here). With no active car the body is just the hint line;
+        // the fuller summary renders only while the expander is open. Skips the
+        // name / redline boxes while they're focused so it doesn't clobber an
+        // edit.
         private void RefreshCarFactsPanel()
         {
             if (CarFactsExpander == null || _plugin == null) return;
             bool hasCar = !string.IsNullOrEmpty(_plugin.ActiveCarId);
-            CarFactsExpander.Visibility = hasCar ? Visibility.Visible : Visibility.Collapsed;
+            if (CarFactsNoCarHint != null)
+                CarFactsNoCarHint.Visibility = hasCar ? Visibility.Collapsed : Visibility.Visible;
+            if (CarFactsRowsPanel != null)
+                CarFactsRowsPanel.Visibility = hasCar ? Visibility.Visible : Visibility.Collapsed;
             if (!hasCar || !CarFactsExpander.IsExpanded) return;
 
             var s = _plugin.GetActiveCarFactsSummary();
@@ -9292,35 +9178,19 @@ namespace TrueforceForAll.Plugin
             if (CarFactsRedlineSourceText != null)
                 CarFactsRedlineSourceText.Text = RedlineSourceFriendly(s.RedlineSource);
 
-            // Share appears once the user has pinned their own value and the
-            // community is enabled (sign-in is handled on click). Hidden when
-            // always-share is on (Set pushes the value itself) OR once this
-            // variant's redline was already shared this session (nothing left
-            // to submit until they change it again; the nudge below switches
-            // to a thank-you). The panel re-runs after a share via
-            // RefreshActiveCommunityRedlineFromServer, so this hides promptly.
-            bool communityOn = _plugin.Settings?.CommunityEnabled == true;
-            bool autoSubmit  = _plugin.Settings?.AutoSubmitCarFacts == true;
-            if (CarFactsShareBtn != null)
-                CarFactsShareBtn.Visibility =
-                    (s.HasUserRedline && communityOn && !autoSubmit && !WasRedlineSharedThisSession())
-                        ? Visibility.Visible : Visibility.Collapsed;
-
             // Surface that we have nothing from the community yet. Purely
             // factual: no thank-you after a submission, no "share yours"
-            // invite. Setting a redline is just saving a value; with
-            // auto-submit on it reaches the community by itself, and framing
-            // it as an act of sharing only adds pressure.
+            // invite, no Share button (Set routes through the submit path by
+            // itself). Setting a redline is just saving a value; framing it
+            // as an act of sharing only adds pressure.
             if (CarFactsNoCommunityNudge != null)
             {
-                bool showNudge = communityOn && !s.CommunityRedline.HasValue;
+                bool showNudge = _plugin.Settings?.CommunityEnabled == true
+                                 && !s.CommunityRedline.HasValue;
                 if (showNudge)
                     CarFactsNoCommunityNudge.Text = "No community redline exists for this car yet.";
                 CarFactsNoCommunityNudge.Visibility = showNudge ? Visibility.Visible : Visibility.Collapsed;
             }
-            // (The old "Use community value" link was removed with adopt: in Auto
-            // the community value is applied directly, and confirming/correcting an
-            // unconfirmed value is handled by the inline Confirm prompt + Set.)
         }
 
         // Provenance phrased so it reads as "where this value came from", not as
@@ -9329,12 +9199,17 @@ namespace TrueforceForAll.Plugin
         {
             switch (src)
             {
-                case "user":                  return "(your value)";
+                // A value the user set themselves needs no label: they set
+                // it, the box shows it. Labels are for external sources.
+                case "user":                  return "";
                 case "community":             return "(from the community)";
                 case "community_unconfirmed": return "(from the community, unconfirmed)";
                 case "game":                  return "(from the game)";
                 case "estimated":             return "(estimated guess)";
-                case "derived":               return "(from your % setting)";
+                // Auto % of max (including the 0.85 default): no suffix.
+                // "(from your % setting)" explained plumbing nobody asked
+                // about; the number speaks for itself.
+                case "derived":               return "";
                 default:                      return "";
             }
         }
@@ -9401,82 +9276,18 @@ namespace TrueforceForAll.Plugin
                     + "plugin sees the rev range, then set it again.", DialogKind.Info);
                 return;
             }
-            // With always-share on, Set pushes to the community itself (the
-            // manual Share button is hidden in that mode) so the CarFacts box
-            // matches the Rev Limiter save. MaybePromptToSubmitRedlineData
-            // submits silently when AutoSubmitCarFacts is set, and self-gates on
-            // CommunityEnabled / signed-in / Forza-only inside. Without it Set
-            // just saves and the visible Share button is how the user pushes.
-            if (_plugin.Settings?.AutoSubmitCarFacts == true)
-                MaybePromptToSubmitRedlineData(_plugin.ActiveCarId, saved.Value);
+            // Set is the whole story: it routes through the self-gating submit
+            // path (sharing on = silent submit, consent unasked = the one-time
+            // ask, sharing off = local-only save). There is no separate Share
+            // button anymore; saving a value IS how it reaches the community.
+            MaybePromptToSubmitRedlineData(_plugin.ActiveCarId, saved.Value);
             RefreshFromPlugin();
         }
 
-        private void CarFactsShareRedline_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            // Per-gear overrides, snapped to 50 RPM so near-identical profiles
-            // cluster in consensus.
-            var src = _plugin.GetActiveVariantPerGearRedlines();
-            var perGear = new System.Collections.Generic.List<GearRedline>();
-            if (src != null)
-                foreach (var g in src)
-                    if (g != null && g.Gear >= 1 && g.Gear <= 16 && g.Rpm >= 500 && g.Rpm <= 25000)
-                        perGear.Add(new GearRedline { Gear = g.Gear, Rpm = (int)Math.Round(g.Rpm / 50.0) * 50 });
-
-            // The overall (gear-0) value to submit: a genuine user default, never
-            // the 0.85 guess or community's own. If the user only set per-gear
-            // values (no default), use the highest as the overall redline.
-            int? rl = _plugin.GetActiveVariantUserRedline();
-            if (!rl.HasValue && perGear.Count > 0)
-            {
-                int hi = 0;
-                foreach (var g in perGear) if (g.Rpm > hi) hi = g.Rpm;
-                rl = hi;
-            }
-            if (!rl.HasValue || rl.Value < 500 || rl.Value > 25000) return;
-            int rpm = (int)Math.Round(rl.Value / 50.0) * 50;
-
-            // Consent gate replaces the old community-off / sign-in dead-end
-            // dialogs AND the share-confirm-with-checkbox modal: an explicit
-            // Share click re-offers the one-time ask (and the enable-community
-            // funnel) even after an earlier decline, then submits directly.
-            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin,
-                    explicitAction: true)) return;
-            SyncAutoSubmitCheckboxFromSettings();
-            if (!ConfirmRedlineNotLimiter(rpm)) return;
-            _plugin.SubmitRedlineToCommunity(game, carId, rpm, perGear);
-            // Don't fake a local consensus: re-fetch the real server value.
-            MarkRedlineSharedThisSession(game, carId);
-            RefreshActiveCommunityRedlineFromServer();
-            // No confirmation dialog: the Share button hides (session latch)
-            // and the community line updates from the refetch, which is
-            // feedback enough. Setting car facts is saving, not a ceremony.
-        }
-
-        // Active variant key (game/carId/sig) for the shared-this-session latch.
-        private string ActiveRedlineShareKey()
-        {
-            if (_plugin == null) return null;
-            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
-            return game + "/" + carId + "/" + (_plugin.ComputeActiveCarVariantSignatureForActive() ?? "");
-        }
-
-        private void MarkRedlineSharedThisSession(string game, string carId)
-        {
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            _redlineSharedThisSession.Add(game + "/" + carId + "/"
-                + (_plugin?.ComputeActiveCarVariantSignatureForActive() ?? ""));
-        }
-
-        private bool WasRedlineSharedThisSession()
-        {
-            string k = ActiveRedlineShareKey();
-            return k != null && _redlineSharedThisSession.Contains(k);
-        }
+        // (The manual "Share with community" button and its shared-this-session
+        // latch were removed with the set-not-share framing pass: Set routes
+        // through the same self-gating submit path as any save, so a separate
+        // share affordance only reframed saving a value as a contribution act.)
 
         // Re-pull the real community redline consensus from the server and push it
         // into the plugin (replacing the old optimistic local-injection on share).
@@ -9505,8 +9316,8 @@ namespace TrueforceForAll.Plugin
             });
         }
 
-        // ---- Per-gear redline editor (shared by the Car Facts panel + the Rev
-        // Limiter section; both show the same gears, kept in sync) ----
+        // ---- Per-gear redline editor (Car Facts panel; the Rev Limiter
+        // section's duplicate copy was retired with the centralization) ----
 
         private void RebuildPerGearEditors()
         {
@@ -9514,7 +9325,6 @@ namespace TrueforceForAll.Plugin
             bool show = !string.IsNullOrEmpty(_plugin.ActiveCarId);
             var list = show ? _plugin.GetActiveVariantPerGearRedlines() : null;
             BuildPerGearRows(CarFactsPerGearRows, CarFactsPerGearExpander, list, show);
-            BuildPerGearRows(RevLimiterPerGearRows, RevLimiterPerGearExpander, list, show);
         }
 
         private void BuildPerGearRows(StackPanel container, Expander expander,
@@ -9571,8 +9381,8 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Set the rpm box for a given gear in BOTH per-gear panels (kept in sync)
-        // without rebuilding rows, so focus / Tab order survives an edit.
+        // Set the rpm box for a given gear without rebuilding rows, so
+        // focus / Tab order survives an edit.
         private void MirrorPerGearBox(int gear, string text)
         {
             bool prev = _suppressEvents;
@@ -9580,7 +9390,6 @@ namespace TrueforceForAll.Plugin
             try
             {
                 SetPerGearBoxText(CarFactsPerGearRows, gear, text);
-                SetPerGearBoxText(RevLimiterPerGearRows, gear, text);
             }
             finally { _suppressEvents = prev; }
         }
@@ -9610,7 +9419,6 @@ namespace TrueforceForAll.Plugin
         }
 
         private void CarFactsAddGear_Click(object sender, RoutedEventArgs e) => AddGearCommon();
-        private void RevLimiterAddGear_Click(object sender, RoutedEventArgs e) => AddGearCommon();
         private void AddGearCommon()
         {
             if (_plugin == null) return;
@@ -9659,58 +9467,7 @@ namespace TrueforceForAll.Plugin
         // Refresh the "redline is a guess" badge from RevLimiter.IsRedlineGuessed.
         // Called from MeterTimer_Tick so the badge appears/disappears as
         // the cascade re-resolves each frame. Visible only when the effect
-        // is enabled, in Auto mode, and the cascade fell to the default
-        // 0.85 × MaxRpm branch.
-        // Live-update the redline slider's range + shown value from the
-        // resolver, without a full RefreshFromPlugin. Lets MaxRpm changes
-        // (tune upgrades) and variant swaps reflect immediately. Cheap: the
-        // slider is only touched when the resolved value actually changes.
-        private void RefreshRedlineLive()
-        {
-            if (_plugin == null || RevLimiterRedlineSlider == null) return;
-            var rl = _plugin.ActiveRevLimiter;
-            if (rl == null) return;
-            // Never fight an in-progress drag / keyboard edit.
-            if (RevLimiterRedlineSlider.IsMouseCaptureWithin
-                || RevLimiterRedlineSlider.IsKeyboardFocusWithin) return;
-
-            double observedMax = _plugin.EnginePulse?.ObservedMaxRpm ?? 0;
-            double sliderMax = observedMax >= 1000 ? observedMax : 15000;
-            if (Math.Abs(RevLimiterRedlineSlider.Maximum - sliderMax) > 0.5)
-                RevLimiterRedlineSlider.Maximum = sliderMax;
-
-            bool manualMode = rl.EngageMode == RevLimiterEngageMode.Redline;
-            int? preview = _plugin.RedlinePreviewRpm;
-            int rpmValue;
-            if (preview.HasValue && preview.Value >= 500)
-                rpmValue = preview.Value;                      // hold the live draft, even if telemetry pauses
-            else if (manualMode && rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
-                rpmValue = rl.RedlineRpm.Value;
-            else
-            {
-                // Prefer the exact pinned value so a just-saved redline shows
-                // precisely even while paused (EffectiveRedlineRpm lags a frame).
-                int? pin = _plugin.GetActiveVariantUserRedline();
-                if (pin.HasValue && pin.Value >= 500) rpmValue = pin.Value;
-                else
-                {
-                    int? eff = _plugin.RevLimiter?.EffectiveRedlineRpm;
-                    if (!eff.HasValue || eff.Value < 500) return;  // nothing resolved yet
-                    rpmValue = eff.Value;
-                }
-            }
-
-            if ((int)Math.Round(RevLimiterRedlineSlider.Value) == rpmValue) return;
-            bool prev = _suppressEvents;
-            _suppressEvents = true;
-            try
-            {
-                RevLimiterRedlineSlider.Value = rpmValue;
-                RevLimiterRedlineText.Text    = rpmValue.ToString();
-            }
-            finally { _suppressEvents = prev; }
-        }
-
+        // is enabled and the cascade fell to the default 0.85 × MaxRpm branch.
         private void RefreshRedlineGuessBadge()
         {
             if (RedlineGuessBadge == null) return;
@@ -9718,7 +9475,6 @@ namespace TrueforceForAll.Plugin
             var effect   = _plugin?.RevLimiter;
             bool show = settings != null && effect != null
                 && settings.Enabled
-                && settings.EngageMode != RevLimiterEngageMode.Redline
                 && effect.IsRedlineGuessed;
             var want = show ? Visibility.Visible : Visibility.Collapsed;
             if (RedlineGuessBadge.Visibility != want)
@@ -9727,13 +9483,14 @@ namespace TrueforceForAll.Plugin
 
         private void RedlineGuessSetValue_Click(object sender, RoutedEventArgs e)
         {
-            // Just put focus on the slider so the user can type / drag.
-            // Acts as a "scroll-to-here + give me the cursor" affordance
-            // for users who weren't sure where to find it.
+            // Jump to the Car facts redline box (the single redline editor):
+            // expand the panel and hand it the cursor, for users who weren't
+            // sure where to find it.
             try
             {
-                RevLimiterRedlineSlider?.Focus();
-                RevLimiterRedlineSlider?.BringIntoView();
+                if (CarFactsExpander != null) CarFactsExpander.IsExpanded = true;
+                CarFactsRedlineBox?.BringIntoView();
+                CarFactsRedlineBox?.Focus();
             }
             catch { }
         }
@@ -9752,19 +9509,6 @@ namespace TrueforceForAll.Plugin
             RevLimiterOffsetText.Text = FormatRedlineOffset(v);
             _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
             _plugin.ActiveRevLimiter.RedlineOffsetRpm = v;
-            Apply(EffectKind.RevLimiter);
-        }
-        private void RevLimiterEngageMode_Changed(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
-            // Manual = 1 -> legacy "Redline" enum value (kept for
-            // backwards-compatible serialization; the effect handles
-            // it as Manual). Auto = 0 (default).
-            _plugin.ActiveRevLimiter.EngageMode =
-                RevLimiterEngageModeCombo.SelectedIndex == 1
-                    ? RevLimiterEngageMode.Redline
-                    : RevLimiterEngageMode.Auto;
             Apply(EffectKind.RevLimiter);
         }
 
@@ -10273,7 +10017,7 @@ namespace TrueforceForAll.Plugin
             "UDP            Toggle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> off.\n" +
             "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
-            "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
+            "REV            Redline buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
             "WELCOME        Reset the networked-welcome modal AND the Mode B intro seen state and re-trigger them now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro all cleared).\n" +
             "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +

@@ -126,7 +126,6 @@ namespace TrueforceForAll.Plugin
             "CarFactsMigratedV1", "FeedbackBoxDefaultedOn", "ManualOverrideClearedV0_1_22",
             "PresetsMigratedV2", "CarsMigratedV2", "LegacyBuiltinsCleanedV1",
             "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
-            "RevLimiterThresholdDefaultMigrated",
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
             "CommunityDefaultOnRepitchedV1",
             // Backend config (release bakes constants; a dev override must not travel).

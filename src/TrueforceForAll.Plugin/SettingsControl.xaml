@@ -1084,15 +1084,23 @@
                          knows about the active car (name, engine/variant + its
                          source, redline + its source), editable inline for the
                          name and redline. Engine/variant edits route to the
-                         existing Manage Variants modal. Shown only when a car is
-                         active; collapsed by default. Populated by
-                         RefreshCarFactsPanel. -->
-                    <Expander x:Name="CarFactsExpander" IsExpanded="False" Margin="0,10,0,0" Visibility="Collapsed"
-                              ToolTip="What the plugin currently believes about this car. Correct anything that looks wrong; your values win over the community for this car / variant.">
+                         existing Manage Variants modal. ALWAYS visible and
+                         EXPANDED by default (people open the plugin before the
+                         game; they should discover car facts exist and that a
+                         wrong-feeling redline buzz or shift lights get fixed
+                         here); with no active car the body is just the hint
+                         line. Populated by RefreshCarFactsPanel. -->
+                    <Expander x:Name="CarFactsExpander" IsExpanded="True" Margin="0,10,0,0"
+                              ToolTip="What the plugin currently believes about the car you're driving. Correct anything that looks wrong.">
                         <Expander.Header>
                             <TextBlock Text="Car facts" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,0">
+                            <!-- No-car placeholder: tells the user what will appear
+                                 here and why they'd care, before they ever drive. -->
+                            <TextBlock x:Name="CarFactsNoCarHint" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                                       Text="Once you're driving, the car's facts (name, engine, redline) show here. If the redline buzz or the shift lights fire at the wrong RPM, this is where to fix it."/>
+                            <StackPanel x:Name="CarFactsRowsPanel">
                             <!-- Name -->
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -1137,27 +1145,21 @@
                                 <Button    Grid.Column="3" x:Name="CarFactsRedlineSetBtn" Content="Set"
                                            Style="{StaticResource EffectSaveButton}" Visibility="Visible"
                                            Click="CarFactsRedlineSet_Click"
-                                           ToolTip="Pin the redline start for this variant (this tune). Wins over the community value for this variant."/>
+                                           ToolTip="Save the redline start for this variant (this tune)."/>
                                 <TextBlock Grid.Column="4" x:Name="CarFactsRedlineSourceText" FontSize="11" Opacity="0.6"
                                            VerticalAlignment="Center" Margin="2,0,0,0"/>
                             </Grid>
                             <TextBlock Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
                                        Text="The redline start: where the tachometer turns red and you upshift. Not the rev limiter cutoff (that sits a little higher)."/>
-                            <!-- Nudge to contribute when we have no community redline for
-                                 this car/variant yet. Gold so it reads as a gentle prompt. -->
+                            <!-- Factual note when no community redline exists yet. No share
+                                 button: Set routes through the submit path by itself. -->
                             <TextBlock x:Name="CarFactsNoCommunityNudge" Margin="64,4,0,0" FontSize="11"
                                        Foreground="#FFE082" TextWrapping="Wrap" Visibility="Collapsed"/>
-                            <StackPanel Orientation="Horizontal" Margin="64,4,0,2">
-                                <Button x:Name="CarFactsShareBtn" Content="★ Share with community"
-                                        Style="{StaticResource HeaderShareButton}" Visibility="Collapsed"
-                                        Click="CarFactsShareRedline_Click"
-                                        ToolTip="Submit this car's redline start for this variant so other drivers get it too."/>
-                            </StackPanel>
                             <!-- Per-gear redline overrides (gears 1..N). The redline above
                                  is the default (gear 0); rows here override specific gears,
                                  e.g. a lower 1st-gear limit. Rows are built in code by
-                                 RebuildPerGearEditors and kept in sync with the Rev Limiter
-                                 section's copy. -->
+                                 RebuildPerGearEditors. This is the ONLY per-gear editor
+                                 (the Redline buzz section's duplicate was retired). -->
                             <Expander x:Name="CarFactsPerGearExpander" IsExpanded="False" Margin="0,6,0,0" Visibility="Collapsed">
                                 <Expander.Header>
                                     <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
@@ -1170,6 +1172,7 @@
                                             Padding="10,2" Margin="0,2,0,0" Click="CarFactsAddGear_Click"/>
                                 </StackPanel>
                             </Expander>
+                            </StackPanel>
                         </StackPanel>
                     </Expander>
 
@@ -2394,7 +2397,7 @@
                     </StackPanel>
                 </Expander>
 
-                <!-- Rev limiter (modal RPM-threshold effect). Hard buzz when
+                <!-- Redline buzz (modal RPM-threshold effect). Hard buzz when
                      RPM reaches the shift point / limiter, held while bouncing
                      off it. Independent of engine pulse; an unmistakable
                      "shift now / on the limiter" cue. Works wherever RPM is
@@ -2402,7 +2405,7 @@
                 <Expander x:Name="RevLimiterExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="RevLimiterEnabledCheck" Content="Rev limiter"
+                            <CheckBox x:Name="RevLimiterEnabledCheck" Content="Redline buzz"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="RevLimiterEnabled_Changed" Unchecked="RevLimiterEnabled_Changed"/>
                             <Border x:Name="RevLimiterNewBadge" Style="{StaticResource NewEffectBadge}">
@@ -2416,7 +2419,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A hard buzz that engages at your redline start (the shift point) and holds while you sit on or bounce off the rev limiter above it. A clearer shift cue than the engine-pulse change near redline, for when you run engine pulse low or just want an unmistakable signal. Triggers off RPM, so it works in any game that reports it."/>
+                                   Text="A hard buzz when you enter the redline start: an unmistakable shift cue. If it fires at the wrong RPM, fix the redline start in Car facts."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2424,55 +2427,16 @@
                                         TickFrequency="0.25" ValueChanged="RevLimiterGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="RevLimiterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.10"/>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Engage mode:" Style="{StaticResource LabelText}"
-                                       ToolTip="Auto: prefer the game's reported redline, fall back to community / saved value / 85% of the rev limit. Manual: always use the redline RPM you set below. Good for cars where the game reports the wrong redline."/>
-                            <ComboBox  Grid.Column="1" x:Name="RevLimiterEngageModeCombo" SelectionChanged="RevLimiterEngageMode_Changed">
-                                <ComboBoxItem Content="Auto (trust the game)"/><ComboBoxItem Content="Manual (set my own redline)"/>
-                            </ComboBox>
-                        </Grid>
-                        <Grid x:Name="RevLimiterRedlineRow" Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Redline RPM:" Style="{StaticResource LabelText}"
-                                       ToolTip="RPM where the rev limiter buzz fires. Set it to the redline start (where the tachometer turns red and you upshift), not the hard rev limiter cutoff. In Auto mode this is the fallback when the game doesn't report a redline; in Manual mode it's always used. The slider opens up to the car's max RPM once telemetry observes it."/>
-                            <Slider     Grid.Column="1" x:Name="RevLimiterRedlineSlider" Minimum="500" Maximum="15000" SmallChange="100" LargeChange="500"
-                                        TickFrequency="1000" ValueChanged="RevLimiterRedlineSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="RevLimiterRedlineText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6800"/>
-                        </Grid>
-                        <!-- Per-variant redline save: appears in Auto mode while
-                             the user is dragging a redline they haven't committed.
-                             Saving pins it to THIS engine variant (this tune) in
-                             the CarFacts layer, where it wins over the community
-                             value for that variant. Revert discards the draft. -->
-                        <Grid x:Name="RevLimiterRedlineSaveRow" Margin="140,0,0,10" Visibility="Collapsed">
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="Save for this variant" Click="SaveVariantRedline_Click" Padding="10,3" Margin="0,0,8,0"
-                                        ToolTip="Saves the redline start shown above for this variant (this tune). It wins over the community value for this variant; switching to another variant loads that variant's own value."/>
-                                <Button Content="Revert" Click="RevertVariantRedline_Click" Padding="10,3"
-                                        ToolTip="Discard this unsaved redline change."/>
-                            </StackPanel>
-                        </Grid>
-                        <!-- Per-gear redline overrides (gears 1..N). The redline slider
-                             above is the default (gear 0). Same editor as the Car Facts
-                             panel; both are rebuilt by RebuildPerGearEditors. -->
-                        <Expander x:Name="RevLimiterPerGearExpander" IsExpanded="False" Margin="140,0,0,8" Visibility="Collapsed">
-                            <Expander.Header>
-                                <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
-                            </Expander.Header>
-                            <StackPanel Margin="0,4,0,0">
-                                <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="Optional. Set a different redline start (where you upshift) for specific gears, e.g. a lower 1st-gear shift point. Gears you don't list use the redline above."/>
-                                <StackPanel x:Name="RevLimiterPerGearRows"/>
-                                <Button x:Name="RevLimiterAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
-                                        Padding="10,2" Margin="0,2,0,0" Click="RevLimiterAddGear_Click"/>
-                            </StackPanel>
-                        </Expander>
+                        <!-- (The Engage mode combo, the Redline RPM slider + per-variant
+                             save row, and the duplicate per-gear editor were retired
+                             2026-07-17: the redline is car truth, edited ONLY in the
+                             Car facts panel on the active card. This panel keeps the
+                             feel knobs: gain, offset, waveform, tone.) -->
                         <!-- Coverage badge: shown when the rev-limiter cascade fell
-                             all the way to the 0.85 × MaxRpm estimate (no telemetry
-                             redline, no CarFacts, no preset, no legacy Threshold).
-                             Tells the user the shift cue is a guess and offers ONE
-                             affordance: focus the slider to set it. Setting is the
+                             all the way to the 0.85 × MaxRpm estimate (no user value,
+                             no telemetry redline, no community value). Tells the user
+                             the shift cue is a guess and offers ONE affordance: jump
+                             to the Car facts redline box to set it. Setting is the
                              whole story (auto-submit carries it to the community by
                              itself); a separate share link would reframe saving a
                              value as a contribution act and add pressure. -->
@@ -2590,7 +2554,7 @@
                             <CheckBox x:Name="AirborneDuckAudioCheck"       Content="Captured audio" Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckRoadBumpsCheck"   Content="Road bumps"     Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckTractionCheck"    Content="Traction loss"  Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="Rev limiter"    Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="Redline buzz"   Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckGearShiftCheck"   Content="Gear shift"     Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckAbsCheck"         Content="ABS"            Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckPitLimiterCheck"  Content="Pit limiter"    Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>

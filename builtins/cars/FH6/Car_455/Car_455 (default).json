@@ -13,7 +13,6 @@
       "PulseFreq": 18.1786652,
       "DutyCycle": 0.5,
       "ActiveAmp": 0.35,
-      "Threshold": 0.927935839,
       "Waveform": "Square"
     }
   }

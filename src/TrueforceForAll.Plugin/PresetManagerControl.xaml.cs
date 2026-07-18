@@ -1,4 +1,4 @@
-// Inline manager for the user's preset library, hosted on the Presets tab.
+﻿// Inline manager for the user's preset library, hosted on the Presets tab.
 // Three segments: game presets (Settings.Presets), car presets
 // (TrueforceCars/*.tfcar.json), and custom engines (Settings.CustomEngines).
 // Usable without a game or car loaded so users can prune / rename / export /
@@ -1628,7 +1628,7 @@ namespace TrueforceForAll.Plugin
             AppendEffectLine(sb, "Pit limiter",      snap.PitLimiter);
             AppendEffectLine(sb, "DRS",              snap.Drs);
             AppendEffectLine(sb, "Collision",        snap.Collision);
-            AppendEffectLine(sb, "Rev limiter",      snap.RevLimiter);
+            AppendEffectLine(sb, "Redline buzz",      snap.RevLimiter);
             AppendEffectLine(sb, "Airborne ducking", snap.Airborne);
             sb.AppendLine($"Sidechain ducking: {(snap.DuckingEnabled ? "on" : "off")} (depth {snap.DuckDepth:0.##})");
             return sb.ToString().TrimEnd();
@@ -1685,7 +1685,7 @@ namespace TrueforceForAll.Plugin
             AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   baseline?.PitLimiter);
             AppendOverrideSection(sections, "DRS",              ov.Drs,          baseline?.Drs);
             AppendOverrideSection(sections, "Collision",        ov.Collision,    baseline?.Collision);
-            AppendOverrideSection(sections, "Rev limiter",      ov.RevLimiter,   baseline?.RevLimiter);
+            AppendOverrideSection(sections, "Redline buzz",      ov.RevLimiter,   baseline?.RevLimiter);
             AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     baseline?.Airborne);
 
             sb.AppendLine();
@@ -1903,7 +1903,7 @@ namespace TrueforceForAll.Plugin
                         AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   null);
                         AppendOverrideSection(sections, "DRS",              ov.Drs,          null);
                         AppendOverrideSection(sections, "Collision",        ov.Collision,    null);
-                        AppendOverrideSection(sections, "Rev limiter",      ov.RevLimiter,   null);
+                        AppendOverrideSection(sections, "Redline buzz",      ov.RevLimiter,   null);
                         AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     null);
                         if (sections.Length > 0)
                         {

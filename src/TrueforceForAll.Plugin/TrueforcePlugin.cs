@@ -2143,16 +2143,10 @@ namespace TrueforceForAll.Plugin
                 LoadAndMigrateCarPresets();
             }
             MigrateEngineHighRpmHelpersDefaults();
-            // One-shot: bump rev-limiter engage threshold 0.97 -> 0.85 for
-            // presets still on the old default (issue #8). Runs after the car
-            // store loads so .tfcar.json files are migrated too. Latched so a
-            // user who later re-picks 0.97 keeps it.
-            if (!Settings.RevLimiterThresholdDefaultMigrated)
-            {
-                MigrateRevLimiterThresholdDefault();
-                Settings.RevLimiterThresholdDefaultMigrated = true;
-                try { PersistSettingsCore(); } catch { }
-            }
+            // (The 0.97 -> 0.85 rev-limiter Threshold migration was removed
+            // along with the Threshold field itself, 2026-07-17: the redline
+            // comes from the Car facts cascade now. Its latch field
+            // RevLimiterThresholdDefaultMigrated was retired with it.)
 
             // Make sure all three folders exist with their READMEs, then auto-
             // import anything the user dropped into the imports folder. All
@@ -4326,9 +4320,6 @@ namespace TrueforceForAll.Plugin
                     string liveSig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
                     if (!string.Equals(liveSig, _lastAppliedVariantSignature, StringComparison.Ordinal))
                     {
-                        // Switching variants (tunes) discards an unsaved redline
-                        // draft: it belonged to the previous variant.
-                        if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
                         ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
                         // Swap the grip auto-cal learner to this variant: its
                         // tires / downforce, and so its grip ceiling, can differ
@@ -6691,13 +6682,7 @@ namespace TrueforceForAll.Plugin
             RevLimiter.PulseFreq = SafeMath.SafeFloat(s.PulseFreq, 1.0f, 500.0f, 10.0f);
             RevLimiter.DutyCycle = SafeMath.SafeFloat(s.DutyCycle, 0.0f, 1.0f, 0.5f);
             RevLimiter.ActiveAmp = SafeMath.SafeFloat(s.ActiveAmp, 0.0f, 10.0f, 1.0f);
-            // Threshold is a fraction of MaxRpm (0..1), not absolute RPM.
-            // It's the Auto-mode source of truth: the resolver derives the
-            // buzz point from Threshold * live MaxRpm so it follows tunes.
-            RevLimiter.Threshold = SafeMath.SafeFloat(s.Threshold, 0.0f, 1.0f, 0.85f);
-            RevLimiter.RedlineRpm = s.RedlineRpm;
             RevLimiter.RedlineOffsetRpm = s.RedlineOffsetRpm;
-            RevLimiter.EngageMode = s.EngageMode;
             RevLimiter.Waveform  = s.Waveform;
         }
         // Airborne ducking can be per-car (override) or global; this reads the
@@ -6771,7 +6756,7 @@ namespace TrueforceForAll.Plugin
         private static CollisionSettings    Clone(CollisionSettings s)
             => new CollisionSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, EnvelopeMs = s.EnvelopeMs, MinThreshold = s.MinThreshold, MinAmp = s.MinAmp, MaxAmp = s.MaxAmp, NormalizationScale = s.NormalizationScale, RefractoryMs = s.RefractoryMs, Waveform = s.Waveform };
         private static RevLimiterSettings   Clone(RevLimiterSettings s)
-            => new RevLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, Threshold = s.Threshold, RedlineRpm = s.RedlineRpm, RedlineOffsetRpm = s.RedlineOffsetRpm, EngageMode = s.EngageMode, Waveform = s.Waveform };
+            => new RevLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, RedlineOffsetRpm = s.RedlineOffsetRpm, Waveform = s.Waveform };
         private static AirborneSettings     Clone(AirborneSettings s)
             => new AirborneSettings     { Enabled = s.Enabled, Reduction = s.Reduction, DuckEngine = s.DuckEngine, DuckAudio = s.DuckAudio, DuckRoadBumps = s.DuckRoadBumps, DuckTractionLoss = s.DuckTractionLoss, DuckRevLimiter = s.DuckRevLimiter, DuckGearShift = s.DuckGearShift, DuckAbs = s.DuckAbs, DuckPitLimiter = s.DuckPitLimiter, DuckDrs = s.DuckDrs, DuckCollision = s.DuckCollision };
 
@@ -11071,36 +11056,9 @@ namespace TrueforceForAll.Plugin
                 && c.SupportingSubmissions >= CommunityRedlineMinSupport;
         }
 
-        /// <summary>True when a live, unsaved redline draft is in flight.</summary>
-        public bool HasRedlinePreview => RevLimiter?.PreviewRedlineRpm != null;
-
-        /// <summary>The live, unsaved redline draft value (null when none).</summary>
-        public int? RedlinePreviewRpm => RevLimiter?.PreviewRedlineRpm;
-
-        /// <summary>Set the live (unsaved) redline preview the slider drives in
-        /// Auto mode. Passing a sub-500 value clears it. A value equal to the
-        /// redline the variant ALREADY resolves to (the saved pin, else the live
-        /// effective redline) is NOT a change, so it clears the preview too, that
-        /// keeps the "Save for this variant" control from showing when the slider
-        /// just sits on (or is re-synced to) the current value.</summary>
-        public void SetRedlinePreview(int? rpm)
-        {
-            if (RevLimiter == null) return;
-            if (!rpm.HasValue || rpm.Value < 500)
-            {
-                RevLimiter.PreviewRedlineRpm = null;
-                return;
-            }
-            int? baseline = GetActiveVariantUserRedline() ?? RevLimiter.EffectiveRedlineRpm;
-            RevLimiter.PreviewRedlineRpm =
-                (baseline.HasValue && baseline.Value == rpm.Value) ? (int?)null : rpm;
-        }
-
-        /// <summary>Discard the unsaved redline draft.</summary>
-        public void ClearRedlinePreview()
-        {
-            if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
-        }
+        // (The live redline slider draft, PreviewRedlineRpm, was removed with
+        // the car-facts centralization: the Car facts redline box commits via
+        // SaveActiveVariantUserRedline directly, no draft state.)
 
         /// <summary>Commit the given value as THIS variant's user redline. Ensures
         /// a stored variant row exists for the live signature, stamps it,
@@ -11119,7 +11077,6 @@ namespace TrueforceForAll.Plugin
                 variant.UserRedlineRpm = rpm;
                 variant.AdoptedCommunityRedlineRpm = null;   // a deliberate pin supersedes any adopted community value
             }
-            if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
             ScheduleCarFactsFlush();
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
             return rpm;
@@ -13822,88 +13779,6 @@ namespace TrueforceForAll.Plugin
             return changed;
         }
 
-        // One-shot: bump the rev-limiter engage threshold from the old 0.97
-        // default to the new 0.85 default everywhere a RevLimiterSettings is
-        // persisted (active settings, game-preset snapshots, car overrides, and
-        // .tfcar.json files). Only rewrites a value still at the exact old
-        // default; any threshold the user moved off 0.97 is left alone. Mirrors
-        // MigrateEngineHighRpmHelpersDefaults so it follows the same proven path.
-        private void MigrateRevLimiterThresholdDefault()
-        {
-            if (Settings == null) return;
-            bool changed = false;
-
-            if (MigrateRevLimiterThresholdField(Settings.RevLimiter)) changed = true;
-
-            if (Settings.Presets != null)
-            {
-                foreach (var snap in Settings.Presets.Values)
-                {
-                    if (snap?.RevLimiter == null) continue;
-                    if (MigrateRevLimiterThresholdField(snap.RevLimiter)) changed = true;
-                }
-            }
-
-            if (Settings.CarOverrides != null)
-            {
-                foreach (var ovr in Settings.CarOverrides.Values)
-                {
-                    if (ovr?.RevLimiter == null) continue;
-                    if (MigrateRevLimiterThresholdField(ovr.RevLimiter)) changed = true;
-                }
-                // Resync _lastPersistedCarOverrides so the dirty check against
-                // the live cache matches the just-migrated values (otherwise
-                // every touched car would read as dirty on first load).
-                if (changed)
-                {
-                    foreach (var kv in Settings.CarOverrides)
-                    {
-                        if (kv.Value == null) continue;
-                        _lastPersistedCarOverrides[kv.Key] = CloneCarOverride(kv.Value);
-                    }
-                }
-            }
-
-            // Rewrite .tfcar.json files for any car preset still at the old
-            // default so the new value persists across launches.
-            if (_carStore != null)
-            {
-                var loaded = _carStore.LoadAll();
-                foreach (var carKv in loaded)
-                {
-                    foreach (var entry in carKv.Value.Values)
-                    {
-                        if (entry?.Override?.RevLimiter == null) continue;
-                        if (MigrateRevLimiterThresholdField(entry.Override.RevLimiter))
-                        {
-                            _carStore.Save(entry.CarId, entry.PresetName, entry.GameName,
-                                           entry.Override, entry.IsBuiltin);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-
-            if (changed)
-            {
-                PersistSettingsCore();
-                SimHub.Logging.Current.Info(
-                    "[TF4ALL] Migrated RevLimiter engage threshold default "
-                    + "(0.97 -> 0.85) for presets at the old default.");
-            }
-        }
-
-        private static bool MigrateRevLimiterThresholdField(RevLimiterSettings s)
-        {
-            if (s == null) return false;
-            if (System.Math.Abs(s.Threshold - 0.97f) < 0.001f)
-            {
-                s.Threshold = 0.85f;
-                return true;
-            }
-            return false;
-        }
-
         // ---------- per-section dirty check (vs active preset) ----------
 
         /// <summary>True iff the current values for this section differ from
@@ -14420,21 +14295,13 @@ namespace TrueforceForAll.Plugin
         private static bool Eq(RevLimiterSettings a, RevLimiterSettings b)
         {
             if (a == null || b == null) return a == b;
-            // RedlineRpm is the user's explicit engagement value since the
-            // unification migration. Without it in this comparator, slider
-            // edits to the redline read clean (Save button never appears).
-            bool redlineRpmEq = (a.RedlineRpm.HasValue == b.RedlineRpm.HasValue)
-                && (!a.RedlineRpm.HasValue || a.RedlineRpm.Value == b.RedlineRpm.Value);
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain,      b.Gain)
                 && EqI (a.Freq,      b.Freq)
                 && EqF1(a.PulseFreq, b.PulseFreq)
                 && EqF2(a.DutyCycle, b.DutyCycle)
                 && EqF2(a.ActiveAmp, b.ActiveAmp)
-                && EqF2(a.Threshold, b.Threshold)
-                && redlineRpmEq
                 && EqI (a.RedlineOffsetRpm, b.RedlineOffsetRpm)
-                && a.EngageMode == b.EngageMode
                 && a.Waveform == b.Waveform;
         }
         private static bool Eq(AudioCaptureSettings a, AudioCaptureSettings b)

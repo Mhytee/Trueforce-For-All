@@ -1,4 +1,4 @@
-// Read-only preview of a community submission's body. Opens from the
+﻿// Read-only preview of a community submission's body. Opens from the
 // Community segment's Preview button so the user can see what they are
 // about to download before committing. Branches on summary.Kind:
 //   * "car"    -> CarOverride section breakdown + bundled engines
@@ -477,7 +477,7 @@ namespace TrueforceForAll.Plugin
         private void AddOverrideSections(StackPanel host, JObject ovr)
         {
             AddSection(host, ovr, "EnginePulse",  "Engine pulse");
-            AddSection(host, ovr, "RevLimiter",   "Rev limiter");
+            AddSection(host, ovr, "RevLimiter",   "Redline buzz");
             AddSection(host, ovr, "RoadBumps",    "Road bumps");
             AddSection(host, ovr, "TractionLoss", "Traction loss");
             AddSection(host, ovr, "AxleSlip",     "Axle slip");

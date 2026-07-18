@@ -4,13 +4,11 @@
 // timbre change near redline, for users who run engine pulse low or off, or
 // who just want an unmistakable "shift now / on the limiter" signal.
 //
-// Trigger is RPM-relative against the most accurate "top of the rev range"
-// the active source knows: the car's REDLINE / shift RPM when the game exposes
-// one (RedlineRpm, from SimHub's CarSettings_RedLineRPM, available on iRacing,
-// AC, and any SimHub-fallback title), else the hard rev limit (MaxRpm) for
-// sources without a separate redline (e.g. Forza). engaged when
-// rpm >= reference * Threshold. So the buzz fires at the real shift point where
-// the sim publishes it, instead of always at a fraction of the absolute limiter.
+// Trigger is the resolved redline for the active car: the user's own value
+// (Car facts, per variant, per gear), else the game's telemetry redline
+// (SimHub's CarSettings_RedLineRPM, available on iRacing, AC, and any
+// SimHub-fallback title), else the community consensus, else 0.85 x the hard
+// rev limit (MaxRpm) as the guess for sources without a redline (e.g. Forza).
 // Almost every source surfaces RPM + at least MaxRpm, so unlike the pit limiter
 // this needs no game-specific flag and works wherever RPM is known. A short hold
 // debounces the limiter-bounce flicker (RPM oscillating around the limit) so the
@@ -25,22 +23,18 @@ using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
 {
-    /// <summary>How the rev limiter picks its engage point. Auto trusts the
-    /// game: fire at the redline when the source reports a sane one, else at a
-    /// percentage of the hard limit. The two explicit modes are the manual
-    /// override for when auto-detection misreads (e.g. a game reports a redline
-    /// that's bogus-but-in-range, so the buzz never fires): force Percentage to
-    /// always engage at a % of MaxRpm, or force Redline to always trust the
-    /// reported redline.</summary>
-    public enum RevLimiterEngageMode { Auto, Percentage, Redline }
+    // (RevLimiterEngageMode and the Manual/percentage modes were retired with
+    // the car-facts centralization: the redline is car truth edited in the Car
+    // facts panel, and the cascade below is the only resolution path.)
 
     public sealed class RevLimiterEffect : TelemetryEffect
     {
-        public override string Name => "Rev limiter";
-
-        /// <summary>Engage-point selection. See <see cref="RevLimiterEngageMode"/>.
-        /// Default Auto reproduces the prior behaviour exactly.</summary>
-        public RevLimiterEngageMode EngageMode { get; set; } = RevLimiterEngageMode.Auto;
+        // Display name. "Redline buzz", not "Rev limiter": the effect fires
+        // at the redline START (the shift point), a little below the actual
+        // limiter cutoff, and the old name kept inviting users to submit the
+        // limiter RPM as the redline. Code identifiers + the RevLimiter JSON
+        // keys keep the old name for serialization compat.
+        public override string Name => "Redline buzz";
 
         /// <summary>Carrier tone within each pulse (Hz). Higher than the pit
         /// limiter's 50 Hz thud so it reads as an urgent buzz, not a low
@@ -69,22 +63,12 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>Amplitude while engaged.</summary>
         public float ActiveAmp { get; set; } = 0.35f;
 
-        /// <summary>Fraction of the reference RPM (the car's redline when the
-        /// game exposes one, else MaxRpm) at which the buzz engages. On the
-        /// percentage path (Forza and other no-redline sources) MaxRpm is the
-        /// absolute limiter, which sits above where you actually upshift, so
-        /// 0.85 fires as a usable shift cue instead of only when you bounce off
-        /// the limiter; raise it toward 1.00 to fire later / right on the limiter.
-        /// Clamped to [0.50, 1.00] at use so a stray value can't fire the buzz
-        /// off idle or never fire.</summary>
-        public float Threshold { get; set; } = 0.85f;
-
-        /// <summary>Offset in RPM applied to the engage point ONLY on the
-        /// real-redline path (ignored on the percentage path). Negative fires
-        /// the buzz that many RPM BEFORE the redline (early shift cue);
-        /// positive fires it after. 0 = right at the redline. The effective
-        /// engage point is floored at <see cref="MinEngineRpm"/> so a large
-        /// negative offset can't make it fire off idle.</summary>
+        /// <summary>Offset in RPM applied to the resolved engage point on
+        /// every path. Negative fires the buzz that many RPM BEFORE the
+        /// redline (early shift cue); positive fires it after. 0 = right at
+        /// the redline. The effective engage point is floored at
+        /// <see cref="MinEngineRpm"/> so a large negative offset can't make
+        /// it fire off idle.</summary>
         public float RedlineOffsetRpm { get; set; } = 0.0f;
 
         /// <summary>Optional CarFacts-supplied redline for the active car
@@ -96,24 +80,6 @@ namespace TrueforceForAll.Plugin.Effects
         /// saved. Stage 1 wiring of the CarFacts layer.</summary>
         public int? CarFactsRedline { get; set; }
 
-        /// <summary>Live, unsaved redline the user is currently dragging on the
-        /// slider in Auto mode (a per-variant draft). Top priority in the Auto
-        /// cascade so the buzz + UI preview the dragged value immediately.
-        /// Never persisted; the plugin clears it on variant / car change and
-        /// when the draft is saved (promoted to the variant's UserRedlineRpm)
-        /// or reverted.</summary>
-        public int? PreviewRedlineRpm { get; set; }
-
-        /// <summary>Manual-mode redline value. Mirrors
-        /// <see cref="TrueforceForAll.Plugin.RevLimiterSettings.RedlineRpm"/>;
-        /// the apply path copies the preset's value into the effect on
-        /// each ApplyEngineSettings call. Honored ONLY in Manual mode, where
-        /// the buzz fires at this fixed RPM (plus <see cref="RedlineOffsetRpm"/>)
-        /// regardless of telemetry. In Auto mode the buzz point is derived live
-        /// from the cascade (CarFacts / telemetry / Threshold-percent) so it
-        /// follows MaxRpm changes.</summary>
-        public int? RedlineRpm { get; set; }
-
         /// <summary>Last redline RPM the cascade resolved (the value the buzz
         /// actually fires at, before <see cref="RedlineOffsetRpm"/>). Updated
         /// every engagement pass so the settings UI can show the live, derived
@@ -124,9 +90,9 @@ namespace TrueforceForAll.Plugin.Effects
         /// <summary>True when the active car is electric. Set by the plugin from
         /// the EnginePulse electric resolution. An EV has no engine rev limit to
         /// buzz at, so the limiter stays silent on EVs UNLESS the user has
-        /// explicitly opted in (Manual mode with a value, a pinned per-variant
-        /// redline, or a live slider draft) - covers the rare modern EV with an
-        /// enthusiast manual-style transmission.</summary>
+        /// explicitly opted in with a pinned per-variant / per-gear redline -
+        /// covers the rare modern EV with an enthusiast manual-style
+        /// transmission.</summary>
         public bool IsElectric { get; set; }
 
         /// <summary>The active variant's user redlines keyed by gear (gear 0 =
@@ -212,70 +178,30 @@ namespace TrueforceForAll.Plugin.Effects
             => (!string.IsNullOrEmpty(g) && int.TryParse(g, out int n) && n >= 1) ? n : 0;
 
         // RPM-threshold + hold logic, shared by live telemetry and the REV
-        // self-test. Thresholds against the redline when the source provides it,
-        // else the hard rev limit. Sets _amp; RenderAdd plays it.
-        // Returns the absolute RPM the limiter should fire at, or null
-        // when no value can be resolved (engine not running, no preset
-        // value, no telemetry).
-        //
-        // RedlineRpm semantics across the modes:
-        //   * Manual (or legacy "Redline" enum value): always use
-        //     Settings.RedlineRpm if set; null = engine off.
-        //   * Auto: live slider draft, then the user's per-gear/default
-        //     redline, then the game telemetry redline (sanity-gated),
-        //     then the community per-gear / variant consensus (banded),
-        //     then Threshold-percent of the live MaxRpm, then the 0.85
-        //     default. A stored RedlineRpm is NOT used in Auto (it can't
-        //     follow MaxRpm); the percentage scales instead.
+        // self-test. Sets _amp; RenderAdd plays it. Returns the absolute RPM
+        // the limiter should fire at, or null when no value can be resolved
+        // (engine not running, no telemetry).
         //
         // Order matters: a USER value always beats telemetry (their
         // deliberate correction must never silently no-op), but community
         // consensus deliberately sits BELOW the game telemetry redline.
-        // The game is the source of truth when it reports one; the adopt
-        // prompt is the explicit path that promotes a community value into
-        // a user value, which then outranks telemetry.
+        // The game is the source of truth when it reports one; a user who
+        // disagrees sets their own redline, which then outranks telemetry.
         /// <summary>True when the rev-limiter buzz is firing on the default
         /// 0.85 × MaxRpm estimate because no authoritative redline was
-        /// available (no telemetry redline, no CarFacts, no tuned
-        /// Threshold percentage). The Engine Pulse panel
-        /// surfaces this as a badge so the user knows why the shift cue
-        /// might feel off and gets a nudge to either set a value or
-        /// share telemetry. False in Manual mode (the user explicitly
-        /// chose their value), or whenever any other source contributed.
-        /// </summary>
+        /// available (no user value, no telemetry redline, no community
+        /// value). The Engine Pulse panel surfaces this as a badge so the
+        /// user knows why the shift cue might feel off and gets pointed at
+        /// the Car facts redline to fix it. False whenever any real source
+        /// contributed.</summary>
         public bool IsRedlineGuessed { get; private set; }
 
         private int? ResolveEffectiveRedline(double redlineRpm, double maxRpm)
         {
-            bool manualMode =
-                EngageMode == RevLimiterEngageMode.Redline;   // legacy "Redline" -> Manual
-
-            if (manualMode)
-            {
-                if (RedlineRpm.HasValue && RedlineRpm.Value > MinEngineRpm)
-                {
-                    IsRedlineGuessed = false;
-                    return RedlineRpm.Value;
-                }
-                // Manual without a saved value: fall through to the
-                // Auto cascade rather than failing closed. Matches
-                // legacy behaviour where Redline mode with no telemetry
-                // would still attempt the sanity-gated read.
-            }
-
-            // Auto cascade is per-variant and DERIVED LIVE every frame: a live
-            // slider draft, then the user's per-gear/default redline, then the
-            // game telemetry redline, then the community value, then a percentage
-            // of MaxRpm. (EV suppression is applied per current gear, below.)
-
-            // Live slider draft (unsaved): the user is dragging a redline for
-            // the current variant. Top priority so the buzz + readout preview
-            // it immediately, before they commit it.
-            if (PreviewRedlineRpm.HasValue && PreviewRedlineRpm.Value > MinEngineRpm)
-            {
-                IsRedlineGuessed = false;
-                return PreviewRedlineRpm.Value;
-            }
+            // The cascade is per-variant and DERIVED LIVE every frame: the
+            // user's per-gear/default redline, then the game telemetry
+            // redline, then the community value, then the 0.85 x MaxRpm
+            // guess. (EV suppression is applied per current gear, below.)
 
             // The user's own redline for the CURRENT gear, else their default
             // (gear 0). Per-gear entries override the default for that gear;
@@ -300,8 +226,7 @@ namespace TrueforceForAll.Plugin.Effects
             // silent on an EV instead of falling through to telemetry / the
             // 0.85 guess. This is gear-aware: a per-gear opt-in only un-silences
             // the gear(s) the user configured (covering the rare enthusiast EV
-            // with a manual-style transmission), not the whole car. A live
-            // slider draft already returned above.
+            // with a manual-style transmission), not the whole car.
             if (IsElectric)
             {
                 IsRedlineGuessed = false;
@@ -353,25 +278,6 @@ namespace TrueforceForAll.Plugin.Effects
                 return CarFactsRedline.Value;
             }
 
-            // Percentage path: a tuned Threshold (anything other than the
-            // 0.85 default) is applied to the LIVE MaxRpm every frame so the
-            // buzz auto-follows in-game tune changes (Forza upgrades that move
-            // the rev ceiling). No pinning, no one-time migration: Threshold is
-            // the source of truth and re-derives each call. Snapped to 50 RPM
-            // (not 500) so the derived value is precise without jittering on
-            // telemetry noise.
-            if (maxRpm > MinEngineRpm
-                && Math.Abs(Threshold - 0.85f) > 0.0001f
-                && Threshold >= 0.50f && Threshold <= 1.00f)
-            {
-                int derived = (int)Math.Round(maxRpm * Threshold / 50.0) * 50;
-                if (derived > MinEngineRpm)
-                {
-                    IsRedlineGuessed = false;
-                    return derived;
-                }
-            }
-
             // Default fallback: 0.85 of MaxRpm so games without any
             // tuning still fire a sensible shift cue. This IS the guess
             // case - no one has measured / corrected / submitted, so the
@@ -388,23 +294,17 @@ namespace TrueforceForAll.Plugin.Effects
 
         private void UpdateEngagement(double rpm, double redlineRpm, double maxRpm)
         {
-            // Unified engage-point resolution (in priority order):
-            //   1. EngageMode = Manual + Settings.RedlineRpm set
-            //      (legacy "Redline" enum value collapses here for
-            //      backward compat).
-            //   2. EngageMode = Auto (all DERIVED LIVE each frame, never
-            //      pinned, so the buzz follows MaxRpm / variant changes):
-            //      a. Live slider draft (PreviewRedlineRpm).
-            //      b. The user's own redline for the current gear, else the
-            //         gear-0 default (per-gear overrides + the default).
-            //      c. Game-reported telemetry redline (sanity-gated 0.5..1.02
-            //         x MaxRpm) - the game is the source of truth, so it beats
-            //         the community consensus below.
-            //      d. Community consensus (CarFactsRedline; mainly the no-
-            //         telemetry-redline / Forza case).
-            //      e. Threshold-percent of the live MaxRpm (legacy tuning).
-            //      f. Default fallback: 0.85 x MaxRpm.
-            //   (EVs stay silent after (b) unless the user opted that gear in.)
+            // Engage-point resolution, all DERIVED LIVE each frame (never
+            // pinned, so the buzz follows MaxRpm / variant changes):
+            //   a. The user's own redline for the current gear, else the
+            //      gear-0 default (per-gear overrides + the default).
+            //   b. Game-reported telemetry redline (sanity-gated 0.5..1.02
+            //      x MaxRpm) - the game is the source of truth, so it beats
+            //      the community consensus below.
+            //   c. Community consensus (CarFactsRedline; mainly the no-
+            //      telemetry-redline / Forza case).
+            //   d. Default fallback: 0.85 x MaxRpm (the guess; badged).
+            //   (EVs stay silent after (a) unless the user opted that gear in.)
             int? effectiveRedline = ResolveEffectiveRedline(redlineRpm, maxRpm);
             EffectiveRedlineRpm = effectiveRedline;
 
@@ -452,31 +352,24 @@ namespace TrueforceForAll.Plugin.Effects
         /// engagement logic during a self-test. Runs regardless of IsTesting
         /// so the plugin's scheduled sequence controls the buzz; RenderAdd
         /// outputs the resulting _amp because the test window is open. The
-        /// self-test sweep is built around the maxRpm percentage path, so we
-        /// suppress the CarFactsRedline substitution for the duration of the
-        /// call (otherwise a Forza car with a CarFacts-supplied redline in
-        /// EngageMode.Redline would miss the sweep's 99%-of-MaxRpm peak).</summary>
+        /// self-test sweep is built around the 0.85 x MaxRpm fallback, so we
+        /// suppress the user / community tiers for the duration of the call
+        /// (a pinned redline or per-gear value would otherwise fire across
+        /// the sweep's intended-silent phase).</summary>
         public void DebugFeedRpm(double rpm, double maxRpm)
         {
-            // Suppress every user/community tier so the sweep exercises only the
-            // maxRpm percentage path it's built around (a pinned redline, a per-
-            // gear value, or a live slider draft would otherwise fire across the
-            // intended-silent phase).
             var savedRedline   = CarFactsRedline;
             var savedGears     = UserGearRedlines;
             var savedCommGears = CommunityGearRedlines;
-            var savedPreview   = PreviewRedlineRpm;
             CarFactsRedline = null;
             UserGearRedlines = null;
             CommunityGearRedlines = null;
-            PreviewRedlineRpm = null;
             try { UpdateEngagement(rpm, 0.0, maxRpm); }
             finally
             {
                 CarFactsRedline = savedRedline;
                 UserGearRedlines = savedGears;
                 CommunityGearRedlines = savedCommGears;
-                PreviewRedlineRpm = savedPreview;
             }
         }
 

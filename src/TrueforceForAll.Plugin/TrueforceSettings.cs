@@ -952,13 +952,6 @@ namespace TrueforceForAll.Plugin
         // from MaxRpm and over-learned every game). One-time migration in Init.
         public bool GamesWithRedlineRevalidated { get; set; } = false;
 
-        // Set true once presets still on the old rev-limiter engage default
-        // (0.97) have been bumped to the new default (0.85). On the Forza
-        // percentage path 0.97 only fired when bouncing off the limiter, so the
-        // buzz was effectively dead for most drivers (issue #8). One-time
-        // migration in Init; only touches presets still at the exact old default.
-        public bool RevLimiterThresholdDefaultMigrated { get; set; } = false;
-
         // Per-car active preset assignment. Maps CarId to a preset name in
         // the on-disk car-preset library (TrueforceCars/). When a car is
         // detected, the assigned preset's CarOverride loads into the live
@@ -1843,36 +1836,19 @@ namespace TrueforceForAll.Plugin
         public float PulseFreq  { get; set; } = 20.0f;
         public float DutyCycle  { get; set; } = 0.5f;
         public float ActiveAmp  { get; set; } = 0.35f;
-        // Fraction of MaxRpm on the percentage path. DEPRECATED:
-        // kept for legacy preset deserialization + a one-shot lazy
-        // migration to RedlineRpm below. New presets should leave
-        // this at default (0.85) and tune RedlineRpm instead. The
-        // effect's lazy migration converts Threshold-only presets to
-        // RedlineRpm the first time MaxRpm telemetry is observed.
-        public float Threshold  { get; set; } = 0.85f;
+        // (Threshold, RedlineRpm, and EngageMode were retired with the
+        // car-facts centralization, 2026-07-17: the redline is car truth,
+        // edited in the Car facts panel and stored per variant, not a
+        // preset knob. Old preset JSONs carrying those keys deserialize
+        // harmlessly; the values are ignored. A user whose Manual redline
+        // stops applying will feel the buzz move and set the redline in
+        // Car facts, which also serves the community.)
 
-        // Absolute redline RPM. The unified rev-limiter knob: when set,
-        // the buzz fires at this RPM (plus RedlineOffsetRpm) regardless
-        // of whether the game telemetry exposes its own redline. Null =
-        // fall through to telemetry redline (when sane) or to
-        // MaxRpm * 0.85 as the runtime default. Replaces the old
-        // Threshold-percent + Redline-mode bifurcation so Forza-family
-        // and AC-family titles share one control. Migrated lazily from
-        // legacy Threshold values when the user drives the car.
-        public int?  RedlineRpm { get; set; } = null;
-
-        // RPM offset applied on the real-redline path only (ignored on the
-        // percentage path). Negative = fire before the redline, positive =
-        // after, 0 = right at it. Lets redline-reporting games (AC, iRacing)
-        // tune an early/late shift cue without a percentage.
+        // RPM offset applied to the resolved engage point on every path.
+        // Negative = fire before the redline, positive = after, 0 = right
+        // at it. The one preset-scoped feel knob for WHERE the buzz fires;
+        // the redline itself comes from the Car facts cascade.
         public float RedlineOffsetRpm { get; set; } = 0.0f;
-
-        // Engage-point override. Auto = trust the game (fire at redline if it
-        // reports a sane one, else at Threshold% of MaxRpm). Percentage / Redline
-        // are the manual escape hatch when auto-detection misreads and the buzz
-        // stops firing. Defaults to Auto so existing presets are unchanged.
-        [JsonConverter(typeof(StringEnumConverter))]
-        public RevLimiterEngageMode EngageMode { get; set; } = RevLimiterEngageMode.Auto;
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform Waveform { get; set; } = Waveform.Square;
