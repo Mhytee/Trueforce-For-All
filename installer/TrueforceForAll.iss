@@ -32,7 +32,7 @@
 ; the user agreed to; on a later update it skips the GPL info + EULA + privacy
 ; pages only while the stored revision still matches (see ShouldSkipPage).
 ; Forgetting to bump it would let a changed notice go un-reshown on update.
-#define LegalRevision  "2"
+#define LegalRevision  "3"
 
 [Setup]
 ; AppId is what registers our uninstall entry. Don't change once published.
