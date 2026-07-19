@@ -275,14 +275,25 @@ namespace TrueforceForAll.Plugin
             return g;
         }
 
-        // Build the shared Engine dropdown entries: Auto, every built-in
-        // layout, then the user's saved custom engines. No action entries -
-        // authoring goes through the footer link.
-        private List<EngineOption> BuildEngineOptions()
+        // Build one row's Engine dropdown entries: Auto (labelled with what
+        // detection actually resolves to for THIS variant, so the user can
+        // judge whether to override it), every built-in layout, then the
+        // user's saved custom engines. No action entries - authoring goes
+        // through the footer link.
+        private List<EngineOption> BuildEngineOptions(EngineVariant v)
         {
+            // Mirror the resolver: a variant's auto layout derives from its
+            // stored cylinders + config; EngineConfig.Custom rows ride a
+            // community custom pattern instead.
+            string autoLabel = "Auto (not detected yet)";
+            if (v != null && v.EngineConfig == Effects.EngineConfig.Custom)
+                autoLabel = "Auto (community custom)";
+            else if (v != null && v.Cylinders >= 1 && v.Cylinders <= 16)
+                autoLabel = "Auto (" + Effects.FiringPatternDb.LayoutDisplayName(
+                    Effects.FiringPatternDb.LayoutFromLegacy(v.Cylinders, v.EngineConfig, false)) + ")";
             var options = new List<EngineOption>
             {
-                new EngineOption { Display = "Auto (detect)", Layout = null },
+                new EngineOption { Display = autoLabel, Layout = null },
             };
             foreach (Effects.EngineLayout l in Enum.GetValues(typeof(Effects.EngineLayout)))
             {
@@ -330,7 +341,6 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) { Close(); return; }
             var variants = _plugin.GetActiveCarVariants();
-            var engineOptions = BuildEngineOptions();
             // The variant currently being driven can't be deleted: telemetry
             // would just recreate it, so the delete would appear not to work.
             string activeId = null;
@@ -342,6 +352,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (v == null) continue;
                     bool canEdit = v.Source != CarFactSource.Baked;
+                    var engineOptions = BuildEngineOptions(v);
                     // Show the redline this variant actually resolves to, mirroring
                     // what the rev limiter uses now that "adopt" is retired: the
                     // user's own pin, else the community consensus cached for this
