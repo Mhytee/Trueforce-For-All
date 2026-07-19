@@ -1,18 +1,20 @@
-// Modal editor for a single CustomEngineDef. Opens via SettingsControl
-// when the user picks "Custom..." (new) from the engine dropdown, or via
-// the Edit button on the Custom Engines tab of ManagePresetsDialog.
+// Modal editor for a single CustomEngineDef. Opens via the Manage
+// variants modal ("Create custom engine…" footer link) or via the Edit
+// button on the Custom Engines tab of the preset library.
 //
 // On Save the dialog writes back to the CustomEngineDef passed in; the
 // caller is responsible for adding new entries to TrueforceSettings.CustomEngines
 // and persisting. Cancel closes without mutating the input.
 //
-// UI flow:
-//   - Top: Name textbox, Electric checkbox.
-//   - When Electric: only the Behavior dropdown is shown.
-//   - When Combustion: Shape dropdown + Count slider + Pattern textbox.
-//     Picking a shape or moving the count slider regenerates the pattern
-//     string from FiringPatternDb.BuildPatternString; the user can also
-//     hand-edit the textbox for expert tuning.
+// UI flow: intro explainer, Name textbox, Shape dropdown + Count slider
+// + Pattern textbox. Picking a shape or moving the count slider
+// regenerates the pattern string from FiringPatternDb.BuildPatternString;
+// the user can also hand-edit the textbox for expert tuning.
+//
+// Electric authoring was removed 2026-07-19 (a custom with no pattern
+// only duplicated the built-in Electric engine entry + EV behavior
+// setting). The runtime still honors IsElectric on legacy / imported /
+// community defs; this editor just always authors combustion patterns.
 
 using System;
 using System.Windows;
@@ -35,7 +37,6 @@ namespace TrueforceForAll.Plugin
             // starts in a sensible state; will be overridden in Init.
             _suppress = true;
             ShapeCombo.SelectedIndex = 0;
-            ElectricBehaviorCombo.SelectedIndex = 0;
             _suppress = false;
         }
 
@@ -53,9 +54,6 @@ namespace TrueforceForAll.Plugin
             try
             {
                 NameTextBox.Text = _target.Name ?? "";
-                ElectricCheck.IsChecked = _target.IsElectric;
-                ElectricBehaviorCombo.SelectedIndex =
-                    _target.ElectricMode == ElectricCarMode.Silent ? 1 : 0;
 
                 // Seed combustion fields. Pattern defaults to even-fire 4-cyl
                 // for new entries so the user has something concrete to edit
@@ -78,7 +76,6 @@ namespace TrueforceForAll.Plugin
                 CountSlider.Value = InferPulseCount(PatternTextBox.Text, fallback: 4);
                 CountText.Text = ((int)CountSlider.Value).ToString();
                 ApplyShapeConstraints();
-                UpdateElectricCombustionVisibility();
             }
             finally { _suppress = false; }
         }
@@ -163,27 +160,6 @@ namespace TrueforceForAll.Plugin
             if (n < 1) return fallback;
             if (n > 16) return 16;
             return n;
-        }
-
-        private void Electric_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppress) return;
-            // Same InitializeComponent-ordering guard as Count_ValueChanged.
-            if (ShapeRow == null || ElectricBehaviorRow == null) return;
-            UpdateElectricCombustionVisibility();
-        }
-
-        // Toggle which rows are visible based on the Electric checkbox so the
-        // user never sees a pattern textbox for an EV (or a behavior dropdown
-        // for a combustion entry).
-        private void UpdateElectricCombustionVisibility()
-        {
-            bool isElectric = ElectricCheck.IsChecked == true;
-            ShapeRow.Visibility            = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            CountRow.Visibility            = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            PatternRow.Visibility          = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            PatternHelpRow.Visibility      = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            ElectricBehaviorRow.Visibility = isElectric ? Visibility.Visible   : Visibility.Collapsed;
         }
 
         private void Shape_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -294,31 +270,24 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            bool isElectric = ElectricCheck.IsChecked == true;
             string pattern = (PatternTextBox.Text ?? "").Trim();
-
-            // Validate combustion pattern parses. Don't gate on this for
-            // electric entries (the textbox is hidden / ignored in that mode).
-            if (!isElectric)
+            var parsed = FiringPatternDb.ParseCustom(pattern);
+            if (parsed == null || parsed.Pulses < 1)
             {
-                var parsed = FiringPatternDb.ParseCustom(pattern);
-                if (parsed == null || parsed.Pulses < 1)
-                {
-                    TrueforceDialog.Show(this, "Custom engine",
-                        "The firing pattern couldn't be parsed. Expected format: comma-separated numbers in [0, 1) "
-                        + "with optional ':amplitude' per entry (e.g. 0, 0.25:1.0, 0.5, 0.75:0.85).",
-                        DialogKind.Warning);
-                    PatternTextBox.Focus();
-                    return;
-                }
+                TrueforceDialog.Show(this, "Custom engine",
+                    "The firing pattern couldn't be parsed. Expected format: comma-separated numbers in [0, 1) "
+                    + "with optional ':amplitude' per entry (e.g. 0, 0.25:1.0, 0.5, 0.75:0.85).",
+                    DialogKind.Warning);
+                PatternTextBox.Focus();
+                return;
             }
 
             _target.Name = name;
-            _target.IsElectric = isElectric;
-            _target.ElectricMode = ElectricBehaviorCombo.SelectedIndex == 1
-                ? ElectricCarMode.Silent
-                : ElectricCarMode.MutedHum;
-            _target.Pattern = isElectric ? "" : pattern;
+            // Electric authoring is retired: this editor always writes a
+            // combustion pattern (editing a legacy electric def converts it).
+            _target.IsElectric = false;
+            _target.ElectricMode = ElectricCarMode.MutedHum;
+            _target.Pattern = pattern;
             if (string.IsNullOrEmpty(_target.Id)) _target.Id = Guid.NewGuid().ToString("N");
 
             Saved = true;
