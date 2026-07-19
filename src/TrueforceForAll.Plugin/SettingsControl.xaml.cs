@@ -6848,15 +6848,18 @@ namespace TrueforceForAll.Plugin
                 MaxWidth            = chipWidth * 3 + 1,
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
             };
-            foreach (var r in rows) wrap.Children.Add(BuildSupporterChip(r));
+            for (int i = 0; i < rows.Count; i++) wrap.Children.Add(BuildSupporterChip(rows[i], i));
             SupportersWallPanel.Children.Add(wrap);
         }
 
         // A pill per supporter, tinted by tier (platinum / gold / default blue). Patreon
         // patrons carry a small tier badge on the right; one-time donors show the name alone
-        // (their tier is a bucket label, not a pledge tier).
-        private System.Windows.UIElement BuildSupporterChip(SupportersClient.SupporterRow row)
+        // (their tier is a bucket label, not a pledge tier). The name scales by rank (18px
+        // at the top easing toward the 12px baseline): rank is the only amount signal the
+        // server sends, and a fixed decay keeps sizes stable as the roster grows.
+        private System.Windows.UIElement BuildSupporterChip(SupportersClient.SupporterRow row, int rank)
         {
+            double nameSize = 12 + 6 * Math.Pow(0.7, rank);
             bool patreon = string.Equals(row.Source, "patreon", StringComparison.OrdinalIgnoreCase);
             string t = (row.Tier ?? "").Trim().ToLowerInvariant();
             string accent = t.Contains("platinum") ? "#FFCDD3DE"
@@ -6873,6 +6876,7 @@ namespace TrueforceForAll.Plugin
                 Background      = new System.Windows.Media.SolidColorBrush(bg),
                 BorderBrush     = new System.Windows.Media.SolidColorBrush(col),
                 BorderThickness = new System.Windows.Thickness(1),
+                VerticalAlignment = System.Windows.VerticalAlignment.Center,
             };
             var dock = new System.Windows.Controls.DockPanel { LastChildFill = true };
             if (patreon && !string.IsNullOrWhiteSpace(row.Tier))
@@ -6904,7 +6908,7 @@ namespace TrueforceForAll.Plugin
             var text = new System.Windows.Controls.TextBlock
             {
                 Text              = row.Name,
-                FontSize          = 12,
+                FontSize          = nameSize,
                 FontWeight        = System.Windows.FontWeights.SemiBold,
                 Foreground        = new System.Windows.Media.SolidColorBrush(col),
                 TextTrimming      = System.Windows.TextTrimming.CharacterEllipsis,
