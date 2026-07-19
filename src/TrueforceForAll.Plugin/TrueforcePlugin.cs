@@ -1946,6 +1946,25 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
+            // One-time engine-choice relocation (2026-07 centralization): the
+            // per-car engine picks that used to live on CarOverride.EnginePulse
+            // (Layout / CustomEngineId) move into the matching CarFacts
+            // variants' UserEngineLayout pin. Runs after the car files are
+            // loaded into Settings.CarOverrides and after id normalization so
+            // carIds line up with CarFacts keys. Global/game-preset picks are
+            // dropped deliberately (they aren't car-bound). Idempotent;
+            // flag-gated.
+            if (!Settings.EngineChoiceMovedToCarFactsV1)
+            {
+                try { MigrateEngineChoicesToCarFacts(); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Engine-choice migration failed: {ex.Message}");
+                }
+                Settings.EngineChoiceMovedToCarFactsV1 = true;
+                try { PersistSettingsCore(); } catch { }
+            }
+
             // Anon car facts (0100): whenever sharing is on (the default, or
             // an old opt-in), treat the consent question as answered and make
             // sure the anon id exists (covers fresh installs, the upgrade
@@ -6452,100 +6471,32 @@ namespace TrueforceForAll.Plugin
         {
             if (EnginePulse == null || s == null) return;
 
-            // One-shot legacy migration: pre-flat-enum settings carry
-            // (Cylinders, EngineConfig, FiringOrderEnabled) and a default-Auto
-            // Layout. Fold them into Layout and clear so we don't migrate
-            // again on the next apply. Layout != Auto means the user (or a
-            // prior migration) has already set the new field.
-            if (s.Layout == Effects.EngineLayout.Auto
-                && (s.Cylinders != 0 || s.EngineConfig != Effects.EngineConfig.Auto))
-            {
-                s.Layout = Effects.FiringPatternDb.LayoutFromLegacy(
-                    s.Cylinders, s.EngineConfig, false);
-                s.Cylinders     = 0;
-                s.EngineConfig  = Effects.EngineConfig.Auto;
-            }
-
-            // Custom-engine library migration: pre-library presets stored the
-            // custom pattern inline in CustomFiringPattern + Name. Mint a
-            // library entry (if one with this pattern doesn't exist yet),
-            // point CustomEngineId at it, and clear the inline strings so the
-            // next apply skips this branch.
-            if (s.Layout == Effects.EngineLayout.Custom
-                && string.IsNullOrEmpty(s.CustomEngineId)
-                && !string.IsNullOrWhiteSpace(s.CustomFiringPattern))
-            {
-                var def = new CustomEngineDef
-                {
-                    Id         = Guid.NewGuid().ToString("N"),
-                    Name       = string.IsNullOrWhiteSpace(s.CustomFiringPatternName)
-                                    ? "Imported custom"
-                                    : s.CustomFiringPatternName.Trim(),
-                    IsElectric = false,
-                    Pattern    = s.CustomFiringPattern,
-                };
-                if (Settings.CustomEngines == null)
-                    Settings.CustomEngines = new System.Collections.Generic.List<CustomEngineDef>();
-                Settings.CustomEngines.Add(def);
-                s.CustomEngineId           = def.Id;
-                s.CustomFiringPattern      = "";
-                s.CustomFiringPatternName  = "";
-            }
+            // 2026-07 engine centralization: the engine TYPE no longer comes
+            // from the preset. EnginePulse.Layout / CustomPattern /
+            // ActiveCustomIsElectric are owned by the car-facts resolution
+            // (the variant's UserEngineLayout pin; see
+            // ResolveAndApplyCarFactsForActiveCar), which re-runs after preset
+            // applies. The legacy Layout / CustomEngineId fields on
+            // EnginePulseSettings are relocated once at Init
+            // (EngineChoiceMovedToCarFactsV1) and ignored here. This method
+            // applies FEEL only.
 
             EnginePulse.Enabled            = s.Enabled;
             EnginePulse.Gain               = SafeMath.SafeFloat(s.Gain, 0.0f, 10.0f, 1.0f);
             EnginePulse.PitchMultiplier    = SafeMath.SafeFloat(s.Pitch, 0.1f, 4.0f, 1.0f);
             EnginePulse.LowpassHz          = SafeMath.SafeDouble(s.LowpassHz, 20.0, 20000.0, 12000.0);
             EnginePulse.Waveform           = s.Waveform;
-            EnginePulse.Layout             = s.Layout;
             EnginePulse.LoadLayerEnabled   = s.LoadLayerEnabled;
             EnginePulse.LoadLayerGain      = SafeMath.SafeFloat(s.LoadLayerGain, 0.0f, 10.0f, 1.0f);
             EnginePulse.HighRpmBoostEnabled = s.HighRpmBoostEnabled;
             EnginePulse.HighRpmBoostAmount = SafeMath.SafeFloat(s.HighRpmBoostAmount, 0.0f, 2.0f, 0.4f);
 
-            // Custom-engine resolution. When Layout == Custom, look up the
-            // referenced entry in the global library and write its pattern /
-            // electric flag into the runtime effect.
-            CustomEngineDef activeCustom = null;
-            if (s.Layout == Effects.EngineLayout.Custom
-                && !string.IsNullOrEmpty(s.CustomEngineId)
-                && Settings.CustomEngines != null)
-            {
-                foreach (var c in Settings.CustomEngines)
-                {
-                    if (string.Equals(c?.Id, s.CustomEngineId, StringComparison.Ordinal))
-                    {
-                        activeCustom = c;
-                        break;
-                    }
-                }
-            }
-            EnginePulse.ActiveCustomIsElectric = activeCustom != null && activeCustom.IsElectric;
-            EnginePulse.CustomPattern = activeCustom != null && !activeCustom.IsElectric
-                                        && !string.IsNullOrWhiteSpace(activeCustom.Pattern)
-                ? Effects.FiringPatternDb.ParseCustom(activeCustom.Pattern)
-                : null;
-
-            // Runtime safety net: a Custom layout we couldn't resolve to a real
-            // engine (deleted out from under the preset, dangling after a sync
-            // restore, or never picked) plays as Auto instead of going silent,
-            // so the wheel keeps a sensible resolver/telemetry-driven engine feel
-            // until the user repicks. Deleting an engine also eagerly rewrites
-            // stored presets to Auto; this covers anything that path missed.
-            if (s.Layout == Effects.EngineLayout.Custom && activeCustom == null)
-            {
-                EnginePulse.Layout = Effects.EngineLayout.Auto;
-                SimHub.Logging.Current.Info(
-                    $"[TF4ALL] Custom engine Id '{s.CustomEngineId}' is not in the library; "
-                    + "falling back to Auto engine layout.");
-            }
-
-            // ElectricMode cascade: if the active custom is electric, its mode
-            // wins (a per-custom override of the per-preset default). Else
-            // the per-preset setting drives EV behavior, matching the prior
-            // single-Electric-mode model.
-            EnginePulse.ElectricMode = (activeCustom != null && activeCustom.IsElectric)
-                ? activeCustom.ElectricMode
+            // ElectricMode cascade: if the pinned custom engine is electric,
+            // its mode wins (a per-custom override of the per-preset default).
+            // Else the per-preset setting drives EV behavior.
+            var pinCustom = _activePinnedCustomEngine;
+            EnginePulse.ElectricMode = (pinCustom != null && pinCustom.IsElectric)
+                ? pinCustom.ElectricMode
                 : s.ElectricMode;
         }
         private void ApplyBumpsSettings(RoadBumpsSettings s)
@@ -10644,21 +10595,58 @@ namespace TrueforceForAll.Plugin
                 RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
             }
 
+            // User engine pin (Car facts): the engine analogue of the redline
+            // pin. A pinned UserEngineLayout on the stored variant wins the
+            // whole cascade below by writing the effect's user slot
+            // (EnginePulse.Layout); auto-detection keeps resolving underneath
+            // so clearing the pin falls straight back to it. A Custom pin
+            // resolves against the library; a dangling reference plays as
+            // Auto (same safety net the retired preset path had).
+            var pinnedVariant = FindActiveStoredVariant();
+            var pinLayout = pinnedVariant?.UserEngineLayout;
+            CustomEngineDef pinCustom = null;
+            if (pinLayout == Effects.EngineLayout.Custom)
+            {
+                string pinId = pinnedVariant?.UserCustomEngineId;
+                if (!string.IsNullOrEmpty(pinId) && Settings.CustomEngines != null)
+                {
+                    foreach (var c in Settings.CustomEngines)
+                        if (string.Equals(c?.Id, pinId, StringComparison.Ordinal)) { pinCustom = c; break; }
+                }
+                if (pinCustom == null)
+                {
+                    pinLayout = null;
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Pinned custom engine Id '{pinId}' is not in the library; "
+                        + "falling back to Auto engine layout.");
+                }
+            }
+            _activePinnedCustomEngine = pinCustom;
+            EnginePulse.Layout = pinLayout ?? Effects.EngineLayout.Auto;
+            EnginePulse.ActiveCustomIsElectric = pinCustom != null && pinCustom.IsElectric;
+            EnginePulse.CustomPattern = pinCustom != null && !pinCustom.IsElectric
+                                        && !string.IsNullOrWhiteSpace(pinCustom.Pattern)
+                ? Effects.FiringPatternDb.ParseCustom(pinCustom.Pattern)
+                : null;
+            if (pinCustom != null && pinCustom.IsElectric)
+                EnginePulse.ElectricMode = pinCustom.ElectricMode;
+            else if (ActiveEngine != null)
+                EnginePulse.ElectricMode = ActiveEngine.ElectricMode;
+
             // Community Custom: special apply path. The synthesized
             // variant carries cyl=0 + EngineConfig.Custom; the firing
             // pattern + electric flag come from the community def
             // (_activeCarCommunityConsensus.Custom). Only honored when
-            // the user's preset is Layout=Auto - an explicit Custom +
-            // CustomEngineId already drives the path through
-            // ApplyEnginePulseSettings, which mustn't be overridden.
+            // the user hasn't pinned an engine for this variant - an
+            // explicit pin already drove the path above and mustn't be
+            // overridden.
             bool communityCustomAvailable =
                    haveVariant
                 && v.Source == CarFactSource.Community
                 && v.EngineConfig == Effects.EngineConfig.Custom
                 && _activeCarCommunityConsensus?.Custom != null
                 && !string.IsNullOrEmpty(_activeCarCommunityConsensus.Custom.Name)
-                && ActiveEngine != null
-                && ActiveEngine.Layout == Effects.EngineLayout.Auto;
+                && pinLayout == null;
             if (communityCustomAvailable)
             {
                 var def = _activeCarCommunityConsensus.Custom;
@@ -11082,6 +11070,120 @@ namespace TrueforceForAll.Plugin
             return rpm;
         }
 
+        // The library CustomEngineDef the active variant's engine pin resolves
+        // to, set by ResolveAndApplyCarFactsForActiveCar. Read by
+        // ApplyEngineSettings so a feel-slider apply can't clobber an electric
+        // custom's ElectricMode override. null = no custom pinned.
+        private CustomEngineDef _activePinnedCustomEngine;
+
+        /// <summary>The user's saved per-variant engine pin for the active
+        /// variant, or (null, "") when they haven't pinned one.</summary>
+        public (Effects.EngineLayout? layout, string customId) GetActiveVariantUserEngine()
+        {
+            var v = FindActiveStoredVariant();
+            return (v?.UserEngineLayout, v?.UserCustomEngineId ?? "");
+        }
+
+        /// <summary>Commit the given engine type as THIS variant's user pin
+        /// (the engine analogue of SaveActiveVariantUserRedline). Auto / null
+        /// clears the pin so the cascade (community / telemetry / heuristic)
+        /// takes over again; customId is only meaningful with Layout ==
+        /// Custom. Persists and re-resolves. Returns false when no variant
+        /// signature is available yet (no telemetry observed).</summary>
+        public bool SaveActiveVariantUserEngine(Effects.EngineLayout? layout, string customId)
+        {
+            if (Settings == null) return false;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (layout == Effects.EngineLayout.Auto) layout = null;   // Auto = no pin
+            lock (_carFactsLock)
+            {
+                var variant = EnsureVariantForLiveSignatureCore_Locked(out _);
+                if (variant == null) return false;  // no discriminator observed yet
+                variant.UserEngineLayout   = layout;
+                variant.UserCustomEngineId = layout == Effects.EngineLayout.Custom ? (customId ?? "") : "";
+            }
+            ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return true;
+        }
+
+        /// <summary>Re-run car-facts resolution for the active car. Public
+        /// wrapper for UI paths that change resolution inputs without going
+        /// through a pin save (e.g. editing a custom engine's pattern).</summary>
+        public void ReresolveActiveCarFacts()
+        {
+            if (!string.IsNullOrEmpty(_activeCarId))
+                ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+        }
+
+        // One-time relocation of per-car engine picks (2026-07 engine
+        // centralization). For every cached CarOverride whose EnginePulse
+        // carries an explicit engine choice (after folding the two pre-2026
+        // legacy shapes), pin every variant of every CarFacts bundle for that
+        // carId that doesn't already carry a pin. CarOverrides is keyed by
+        // carId alone (game-agnostic, exactly as the old apply path was), so
+        // all games' bundles for that carId receive the pin - a faithful
+        // translation of the old behavior. Cars with a pick but no facts
+        // bundle yet lose the pick (auto-detect takes over on next drive).
+        private void MigrateEngineChoicesToCarFacts()
+        {
+            if (Settings?.CarOverrides == null || Settings.CarFacts == null) return;
+            int pinned = 0;
+            foreach (var kv in Settings.CarOverrides)
+            {
+                var s = kv.Value?.EnginePulse;
+                if (s == null) continue;
+
+                // Fold the pre-flat-enum shape (Cylinders + EngineConfig).
+                var layout = s.Layout;
+                if (layout == Effects.EngineLayout.Auto
+                    && (s.Cylinders != 0 || s.EngineConfig != Effects.EngineConfig.Auto))
+                    layout = Effects.FiringPatternDb.LayoutFromLegacy(s.Cylinders, s.EngineConfig, false);
+
+                // Fold the pre-library inline custom pattern into a library def.
+                string customId = s.CustomEngineId ?? "";
+                if (layout == Effects.EngineLayout.Custom && string.IsNullOrEmpty(customId)
+                    && !string.IsNullOrWhiteSpace(s.CustomFiringPattern))
+                {
+                    var def = new CustomEngineDef
+                    {
+                        Id         = Guid.NewGuid().ToString("N"),
+                        Name       = string.IsNullOrWhiteSpace(s.CustomFiringPatternName)
+                                        ? "Imported custom" : s.CustomFiringPatternName.Trim(),
+                        IsElectric = false,
+                        Pattern    = s.CustomFiringPattern,
+                    };
+                    if (Settings.CustomEngines == null)
+                        Settings.CustomEngines = new System.Collections.Generic.List<CustomEngineDef>();
+                    Settings.CustomEngines.Add(def);
+                    customId = def.Id;
+                }
+                if (layout == Effects.EngineLayout.Auto) continue;
+                if (layout == Effects.EngineLayout.Custom && string.IsNullOrEmpty(customId)) continue;
+
+                string carId = kv.Key;
+                if (string.IsNullOrEmpty(carId)) continue;
+                lock (_carFactsLock)
+                {
+                    foreach (var fb in Settings.CarFacts)
+                    {
+                        if (fb.Value?.EngineVariants == null) continue;
+                        if (!fb.Key.EndsWith("/" + carId, StringComparison.Ordinal)) continue;
+                        foreach (var variant in fb.Value.EngineVariants)
+                        {
+                            if (variant == null || variant.UserEngineLayout != null) continue;
+                            variant.UserEngineLayout   = layout;
+                            variant.UserCustomEngineId = layout == Effects.EngineLayout.Custom ? customId : "";
+                            pinned++;
+                        }
+                    }
+                }
+            }
+            if (pinned > 0)
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Engine-choice migration: pinned {pinned} variant(s) from per-car presets.");
+        }
+
         // NOTE: "adopt community redline" was retired (in Auto the cascade already
         // applies the community value directly, so copying it into a local pin was
         // ceremony), and the Confirm banner that replaced it was retired too with
@@ -11239,7 +11341,7 @@ namespace TrueforceForAll.Plugin
             public bool HasVariant;
             public int Cylinders;               // 0 = unknown
             public string EngineTypeDisplay;    // resolved layout: "V8" / "Inline 6" / "Rotary"; null if unknown
-            public bool EngineTypeIsUserOverride; // the user picked a layout (combo != Auto)
+            public bool EngineTypeIsUserOverride; // the user pinned a layout in Car facts (variant UserEngineLayout)
             public string EngineTypeProvenance;   // "user" | "community" | "game" | "auto"
             public int? MaxRpm;                 // the rev ceiling that defines this variant / tune
             public string VariantLabel;
@@ -11286,8 +11388,9 @@ namespace TrueforceForAll.Plugin
             if (layout != Effects.EngineLayout.Auto)
                 s.EngineTypeDisplay = Effects.FiringPatternDb.LayoutDisplayName(layout);
 
-            var esForType = ActiveEngine;
-            s.EngineTypeIsUserOverride = esForType != null && esForType.Layout != Effects.EngineLayout.Auto;
+            // "User" = a Car facts pin on the active variant (the preset's
+            // Layout field is legacy since the 2026-07 centralization).
+            s.EngineTypeIsUserOverride = FindActiveStoredVariant()?.UserEngineLayout != null;
             if (s.EngineTypeIsUserOverride) s.EngineTypeProvenance = "user";
             else
             {
@@ -14100,6 +14203,12 @@ namespace TrueforceForAll.Plugin
 
         private static bool Eq(EnginePulseSettings a, EnginePulseSettings b)
         {
+            // Layout / CustomEngineId / CustomFiringPattern(Name) are legacy
+            // fields since the 2026-07 engine centralization (the engine type
+            // lives in Car facts now), so they no longer participate in
+            // preset equality. EqIgnoringLayout and
+            // IsEngineSectionOnlyLayoutDirty were deleted with the move: an
+            // engine pick can't dirty a preset anymore.
             if (a == null || b == null) return a == b;
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain,      b.Gain)
@@ -14107,78 +14216,10 @@ namespace TrueforceForAll.Plugin
                 && EqI (a.LowpassHz, b.LowpassHz)
                 && a.Waveform == b.Waveform
                 && a.ElectricMode == b.ElectricMode
-                && a.Layout == b.Layout
-                && string.Equals(a.CustomEngineId ?? "", b.CustomEngineId ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPattern ?? "", b.CustomFiringPattern ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPatternName ?? "", b.CustomFiringPatternName ?? "", System.StringComparison.Ordinal)
                 && a.LoadLayerEnabled    == b.LoadLayerEnabled
                 && EqF2(a.LoadLayerGain,      b.LoadLayerGain)
                 && a.HighRpmBoostEnabled == b.HighRpmBoostEnabled
                 && EqF2(a.HighRpmBoostAmount, b.HighRpmBoostAmount);
-        }
-
-        // Same as Eq(EnginePulseSettings) but ignores the Layout field.
-        // Used by IsEngineSectionOnlyLayoutDirty so the save-flow popover
-        // can skip the car-vs-game choice when the user only changed the
-        // car-fact axis (game default is meaningless for "what's actually
-        // in this car").
-        private static bool EqIgnoringLayout(EnginePulseSettings a, EnginePulseSettings b)
-        {
-            if (a == null || b == null) return a == b;
-            return a.Enabled == b.Enabled
-                && EqF2(a.Gain,      b.Gain)
-                && EqF2(a.Pitch,     b.Pitch)
-                && EqI (a.LowpassHz, b.LowpassHz)
-                && a.Waveform == b.Waveform
-                && a.ElectricMode == b.ElectricMode
-                // Layout intentionally skipped
-                && string.Equals(a.CustomEngineId ?? "", b.CustomEngineId ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPattern ?? "", b.CustomFiringPattern ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPatternName ?? "", b.CustomFiringPatternName ?? "", System.StringComparison.Ordinal)
-                && a.LoadLayerEnabled    == b.LoadLayerEnabled
-                && EqF2(a.LoadLayerGain,      b.LoadLayerGain)
-                && a.HighRpmBoostEnabled == b.HighRpmBoostEnabled
-                && EqF2(a.HighRpmBoostAmount, b.HighRpmBoostAmount);
-        }
-
-        /// <summary>True iff the Engine section is dirty AND the ONLY thing
-        /// that's different from the saved baseline is the Layout field.
-        /// Lets the save-flow popover skip the car-vs-game-default choice in
-        /// the common car-fact-only case: when you just picked a different
-        /// engine type, the only sensible save target is the car. Mirrors
-        /// IsSectionDirty's two-branch baseline lookup so the comparison
-        /// uses the same anchor.</summary>
-        public bool IsEngineSectionOnlyLayoutDirty()
-        {
-            if (!IsSectionDirty(SectionKind.Engine)) return false;
-            var live = EnginePulse == null ? null : ActiveEngine;
-            if (live == null) return false;
-
-            EnginePulseSettings baseline = null;
-
-            // Branch 1 (matches IsSectionDirty's hasGamePreset path): compare
-            // live ActiveEngine against the game preset's EnginePulse.
-            if (!string.IsNullOrEmpty(_activePresetName)
-                && Settings?.Presets != null
-                && Settings.Presets.TryGetValue(_activePresetName, out var snap)
-                && snap != null)
-            {
-                baseline = snap.EnginePulse;
-            }
-            // Branch 2: per-car override case (no game preset).
-            else if (!string.IsNullOrEmpty(_activeCarId)
-                     && Settings?.CarOverrides != null
-                     && Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo)
-                     && liveCo?.EnginePulse != null)
-            {
-                _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var savedCo);
-                live = liveCo.EnginePulse;
-                baseline = savedCo?.EnginePulse;
-            }
-            if (baseline == null) return false;
-
-            // Only Layout differs iff non-Layout fields match AND Layout doesn't.
-            return EqIgnoringLayout(live, baseline) && live.Layout != baseline.Layout;
         }
         private static bool Eq(RoadBumpsSettings a, RoadBumpsSettings b)
         {
@@ -17119,6 +17160,30 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             { SimHub.Logging.Current.Warn($"[TF4ALL] Engine auto-fallback car-preset sweep failed: {ex.Message}"); }
+
+            // Car facts variant pins (2026-07 centralization): clear any
+            // UserEngineLayout pin that referenced a deleted custom so the
+            // variant falls back to the auto cascade instead of dangling.
+            lock (_carFactsLock)
+            {
+                if (Settings?.CarFacts != null)
+                    foreach (var fb in Settings.CarFacts.Values)
+                    {
+                        if (fb?.EngineVariants == null) continue;
+                        foreach (var variant in fb.EngineVariants)
+                        {
+                            if (variant == null) continue;
+                            if (variant.UserEngineLayout == Effects.EngineLayout.Custom
+                                && !string.IsNullOrEmpty(variant.UserCustomEngineId)
+                                && deletedIds.Contains(variant.UserCustomEngineId))
+                            {
+                                variant.UserEngineLayout   = null;
+                                variant.UserCustomEngineId = "";
+                                rewritten++;
+                            }
+                        }
+                    }
+            }
 
             return rewritten;
         }

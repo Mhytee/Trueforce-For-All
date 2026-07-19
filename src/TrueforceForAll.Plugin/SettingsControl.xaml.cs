@@ -731,13 +731,11 @@ namespace TrueforceForAll.Plugin
                         EngineHighRpmBoostText.Text          = es.HighRpmBoostAmount.ToString("F2");
                     }
 
-                    // Engine layout dropdown is populated dynamically (built-ins
-                    // + user-saved customs + action entries). ApplyEngineSettings
-                    // migrates any pre-flat-enum (Cylinders, EngineConfig) state
-                    // into Layout before we read it here.
+                    // Car facts engine dropdown is populated dynamically
+                    // (built-ins + user-saved customs); selection reflects the
+                    // active variant's pin.
                     RebuildEngineLayoutDropdown();
-                    UpdateFiringPatternReadout(es);
-                    RebuildEngineVariantPicker();
+                    UpdateFiringPatternReadout();
                 }
                 RefreshCarFactsPanel();
                 RebuildPerGearEditors();
@@ -1362,9 +1360,12 @@ namespace TrueforceForAll.Plugin
                 if (EngineLayoutAutoText != null)
                 {
                     var ep = _plugin.EnginePulse;
-                    var esLive = _plugin.ActiveEngine;
                     string activeCar = _plugin.ActiveCarId;
-                    bool userIsAuto = esLive != null && esLive.Layout == Effects.EngineLayout.Auto;
+                    // The user's engine choice is the Car facts variant pin
+                    // (the preset Layout field is legacy since the 2026-07
+                    // centralization).
+                    var (pinnedLayout, _) = _plugin.GetActiveVariantUserEngine();
+                    bool userIsAuto = pinnedLayout == null;
 
                     if (ep != null && userIsAuto && ep.AutoLayout is Effects.EngineLayout autoL)
                     {
@@ -1431,17 +1432,16 @@ namespace TrueforceForAll.Plugin
                             $"Could not auto-detect engine type for '{activeCar}'. "
                             + "Pick the closest match from the list, or use Test to A/B.";
                     }
-                    else if (ep != null && esLive != null
-                             && esLive.Layout != Effects.EngineLayout.Auto
+                    else if (ep != null && pinnedLayout is Effects.EngineLayout pinnedL
                              && ep.AutoLayout is Effects.EngineLayout autoOverridden
-                             && autoOverridden != esLive.Layout)
+                             && autoOverridden != pinnedL)
                     {
-                        // Manual override that disagrees with the resolver.
+                        // User pin that disagrees with the resolver.
                         string srcSuffix = string.IsNullOrEmpty(ep.AutoLayoutSource)
                             ? ""
                             : $" ({ep.AutoLayoutSource})";
                         EngineLayoutAutoText.Text =
-                            $"Manual override: {Effects.FiringPatternDb.LayoutDisplayName(esLive.Layout)}. "
+                            $"Your pick: {Effects.FiringPatternDb.LayoutDisplayName(pinnedL)}. "
                             + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}{srcSuffix}. "
                             + "Pick Auto to use detection.";
                     }
@@ -1450,11 +1450,10 @@ namespace TrueforceForAll.Plugin
                         EngineLayoutAutoText.Text = "";
                     }
 
-                    // Engine-data submission is driven by the save-flow
-                    // prompt (MaybePromptToSubmitEngineData) directly, not
-                    // by a panel button. The Engine type combo + cyl is the
-                    // correction surface; saving and diverging from auto-
-                    // detect fires the per-field share prompt.
+                    // Engine-data submission fires directly from the Car
+                    // facts engine pick (CommitEnginePin ->
+                    // MaybePromptToSubmitEngineData); there is no panel
+                    // button and no save-flow hook needed.
 
                     // Community context: surface what other drivers said
                     // for THIS car upfront so the user can confirm or correct
@@ -5080,29 +5079,27 @@ namespace TrueforceForAll.Plugin
         //                implies combustion"). Form is a correction.
         private enum EngineSubmitState { None, Contribute, Correct }
 
-        // Classifier shared by the button visibility logic, the save-time
-        // prompt, and the form body's CONFIRM/CONTRIB/CORRECTION marker.
-        // Reads live UI/preset values via _plugin.EnginePulse + ActiveEngine.
+        // Classifier shared by the pin-time prompt and the form body's
+        // CONFIRM/CONTRIB/CORRECTION marker. Reads the resolver state via
+        // _plugin.EnginePulse and the user's choice via the Car facts pin.
         private EngineSubmitState GetEngineSubmitState()
         {
             if (_plugin == null) return EngineSubmitState.None;
             var ep = _plugin.EnginePulse;
-            var es = _plugin.ActiveEngine;
-            if (ep == null || es == null) return EngineSubmitState.None;
+            if (ep == null) return EngineSubmitState.None;
 
             string src = ep.AutoLayoutSource;
             bool detected = !string.IsNullOrEmpty(src) && ep.AutoLayout.HasValue;
-            var userLayout = es.Layout;
-            string customRaw = es.CustomFiringPattern;
+            var (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
+            var userLayout = pinLayout ?? Effects.EngineLayout.Auto;
 
             bool layoutDiff = userLayout != Effects.EngineLayout.Auto
                            && (!detected || userLayout != ep.AutoLayout.Value);
             bool customDiff = userLayout == Effects.EngineLayout.Custom
-                           && !string.IsNullOrEmpty(customRaw);
+                           && !string.IsNullOrEmpty(pinCustomId);
 
             bool anyDiff   = layoutDiff || customDiff;
-            bool userHasData = userLayout != Effects.EngineLayout.Auto
-                            || !string.IsNullOrEmpty(customRaw);
+            bool userHasData = userLayout != Effects.EngineLayout.Auto;
 
             if (!detected)
                 return userHasData ? EngineSubmitState.Contribute : EngineSubmitState.None;
@@ -5128,20 +5125,20 @@ namespace TrueforceForAll.Plugin
         // Classifier (GetEngineSubmitState) is reused unchanged:
         //   Contribute: no detection, user added data.
         //   Correct:    detection present, user's saved values disagree.
-        // Custom-engine submission flow. Fires from the engine save path
-        // when ActiveEngine.Layout == Custom. Resolves the user's
-        // CustomEngineId to a CustomEngineDef in their library, then runs
+        // Custom-engine submission flow. Fires from the engine pin path
+        // when the pinned engine is a Custom. Resolves the pinned
+        // CustomEngineId to a CustomEngineDef in the library, then runs
         // the one-time car-data consent gate and submits silently via
         // SubmitCustomEngineAsync. Receivers synthesize the def
         // transiently - no library import.
         private void MaybePromptToSubmitCustomEngineData(string carId, string game)
         {
             if (_plugin == null) return;
-            var es = _plugin.ActiveEngine;
-            if (es == null || es.Layout != Effects.EngineLayout.Custom) return;
-            if (string.IsNullOrEmpty(es.CustomEngineId)) return;
+            var (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
+            if (pinLayout != Effects.EngineLayout.Custom) return;
+            if (string.IsNullOrEmpty(pinCustomId)) return;
 
-            // Look up the def in the user's library. If the preset
+            // Look up the def in the user's library. If the pin
             // references a Guid that no longer exists locally there's
             // nothing to share (the engine wouldn't play anyway).
             CustomEngineDef def = null;
@@ -5149,7 +5146,7 @@ namespace TrueforceForAll.Plugin
             {
                 foreach (var c in _plugin.Settings.CustomEngines)
                 {
-                    if (c != null && string.Equals(c.Id, es.CustomEngineId, StringComparison.Ordinal))
+                    if (c != null && string.Equals(c.Id, pinCustomId, StringComparison.Ordinal))
                     { def = c; break; }
                 }
             }
@@ -5322,16 +5319,15 @@ namespace TrueforceForAll.Plugin
 
             string game = _plugin.ActiveGame;
             if (string.IsNullOrEmpty(game)) return;
-            var es = _plugin.ActiveEngine;
             var ep = _plugin.EnginePulse;
-            if (es == null) return;
 
             // Custom layouts get a dedicated submit path: the def (name +
             // pattern + electric) rides the payload so receivers can
             // synthesize without having it in their library. Auto and
             // Electric never submit - Auto is "I don't know" and Electric
             // is a different feature.
-            var userLayout = es.Layout;
+            var (pinLayout, _) = _plugin.GetActiveVariantUserEngine();
+            var userLayout = pinLayout ?? Effects.EngineLayout.Auto;
             if (userLayout == Effects.EngineLayout.Custom)
             {
                 MaybePromptToSubmitCustomEngineData(carId, game);
@@ -5634,126 +5630,22 @@ namespace TrueforceForAll.Plugin
         /// nothing for the user to pick between, and showing an empty
         /// combo would add visual noise to every non-Forza car. The
         /// "Manage variants..." link is collapsed in lockstep.</summary>
-        private void RebuildEngineVariantPicker()
-        {
-            if (EngineVariantRow == null || EngineVariantActiveText == null) return;
-            if (_plugin == null) { EngineVariantRow.Visibility = Visibility.Collapsed; return; }
+        // (Removed with the 2026-07 engine centralization: the Engine pulse
+        // panel's variant readout row + its Manage link. The Car facts panel's
+        // "Manage variants…" link is the one entry point; the manage window
+        // itself shows which variant is live.)
 
-            var variants = _plugin.GetActiveCarVariants();
-            // Show the row + manage link as soon as there's at least one
-            // stored variant for this car. With silent auto-create on the
-            // first telemetry-with-discriminator observation, every car
-            // ends up with a row here once telemetry has been seen.
-            // Hide it only when the bundle is empty (game / car not loaded,
-            // telemetry hasn't observed cyl yet).
-            if (variants == null || variants.Count == 0)
-            {
-                EngineVariantRow.Visibility       = Visibility.Collapsed;
-                if (EngineVariantManageLink != null)
-                    EngineVariantManageLink.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            // Identify the variant the resolver picked for live telemetry.
-            // For a single-variant car, that's the only row. For multiple,
-            // PickStoredVariant's signature match wins; mirror that pick
-            // by hand here (cyl + maxRpm band + redline band).
-            EngineVariant active = null;
-            if (variants.Count == 1)
-            {
-                active = variants[0];
-            }
-            else
-            {
-                // Mirror PickStoredVariant's signature match: cyl falls back
-                // to CatalogCyl (resolver/bake) for SimHub-fallback games
-                // whose telemetry doesn't carry NumCylinders.
-                int? telCyl = _plugin.EnginePulse?.ObservedCyl;
-                if (!telCyl.HasValue || telCyl.Value < 1)
-                {
-                    int? cat = _plugin.EnginePulse?.CatalogCyl;
-                    if (cat.HasValue && cat.Value >= 1 && cat.Value <= 16)
-                        telCyl = cat;
-                }
-                double telMax = _plugin.EnginePulse?.ObservedMaxRpm ?? 0;
-                double telRed = _plugin.EnginePulse?.ObservedRedlineRpm ?? 0;
-                int telMaxBand = telMax >= 500 ? (int)Math.Round(telMax / 500.0) * 500 : 0;
-                int telRedBand = telRed >= 500 ? (int)Math.Round(telRed / 500.0) * 500 : 0;
-                for (int i = 0; i < variants.Count; i++)
-                {
-                    var v = variants[i];
-                    if (v == null) continue;
-                    if (v.Cylinders >= 1 && telCyl.HasValue
-                        && v.Cylinders != telCyl.Value) continue;
-                    if (v.MaxRpm.HasValue && telMaxBand > 0
-                        && ((int)Math.Round(v.MaxRpm.Value / 500.0) * 500) != telMaxBand) continue;
-                    if (v.RedlineRpm.HasValue && telRedBand > 0
-                        && ((int)Math.Round(v.RedlineRpm.Value / 500.0) * 500) != telRedBand) continue;
-                    active = v;
-                    break;
-                }
-                if (active == null) active = variants[0];
-            }
-
-            string sourceLabel = MapCarFactSourceForCombo(active.Source);
-            string label = string.IsNullOrEmpty(active.Label) ? "(unnamed)" : active.Label;
-            EngineVariantActiveText.Text = label + "  (" + sourceLabel + ")";
-
-            EngineVariantRow.Visibility = Visibility.Visible;
-            if (EngineVariantManageLink != null)
-                EngineVariantManageLink.Visibility = Visibility.Visible;
-        }
-
-        // Local short label for the variant combo. The plugin's
-        // MapCarFactSourceToUiLabel is private; keep this duplicate
-        // tight (one-line cases) so a future enum addition lands here
-        // without dragging the full label in.
-        private static string MapCarFactSourceForCombo(CarFactSource s)
-        {
-            switch (s)
-            {
-                case CarFactSource.UserVariant: return "yours";
-                case CarFactSource.Community:   return "community";
-                case CarFactSource.Baked:       return "built-in";
-                case CarFactSource.SwapOverride: return "swap";
-                case CarFactSource.Scanner:     return "auto";
-                default:                        return s.ToString().ToLowerInvariant();
-            }
-        }
-
-        // (Removed: EngineVariant_Changed. The dropdown picker is gone;
-        // signature-based auto-detect always drives the pick. Users
-        // rename / delete via the Manage variants window instead.)
-
-        private void EngineVariantManage_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string carId = _plugin.ActiveCarId;
-            string game  = _plugin.ActiveGame;
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
-            var win = new CarFactsVariantsWindow(_plugin, game, carId, _plugin.ActiveCarDisplayName)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            win.ShowDialog();
-            // The window mutates via the plugin's helpers (which
-            // re-resolve internally); rebuild the picker on close so a
-            // delete / rename lands immediately.
-            RebuildEngineVariantPicker();
-            RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout(_plugin.ActiveEngine);
-        }
-
-        /// <summary>Rebuild the engine-layout dropdown with the current
-        /// built-ins, the user's saved custom engines, and the
-        /// "Custom..." / "Manage customs..." action sentinels. Preserves
-        /// the current selection across rebuilds.</summary>
+        /// <summary>Rebuild the Car facts engine dropdown with the current
+        /// built-ins and the user's saved custom engines. Selection reflects
+        /// the active variant's engine pin (Auto when none).</summary>
         private void RebuildEngineLayoutDropdown()
         {
-            if (EngineLayoutCombo == null) return;
-            var es = _plugin?.ActiveEngine;
-            var targetLayout   = es?.Layout ?? Effects.EngineLayout.Auto;
-            var targetCustomId = es?.CustomEngineId ?? "";
+            if (CarFactsEngineCombo == null) return;
+            Effects.EngineLayout? pinLayout = null;
+            string pinCustomId = "";
+            if (_plugin != null) (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
+            var targetLayout   = pinLayout ?? Effects.EngineLayout.Auto;
+            var targetCustomId = pinCustomId ?? "";
 
             _engineItems.Clear();
             foreach (Effects.EngineLayout l in Enum.GetValues(typeof(Effects.EngineLayout)))
@@ -5795,17 +5687,9 @@ namespace TrueforceForAll.Plugin
             _suppressEvents = true;
             try
             {
-                EngineLayoutCombo.ItemsSource = null;
-                EngineLayoutCombo.ItemsSource = _engineItems;
-                EngineLayoutCombo.SelectedIndex = idx;
-                // Mirror into the Car Facts panel's inline engine-type picker
-                // (same items + selection, so editing either stays in sync).
-                if (CarFactsEngineCombo != null)
-                {
-                    CarFactsEngineCombo.ItemsSource = null;
-                    CarFactsEngineCombo.ItemsSource = _engineItems;
-                    CarFactsEngineCombo.SelectedIndex = idx;
-                }
+                CarFactsEngineCombo.ItemsSource = null;
+                CarFactsEngineCombo.ItemsSource = _engineItems;
+                CarFactsEngineCombo.SelectedIndex = idx;
             }
             finally { _suppressEvents = old; }
         }
@@ -5831,14 +5715,8 @@ namespace TrueforceForAll.Plugin
             return 0;
         }
 
-        private void EngineLayout_Changed(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            ApplyEngineDropdownSelection(EngineLayoutCombo.SelectedItem as EngineDropdownItem);
-        }
-
-        // The Car Facts panel's inline engine-type picker shares the same items
-        // and apply path as the Engine Pulse section's Layout dropdown.
+        // The Car facts engine picker: the single engine-type entry point
+        // since the 2026-07 centralization.
         private void CarFactsEngine_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -5848,24 +5726,15 @@ namespace TrueforceForAll.Plugin
         private void ApplyEngineDropdownSelection(EngineDropdownItem item)
         {
             if (item == null || _plugin == null) return;
-            var es = _plugin.ActiveEngine;
 
             switch (item.Kind)
             {
                 case EngineDropdownKind.BuiltIn:
-                    es.Layout         = item.BuiltIn;
-                    es.CustomEngineId = "";
-                    Apply(EffectKind.Engine);
-                    UpdateFiringPatternReadout(es);
-                    RebuildEngineLayoutDropdown();   // keep both pickers in sync
+                    CommitEnginePin(item.BuiltIn, "");
                     break;
 
                 case EngineDropdownKind.Custom:
-                    es.Layout         = Effects.EngineLayout.Custom;
-                    es.CustomEngineId = item.Custom?.Id ?? "";
-                    Apply(EffectKind.Engine);
-                    UpdateFiringPatternReadout(es);
-                    RebuildEngineLayoutDropdown();
+                    CommitEnginePin(Effects.EngineLayout.Custom, item.Custom?.Id ?? "");
                     break;
 
                 case EngineDropdownKind.ActionNew:
@@ -5876,6 +5745,33 @@ namespace TrueforceForAll.Plugin
                     OpenManageCustomEnginesDialog();
                     break;
             }
+        }
+
+        // Commit an engine pick as the active variant's Car facts pin. The
+        // pin is car truth: it persists in CarFacts (not the preset), wins
+        // the resolution cascade, and Auto clears it so detection takes over
+        // again. Mirrors CarFactsRedlineSet_Click, including the self-gating
+        // community submit.
+        private void CommitEnginePin(Effects.EngineLayout layout, string customId)
+        {
+            if (_plugin == null) return;
+            bool ok = _plugin.SaveActiveVariantUserEngine(layout, customId);
+            if (!ok)
+            {
+                // No variant signature yet (telemetry hasn't identified the
+                // engine). Snap the dropdown back and tell the user why.
+                RebuildEngineLayoutDropdown();
+                TrueforceDialog.Show(Window.GetWindow(this), "Engine type",
+                    "Drive the car for a moment first. The plugin identifies the engine "
+                    + "variant from telemetry, then your pick sticks to that variant.",
+                    DialogKind.Info);
+                return;
+            }
+            RebuildEngineLayoutDropdown();
+            UpdateFiringPatternReadout();
+            RefreshCarFactsPanel();
+            if (layout != Effects.EngineLayout.Auto)
+                MaybePromptToSubmitEngineData(_plugin.ActiveCarId);
         }
 
         // Adjacent-link entry points for creating / managing custom engines. These
@@ -5918,13 +5814,13 @@ namespace TrueforceForAll.Plugin
                         "[TF4ALL] Persist new custom engine failed: " + ex.Message);
                 }
 
-                var es = _plugin.ActiveEngine;
-                es.Layout         = Effects.EngineLayout.Custom;
-                es.CustomEngineId = def.Id;
-                Apply(EffectKind.Engine);
+                // Pin the new custom on the active variant (Car facts), the
+                // same commit path as picking it from the dropdown.
+                CommitEnginePin(Effects.EngineLayout.Custom, def.Id);
+                return;
             }
             RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout(_plugin.ActiveEngine);
+            UpdateFiringPatternReadout();
         }
 
         private void OpenManageCustomEnginesDialog()
@@ -5957,7 +5853,10 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
             RebuildEngineLayoutDropdown();
             Apply(EffectKind.Engine);
-            UpdateFiringPatternReadout(_plugin.ActiveEngine);
+            // A custom-engine edit changes resolution inputs (the pinned
+            // pattern), so re-run car-facts resolution before the readout.
+            _plugin.ReresolveActiveCarFacts();
+            UpdateFiringPatternReadout();
         }
 
         // Community-list refresh for the active car landed. Drop the
@@ -8940,40 +8839,48 @@ namespace TrueforceForAll.Plugin
         // not inline. Shows a friendly message for Electric / dangling custom
         // references; shows the FiringPattern's Name + serialized positions
         // for built-ins and combustion customs.
-        private void UpdateFiringPatternReadout(EnginePulseSettings es)
+        private void UpdateFiringPatternReadout()
         {
-            if (EngineFiringPatternText == null || es == null) return;
+            if (EngineFiringPatternText == null || _plugin == null) return;
+            var (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
+            var ep = _plugin.EnginePulse;
+            var layout = pinLayout ?? ep?.EffectiveLayout ?? Effects.EngineLayout.Auto;
 
             string display;
-            if (es.Layout == Effects.EngineLayout.Electric)
+            if (layout == Effects.EngineLayout.Electric)
             {
-                display = "Electric: no firing pattern (behavior above)";
+                display = "Electric: no firing pattern";
             }
-            else if (es.Layout == Effects.EngineLayout.Custom)
+            else if (layout == Effects.EngineLayout.Custom)
             {
-                var custom = FindCustomById(es.CustomEngineId);
-                if (custom == null)
+                if (pinLayout == Effects.EngineLayout.Custom)
                 {
-                    display = "Custom: referenced engine not found in library";
-                }
-                else if (custom.IsElectric)
-                {
-                    display = $"Electric custom: {custom.Name} ({(custom.ElectricMode == ElectricCarMode.Silent ? "silent" : "muted hum")})";
+                    var custom = FindCustomById(pinCustomId);
+                    if (custom == null)
+                    {
+                        display = "Custom: referenced engine not found in library";
+                    }
+                    else if (custom.IsElectric)
+                    {
+                        display = $"Electric custom: {custom.Name} ({(custom.ElectricMode == ElectricCarMode.Silent ? "silent" : "muted hum")})";
+                    }
+                    else
+                    {
+                        var parsed = Effects.FiringPatternDb.ParseCustom(custom.Pattern);
+                        display = parsed == null
+                            ? $"Custom: {custom.Name} (invalid pattern)"
+                            : $"Custom: {custom.Name}, {Effects.FiringPatternDb.Format(parsed)}";
+                    }
                 }
                 else
                 {
-                    var parsed = Effects.FiringPatternDb.ParseCustom(custom.Pattern);
-                    display = parsed == null
-                        ? $"Custom: {custom.Name} (invalid pattern)"
-                        : $"Custom: {custom.Name}, {Effects.FiringPatternDb.Format(parsed)}";
+                    // Custom reached through the auto cascade = a community
+                    // custom engine applied transiently (not in the library).
+                    display = "Community custom engine";
                 }
             }
             else
             {
-                // Show the layout's built-in pattern. Effective layout cascades
-                // Auto through the resolver's pick when one is available.
-                var ep = _plugin.EnginePulse;
-                var layout = ep?.EffectiveLayout ?? es.Layout;
                 var pat = Effects.FiringPatternDb.ResolveLayout(layout);
                 display = pat == null
                     ? ""
@@ -9328,25 +9235,14 @@ namespace TrueforceForAll.Plugin
                 RebuildEngineLayoutDropdown();
             if (CarFactsEngineMetaText != null)
             {
+                // The auto-detect detail line (EngineLayoutAutoText, moved
+                // here from the Engine pulse section) sits right below, so
+                // the meta only carries the rev ceiling and, for a pinned
+                // type, "you set this".
                 string maxPart = s.MaxRpm.HasValue ? s.MaxRpm.Value + " max RPM" : "";
-                string meta;
-                if (s.EngineTypeIsUserOverride)
-                {
-                    // The combo already shows the type the user chose; the meta
-                    // just carries the rev ceiling and "you set this".
-                    meta = string.IsNullOrEmpty(maxPart) ? "You set this" : maxPart + "  ·  You set this";
-                }
-                else
-                {
-                    // Picker shows "Auto", so spell out what auto-detection
-                    // resolved to and where it came from.
-                    string head;
-                    if (string.IsNullOrEmpty(s.EngineTypeDisplay)) head = "Detecting engine…";
-                    else if (s.EngineTypeProvenance == "community") head = "Auto-detected " + s.EngineTypeDisplay + " (from the community)";
-                    else if (s.EngineTypeProvenance == "game")      head = "Auto-detected " + s.EngineTypeDisplay + " (from the game)";
-                    else                                            head = "Auto-detected " + s.EngineTypeDisplay;
-                    meta = string.IsNullOrEmpty(maxPart) ? head : head + "  ·  " + maxPart;
-                }
+                string meta = s.EngineTypeIsUserOverride
+                    ? (string.IsNullOrEmpty(maxPart) ? "You set this" : maxPart + "  ·  You set this")
+                    : maxPart;
                 CarFactsEngineMetaText.Text = meta;
                 CarFactsEngineMetaText.Visibility = string.IsNullOrEmpty(meta)
                     ? Visibility.Collapsed : Visibility.Visible;
@@ -9648,7 +9544,19 @@ namespace TrueforceForAll.Plugin
 
         private void CarFactsManageVariants_Click(object sender, RoutedEventArgs e)
         {
-            EngineVariantManage_Click(sender, e);   // reuse the existing Manage Variants modal
+            if (_plugin == null) return;
+            string carId = _plugin.ActiveCarId;
+            string game  = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
+            var win = new CarFactsVariantsWindow(_plugin, game, carId, _plugin.ActiveCarDisplayName)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            win.ShowDialog();
+            // The window mutates via the plugin's helpers (which re-resolve
+            // internally); rebuild so a delete / rename lands immediately.
+            RebuildEngineLayoutDropdown();
+            UpdateFiringPatternReadout();
             RefreshFromPlugin();
         }
 
@@ -11430,17 +11338,9 @@ namespace TrueforceForAll.Plugin
             // so the car override is the one valid save target. Save this section
             // straight to the car instead of offering the game-scope popover.
             if (_plugin.IsOfflineEditingCar) { ApplyEffectSaveForCar(which); return; }
-            // Engine-section save where the ONLY change is the layout (car
-            // fact). Skip the car-vs-game-default popover: game-default is
-            // meaningless for "what's actually in this car". The user can
-            // still use the popover when they touch preference fields too.
-            if (which == EffectKind.Engine
-                && !string.IsNullOrEmpty(_plugin.ActiveCarId)
-                && _plugin.IsEngineSectionOnlyLayoutDirty())
-            {
-                ApplyEffectSaveForCar(which);
-                return;
-            }
+            // (The engine-layout-only fast path was removed with the 2026-07
+            // centralization: the engine type lives in Car facts and can no
+            // longer dirty the Engine section.)
             ShowEffectSavePopover(which);
         }
 

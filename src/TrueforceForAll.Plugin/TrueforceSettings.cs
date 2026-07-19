@@ -137,6 +137,14 @@ namespace TrueforceForAll.Plugin
         // CarFacts dict above. Migrate-once + idempotent.
         public bool CarFactsMigratedV1 { get; set; } = false;
 
+        // One-time migration latch (2026-07 engine centralization). Flips
+        // true after per-car engine picks (CarOverrides[..].EnginePulse
+        // Layout / CustomEngineId) have been relocated into the matching
+        // car's variant UserEngineLayout pin in CarFacts. Game-preset-scoped
+        // picks are dropped deliberately: they aren't car-bound. Migrate-once
+        // + idempotent.
+        public bool EngineChoiceMovedToCarFactsV1 { get; set; } = false;
+
         // One-time migration latch. Flips true after car presets whose name
         // matches the ordinal "Car_NNN" pattern have been renamed to their
         // baked human-readable car name (per game, via
@@ -1187,6 +1195,23 @@ namespace TrueforceForAll.Plugin
         /// CustomEngineDef.Pattern (FiringPatternDb.ParseCustom).</summary>
         public string CustomFiringPattern { get; set; } = "";
 
+        /// <summary>The user's own engine-type pick for THIS variant (set via
+        /// the Car facts engine dropdown). Wins over the auto-detected /
+        /// community layout for this variant only, mirroring
+        /// <see cref="UserRedlineRpm"/>: an explicit pin that beats the
+        /// cascade but leaves auto-detection running underneath. null = no
+        /// pin; follow the cascade (variant facts / community / telemetry /
+        /// heuristic).</summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public EngineLayout? UserEngineLayout { get; set; }
+
+        /// <summary>When <see cref="UserEngineLayout"/> == Custom, the Id of
+        /// the <see cref="CustomEngineDef"/> in
+        /// <see cref="TrueforceSettings.CustomEngines"/> that defines the
+        /// pattern / electric behavior. Empty otherwise. Cleared when that
+        /// custom engine is deleted from the library.</summary>
+        public string UserCustomEngineId { get; set; } = "";
+
         /// <summary>Optional absolute redline RPM. Only meaningful for games
         /// whose telemetry doesn't expose a trustworthy RedLineRPM value
         /// (Forza family). null = fall through to telemetry or MaxRpm
@@ -1559,37 +1584,31 @@ namespace TrueforceForAll.Plugin
         [JsonConverter(typeof(StringEnumConverter))]
         public ElectricCarMode ElectricMode { get; set; } = ElectricCarMode.MutedHum;
 
-        /// <summary>Engine layout. Auto defers to the resolver / telemetry;
-        /// any explicit value (V8 cross-plane, Rotary 2-rotor, Electric, etc.)
-        /// wins. Custom uses the user-authored engine identified by
-        /// <see cref="CustomEngineId"/> (or the legacy
-        /// <see cref="CustomFiringPattern"/> string as a fallback during
-        /// migration). Default Auto so fresh presets defer to detection.</summary>
+        /// <summary>LEGACY (pre-2026-07 car-facts centralization). The engine
+        /// type used to be a preset-scoped pick; it now lives in Car facts as
+        /// the per-variant <see cref="EngineVariant.UserEngineLayout"/> pin.
+        /// Kept so old JSON deserializes and so the one-time
+        /// EngineChoiceMovedToCarFactsV1 migration can relocate per-car
+        /// values. Never read at runtime after migration.</summary>
         [JsonConverter(typeof(StringEnumConverter))]
         public EngineLayout Layout { get; set; } = EngineLayout.Auto;
 
-        /// <summary>When <see cref="Layout"/> == Custom, the Id of the
-        /// <see cref="CustomEngineDef"/> in
-        /// <see cref="TrueforceSettings.CustomEngines"/> that defines the
-        /// pattern / electric behavior. Empty when Layout != Custom or
-        /// during legacy migration before the user has picked a saved
-        /// custom.</summary>
+        /// <summary>LEGACY. Companion of <see cref="Layout"/> == Custom: the
+        /// Id of the library <see cref="CustomEngineDef"/> it pointed at.
+        /// Relocated by the same migration as Layout; never read at runtime
+        /// after migration.</summary>
         public string CustomEngineId { get; set; } = "";
 
-        /// <summary>User-supplied firing pattern, used only when
-        /// <see cref="Layout"/> == Custom. Format: comma-separated phase
-        /// positions in [0, 1), optionally with ":amplitude" suffix per
-        /// pulse. See FiringPatternDb.ParseCustom. Round-trips through the
-        /// settings UI textbox so users can copy / paste their tuning back
-        /// to us.</summary>
+        /// <summary>LEGACY (pre-custom-library). Inline user-supplied firing
+        /// pattern; the one-time migration in the engine-choice relocation
+        /// mints a library <see cref="CustomEngineDef"/> from it. Format:
+        /// comma-separated phase positions in [0, 1), optionally with
+        /// ":amplitude" per pulse (FiringPatternDb.ParseCustom). Never read
+        /// after migration.</summary>
         public string CustomFiringPattern { get; set; } = "";
 
-        /// <summary>Optional human-friendly name for a custom firing pattern.
-        /// Built-in layouts ship with descriptive names; this lets users tag
-        /// their own custom patterns the same way ("LS3 swap, dyno-tuned" /
-        /// "Ferrari 360 flat-plane bias"). Surfaces in the engine-data
-        /// submission body. Used only when Layout == Custom; ignored
-        /// otherwise.</summary>
+        /// <summary>LEGACY. Human-friendly name tag for
+        /// <see cref="CustomFiringPattern"/>; migrated with it.</summary>
         public string CustomFiringPatternName { get; set; } = "";
 
         // ---- High-RPM perceptibility helpers ----

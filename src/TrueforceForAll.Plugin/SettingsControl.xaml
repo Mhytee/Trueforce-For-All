@@ -1128,7 +1128,32 @@
                                     <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
                                 </TextBlock>
                             </Grid>
-                            <TextBlock x:Name="CarFactsEngineMetaText" FontSize="11" Opacity="0.55" Margin="64,0,0,6"/>
+                            <TextBlock x:Name="CarFactsEngineMetaText" FontSize="11" Opacity="0.55" Margin="64,0,0,2"/>
+                            <!-- Custom engine authoring (moved from the Engine pulse
+                                 section with the 2026-07 centralization). -->
+                            <StackPanel Orientation="Horizontal" Margin="64,0,0,2">
+                                <TextBlock Style="{StaticResource HelpText}">
+                                    <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
+                                </TextBlock>
+                                <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" Margin="14,0,0,0" Visibility="Collapsed">
+                                    <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
+                            <!-- Auto-detect indicator + community context (moved from
+                                 the Engine pulse section; the code-behind that fills
+                                 these also drives the shared per-car community fetch,
+                                 so the x:Names are load-bearing). -->
+                            <TextBlock x:Name="EngineLayoutAutoText" FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="64,0,0,2" Text=""/>
+                            <TextBlock x:Name="EngineCommunityText" FontSize="11" Opacity="0.55" Margin="64,0,0,6" Text="" Visibility="Collapsed"/>
+                            <!-- Firing-pattern readout: what's being synthesized for
+                                 the resolved engine type. Read-only diagnostic. -->
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Pattern" FontSize="12" Opacity="0.6" VerticalAlignment="Center"
+                                           ToolTip="Diagnostic readout: comma-separated phase positions in [0, 1) where each pulse fires within one 720° engine cycle."/>
+                                <TextBox   Grid.Column="1" x:Name="EngineFiringPatternText" FontSize="11"
+                                           FontFamily="Consolas" IsReadOnly="True" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            </Grid>
                             <!-- Redline -->
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions>
@@ -1640,65 +1665,11 @@
                                 <ComboBoxItem Content="Silent (off)"/>
                             </ComboBox>
                         </Grid>
-                        <Separator Margin="0,4,0,8"/>
-                        <!-- Engine type. Each entry implies its cylinder/rotor
-                             count and firing pattern, so there's no separate
-                             cylinder control. Auto defers to the car-resolver
-                             (AC bake / Forza telemetry); Electric routes
-                             through the EV behavior selector above; Custom
-                             uses the firing-pattern textbox below. -->
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Engine type:" Style="{StaticResource LabelText}"
-                                       ToolTip="Pick the engine that best matches the active car. Auto defers to detection; Electric uses the EV behavior above; Custom uses the firing pattern below."/>
-                            <!-- Items are populated dynamically in SettingsControl.RebuildEngineLayoutDropdown
-                                 so the user's saved customs appear alongside built-ins. The
-                                 create / manage actions live in the links below, not in the list. -->
-                            <ComboBox  Grid.Column="1" x:Name="EngineLayoutCombo" SelectionChanged="EngineLayout_Changed"/>
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Margin="140,2,0,6">
-                            <TextBlock Style="{StaticResource HelpText}">
-                                <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
-                            </TextBlock>
-                            <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" Margin="14,0,0,0" Visibility="Collapsed">
-                                <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
-                            </TextBlock>
-                        </StackPanel>
-                        <!-- Auto-detect indicator: shows the layout the resolver
-                             chose for the active car when the user has Auto
-                             selected. Empty otherwise. The Community context
-                             line below surfaces what other drivers said for
-                             this car so the user can confirm it (re-submit the
-                             same value) or correct it (submit a different one)
-                             upfront rather than only after a save. -->
-                        <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,4" Text=""/>
-                        <TextBlock x:Name="EngineCommunityText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="" Visibility="Collapsed"/>
-                        <!-- Active variant readout + Manage link. Auto-detect
-                             keys on the live telemetry signature so the picker
-                             dropdown is gone: the row that matches your engine
-                             IS what's applied. The readout shows the matched
-                             label; the Manage link opens the rename/delete UI. -->
-                        <Grid x:Name="EngineVariantRow" Margin="0,0,0,4" Visibility="Collapsed">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Variant:" Style="{StaticResource LabelText}"
-                                       ToolTip="The stored variant whose cylinder + max-RPM signature matches your live telemetry. Auto-detected; rename or delete via Manage variants."/>
-                            <TextBlock Grid.Column="1" x:Name="EngineVariantActiveText"
-                                       Foreground="#FFE0E0E0" VerticalAlignment="Center"/>
-                        </Grid>
-                        <TextBlock x:Name="EngineVariantManageLink" Style="{StaticResource HelpText}" Margin="140,0,0,8" Visibility="Collapsed">
-                            <Hyperlink x:Name="EngineVariantManageHyperlink" Click="EngineVariantManage_Click">Manage variants…</Hyperlink>
-                        </TextBlock>
-                        <!-- Active pattern readout: shows what's being synthesized
-                             for the currently selected engine type. Read-only.
-                             Authoring custom engines happens in the Custom...
-                             dialog, not inline. -->
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Pattern:" Style="{StaticResource LabelText}"
-                                       ToolTip="Diagnostic readout: comma-separated phase positions in [0, 1) where each pulse fires within one 720° engine cycle. Useful for submitting corrections if a built-in pattern sounds wrong."/>
-                            <TextBox   Grid.Column="1" x:Name="EngineFiringPatternText"
-                                       FontFamily="Consolas" IsReadOnly="True"/>
-                        </Grid>
+                        <!-- Engine TYPE, its auto-detect/community context, the
+                             variant readout, and the pattern readout all moved to
+                             the Car facts panel on the active card (2026-07
+                             centralization): the engine is car truth, not preset
+                             feel. This section keeps feel knobs only. -->
                         <!-- High-RPM perceptibility helpers. On by default;
                              keep the engine feel present where the wheel
                              motor naturally rolls off the firing pulse. -->
