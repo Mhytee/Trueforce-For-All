@@ -6832,50 +6832,32 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             if (SupportersWallStatus != null) SupportersWallStatus.Visibility = System.Windows.Visibility.Collapsed;
-            RenderSupportersGrouped(rows);
+            RenderSupportersRanked(rows);
         }
 
-        // Group the roster into tier sections (tier header + a wrap of name pills). The server
-        // already returns rows in display order (tier sections by top pledge, top lifetime
-        // spender first within a tier), and sends no amounts, so we just group by tier in
-        // encounter order and preserve the order within each group.
-        private void RenderSupportersGrouped(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
+        // One flat ranked wall (no tier sections). The server orders rows by lifetime support
+        // and sends no amounts, so left-to-right, top-to-bottom IS the ranking: one-time donors
+        // sort proportionally to what they gave and long-running patrons rise over time. Fixed
+        // ItemWidth + capped MaxWidth make the wrap read as a tidy 1-3 column list.
+        private void RenderSupportersRanked(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
         {
-            var order  = new System.Collections.Generic.List<string>();
-            var byTier = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<SupportersClient.SupporterRow>>();
-            foreach (var r in rows)
+            const double chipWidth = 210;
+            var wrap = new System.Windows.Controls.WrapPanel
             {
-                string tier = string.IsNullOrWhiteSpace(r.Tier) ? "Supporters" : r.Tier;
-                if (!byTier.TryGetValue(tier, out var list))
-                {
-                    list = new System.Collections.Generic.List<SupportersClient.SupporterRow>();
-                    byTier[tier] = list; order.Add(tier);
-                }
-                list.Add(r);
-            }
-
-            bool first = true;
-            foreach (var tier in order)
-            {
-                SupportersWallPanel.Children.Add(new System.Windows.Controls.TextBlock
-                {
-                    Text       = tier,
-                    FontSize   = 12,
-                    FontWeight = System.Windows.FontWeights.SemiBold,
-                    Opacity    = 0.85,
-                    Margin     = new System.Windows.Thickness(0, first ? 0 : 12, 0, 5),
-                });
-                first = false;
-                var wrap = new System.Windows.Controls.WrapPanel();
-                foreach (var r in byTier[tier]) wrap.Children.Add(BuildSupporterChip(r));
-                SupportersWallPanel.Children.Add(wrap);
-            }
+                ItemWidth           = chipWidth,
+                MaxWidth            = chipWidth * 3 + 1,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            };
+            foreach (var r in rows) wrap.Children.Add(BuildSupporterChip(r));
+            SupportersWallPanel.Children.Add(wrap);
         }
 
-        // A pill per supporter, tinted by tier (platinum / gold / default blue), mirroring
-        // the supporter-badge accent logic. Tier shows in the tooltip.
+        // A pill per supporter, tinted by tier (platinum / gold / default blue). Patreon
+        // patrons carry a small tier badge on the right; one-time donors show the name alone
+        // (their tier is a bucket label, not a pledge tier).
         private System.Windows.UIElement BuildSupporterChip(SupportersClient.SupporterRow row)
         {
+            bool patreon = string.Equals(row.Source, "patreon", StringComparison.OrdinalIgnoreCase);
             string t = (row.Tier ?? "").Trim().ToLowerInvariant();
             string accent = t.Contains("platinum") ? "#FFCDD3DE"
                           : t.Contains("gold")     ? "#FFE5C04A"
@@ -6892,15 +6874,44 @@ namespace TrueforceForAll.Plugin
                 BorderBrush     = new System.Windows.Media.SolidColorBrush(col),
                 BorderThickness = new System.Windows.Thickness(1),
             };
+            var dock = new System.Windows.Controls.DockPanel { LastChildFill = true };
+            if (patreon && !string.IsNullOrWhiteSpace(row.Tier))
+            {
+                var badgeBg = col; badgeBg.A = 0x3A;
+                var badge = new System.Windows.Controls.Border
+                {
+                    CornerRadius      = new System.Windows.CornerRadius(6),
+                    Padding           = new System.Windows.Thickness(6, 1, 6, 1),
+                    Margin            = new System.Windows.Thickness(8, 0, 0, 0),
+                    Background        = new System.Windows.Media.SolidColorBrush(badgeBg),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
+                    Child = new System.Windows.Controls.TextBlock
+                    {
+                        Text       = row.Tier,
+                        FontSize   = 10,
+                        FontWeight = System.Windows.FontWeights.SemiBold,
+                        Foreground = new System.Windows.Media.SolidColorBrush(col),
+                    },
+                };
+                System.Windows.Controls.DockPanel.SetDock(badge, System.Windows.Controls.Dock.Right);
+                dock.Children.Add(badge);
+                border.ToolTip = "Patreon supporter (" + row.Tier + ")";
+            }
+            else
+            {
+                border.ToolTip = "One-time supporter";
+            }
             var text = new System.Windows.Controls.TextBlock
             {
-                Text       = row.Name,
-                FontSize   = 12,
-                FontWeight = System.Windows.FontWeights.SemiBold,
-                Foreground = new System.Windows.Media.SolidColorBrush(col),
+                Text              = row.Name,
+                FontSize          = 12,
+                FontWeight        = System.Windows.FontWeights.SemiBold,
+                Foreground        = new System.Windows.Media.SolidColorBrush(col),
+                TextTrimming      = System.Windows.TextTrimming.CharacterEllipsis,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center,
             };
-            if (!string.IsNullOrWhiteSpace(row.Tier)) border.ToolTip = row.Tier;
-            border.Child = text;
+            dock.Children.Add(text);
+            border.Child = dock;
             return border;
         }
 

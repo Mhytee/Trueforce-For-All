@@ -20,7 +20,8 @@ namespace TrueforceForAll.Plugin
         {
             public string Name { get; set; }
             public string Tier { get; set; }
-            // No monetary fields: the server orders by pledge / lifetime spend and returns rows
+            public string Source { get; set; }   // "patreon" (tier badge) or "manual" (one-time donor)
+            // No monetary fields: the server orders by lifetime support and returns rows
             // already in display order, so amounts never reach the client.
         }
 
@@ -76,7 +77,7 @@ namespace TrueforceForAll.Plugin
                             if (row == null) continue;
                             string name = (string)row["display_name"];
                             if (string.IsNullOrWhiteSpace(name)) continue;
-                            result.Add(new SupporterRow { Name = name, Tier = (string)row["tier"] });
+                            result.Add(new SupporterRow { Name = name, Tier = (string)row["tier"], Source = (string)row["source"] });
                         }
                         return result;
                     }
