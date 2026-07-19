@@ -3346,10 +3346,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         private static string ShortenForCta(string name)
             => (name != null && name.Length > 30) ? name.Substring(0, 29) + "…" : name;
 
-        // (The per-car "Set name…" button was removed from the library row:
-        // it duplicated the header card's Rename, which already appears for the
-        // edited car during Edit. Car naming now lives there + the active card.
-        // The shared CarNameShareFlow is still used by those surfaces.)
+        // (The per-car "Set name…" button was removed from the library row,
+        // and the header card's Rename button later went the same way: car
+        // naming now lives in ONE place, the Car facts panel on the active
+        // card, which routes through the shared CarNameShareFlow.)
 
         private void CarRename_Click(object sender, RoutedEventArgs e)
         {

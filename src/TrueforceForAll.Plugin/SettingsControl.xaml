@@ -921,11 +921,9 @@
                         <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock x:Name="HeaderCarText" Text="(none)" FontSize="12"
                                        TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                            <Button x:Name="HeaderCarRenameBtn" Content="Rename…" Margin="8,0,0,0"
-                                    Padding="6,0,6,0" FontSize="10" Height="18"
-                                    VerticalAlignment="Center" Visibility="Collapsed"
-                                    Click="HeaderCarRename_Click"
-                                    ToolTip="Rename this car (set its official in-game name). Always saved locally; if 'Enable community features (online)' is on you'll be asked to confirm or correct the community name for your language."/>
+                            <!-- The header "Rename…" button was removed: car naming lives in
+                                 the Car facts panel right below (Name box + Save), which runs
+                                 the same CarNameShareFlow. -->
                             <!-- Old "★ N community" discoverability chip + popover
                                  removed in favour of the inline "── Top community
                                  presets ──" section that the car preset dropdown

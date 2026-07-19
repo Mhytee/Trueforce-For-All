@@ -698,15 +698,6 @@ namespace TrueforceForAll.Plugin
 
                 bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
 
-                // Rename affordance: only meaningful when a car is detected.
-                // Available regardless of CommunityEnabled - rename is a
-                // local-first action; community submission rides along when
-                // the user opts in inside the rename modal.
-                if (HeaderCarRenameBtn != null)
-                    HeaderCarRenameBtn.Visibility = carDetected
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-
                 // Discoverability surface: hide the count chip eagerly, then
                 // kick a background fetch on car/game change. The fetch sets
                 // visibility + content when results arrive (or stays hidden
@@ -9307,6 +9298,11 @@ namespace TrueforceForAll.Plugin
             if (!s.HasCar) return;
 
             string carNameText = s.CarName ?? "";
+            // The raw car id ("Car_242") is the display fallback for unnamed
+            // cars, not a name: show the box empty instead so typing a real
+            // name doesn't start with deleting the id.
+            if (string.Equals(carNameText, _plugin.ActiveCarId, StringComparison.Ordinal))
+                carNameText = "";
             if (CarFactsNameBox != null && !CarFactsNameBox.IsKeyboardFocusWithin
                 && carNameText != _lastCarFactsNameText)
             {
@@ -12204,41 +12200,6 @@ namespace TrueforceForAll.Plugin
             string name = SelectedPresetName;
             if (_plugin == null || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(_plugin.ActiveGame)) return;
             _plugin.SetDefaultPresetForActiveGame(name);
-            RefreshFromPlugin();
-        }
-
-        // Header "Set name" affordance. Opens the styled name input, then runs
-        // the shared official-name flow (local write + a confirm/correct
-        // community share for the user's language, no auto-submit). Identical
-        // path to the Preset Manager button so the two can't drift.
-        private void HeaderCarRename_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string game  = _plugin.ActiveGame;
-            string carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-
-            // Pre-fill with whatever's currently displayed (community name,
-            // a prior rename, or empty). The display name resolves through the
-            // same cascade the header reads, so it matches what the user sees
-            // right above the button.
-            string currentName = _plugin.ActiveCarDisplayName ?? "";
-            // If the current display name is just the carId (the fallback for
-            // unnamed cars), start the field empty. Editing "Car_242" into a
-            // real name is unnecessary friction.
-            if (string.Equals(currentName, carId, StringComparison.Ordinal))
-                currentName = "";
-
-            var dialog = new CarNameInputWindow(carId, currentName)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            if (dialog.ShowDialog() != true) return;
-            string newName = dialog.EnteredName;
-            if (string.IsNullOrEmpty(newName)) return;
-
-            CarNameShareFlow.SetNameAndMaybeShare(_plugin, game, carId, newName,
-                Window.GetWindow(this));
             RefreshFromPlugin();
         }
 

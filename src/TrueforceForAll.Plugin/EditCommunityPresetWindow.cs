@@ -107,7 +107,7 @@ namespace TrueforceForAll.Plugin
             };
             // Grab focus + select-all on open so the user can start
             // editing immediately, matching the pattern in
-            // PickUsernameWindow / CarNameInputWindow.
+            // PickUsernameWindow.
             nameInput.Loaded += (s, e) => { nameInput.Focus(); nameInput.SelectAll(); };
             root.Children.Add(nameInput);
 
