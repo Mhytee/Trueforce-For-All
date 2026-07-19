@@ -11107,6 +11107,55 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        /// <summary>The user's engine pin for a SPECIFIC stored variant of the
+        /// active car, by variant Id (the Manage-variants modal edits any
+        /// variant, not just the one currently driven). (null, "") = no pin
+        /// or unknown id.</summary>
+        public (Effects.EngineLayout? layout, string customId) GetActiveCarVariantUserEngineById(string variantId)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return (null, "");
+            if (string.IsNullOrEmpty(variantId) || Settings?.CarFacts == null) return (null, "");
+            string key = _activeGame + "/" + _activeCarId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return (null, "");
+            lock (_carFactsLock)
+            {
+                foreach (var v in bundle.EngineVariants)
+                    if (v != null && v.Id == variantId)
+                        return (v.UserEngineLayout, v.UserCustomEngineId ?? "");
+            }
+            return (null, "");
+        }
+
+        /// <summary>Commit an engine pin on a SPECIFIC stored variant of the
+        /// active car, by variant Id (Manage-variants modal). Auto / null
+        /// clears the pin. Persists and re-resolves so a pin on the live
+        /// variant applies immediately; a pin on another variant applies
+        /// when that variant next matches telemetry.</summary>
+        public bool SaveActiveCarVariantUserEngineById(string variantId, Effects.EngineLayout? layout, string customId)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (string.IsNullOrEmpty(variantId) || Settings?.CarFacts == null) return false;
+            if (layout == Effects.EngineLayout.Auto) layout = null;   // Auto = no pin
+            string key = _activeGame + "/" + _activeCarId;
+            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
+            bool saved = false;
+            lock (_carFactsLock)
+            {
+                foreach (var v in bundle.EngineVariants)
+                {
+                    if (v == null || v.Id != variantId) continue;
+                    v.UserEngineLayout   = layout;
+                    v.UserCustomEngineId = layout == Effects.EngineLayout.Custom ? (customId ?? "") : "";
+                    saved = true;
+                    break;
+                }
+            }
+            if (!saved) return false;
+            ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return true;
+        }
+
         /// <summary>Re-run car-facts resolution for the active car. Public
         /// wrapper for UI paths that change resolution inputs without going
         /// through a pin save (e.g. editing a custom engine's pattern).</summary>

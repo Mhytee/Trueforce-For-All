@@ -5688,14 +5688,9 @@ namespace TrueforceForAll.Plugin
                     });
                 }
             }
-            // The "Create custom" / "Manage customs" actions live in adjacent links
-            // (EngineCustomNew_Click / EngineCustomManage_Click) rather than as fake
-            // combo entries, so the dropdown lists only real engine values. Show the
-            // Manage link only when there is something to manage.
-            if (EngineCustomManageLink != null)
-                EngineCustomManageLink.Visibility = (customs != null && customs.Count > 0)
-                    ? System.Windows.Visibility.Visible
-                    : System.Windows.Visibility.Collapsed;
+            // Custom-engine authoring lives in the Manage variants modal
+            // (footer link) since 2026-07-19, so the dropdown lists only
+            // real engine values and carries no action links here.
 
             int idx = FindEngineDropdownIndex(targetLayout, targetCustomId);
             bool old = _suppressEvents;
@@ -5788,19 +5783,9 @@ namespace TrueforceForAll.Plugin
                 MaybePromptToSubmitEngineData(_plugin.ActiveCarId);
         }
 
-        // Adjacent-link entry points for creating / managing custom engines. These
-        // replace the old "Custom..." / "Manage customs..." combo action entries so
-        // the engine-type dropdown lists only real values.
-        private void EngineCustomNew_Click(object sender, RoutedEventArgs e)
-        {
-            SimHub.Logging.Current.Info("[TF4ALL] Create custom engine clicked");
-            OpenCustomEngineEditorForNew();
-        }
-
-        private void EngineCustomManage_Click(object sender, RoutedEventArgs e)
-        {
-            OpenManageCustomEnginesDialog();
-        }
+        // (The main-panel "Create custom engine…" / "Manage customs…" links were
+        // retired 2026-07-19: authoring lives in the Manage variants modal, and
+        // the Customs tab of the Preset library manages the collection.)
 
         // Open the editor with a fresh entry. On Save, append to the library,
         // activate it on the current preset, and rebuild the dropdown. On
