@@ -1115,29 +1115,32 @@
                             <!-- Engine type (inline editable, same picker as the
                                  Engine Pulse section's Layout dropdown) + a meta
                                  line for the rev ceiling and the fact's source. -->
+                            <!-- One wrap line: combo, then the links with "Create
+                                 custom engine…" (+ Manage customs…) at the far end.
+                                 A narrow window wraps the trailing links onto a
+                                 lower row instead of squeezing the combo. -->
                             <Grid Margin="0,0,0,2">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Engine" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
-                                <ComboBox  Grid.Column="1" x:Name="CarFactsEngineCombo" SelectionChanged="CarFactsEngine_Changed"
-                                           VerticalAlignment="Center" Margin="0,0,8,0"
-                                           ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong."/>
-                                <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" VerticalAlignment="Center">
-                                    <Hyperlink x:Name="CarFactsRefreshCommunityLink" Click="CarFactsRefreshCommunity_Click"
-                                               ToolTip="Refresh this car's community facts from the server now (they otherwise refresh at most weekly).">↻ Refresh</Hyperlink>
-                                    <Run Text="   "/>
-                                    <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
-                                </TextBlock>
+                                <WrapPanel Grid.Column="1">
+                                    <ComboBox  x:Name="CarFactsEngineCombo" SelectionChanged="CarFactsEngine_Changed"
+                                               Width="230" VerticalAlignment="Center" Margin="0,0,8,2"
+                                               ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong."/>
+                                    <TextBlock Style="{StaticResource HelpText}" VerticalAlignment="Center" Margin="0,0,0,2">
+                                        <Hyperlink x:Name="CarFactsRefreshCommunityLink" Click="CarFactsRefreshCommunity_Click"
+                                                   ToolTip="Refresh this car's community facts from the server now (they otherwise refresh at most weekly).">↻ Refresh</Hyperlink>
+                                        <Run Text="   "/>
+                                        <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
+                                    </TextBlock>
+                                    <TextBlock Style="{StaticResource HelpText}" VerticalAlignment="Center" Margin="14,0,0,2">
+                                        <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
+                                    </TextBlock>
+                                    <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" VerticalAlignment="Center"
+                                               Margin="14,0,0,2" Visibility="Collapsed">
+                                        <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
+                                    </TextBlock>
+                                </WrapPanel>
                             </Grid>
-                            <!-- Custom engine authoring (moved from the Engine pulse
-                                 section with the 2026-07 centralization). -->
-                            <StackPanel Orientation="Horizontal" Margin="64,0,0,2">
-                                <TextBlock Style="{StaticResource HelpText}">
-                                    <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
-                                </TextBlock>
-                                <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" Margin="14,0,0,0" Visibility="Collapsed">
-                                    <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
-                                </TextBlock>
-                            </StackPanel>
                             <!-- Auto-detect indicator (with the max-RPM readout on the
                                  same line) + community context, moved from the Engine
                                  pulse section. The code-behind that fills these also
