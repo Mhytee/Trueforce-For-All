@@ -5793,6 +5793,7 @@ namespace TrueforceForAll.Plugin
         // the engine-type dropdown lists only real values.
         private void EngineCustomNew_Click(object sender, RoutedEventArgs e)
         {
+            SimHub.Logging.Current.Info("[TF4ALL] Create custom engine clicked");
             OpenCustomEngineEditorForNew();
         }
 
@@ -5807,11 +5808,17 @@ namespace TrueforceForAll.Plugin
         // selection (the user clicked an action item, not a real layout).
         private void OpenCustomEngineEditorForNew()
         {
-            if (_plugin?.Settings == null) return;
+            if (_plugin?.Settings == null)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Custom engine editor skipped: plugin/settings not ready");
+                return;
+            }
             var def = new CustomEngineDef { Id = Guid.NewGuid().ToString("N") };
             var dlg = new CustomEngineEditor { Owner = Window.GetWindow(this) };
             dlg.Init(def, "Create custom engine");
+            SimHub.Logging.Current.Info("[TF4ALL] Custom engine editor opening");
             bool saved = dlg.ShowDialog() == true && dlg.Saved;
+            SimHub.Logging.Current.Info($"[TF4ALL] Custom engine editor closed (saved={saved})");
             if (saved)
             {
                 if (_plugin.Settings.CustomEngines == null)

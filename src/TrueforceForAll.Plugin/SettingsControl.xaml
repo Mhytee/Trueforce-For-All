@@ -1128,24 +1128,24 @@
                                     <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
                                 </TextBlock>
                             </Grid>
-                            <!-- Custom engine authoring, right-aligned directly under
-                                 the links above (a stretchy combo and wrap-on-narrow
-                                 can't coexist on one row, so this lives on the row the
-                                 links would wrap to). -->
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="64,0,0,2">
-                                <TextBlock Style="{StaticResource HelpText}">
-                                    <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
-                                </TextBlock>
-                                <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" Margin="14,0,0,0" Visibility="Collapsed">
-                                    <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
-                                </TextBlock>
-                            </StackPanel>
-                            <!-- Auto-detect indicator (with the max-RPM readout on the
-                                 same line) + community context, moved from the Engine
-                                 pulse section. The code-behind that fills these also
-                                 drives the shared per-car community fetch, so the
-                                 x:Names are load-bearing. -->
-                            <TextBlock x:Name="EngineLayoutAutoText" FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="64,0,0,2" Text=""/>
+                            <!-- Auto-detect readout row: the gray engine info line on
+                                 the left (max RPM rides its end), custom-engine
+                                 authoring links at the right end of the same row. The
+                                 readout's x:Name is load-bearing: its updater also
+                                 drives the shared per-car community fetch. -->
+                            <Grid Margin="64,0,0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" x:Name="EngineLayoutAutoText" FontSize="11" Opacity="0.55"
+                                           TextWrapping="Wrap" Margin="0,0,8,0" VerticalAlignment="Center" Text=""/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource HelpText}">
+                                        <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
+                                    </TextBlock>
+                                    <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" Margin="14,0,0,0" Visibility="Collapsed">
+                                        <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
                             <TextBlock x:Name="EngineCommunityText" FontSize="11" Opacity="0.55" Margin="64,0,0,6" Text="" Visibility="Collapsed"/>
                             <!-- Redline -->
                             <Grid Margin="0,0,0,2">
