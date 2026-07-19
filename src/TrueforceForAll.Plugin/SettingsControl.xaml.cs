@@ -735,7 +735,6 @@ namespace TrueforceForAll.Plugin
                     // (built-ins + user-saved customs); selection reflects the
                     // active variant's pin.
                     RebuildEngineLayoutDropdown();
-                    UpdateFiringPatternReadout();
                 }
                 RefreshCarFactsPanel();
                 RebuildPerGearEditors();
@@ -1366,6 +1365,11 @@ namespace TrueforceForAll.Plugin
                     // centralization).
                     var (pinnedLayout, _) = _plugin.GetActiveVariantUserEngine();
                     bool userIsAuto = pinnedLayout == null;
+                    // Rev ceiling readout: rides the END of this same line
+                    // (the separate Car facts meta line was removed).
+                    var facts = _plugin.GetActiveCarFactsSummary();
+                    string maxPart = facts.HasCar && facts.MaxRpm.HasValue
+                        ? facts.MaxRpm.Value + " max RPM" : "";
 
                     if (ep != null && userIsAuto && ep.AutoLayout is Effects.EngineLayout autoL)
                     {
@@ -1445,10 +1449,21 @@ namespace TrueforceForAll.Plugin
                             + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}{srcSuffix}. "
                             + "Pick Auto to use detection.";
                     }
+                    else if (pinnedLayout is Effects.EngineLayout pinnedPick)
+                    {
+                        // Pin agrees with auto-detect (or no auto value yet):
+                        // still mark the type as the user's own pick.
+                        EngineLayoutAutoText.Text =
+                            $"Your pick: {Effects.FiringPatternDb.LayoutDisplayName(pinnedPick)}";
+                    }
                     else
                     {
                         EngineLayoutAutoText.Text = "";
                     }
+                    if (!string.IsNullOrEmpty(maxPart))
+                        EngineLayoutAutoText.Text = string.IsNullOrEmpty(EngineLayoutAutoText.Text)
+                            ? maxPart
+                            : EngineLayoutAutoText.Text + "  ·  " + maxPart;
 
                     // Engine-data submission fires directly from the Car
                     // facts engine pick (CommitEnginePin ->
@@ -5768,7 +5783,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout();
             RefreshCarFactsPanel();
             if (layout != Effects.EngineLayout.Auto)
                 MaybePromptToSubmitEngineData(_plugin.ActiveCarId);
@@ -5820,7 +5834,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout();
         }
 
         private void OpenManageCustomEnginesDialog()
@@ -5854,9 +5867,8 @@ namespace TrueforceForAll.Plugin
             RebuildEngineLayoutDropdown();
             Apply(EffectKind.Engine);
             // A custom-engine edit changes resolution inputs (the pinned
-            // pattern), so re-run car-facts resolution before the readout.
+            // pattern), so re-run car-facts resolution.
             _plugin.ReresolveActiveCarFacts();
-            UpdateFiringPatternReadout();
         }
 
         // Community-list refresh for the active car landed. Drop the
@@ -8834,76 +8846,9 @@ namespace TrueforceForAll.Plugin
         {
         }
 
-        // Sync the pattern readout textbox to the currently selected layout.
-        // Read-only. Authoring custom engines happens in the modal dialog,
-        // not inline. Shows a friendly message for Electric / dangling custom
-        // references; shows the FiringPattern's Name + serialized positions
-        // for built-ins and combustion customs.
-        private void UpdateFiringPatternReadout()
-        {
-            if (EngineFiringPatternText == null || _plugin == null) return;
-            var (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
-            var ep = _plugin.EnginePulse;
-            var layout = pinLayout ?? ep?.EffectiveLayout ?? Effects.EngineLayout.Auto;
-
-            string display;
-            if (layout == Effects.EngineLayout.Electric)
-            {
-                display = "Electric: no firing pattern";
-            }
-            else if (layout == Effects.EngineLayout.Custom)
-            {
-                if (pinLayout == Effects.EngineLayout.Custom)
-                {
-                    var custom = FindCustomById(pinCustomId);
-                    if (custom == null)
-                    {
-                        display = "Custom: referenced engine not found in library";
-                    }
-                    else if (custom.IsElectric)
-                    {
-                        display = $"Electric custom: {custom.Name} ({(custom.ElectricMode == ElectricCarMode.Silent ? "silent" : "muted hum")})";
-                    }
-                    else
-                    {
-                        var parsed = Effects.FiringPatternDb.ParseCustom(custom.Pattern);
-                        display = parsed == null
-                            ? $"Custom: {custom.Name} (invalid pattern)"
-                            : $"Custom: {custom.Name}, {Effects.FiringPatternDb.Format(parsed)}";
-                    }
-                }
-                else
-                {
-                    // Custom reached through the auto cascade = a community
-                    // custom engine applied transiently (not in the library).
-                    display = "Community custom engine";
-                }
-            }
-            else
-            {
-                var pat = Effects.FiringPatternDb.ResolveLayout(layout);
-                display = pat == null
-                    ? ""
-                    : $"{pat.Name}: {Effects.FiringPatternDb.Format(pat)}";
-            }
-            bool old = _suppressEvents;
-            _suppressEvents = true;
-            try { EngineFiringPatternText.Text = display; }
-            finally { _suppressEvents = old; }
-        }
-
-        private CustomEngineDef FindCustomById(string id)
-        {
-            if (string.IsNullOrEmpty(id)) return null;
-            var customs = _plugin?.Settings?.CustomEngines;
-            if (customs == null) return null;
-            foreach (var c in customs)
-            {
-                if (c != null && string.Equals(c.Id, id, StringComparison.Ordinal))
-                    return c;
-            }
-            return null;
-        }
+        // (The firing-pattern readout was removed 2026-07-19: raw phase
+        // positions were developer noise. The auto-detect line under the Car
+        // facts engine dropdown is the user-facing engine feedback.)
 
         // ---------- Road bumps ----------
 
@@ -9228,25 +9173,12 @@ namespace TrueforceForAll.Plugin
             }
 
             // The engine TYPE is the inline CarFactsEngineCombo (populated by
-            // RebuildEngineLayoutDropdown). Make sure it's filled the first time
-            // the panel opens, then show a meta line with the rev ceiling that
-            // distinguishes tunes/swaps and where the fact came from.
+            // RebuildEngineLayoutDropdown). Make sure it's filled the first
+            // time the panel opens. The auto-detect line right below the
+            // combo (EngineLayoutAutoText) carries the rev-ceiling readout on
+            // the same line, so there is no separate meta line anymore.
             if (CarFactsEngineCombo != null && CarFactsEngineCombo.ItemsSource == null)
                 RebuildEngineLayoutDropdown();
-            if (CarFactsEngineMetaText != null)
-            {
-                // The auto-detect detail line (EngineLayoutAutoText, moved
-                // here from the Engine pulse section) sits right below, so
-                // the meta only carries the rev ceiling and, for a pinned
-                // type, "you set this".
-                string maxPart = s.MaxRpm.HasValue ? s.MaxRpm.Value + " max RPM" : "";
-                string meta = s.EngineTypeIsUserOverride
-                    ? (string.IsNullOrEmpty(maxPart) ? "You set this" : maxPart + "  ·  You set this")
-                    : maxPart;
-                CarFactsEngineMetaText.Text = meta;
-                CarFactsEngineMetaText.Visibility = string.IsNullOrEmpty(meta)
-                    ? Visibility.Collapsed : Visibility.Visible;
-            }
 
             // Prefer the user's EXACT pinned value over the resolver's
             // EffectiveRedlineRpm, which only recomputes on a telemetry frame
@@ -9556,7 +9488,6 @@ namespace TrueforceForAll.Plugin
             // The window mutates via the plugin's helpers (which re-resolve
             // internally); rebuild so a delete / rename lands immediately.
             RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout();
             RefreshFromPlugin();
         }
 

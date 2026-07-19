@@ -1128,7 +1128,6 @@
                                     <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
                                 </TextBlock>
                             </Grid>
-                            <TextBlock x:Name="CarFactsEngineMetaText" FontSize="11" Opacity="0.55" Margin="64,0,0,2"/>
                             <!-- Custom engine authoring (moved from the Engine pulse
                                  section with the 2026-07 centralization). -->
                             <StackPanel Orientation="Horizontal" Margin="64,0,0,2">
@@ -1139,21 +1138,13 @@
                                     <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
                                 </TextBlock>
                             </StackPanel>
-                            <!-- Auto-detect indicator + community context (moved from
-                                 the Engine pulse section; the code-behind that fills
-                                 these also drives the shared per-car community fetch,
-                                 so the x:Names are load-bearing). -->
+                            <!-- Auto-detect indicator (with the max-RPM readout on the
+                                 same line) + community context, moved from the Engine
+                                 pulse section. The code-behind that fills these also
+                                 drives the shared per-car community fetch, so the
+                                 x:Names are load-bearing. -->
                             <TextBlock x:Name="EngineLayoutAutoText" FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="64,0,0,2" Text=""/>
                             <TextBlock x:Name="EngineCommunityText" FontSize="11" Opacity="0.55" Margin="64,0,0,6" Text="" Visibility="Collapsed"/>
-                            <!-- Firing-pattern readout: what's being synthesized for
-                                 the resolved engine type. Read-only diagnostic. -->
-                            <Grid Margin="0,0,0,4">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Pattern" FontSize="12" Opacity="0.6" VerticalAlignment="Center"
-                                           ToolTip="Diagnostic readout: comma-separated phase positions in [0, 1) where each pulse fires within one 720° engine cycle."/>
-                                <TextBox   Grid.Column="1" x:Name="EngineFiringPatternText" FontSize="11"
-                                           FontFamily="Consolas" IsReadOnly="True" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            </Grid>
                             <!-- Redline -->
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions>
