@@ -168,6 +168,8 @@ namespace TrueforceForAll.Plugin
         private void Electric_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppress) return;
+            // Same InitializeComponent-ordering guard as Count_ValueChanged.
+            if (ShapeRow == null || ElectricBehaviorRow == null) return;
             UpdateElectricCombustionVisibility();
         }
 
@@ -187,6 +189,8 @@ namespace TrueforceForAll.Plugin
         private void Shape_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             if (_suppress) return;
+            // Same InitializeComponent-ordering guard as Count_ValueChanged.
+            if (CountSlider == null || CountText == null || PatternTextBox == null) return;
             ApplyShapeConstraints();
             // After clamping, regenerate the pattern from (shape, count).
             RegeneratePattern();
@@ -236,6 +240,12 @@ namespace TrueforceForAll.Plugin
             System.Windows.RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppress) return;
+            // Fires DURING InitializeComponent: the XAML parser's assignment
+            // of the slider's Minimum coerces Value before the later-declared
+            // controls exist (and before the constructor can set _suppress).
+            // Without this guard the NRE aborts window construction, which
+            // presents as "Create custom engine does nothing".
+            if (CountText == null || PatternTextBox == null) return;
             int v = (int)Math.Round(e.NewValue);
             CountText.Text = v.ToString();
             RegeneratePattern();
