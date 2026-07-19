@@ -6787,6 +6787,7 @@ namespace TrueforceForAll.Plugin
         private async Task RefreshSupportersWallAsync()
         {
             if (SupportersWallPanel == null || _plugin == null) return;
+            StopCloudSim();   // every path below rebuilds or clears the wall
             if (_plugin.Settings?.CommunityEnabled != true)
             {
                 SupportersWallPanel.Children.Clear();
@@ -6835,27 +6836,176 @@ namespace TrueforceForAll.Plugin
             RenderSupportersCloud(rows);
         }
 
-        // One flat ranked CLOUD (no tier sections, no grid). The server orders rows by
-        // lifetime support and sends no amounts, so reading order IS the ranking and the
-        // rank-scaled name sizes carry it visually. InlineUIContainers inside a centered,
-        // wrapping TextBlock get every LINE centered, which is what makes the cloud shape.
+        // ---- Supporters cloud physics ----
+        // The wall is a lightweight physics toy, not a grid: every pill is a soft body
+        // spring-anchored to its spot in a rank-ordered spiral (rank 0 in the middle, the
+        // rest packed around it), pills shove each other apart on contact, and the mouse
+        // plows through and scatters them before they drift home. The sim only runs while
+        // something is moving or the cursor is over the canvas, then sleeps.
+
+        private sealed class CloudBody
+        {
+            public System.Windows.FrameworkElement El;
+            public double X, Y, VX, VY, AX, AY, W, H;   // position, velocity, anchor, size
+        }
+
+        private System.Windows.Threading.DispatcherTimer _cloudTimer;
+        private System.Collections.Generic.List<CloudBody> _cloudBodies;
+        private System.Windows.Controls.Canvas _cloudCanvas;
+        private System.Windows.Point? _cloudMouse;
+        private int _cloudCalmFrames;
+
         private void RenderSupportersCloud(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
         {
-            var cloud = new System.Windows.Controls.TextBlock
+            StopCloudSim();
+            double width = SupportersWallPanel.ActualWidth;
+            if (double.IsNaN(width) || width < 320) width = 660;
+            width = Math.Min(width, 700);
+
+            var canvas = new System.Windows.Controls.Canvas
             {
-                TextWrapping        = System.Windows.TextWrapping.Wrap,
-                TextAlignment       = System.Windows.TextAlignment.Center,
-                MaxWidth            = 700,
+                Width               = width,
+                Background          = System.Windows.Media.Brushes.Transparent,   // hit-test empty space
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             };
+
+            // Measure chips and anchor them along a vertically squashed Archimedean spiral
+            // in rank order, so the biggest names sit in the middle of a wide cloud.
+            var bodies = new System.Collections.Generic.List<CloudBody>();
+            var placed = new System.Collections.Generic.List<System.Windows.Rect>();
+            var inf = new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity);
             for (int i = 0; i < rows.Count; i++)
             {
-                cloud.Inlines.Add(new System.Windows.Documents.InlineUIContainer(BuildSupporterChip(rows[i], i))
+                var el = (System.Windows.FrameworkElement)BuildSupporterChip(rows[i], i);
+                el.Measure(inf);
+                double w = el.DesiredSize.Width, h = el.DesiredSize.Height;
+                var rect = new System.Windows.Rect(-w / 2, -h / 2, w, h);
+                for (double t = 0.35; t < 400 && CloudOverlaps(rect, placed); t += 0.35)
                 {
-                    BaselineAlignment = System.Windows.BaselineAlignment.Center,
-                });
+                    double r = 4 + 5.5 * t;
+                    rect.X = r * Math.Cos(t) - w / 2;
+                    rect.Y = 0.62 * r * Math.Sin(t) - h / 2;
+                }
+                placed.Add(rect);
+                bodies.Add(new CloudBody { El = el, W = w, H = h, AX = rect.X, AY = rect.Y });
             }
-            SupportersWallPanel.Children.Add(cloud);
+
+            // Shift anchors into canvas space and size the canvas to fit the cloud.
+            double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+            foreach (var r in placed)
+            {
+                minX = Math.Min(minX, r.X); minY = Math.Min(minY, r.Y);
+                maxX = Math.Max(maxX, r.Right); maxY = Math.Max(maxY, r.Bottom);
+            }
+            double padX = Math.Max(8, (width - (maxX - minX)) / 2);
+            canvas.Height = Math.Max(140, (maxY - minY) + 16);
+            var rnd = new Random(12345);   // fixed seed: same gentle drift-in every open
+            foreach (var b in bodies)
+            {
+                b.AX += padX - minX; b.AY += 8 - minY;
+                b.X = b.AX + rnd.NextDouble() * 40 - 20;
+                b.Y = b.AY + rnd.NextDouble() * 30 - 15;
+                b.VX = rnd.NextDouble() * 2 - 1;
+                b.VY = rnd.NextDouble() * 2 - 1;
+                System.Windows.Controls.Canvas.SetLeft(b.El, b.X);
+                System.Windows.Controls.Canvas.SetTop(b.El, b.Y);
+                canvas.Children.Add(b.El);
+            }
+
+            canvas.MouseMove  += (s, e) => { _cloudMouse = e.GetPosition(canvas); StartCloudSim(); };
+            canvas.MouseLeave += (s, e) => _cloudMouse = null;
+            canvas.IsVisibleChanged += (s, e) => { if (!canvas.IsVisible) StopCloudSim(); };
+
+            _cloudBodies = bodies;
+            _cloudCanvas = canvas;
+            SupportersWallPanel.Children.Add(canvas);
+            StartCloudSim();   // let the drift-in settle
+        }
+
+        private static bool CloudOverlaps(System.Windows.Rect rect, System.Collections.Generic.List<System.Windows.Rect> placed)
+        {
+            rect.Inflate(4, 3);
+            foreach (var p in placed) if (rect.IntersectsWith(p)) return true;
+            return false;
+        }
+
+        private void StartCloudSim()
+        {
+            if (_cloudTimer == null)
+            {
+                _cloudTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Render)
+                {
+                    Interval = TimeSpan.FromMilliseconds(16),
+                };
+                _cloudTimer.Tick += (s, e) => CloudTick();
+            }
+            _cloudCalmFrames = 0;
+            _cloudTimer.Start();
+        }
+
+        private void StopCloudSim() => _cloudTimer?.Stop();
+
+        // One 60 fps physics step: anchor springs, mouse shove, pairwise separation,
+        // damping, wall bounce. Sleeps itself once everything settles and the cursor left.
+        private void CloudTick()
+        {
+            var bodies = _cloudBodies; var canvas = _cloudCanvas;
+            if (bodies == null || canvas == null) { StopCloudSim(); return; }
+
+            foreach (var b in bodies)
+            {
+                b.VX += (b.AX - b.X) * 0.015;
+                b.VY += (b.AY - b.Y) * 0.015;
+            }
+            if (_cloudMouse is System.Windows.Point m)
+            {
+                const double reach = 120;
+                foreach (var b in bodies)
+                {
+                    double dx = (b.X + b.W / 2) - m.X, dy = (b.Y + b.H / 2) - m.Y;
+                    double d = Math.Sqrt(dx * dx + dy * dy);
+                    if (d < 1) { dx = 1; dy = 0; d = 1; }
+                    if (d < reach)
+                    {
+                        double f = 1 - d / reach; f = f * f * 2.6;
+                        b.VX += dx / d * f; b.VY += dy / d * f;
+                    }
+                }
+            }
+            for (int i = 0; i < bodies.Count; i++)
+                for (int j = i + 1; j < bodies.Count; j++)
+                {
+                    var a = bodies[i]; var b = bodies[j];
+                    double dx = (a.X + a.W / 2) - (b.X + b.W / 2);
+                    double dy = (a.Y + a.H / 2) - (b.Y + b.H / 2);
+                    // Rectangle-ish separation: distance normalized by combined half-sizes.
+                    double px = (a.W + b.W) / 2 + 6, py = (a.H + b.H) / 2 + 4;
+                    double nx = dx / px, ny = dy / py;
+                    double nd = Math.Sqrt(nx * nx + ny * ny);
+                    if (nd >= 1 || nd < 0.0001) continue;
+                    double push = (1 - nd) * 0.9;
+                    double ux = nx / nd, uy = ny / nd;
+                    a.VX += ux * push; a.VY += uy * push * 1.2;
+                    b.VX -= ux * push; b.VY -= uy * push * 1.2;
+                }
+
+            bool calm = _cloudMouse == null;
+            foreach (var b in bodies)
+            {
+                b.VX *= 0.86; b.VY *= 0.86;
+                double sp = Math.Sqrt(b.VX * b.VX + b.VY * b.VY);
+                if (sp > 14) { b.VX *= 14 / sp; b.VY *= 14 / sp; }
+                b.X += b.VX; b.Y += b.VY;
+                if (b.X < 0) { b.X = 0; b.VX = Math.Abs(b.VX) * 0.5; }
+                if (b.Y < 0) { b.Y = 0; b.VY = Math.Abs(b.VY) * 0.5; }
+                if (b.X + b.W > canvas.Width)  { b.X = canvas.Width - b.W;  b.VX = -Math.Abs(b.VX) * 0.5; }
+                if (b.Y + b.H > canvas.Height) { b.Y = canvas.Height - b.H; b.VY = -Math.Abs(b.VY) * 0.5; }
+                System.Windows.Controls.Canvas.SetLeft(b.El, b.X);
+                System.Windows.Controls.Canvas.SetTop(b.El, b.Y);
+                if (sp > 0.06) calm = false;
+            }
+            if (calm) { if (++_cloudCalmFrames > 30) StopCloudSim(); }
+            else _cloudCalmFrames = 0;
         }
 
         // A pill per supporter. Patreon patrons are tinted by tier STANDING (server-computed
