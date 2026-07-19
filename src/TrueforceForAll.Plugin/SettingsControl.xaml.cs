@@ -6832,39 +6832,45 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             if (SupportersWallStatus != null) SupportersWallStatus.Visibility = System.Windows.Visibility.Collapsed;
-            RenderSupportersRanked(rows);
+            RenderSupportersCloud(rows);
         }
 
-        // One flat ranked wall (no tier sections). The server orders rows by lifetime support
-        // and sends no amounts, so left-to-right, top-to-bottom IS the ranking: one-time donors
-        // sort proportionally to what they gave and long-running patrons rise over time. Fixed
-        // ItemWidth + capped MaxWidth make the wrap read as a tidy 1-3 column list.
-        private void RenderSupportersRanked(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
+        // One flat ranked CLOUD (no tier sections, no grid). The server orders rows by
+        // lifetime support and sends no amounts, so reading order IS the ranking and the
+        // rank-scaled name sizes carry it visually. InlineUIContainers inside a centered,
+        // wrapping TextBlock get every LINE centered, which is what makes the cloud shape.
+        private void RenderSupportersCloud(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
         {
-            const double chipWidth = 210;
-            var wrap = new System.Windows.Controls.WrapPanel
+            var cloud = new System.Windows.Controls.TextBlock
             {
-                ItemWidth           = chipWidth,
-                MaxWidth            = chipWidth * 3 + 1,
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                TextWrapping        = System.Windows.TextWrapping.Wrap,
+                TextAlignment       = System.Windows.TextAlignment.Center,
+                MaxWidth            = 700,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             };
-            for (int i = 0; i < rows.Count; i++) wrap.Children.Add(BuildSupporterChip(rows[i], i));
-            SupportersWallPanel.Children.Add(wrap);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                cloud.Inlines.Add(new System.Windows.Documents.InlineUIContainer(BuildSupporterChip(rows[i], i))
+                {
+                    BaselineAlignment = System.Windows.BaselineAlignment.Center,
+                });
+            }
+            SupportersWallPanel.Children.Add(cloud);
         }
 
-        // A pill per supporter, tinted by tier (platinum / gold / default blue). Patreon
-        // patrons carry a small tier badge on the right; one-time donors show the name alone
-        // (their tier is a bucket label, not a pledge tier). The name scales by rank (18px
-        // at the top easing toward the 12px baseline): rank is the only amount signal the
-        // server sends, and a fixed decay keeps sizes stable as the roster grows.
+        // A pill per supporter. Patreon patrons are tinted by tier STANDING (server-computed
+        // tier_level ordinal: 1 gold, 2 silver, 3+ bronze) and carry a small tier badge on the
+        // right; one-time donors stay the neutral blue and show the name alone. The name scales
+        // by rank (24px at the top easing toward the 13px baseline): rank is the only amount
+        // signal the server sends, and a fixed decay keeps sizes stable as the roster grows.
         private System.Windows.UIElement BuildSupporterChip(SupportersClient.SupporterRow row, int rank)
         {
-            double nameSize = 12 + 6 * Math.Pow(0.7, rank);
+            double nameSize = 13 + 11 * Math.Pow(0.8, rank);
             bool patreon = string.Equals(row.Source, "patreon", StringComparison.OrdinalIgnoreCase);
-            string t = (row.Tier ?? "").Trim().ToLowerInvariant();
-            string accent = t.Contains("platinum") ? "#FFCDD3DE"
-                          : t.Contains("gold")     ? "#FFE5C04A"
-                          :                          "#FF5AA0E5";
+            string accent = !patreon || row.TierLevel == null ? "#FF5AA0E5"
+                          : row.TierLevel == 1                ? "#FFE5C04A"
+                          : row.TierLevel == 2                ? "#FFC6CDDA"
+                          :                                     "#FFCD8A54";
             var col = System.Windows.Media.Colors.SteelBlue;
             try { col = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(accent); } catch { }
             var bg = col; bg.A = 0x22;
@@ -6872,12 +6878,17 @@ namespace TrueforceForAll.Plugin
             {
                 CornerRadius    = new System.Windows.CornerRadius(9),
                 Padding         = new System.Windows.Thickness(10, 3, 10, 3),
-                Margin          = new System.Windows.Thickness(0, 0, 6, 6),
+                Margin          = new System.Windows.Thickness(3),
                 Background      = new System.Windows.Media.SolidColorBrush(bg),
                 BorderBrush     = new System.Windows.Media.SolidColorBrush(col),
                 BorderThickness = new System.Windows.Thickness(1),
                 VerticalAlignment = System.Windows.VerticalAlignment.Center,
             };
+            border.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+            var hoverScale = new System.Windows.Media.ScaleTransform(1.0, 1.0);
+            border.RenderTransform = hoverScale;
+            border.MouseEnter += (s, e) => AnimateChipHover(border, hoverScale, bg, true);
+            border.MouseLeave += (s, e) => AnimateChipHover(border, hoverScale, bg, false);
             var dock = new System.Windows.Controls.DockPanel { LastChildFill = true };
             if (patreon && !string.IsNullOrWhiteSpace(row.Tier))
             {
@@ -6892,7 +6903,7 @@ namespace TrueforceForAll.Plugin
                     Child = new System.Windows.Controls.TextBlock
                     {
                         Text       = row.Tier,
-                        FontSize   = 10,
+                        FontSize   = Math.Max(9, nameSize * 0.55),
                         FontWeight = System.Windows.FontWeights.SemiBold,
                         Foreground = new System.Windows.Media.SolidColorBrush(col),
                     },
@@ -6917,6 +6928,22 @@ namespace TrueforceForAll.Plugin
             dock.Children.Add(text);
             border.Child = dock;
             return border;
+        }
+
+        // Cloud hover: the pill swells slightly and its fill warms up, then settles back.
+        private static void AnimateChipHover(System.Windows.Controls.Border chip,
+            System.Windows.Media.ScaleTransform scale, System.Windows.Media.Color restBg, bool entering)
+        {
+            var ease = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var grow = new System.Windows.Media.Animation.DoubleAnimation(entering ? 1.12 : 1.0,
+                TimeSpan.FromMilliseconds(130)) { EasingFunction = ease };
+            scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
+            scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, grow);
+            var toBg = restBg; if (entering) toBg.A = 0x55;
+            var fill = new System.Windows.Media.Animation.ColorAnimation(toBg,
+                TimeSpan.FromMilliseconds(130)) { EasingFunction = ease };
+            (chip.Background as System.Windows.Media.SolidColorBrush)?.BeginAnimation(
+                System.Windows.Media.SolidColorBrush.ColorProperty, fill);
         }
 
         // ---- Achievement tracker + celebration toast (Phase 2, M5) ----

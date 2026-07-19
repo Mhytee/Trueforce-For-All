@@ -21,6 +21,7 @@ namespace TrueforceForAll.Plugin
             public string Name { get; set; }
             public string Tier { get; set; }
             public string Source { get; set; }   // "patreon" (tier badge) or "manual" (one-time donor)
+            public int? TierLevel { get; set; }  // patreon only: 1 = highest pledge tier (gold), 2 silver, 3+ bronze
             // No monetary fields: the server orders by lifetime support and returns rows
             // already in display order, so amounts never reach the client.
         }
@@ -77,7 +78,7 @@ namespace TrueforceForAll.Plugin
                             if (row == null) continue;
                             string name = (string)row["display_name"];
                             if (string.IsNullOrWhiteSpace(name)) continue;
-                            result.Add(new SupporterRow { Name = name, Tier = (string)row["tier"], Source = (string)row["source"] });
+                            result.Add(new SupporterRow { Name = name, Tier = (string)row["tier"], Source = (string)row["source"], TierLevel = (int?)row["tier_level"] });
                         }
                         return result;
                     }
