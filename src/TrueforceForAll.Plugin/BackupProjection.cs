@@ -127,7 +127,7 @@ namespace TrueforceForAll.Plugin
             "PresetsMigratedV2", "CarsMigratedV2", "LegacyBuiltinsCleanedV1",
             "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
-            "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1",
+            "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1", "EngineOnlyOverridesPrunedV1",
             // Backend config (release bakes constants; a dev override must not travel).
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).

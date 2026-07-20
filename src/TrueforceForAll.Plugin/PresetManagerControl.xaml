@@ -445,7 +445,7 @@
                                     ToolTip="Open this car preset on the Effects tab to change its values. Saving over a built-in makes a copy."/>
                             <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
                             <Button x:Name="CarRenameBtn"    Content="Rename…"      Style="{StaticResource RowButton}" Click="CarRename_Click"    IsEnabled="False"
-                                    ToolTip="Rename this preset (e.g. 'Wet setup' to 'Endurance'). To rename the CAR instead, click Edit and use the Rename button on the header card."/>
+                                    ToolTip="Rename this preset (e.g. 'Wet setup' to 'Endurance'). To rename the CAR instead, use the Name box in Car facts on the active card."/>
                             <Button x:Name="CarShareBtn"     Content="Share"        Style="{StaticResource RowButton}" Click="CarShare_Click"     IsEnabled="False"
                                     ToolTipService.ShowOnDisabled="True"
                                     ToolTip="Upload this car preset to the community so other drivers can find it."/>

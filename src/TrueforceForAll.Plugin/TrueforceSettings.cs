@@ -145,6 +145,12 @@ namespace TrueforceForAll.Plugin
         // + idempotent.
         public bool EngineChoiceMovedToCarFactsV1 { get; set; } = false;
 
+        // One-time cleanup latch (follow-up to the relocation above): car
+        // overrides whose ONLY content was the engine pick get their
+        // EnginePulse section dropped, clearing the stray "overridden"
+        // Engine badge and unfreezing feel. Migrate-once + idempotent.
+        public bool EngineOnlyOverridesPrunedV1 { get; set; } = false;
+
         // One-time migration latch. Flips true after car presets whose name
         // matches the ordinal "Car_NNN" pattern have been renamed to their
         // baked human-readable car name (per game, via

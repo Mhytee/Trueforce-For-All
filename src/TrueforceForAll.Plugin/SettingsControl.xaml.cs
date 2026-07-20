@@ -6789,12 +6789,41 @@ namespace TrueforceForAll.Plugin
         private System.Windows.Point? _cloudMouse;
         private int _cloudCalmFrames;
 
+        // Re-render support: the first render can run before layout has
+        // measured the panel (ActualWidth 0 -> width fallback), and a resized
+        // window would otherwise keep a stale canvas width forever.
+        private System.Collections.Generic.List<SupportersClient.SupporterRow> _cloudRows;
+        private double _cloudRenderedWidth;
+        private bool _cloudSizeHooked;
+
+        private void HookCloudSizeOnce()
+        {
+            if (_cloudSizeHooked || SupportersWallPanel == null) return;
+            _cloudSizeHooked = true;
+            SupportersWallPanel.SizeChanged += (s, e) =>
+            {
+                if (_cloudRows == null || _cloudCanvas == null) return;
+                if (SupportersWallPanel.Children.Count == 0) return;
+                double w = SupportersWallPanel.ActualWidth;
+                if (double.IsNaN(w) || w < 100) return;
+                double target = Math.Max(240, Math.Min(w, 700));
+                if (Math.Abs(target - _cloudRenderedWidth) < 40) return;
+                RenderSupportersCloud(_cloudRows);
+            };
+        }
+
         private void RenderSupportersCloud(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
         {
             StopCloudSim();
+            // A re-render (size change) replaces the previous canvas; the
+            // full refresh path clears the panel separately.
+            if (_cloudCanvas != null) SupportersWallPanel.Children.Remove(_cloudCanvas);
             double width = SupportersWallPanel.ActualWidth;
-            if (double.IsNaN(width) || width < 320) width = 660;
-            width = Math.Min(width, 700);
+            bool measured = !double.IsNaN(width) && width >= 100;
+            width = measured ? Math.Max(240, Math.Min(width, 700)) : 660;
+            _cloudRows = rows;
+            _cloudRenderedWidth = width;
+            HookCloudSizeOnce();
 
             var canvas = new System.Windows.Controls.Canvas
             {

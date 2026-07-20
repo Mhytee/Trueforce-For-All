@@ -1973,6 +1973,25 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            // Follow-up prune: overrides whose only purpose was the engine
+            // pick (relocated above) kept an "overridden" Engine badge and
+            // froze feel against future preset edits for no reason. Runs
+            // after the relocation so the pick already lives in the pin.
+            if (!Settings.EngineOnlyOverridesPrunedV1)
+            {
+                try
+                {
+                    PruneEngineOnlyCarOverrides();
+                    Settings.EngineOnlyOverridesPrunedV1 = true;
+                    try { PersistSettingsCore(); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] Engine-only override prune failed (will retry next start): {ex.Message}");
+                }
+            }
+
             // Anon car facts (0100): whenever sharing is on (the default, or
             // an old opt-in), treat the consent question as answered and make
             // sure the anon id exists (covers fresh installs, the upgrade
@@ -11326,6 +11345,58 @@ namespace TrueforceForAll.Plugin
             if (pinned > 0)
                 SimHub.Logging.Current.Info(
                     $"[TF4ALL] Engine-choice migration: pinned {pinned} variant(s) from per-car presets.");
+        }
+
+        // One-time cleanup after the engine relocation: a per-car override
+        // whose ONLY content was the engine pick does nothing anymore (the
+        // pick lives in the variant pin), but its EnginePulse section kept
+        // the "overridden" Engine badge lit and froze feel against future
+        // preset edits. Drop the section when: the entry carried a pick,
+        // every OTHER section is null, the feel fields equal the current
+        // global (Eq ignores the legacy engine fields), and the entry has no
+        // community share identity (shared bodies keep their exact content).
+        private void PruneEngineOnlyCarOverrides()
+        {
+            int pruned = 0;
+            foreach (var carKv in GetAllCarPresets())
+            {
+                foreach (var pKv in carKv.Value)
+                {
+                    var entry = pKv.Value;
+                    if (entry == null || entry.IsBuiltin || entry.Override == null) continue;
+                    var ov = entry.Override;
+                    if (ov.EnginePulse == null) continue;
+                    if (!string.IsNullOrEmpty(ov.CommunitySourceId)
+                        || !string.IsNullOrEmpty(ov.CommunityUploadedById)) continue;
+                    bool hadPick = ov.EnginePulse.Layout != Effects.EngineLayout.Auto
+                        || !string.IsNullOrEmpty(ov.EnginePulse.CustomEngineId)
+                        || ov.EnginePulse.Cylinders != 0
+                        || ov.EnginePulse.EngineConfig != Effects.EngineConfig.Auto;
+                    if (!hadPick) continue;
+                    bool othersNull =
+                           ov.RoadBumps == null && ov.TractionLoss == null && ov.GearShift == null
+                        && ov.AbsClick == null && ov.PitLimiter == null && ov.Drs == null
+                        && ov.Collision == null && ov.RevLimiter == null && ov.AxleSlip == null
+                        && ov.KerbThump == null && ov.LockupJudder == null && ov.AudioCapture == null
+                        && ov.Airborne == null;
+                    if (!othersNull) continue;
+                    if (!Eq(ov.EnginePulse, Settings.EnginePulse)) continue;   // user also tuned feel: keep
+                    ov.EnginePulse = null;   // same instance as the CarOverrides cache entry
+                    try
+                    {
+                        _carStore?.Save(entry.CarId, entry.PresetName, entry.GameName, ov);
+                        pruned++;
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn(
+                            $"[TF4ALL] Engine-only override prune of '{entry.CarId}/{entry.PresetName}' failed: {ex.Message}");
+                    }
+                }
+            }
+            if (pruned > 0)
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Pruned {pruned} engine-only car override section(s).");
         }
 
         // NOTE: "adopt community redline" was retired (in Auto the cascade already

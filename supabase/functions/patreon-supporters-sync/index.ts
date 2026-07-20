@@ -176,6 +176,12 @@ Deno.serve(async (req) => {
   const camp = await resolveCampaign(tok);
   tok = camp.tok;
   if (!camp.id) return json({ error: "could not resolve campaign (token invalid or no campaign?)", status: camp.status, secrets }, 502);
+  // Fail LOUD, not silent-open: without a creator id the reconcile below
+  // cannot exempt the campaign creator, whose linked account would be
+  // revoked again (the 2026-07-18 incident). Surfaced in the logs and in
+  // the response so a broken include shows up in the next manual check.
+  if (!camp.creatorId)
+    console.warn("[patreon-supporters-sync] campaign creator id missing from /campaigns?include=creator; creator exemption INACTIVE this run");
 
   const fetched = await fetchMembers(camp.id, tok);
   tok = fetched.tok;
@@ -191,5 +197,6 @@ Deno.serve(async (req) => {
   const counts = await sr.json();
 
   const reconcile = await reconcileLinkedEntitlements(fetched.userStatus, camp.creatorId);
-  return json({ op, campaign: camp.id, pulled: fetched.patrons.length, counts, reconcile });
+  return json({ op, campaign: camp.id, pulled: fetched.patrons.length, counts, reconcile,
+    creator_exempt_active: !!camp.creatorId });
 });
