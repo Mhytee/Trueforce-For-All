@@ -80,7 +80,8 @@ create table if not exists car_fact_submissions (
     -- INLINE6, ROTARY2, etc.). Each EngineLayout uniquely encodes both
     -- cylinder count and firing pattern variant, so splitting them would
     -- give voting/Wilson surfaces for axes users can't independently
-    -- assert from the EngineLayoutCombo.
+    -- assert from the engine dropdown (CarFactsEngineCombo since the
+    -- 2026-07 centralization; EngineLayoutCombo at the time of writing).
     fact_type       text not null check (fact_type in ('engine_layout','car_name','redline')),
     payload         jsonb not null,
     submitter_id    text not null,

@@ -1,4 +1,4 @@
-// Read-only preview of a community submission's body. Opens from the
+﻿// Read-only preview of a community submission's body. Opens from the
 // Community segment's Preview button so the user can see what they are
 // about to download before committing. Branches on summary.Kind:
 //   * "car"    -> CarOverride section breakdown + bundled engines
@@ -477,7 +477,7 @@ namespace TrueforceForAll.Plugin
         private void AddOverrideSections(StackPanel host, JObject ovr)
         {
             AddSection(host, ovr, "EnginePulse",  "Engine pulse");
-            AddSection(host, ovr, "RevLimiter",   "Rev limiter");
+            AddSection(host, ovr, "RevLimiter",   "Redline buzz");
             AddSection(host, ovr, "RoadBumps",    "Road bumps");
             AddSection(host, ovr, "TractionLoss", "Traction loss");
             AddSection(host, ovr, "AxleSlip",     "Axle slip");
@@ -541,6 +541,16 @@ namespace TrueforceForAll.Plugin
             Text = text, Foreground = MutedFg, FontSize = 12,
         };
 
+        // Legacy engine-type keys (2026-07 centralization): the engine choice
+        // lives in Car facts now, so old preset bodies that still carry these
+        // must not present them as part of the tuning.
+        private static readonly HashSet<string> LegacyEngineKeys =
+            new HashSet<string>(System.StringComparer.Ordinal)
+        {
+            "Layout", "CustomEngineId", "CustomFiringPattern",
+            "CustomFiringPatternName", "Cylinders", "EngineConfig", "FiringOrderEnabled",
+        };
+
         private void AddSection(StackPanel host, JObject ovr, string key, string label)
         {
             var sect = ovr[key] as JObject;
@@ -550,7 +560,8 @@ namespace TrueforceForAll.Plugin
                 Text = label, Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 8, 0, 2),
             });
-            host.Children.Add(BuildFieldsBlock(sect));
+            host.Children.Add(BuildFieldsBlock(sect,
+                key == "EnginePulse" ? LegacyEngineKeys : null));
         }
 
         // Two-column "Field    Value" listing for a JObject. Shows every
@@ -559,7 +570,7 @@ namespace TrueforceForAll.Plugin
         // Nested objects + arrays render as a compact summary placeholder
         // rather than recursing (preset sections don't currently nest
         // beyond one level).
-        private FrameworkElement BuildFieldsBlock(JObject section)
+        private FrameworkElement BuildFieldsBlock(JObject section, HashSet<string> skip = null)
         {
             var grid = new Grid { Margin = new Thickness(8, 0, 0, 6) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
@@ -572,6 +583,7 @@ namespace TrueforceForAll.Plugin
             int rendered = 0;
             foreach (var name in headline)
             {
+                if (skip != null && skip.Contains(name)) continue;
                 var t = section[name];
                 if (t == null || t.Type == JTokenType.Null) continue;
                 if (!IsRenderableValue(t)) continue;
@@ -580,6 +592,7 @@ namespace TrueforceForAll.Plugin
             }
             foreach (var prop in section.Properties()
                                           .Where(p => !seen.Contains(p.Name))
+                                          .Where(p => skip == null || !skip.Contains(p.Name))
                                           .Where(p => p.Value != null && p.Value.Type != JTokenType.Null)
                                           .OrderBy(p => p.Name, System.StringComparer.OrdinalIgnoreCase))
             {

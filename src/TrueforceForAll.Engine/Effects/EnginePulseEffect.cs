@@ -123,10 +123,11 @@ namespace TrueforceForAll.Plugin.Effects
             || (EffectiveLayout == EngineLayout.Custom && ActiveCustomIsElectric);
 
         /// <summary>True when the active <see cref="EngineLayout.Custom"/>
-        /// entry is an electric engine (set by ApplyEngineSettings from the
-        /// looked-up CustomEngineDef). Lets a saved electric custom behave
-        /// like the built-in Electric layout, synthesis silenced and
-        /// AutoGainScale applied per <see cref="ElectricMode"/>.</summary>
+        /// entry is an electric engine (set by the plugin's car-facts
+        /// resolution from the pinned or community CustomEngineDef). Lets a
+        /// saved electric custom behave like the built-in Electric layout,
+        /// synthesis silenced and AutoGainScale applied per
+        /// <see cref="ElectricMode"/>.</summary>
         public bool ActiveCustomIsElectric { get; set; }
 
         /// <summary>What to do for EVs: attenuate to 50% (default,

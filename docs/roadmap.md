@@ -4,6 +4,12 @@ A living view of where the project is heading. This is a direction doc, not a
 promise of dates or order. Items move, get reordered, or get dropped as we
 learn more.
 
+New features land on the beta update channel first, and the beta is open to
+everyone: switch channels in the plugin's settings to try things early. Items
+marked "released on the beta channel" below are available there today.
+
+*Last updated: July 2026.*
+
 ---
 
 ## What we're working toward
@@ -21,19 +27,22 @@ retire that toggle and make detection automatic for everyone.
 
 ### Airborne and traction-loss feel, consistent across games
 
-*Status: in progress. Improving behavior that already exists.*
+*Status: in progress. The first fixes are live on the beta channel.*
 
 The car going light over a crest, or breaking grip in a slide, should
 feel the same no matter which game you are driving in.
 
-Right now the airborne and traction-loss effects can interfere, and they do it
-differently from game to game. In Forza, the airborne effect works as intended.
-In Assetto Corsa it fights the traction-loss detection: with the car airborne
-the wheels spin up faster than the car is actually moving, and our traction-loss
-heuristic reads that as a slide and fires when it should not. The goal is to get
-airborne and traction-loss to agree across games, so leaving the ground never
-gets misread as losing grip, with per-game tuning only where a title genuinely
-needs it.
+The worst of the interference is fixed on the beta channel: going airborne no
+longer sets off traction loss in Assetto Corsa or the Forza titles (the wheels
+spinning up freely over a jump used to read as a slide), and Assetto Corsa's
+airborne effect, which used to almost never fire, now triggers as it should.
+Grip effects also weigh each tire's real load now, so unloaded wheels stay
+quiet.
+
+Still to do: bring real airborne detection to games read through SimHub's
+generic telemetry, and stop the road-bump effects from reacting while the car
+is off the ground. The goal stays the same: airborne and traction loss agreeing
+in every game, with per-game tuning only where a title genuinely needs it.
 
 ### Richer force feedback from telemetry
 
@@ -53,15 +62,21 @@ full rate, so it doesn't need the FFB router driver. The driver would unlock it 
 games with native Trueforce, where it would divert the game's signal so ours isn't
 fighting it.
 
+This is separate from telemetry-based FFB, which is already on the beta channel
+as a per-game opt-in and builds the force entirely from telemetry. The idea here
+keeps the game's own force feedback and fills in the detail between its updates.
+
 ### Community and account features
 
-*Status: implemented, in testing before release.*
+*Status: released on the beta channel.*
 
 A shared layer of car knowledge and tuning, plus the account that ties it together.
 
 - **Community car facts.** Crowd-sourced names, engine types, and redlines fill in
-  your cars automatically, cached locally so they keep working offline. You can
-  confirm or correct any value, and optionally share your corrections back.
+  your cars automatically, cached locally so they keep working offline. It works
+  out of the box with no account needed. You can confirm or correct any value,
+  and your corrections flow back to help the next driver in that car (sharing
+  can be turned off).
 - **Engine-variant awareness.** The plugin notices when you switch to a different
   version of a car (an engine swap shows up as a new engine signature in the
   telemetry) and applies that variant's own redline and engine type, so the rev
@@ -74,46 +89,45 @@ A shared layer of car knowledge and tuning, plus the account that ties it togeth
   sharing presets, and submitting or correcting car facts. Supporter status
   unlocks cloud backup (below).
 
-A lot was built at once, so it's getting a round of real-world testing and polish
-before it reaches a release.
+All of this is live on the beta channel now, picking up polish from real-world
+use on its way to a stable release.
 
 ### Discord community
 
-*Status: coming soon.*
+*Status: live.*
 
 A place to get help and connect with other drivers.
 
-Built and getting its final tweaks before it goes live. When it launches, linking
-your Discord will automatically grant roles for your supporter status and
-achievements.
+The server is open now. Linking your Discord in the plugin brings your supporter
+status and achievements along as roles.
 
 ### Cloud backup and sync
 
-*Status: implemented, in testing before release.*
+*Status: released on the beta channel (for supporters).*
 
 Your settings and presets, backed up and carried between the machines you drive on.
 
 An optional cloud backup for supporters: it saves your tuning, presets, and
-settings and syncs them across your machines, so your setup follows you. Built and
-in testing now, headed to a release once it's solid.
+settings and syncs them across your machines, so your setup follows you. Live on
+the beta channel now, headed to a stable release once it has soaked.
 
 ### Mappable gain
 
-*Status: implemented, in testing before release.*
+*Status: released on the beta channel.*
 
 Adjust your force strength without stopping to open the app.
 
 Bind master gain up and down to a wheel button or rotary through SimHub's Controls
-to change force strength mid-session. Built and in testing.
+to change force strength mid-session. Live on the beta channel.
 
 ### Home-screen gain widget
 
-*Status: implemented, in testing before release.*
+*Status: released on the beta channel.*
 
 Quick master and audio gain, right on SimHub's home screen.
 
 An optional gain widget on SimHub's home screen for master and audio gain, next to
-the other feedback controls. Built and in testing.
+the other feedback controls. Live on the beta channel.
 
 ### Easier to diagnose and fix on your own
 
@@ -167,15 +181,17 @@ that win by shrinking the pipe read.
 
 ### LED support
 
-*Status: in progress, via the FFB router driver.*
+*Status: released on the beta channel for telemetry-based FFB. The driver
+brings it to everyone.*
 
 Your wheel's rev lights driven by the game, at the same time as force feedback.
 
 Writing LEDs and force feedback to the wheel at once contends at the firmware and
-can cut the force out, which is why it hasn't worked broadly. The FFB router driver
-(below) fixes that by making us the only thing writing to the wheel, and early
-testing already drives rev lights alongside force. Getting it into your hands
-depends on the driver work below.
+can cut the force out, which is why it hasn't worked broadly. The rev lights work
+today when the plugin is the only thing talking to the wheel, which is the case
+when you drive with telemetry-based FFB. The FFB router driver (below) makes that
+true no matter where the force comes from, so the rev lights will work for
+everybody once the driver is finished and signed.
 
 ### Working in games that already have Trueforce
 

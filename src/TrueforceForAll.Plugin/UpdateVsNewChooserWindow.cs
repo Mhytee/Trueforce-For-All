@@ -3,7 +3,7 @@
 // caller decides between PATCH (Update) and POST (Share as new) based on
 // which button the user clicks. Cancel skips the upload entirely.
 //
-// Styling mirrors CarNameInputWindow (dark bg #2A2A2A, gold header,
+// Styling mirrors CarFactsShareWindow (dark bg #2A2A2A, gold header,
 // muted subtext). Buttons are panel-grey to match every other modal in
 // the plugin; the gold "Share" CTA styling stays on the entry points, not
 // inside this picker.

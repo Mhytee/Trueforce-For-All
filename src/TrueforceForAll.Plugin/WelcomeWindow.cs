@@ -1,13 +1,15 @@
-// One-shot welcome modal explaining the community / networked features
-// that landed in this build. Fires on first plugin load AND on first
-// load after upgrading from a build that pre-dated the community DB.
+// One-shot welcome modal explaining the community / networked features.
+// Fires on first plugin load AND once more for existing installs when the
+// community default flipped to on (CommunityDefaultOnRepitchedV1).
 // Persistence latch: Settings.HasSeenNetworkedWelcome flips true on
 // dismiss; never reopens unless reset.
 //
-// "Get started" routes through the standard sign-in flow.
-// "Maybe later" just dismisses. Community reads are authenticated-only
-// since migration 0027, so without signing in the community features
-// stay dark; the user can sign in later from the Account tab.
+// This is a PROCEED, not a consent gate: community features and car-data
+// sharing are the default posture, so the callers enable them on ANY
+// dismissal (buttons, Esc, or the X). The modal's job is disclosure (what
+// is shared, where the off switch is) plus an optional account:
+// "Sign in / create account" additionally runs the sign-in flow;
+// "Continue without an account" just closes.
 
 using System.Windows;
 using System.Windows.Controls;
@@ -62,7 +64,10 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 6),
             });
             root.Children.Add(new TextBlock {
-                Text = "This update adds a community preset browser, crowd-sourced car data, and per-car corrections. They're free to use once you sign in.",
+                Text = "This update adds a community preset browser, crowd-sourced car data, and per-car corrections. "
+                     + "Community features are on: car data you tune (redlines, engine types, car names) is shared "
+                     + "anonymously and improves everyone's defaults. You can turn any of this off in Settings. "
+                     + "An account is only needed for the preset browser (free email sign-in).",
                 Foreground = MutedFg, FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 18),
                 TextWrapping = TextWrapping.Wrap,
@@ -84,7 +89,7 @@ namespace TrueforceForAll.Plugin
                 "Earn achievements for things like sharing presets, confirming car data, and supporting the project. Link your Discord account to get a matching role in the community server."));
             root.Children.Add(MakeBullet(
                 "Privacy by default",
-                "Sign-in needs just your email and a one-time code. No password, no signup form. The privacy policy spells out what's stored and how to remove it."));
+                "Car data you contribute is anonymous. Sign-in (only needed for presets) takes just your email and a one-time code. No password, no signup form. The privacy policy spells out what's stored and how to remove it."));
 
             // Policy link, indented to align with the bullet bodies.
             var policyLine = new TextBlock {
@@ -103,8 +108,8 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 20, 0, 0),
             };
-            var laterBtn = new Button {
-                Content = "Maybe later", Padding = new Thickness(14, 6, 14, 6),
+            var continueBtn = new Button {
+                Content = "Continue without an account", Padding = new Thickness(14, 6, 14, 6),
                 Margin = new Thickness(0, 0, 10, 0),
                 Foreground = TextFg, IsCancel = true,
                 Style = MakeFilledButtonStyle(
@@ -113,11 +118,11 @@ namespace TrueforceForAll.Plugin
                     Color.FromRgb(0x40, 0x40, 0x40),   // hover (lighter)
                     Color.FromRgb(0x2B, 0x2B, 0x2B)),  // pressed (darker)
             };
-            laterBtn.Click += (s, e) => { DialogResult = true; Close(); };
-            btnRow.Children.Add(laterBtn);
+            continueBtn.Click += (s, e) => { DialogResult = true; Close(); };
+            btnRow.Children.Add(continueBtn);
 
             var signInBtn = new Button {
-                Content = "Get started", Padding = new Thickness(16, 6, 16, 6),
+                Content = "Sign in / create account", Padding = new Thickness(16, 6, 16, 6),
                 Foreground = WindowBg,
                 FontWeight = FontWeights.SemiBold, IsDefault = true,
                 Style = MakeFilledButtonStyle(

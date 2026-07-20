@@ -1,4 +1,4 @@
-// Inline manager for the user's preset library, hosted on the Presets tab.
+﻿// Inline manager for the user's preset library, hosted on the Presets tab.
 // Three segments: game presets (Settings.Presets), car presets
 // (TrueforceCars/*.tfcar.json), and custom engines (Settings.CustomEngines).
 // Usable without a game or car loaded so users can prune / rename / export /
@@ -863,7 +863,7 @@ namespace TrueforceForAll.Plugin
                 int packs   = 0, presets = 0;
                 foreach (var se in impact.SharedEngines) { packs += se.OtherPackCount; presets += se.OutsidePresetRefs; }
                 var who = new List<string>();
-                if (presets > 0) who.Add($"{presets} preset(s) outside this pack");
+                if (presets > 0) who.Add($"{presets} preset(s) or pinned car(s) outside this pack");
                 if (packs   > 0) who.Add($"{packs} other installed pack(s)");
                 string n = impact.SharedEngines.Count == 1 ? "1 custom engine" : $"{impact.SharedEngines.Count} custom engines";
 
@@ -1628,7 +1628,7 @@ namespace TrueforceForAll.Plugin
             AppendEffectLine(sb, "Pit limiter",      snap.PitLimiter);
             AppendEffectLine(sb, "DRS",              snap.Drs);
             AppendEffectLine(sb, "Collision",        snap.Collision);
-            AppendEffectLine(sb, "Rev limiter",      snap.RevLimiter);
+            AppendEffectLine(sb, "Redline buzz",      snap.RevLimiter);
             AppendEffectLine(sb, "Airborne ducking", snap.Airborne);
             sb.AppendLine($"Sidechain ducking: {(snap.DuckingEnabled ? "on" : "off")} (depth {snap.DuckDepth:0.##})");
             return sb.ToString().TrimEnd();
@@ -1685,7 +1685,7 @@ namespace TrueforceForAll.Plugin
             AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   baseline?.PitLimiter);
             AppendOverrideSection(sections, "DRS",              ov.Drs,          baseline?.Drs);
             AppendOverrideSection(sections, "Collision",        ov.Collision,    baseline?.Collision);
-            AppendOverrideSection(sections, "Rev limiter",      ov.RevLimiter,   baseline?.RevLimiter);
+            AppendOverrideSection(sections, "Redline buzz",      ov.RevLimiter,   baseline?.RevLimiter);
             AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     baseline?.Airborne);
 
             sb.AppendLine();
@@ -1903,7 +1903,7 @@ namespace TrueforceForAll.Plugin
                         AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   null);
                         AppendOverrideSection(sections, "DRS",              ov.Drs,          null);
                         AppendOverrideSection(sections, "Collision",        ov.Collision,    null);
-                        AppendOverrideSection(sections, "Rev limiter",      ov.RevLimiter,   null);
+                        AppendOverrideSection(sections, "Redline buzz",      ov.RevLimiter,   null);
                         AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     null);
                         if (sections.Length > 0)
                         {
@@ -3346,10 +3346,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         private static string ShortenForCta(string name)
             => (name != null && name.Length > 30) ? name.Substring(0, 29) + "…" : name;
 
-        // (The per-car "Set name…" button was removed from the library row:
-        // it duplicated the header card's Rename, which already appears for the
-        // edited car during Edit. Car naming now lives there + the active card.
-        // The shared CarNameShareFlow is still used by those surfaces.)
+        // (The per-car "Set name…" button was removed from the library row,
+        // and the header card's Rename button later went the same way: car
+        // naming now lives in ONE place, the Car facts panel on the active
+        // card, which routes through the shared CarNameShareFlow.)
 
         private void CarRename_Click(object sender, RoutedEventArgs e)
         {
@@ -3655,17 +3655,25 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             foreach (var r in targets) if (r?.Def?.Id != null) ids.Add(r.Def.Id);
             if (ids.Count == 0) return;
 
-            int usageTotal = 0;
-            foreach (var id in ids) usageTotal += _plugin.GetEngineUsage(id).TotalPresetRefs;
+            int presetTotal = 0, pinTotal = 0;
+            foreach (var id in ids)
+            {
+                var u = _plugin.GetEngineUsage(id);
+                presetTotal += u.TotalPresetRefs;
+                pinTotal    += u.VariantPinCount;
+            }
 
             bool one = targets.Count == 1;
             string title = one ? "Delete custom engine" : "Delete custom engines";
             string head  = one
                 ? $"Delete custom engine '{targets[0].Def.Name}'?"
                 : $"Delete {targets.Count} custom engine(s)?";
-            string usageClause = usageTotal > 0
-                ? $"\n\n{usageTotal} preset(s) use {(one ? "it" : "them")}. "
-                  + $"Those presets will switch to Auto engine mode until you pick another."
+            var usedBy = new List<string>();
+            if (presetTotal > 0) usedBy.Add($"{presetTotal} preset(s)");
+            if (pinTotal    > 0) usedBy.Add($"{pinTotal} car variant(s)");
+            string usageClause = usedBy.Count > 0
+                ? $"\n\n{string.Join(" and ", usedBy)} use {(one ? "it" : "them")}. "
+                  + $"Those switch to Auto engine detection until you pick another."
                 : "";
 
             if (TrueforceDialog.Show(Window.GetWindow(this),

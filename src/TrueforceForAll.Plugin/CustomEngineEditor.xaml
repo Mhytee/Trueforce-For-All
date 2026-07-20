@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Custom engine"
-        Width="540" Height="460"
+        Width="540" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -32,22 +32,27 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- How-to intro -->
+        <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,12"
+                   Text="Build the pulse rhythm your wheel plays for an engine nothing built-in matches. Pick the firing pattern closest to the real engine and set the cylinder or rotor count; the pattern below fills in from those until you hand-edit it (Regenerate refills it on demand). Save it, then choose it in a variant's Engine dropdown to hear it on that car."/>
+
+        <!-- Shown only when editing a legacy ELECTRIC custom: saving converts
+             it to a firing-pattern engine, which flips every variant pinned
+             to it from EV hum to pulses. Say so instead of doing it silently. -->
+        <TextBlock Grid.Row="1" x:Name="ElectricConvertNote" Visibility="Collapsed"
+                   FontSize="11" Foreground="#FFE082" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Text="This engine was saved as electric. Saving here converts it to a firing-pattern engine. For electric cars, use the built-in Electric engine type and the EV behavior setting instead."/>
+
         <!-- Name -->
-        <Grid Grid.Row="0" Margin="0,0,0,12">
+        <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Name:" Style="{StaticResource LabelText}"/>
-            <TextBox Grid.Column="1" x:Name="NameTextBox" Padding="4,2"/>
+            <TextBox Grid.Column="1" x:Name="NameTextBox" Padding="4,2"
+                     ToolTip="What this engine is called in the Engine dropdowns, e.g. 'LS3 swap' or 'Crossplane R1'."/>
         </Grid>
 
-        <!-- Electric checkbox -->
-        <CheckBox Grid.Row="1" x:Name="ElectricCheck"
-                  Content="Electric engine (no firing pattern)"
-                  Margin="140,0,0,8"
-                  Checked="Electric_Changed" Unchecked="Electric_Changed"
-                  ToolTip="When checked, this engine plays no firing pulses. Use for EVs or hybrids where you want the muted-hum or silent treatment."/>
-
-        <!-- Combustion: Firing pattern shape -->
-        <Grid Grid.Row="2" x:Name="ShapeRow" Margin="0,0,0,8">
+        <!-- Firing pattern shape -->
+        <Grid Grid.Row="3" Margin="0,0,0,8">
             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Firing pattern:" Style="{StaticResource LabelText}"
                        ToolTip="Picks how pulses distribute within one 720° engine cycle. Even-fire covers Inline / Boxer / V60° / V90° / V8 flat-plane / V10 / V12 / W12-16 / V4."/>
@@ -66,8 +71,8 @@
             </ComboBox>
         </Grid>
 
-        <!-- Combustion: Cylinder/rotor count -->
-        <Grid Grid.Row="3" x:Name="CountRow" Margin="0,0,0,8">
+        <!-- Cylinder/rotor count -->
+        <Grid Grid.Row="4" Margin="0,0,0,8">
             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" x:Name="CountLabel" Text="Cylinders:" Style="{StaticResource LabelText}"/>
             <Slider Grid.Column="1" x:Name="CountSlider" Minimum="1" Maximum="16" SmallChange="1" LargeChange="2"
@@ -76,33 +81,22 @@
             <TextBlock Grid.Column="2" x:Name="CountText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="4"/>
         </Grid>
 
-        <!-- Combustion: Pattern textbox -->
-        <Grid Grid.Row="4" x:Name="PatternRow" Margin="0,0,0,4">
+        <!-- Pattern textbox -->
+        <Grid Grid.Row="5" Margin="0,0,0,4">
             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Pattern:" Style="{StaticResource LabelText}"
                        ToolTip="Comma-separated phase positions in [0, 1) representing where each pulse fires within one 720° cycle. Optional ':amplitude' suffix per pulse. Auto-fills when you pick a shape / count above; edit freely for expert tuning."/>
             <TextBox Grid.Column="1" x:Name="PatternTextBox" FontFamily="Consolas" Padding="4,2"/>
         </Grid>
 
-        <Grid Grid.Row="5" x:Name="PatternHelpRow" Margin="140,0,0,8">
+        <Grid Grid.Row="6" Margin="140,0,0,8">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" x:Name="PatternHelp" Style="{StaticResource HelpText}"
-                       Text="Format: 0, 0.125, 0.25, ...  Optional weights: 0:1.0, 0.125:0.85, ..."/>
+                       Text="Each number is when a cylinder fires within one engine cycle, from 0 to 1. Hand-edit for odd-fire engines; an optional :weight per pulse (0.25:0.85) makes that pulse softer."/>
             <Button Grid.Column="1" x:Name="RegeneratePatternButton" Content="Regenerate"
                     Padding="8,2" Margin="8,0,0,0" VerticalAlignment="Top"
                     Click="RegeneratePattern_Click"
                     ToolTip="Rebuild the pattern from the shape and cylinder count above. Replaces any manual edits."/>
-        </Grid>
-
-        <!-- Electric: Behavior -->
-        <Grid Grid.Row="6" x:Name="ElectricBehaviorRow" Margin="0,0,0,8" Visibility="Collapsed">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Behavior:" Style="{StaticResource LabelText}"
-                       ToolTip="Muted hum keeps the firing-frequency tone at half amplitude (real EVs aren't silent, and many pump synthetic sound). Silent fully mutes the engine effect for this car."/>
-            <ComboBox Grid.Column="1" x:Name="ElectricBehaviorCombo">
-                <ComboBoxItem Content="Muted hum (50%)"/>
-                <ComboBoxItem Content="Silent (off)"/>
-            </ComboBox>
         </Grid>
 
         <!-- Buttons -->

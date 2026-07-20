@@ -83,10 +83,11 @@ async function apiGet(path: string, tok: { access: string; refresh: string }): P
   return { ok: false, status: 401, body: null, tok: cur };
 }
 
-async function resolveCampaign(tok: { access: string; refresh: string }): Promise<{ id: string | null; tok: typeof tok; status: number }> {
-  const r = await apiGet("/v2/campaigns", tok);
+async function resolveCampaign(tok: { access: string; refresh: string }): Promise<{ id: string | null; creatorId: string | null; tok: typeof tok; status: number }> {
+  const r = await apiGet("/v2/campaigns?include=creator", tok);
   const id = r.ok ? (r.body?.data?.[0]?.id ?? null) : null;
-  return { id, tok: r.tok, status: r.status };
+  const creator = r.ok ? (r.body?.data?.[0]?.relationships?.creator?.data?.id ?? null) : null;
+  return { id, creatorId: creator ? String(creator) : null, tok: r.tok, status: r.status };
 }
 
 type Patron = { member_id: string; full_name: string; display_name: string; tier: string | null; tier_rank: number; amount_cents: number; lifetime_cents: number };
@@ -137,15 +138,18 @@ async function fetchMembers(campaignId: string, tok: { access: string; refresh: 
 
 // Reconcile is_supporter for every user in patreon_links from their CURRENT Patreon status.
 // Skips no-op rows (not active + not currently a supporter) so we never create spurious
-// entitlement rows. Best-effort: errors are counted, not thrown.
-async function reconcileLinkedEntitlements(userStatus: UserStatus): Promise<{ granted: number; revoked: number; unchanged: number; errors: number }> {
-  let granted = 0, revoked = 0, unchanged = 0, errors = 0;
+// entitlement rows. The campaign CREATOR is exempt: they can never be an "active patron" of
+// their own campaign, so pledge status must never revoke their entitlement.
+// Best-effort: errors are counted, not thrown.
+async function reconcileLinkedEntitlements(userStatus: UserStatus, creatorId: string | null): Promise<{ granted: number; revoked: number; unchanged: number; exempt: number; errors: number }> {
+  let granted = 0, revoked = 0, unchanged = 0, exempt = 0, errors = 0;
   try {
     const lr = await rest("patreon_links?select=user_id,patreon_user_id");
     const links = lr.ok ? await lr.json() as Array<{ user_id: string; patreon_user_id: string }> : [];
     const er = await rest("entitlements?select=user_id,is_supporter");
     const ent = new Map<string, boolean>((er.ok ? await er.json() as any[] : []).map((e) => [e.user_id, e.is_supporter === true]));
     for (const link of links) {
+      if (creatorId && link.patreon_user_id === creatorId) { exempt++; continue; }
       const st = userStatus.get(link.patreon_user_id);
       const active = st?.active === true;
       const tier = st?.tier ?? null;
@@ -156,7 +160,7 @@ async function reconcileLinkedEntitlements(userStatus: UserStatus): Promise<{ gr
       if (active) granted++; else revoked++;
     }
   } catch (_) { errors++; }
-  return { granted, revoked, unchanged, errors };
+  return { granted, revoked, unchanged, exempt, errors };
 }
 
 Deno.serve(async (req) => {
@@ -172,6 +176,12 @@ Deno.serve(async (req) => {
   const camp = await resolveCampaign(tok);
   tok = camp.tok;
   if (!camp.id) return json({ error: "could not resolve campaign (token invalid or no campaign?)", status: camp.status, secrets }, 502);
+  // Fail LOUD, not silent-open: without a creator id the reconcile below
+  // cannot exempt the campaign creator, whose linked account would be
+  // revoked again (the 2026-07-18 incident). Surfaced in the logs and in
+  // the response so a broken include shows up in the next manual check.
+  if (!camp.creatorId)
+    console.warn("[patreon-supporters-sync] campaign creator id missing from /campaigns?include=creator; creator exemption INACTIVE this run");
 
   const fetched = await fetchMembers(camp.id, tok);
   tok = fetched.tok;
@@ -186,6 +196,7 @@ Deno.serve(async (req) => {
   if (!sr.ok) return json({ error: "sync_supporters failed", status: sr.status, body: await sr.text() }, 500);
   const counts = await sr.json();
 
-  const reconcile = await reconcileLinkedEntitlements(fetched.userStatus);
-  return json({ op, campaign: camp.id, pulled: fetched.patrons.length, counts, reconcile });
+  const reconcile = await reconcileLinkedEntitlements(fetched.userStatus, camp.creatorId);
+  return json({ op, campaign: camp.id, pulled: fetched.patrons.length, counts, reconcile,
+    creator_exempt_active: !!camp.creatorId });
 });

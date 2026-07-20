@@ -5,10 +5,16 @@
 // state still works fine for users who never opted in.
 //
 // Submission goes through the submit_car_fact SECURITY DEFINER RPC, NOT
-// direct table writes - the backend treats the anon key as public and writes
-// can't be authenticated, so identity (submitter_id) is derived server-side
-// from the client IP. The plugin never asserts or relies on a submitter_id
-// of its own.
+// direct table writes. Car facts are account-FREE but not account-blind
+// (migration 0100): submissions never show a username to other users, and
+// no account is needed to contribute. A signed-in user's token still rides
+// the request so the server keys the submission to their account (car-fact
+// achievements, moderation); signed-out submissions carry
+// Settings.CarFactsAnonId, a client-minted random GUID sent as p_anon_id,
+// which the server stores as 'anon:<id>' and rate-limits per id AND per
+// hashed client IP. Consensus reads work with the plain anon key. All of it
+// is gated client-side by the one-time car-data consent
+// (Settings.AutoSubmitCarFacts via CarFactsConsentGate).
 //
 // Car-fact consensus is confirmation/correction based, not voted: every
 // driver submits what their car actually reads (confirm = re-submit the same
@@ -337,11 +343,11 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
-                        // car_fact_consensus is now authenticated-read only;
-                        // send the signed-in user's token and bail when there
-                        // isn't one.
+                        // car_fact_consensus is anon-readable (0100): prefer
+                        // the signed-in token when one exists, fall back to
+                        // the anon key so signed-out users get facts too.
                         string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                        if (string.IsNullOrEmpty(bearer)) return (RedlineConsensus)null;
+                        if (string.IsNullOrEmpty(bearer)) bearer = capturedKey;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
                             req.Headers.Add("apikey", capturedKey);
@@ -438,11 +444,11 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
-                        // car_fact_consensus is now authenticated-read only;
-                        // send the signed-in user's token and bail when there
-                        // isn't one.
+                        // car_fact_consensus is anon-readable (0100): prefer
+                        // the signed-in token when one exists, fall back to
+                        // the anon key so signed-out users get facts too.
                         string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                        if (string.IsNullOrEmpty(bearer)) return (CarNameConsensus)null;
+                        if (string.IsNullOrEmpty(bearer)) bearer = capturedKey;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
                             req.Headers.Add("apikey", capturedKey);
@@ -518,11 +524,11 @@ namespace TrueforceForAll.Plugin
                 {
                     var task = Task.Run(async () =>
                     {
-                        // car_fact_consensus is now authenticated-read only;
-                        // send the signed-in user's token and bail when there
-                        // isn't one.
+                        // car_fact_consensus is anon-readable (0100): prefer
+                        // the signed-in token when one exists, fall back to
+                        // the anon key so signed-out users get facts too.
                         string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                        if (string.IsNullOrEmpty(bearer)) return (EngineLayoutConsensus)null;
+                        if (string.IsNullOrEmpty(bearer)) bearer = capturedKey;
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
                             req.Headers.Add("apikey", capturedKey);
@@ -684,9 +690,16 @@ namespace TrueforceForAll.Plugin
         // expects the SQL function's argument names as JSON keys.
         // variant_signature is always sent (defaults to "" for fact_types
         // that don't carry a variant discriminator like car_name).
+        // p_anon_id is the FALLBACK identity for signed-out submissions;
+        // the server prefers auth.uid() when the request carries a user
+        // token. Omitted when not minted (NullValueHandling strips the
+        // null): a signed-in submission succeeds without it, a signed-out
+        // one is rejected server-side with 'sign-in required' and logged.
         private string BuildSubmitBody(string game, string carId, string factType,
             object payload, string variantSignature = "")
         {
+            string anonId = (_settingsProvider()?.CarFactsAnonId ?? "").Trim();
+            if (anonId.Length == 0) anonId = null;
             try
             {
                 return JsonConvert.SerializeObject(new
@@ -697,6 +710,7 @@ namespace TrueforceForAll.Plugin
                     p_payload           = payload,
                     p_plugin_version    = _pluginVersion,
                     p_variant_signature = variantSignature ?? "",
+                    p_anon_id           = anonId,
                 }, _jsonSettings);
             }
             catch (Exception ex)
@@ -710,6 +724,14 @@ namespace TrueforceForAll.Plugin
             string rpcPath, string body)
         {
             if (body == null) return;
+            // Consent gate, enforced at the last exit: every car-fact
+            // submission path (including the preset-upload name passthrough)
+            // funnels through here, so a withdrawn consent stops all of them.
+            if (_settingsProvider()?.AutoSubmitCarFacts != true)
+            {
+                _log?.Invoke("[TF4ALL] Community submit skipped: car-data sharing is off");
+                return;
+            }
             string fullUrl = baseUrl.TrimEnd('/') + rpcPath;
             string capturedKey = anonKey;
 
@@ -722,15 +744,14 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
-                    // Car-fact submit/vote RPCs require a signed-in user
-                    // (auth.uid()). Authenticate with the real user token, not
-                    // the anon key; skip the write when not signed in.
+                    // Prefer the signed-in token so the submission is keyed to
+                    // the account server-side (feeds the car-fact achievements
+                    // and the owner's moderation view); fall back to the anon
+                    // key + the client-minted p_anon_id so account-less users
+                    // can submit too. Either way other users never see a
+                    // username on car facts.
                     string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                    if (string.IsNullOrEmpty(bearer))
-                    {
-                        _log?.Invoke("[TF4ALL] Community submit skipped: sign-in required");
-                        return;
-                    }
+                    if (string.IsNullOrEmpty(bearer)) bearer = capturedKey;
                     using (var req = new HttpRequestMessage(HttpMethod.Post, fullUrl))
                     {
                         req.Headers.Add("apikey", capturedKey);

@@ -1,4 +1,4 @@
-// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
+﻿// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
 //
 // Lifecycle:
 //   Init: load settings → discover wheel → open + init + start stream →
@@ -106,11 +106,6 @@ namespace TrueforceForAll.Plugin
         // identity change so a different user on the same install
         // sees their own pitch.
         private bool _initWelcomePromptOffered;
-
-        // Days between "Maybe later" and the next pitch. Same value as
-        // SettingsControl's local const; centralizing here removes the
-        // duplication and lets the init-side path use it too.
-        internal const int WelcomeReshowDays = 14;
 
         // Sibling community-name cache. Same shape + same lifecycle as the
         // engine-layout cache: populated by SettingsControl after a per-car
@@ -278,6 +273,22 @@ namespace TrueforceForAll.Plugin
         // effects (_telemetrySource) points at this OR _simHubSource.
         private ForzaUdpTelemetrySource _forzaUdp;
         public  ForzaUdpTelemetrySource ForzaUdpSource => _forzaUdp;
+
+        // Serializes every create/dispose of _forzaUdp (and source swaps in
+        // general). SwapTelemetrySource normally runs on the SimHub data
+        // thread, but ApplyForzaSettings is a UI hook that tears the listener
+        // down and rebuilds it; without this lock the data thread's 1/sec
+        // enhanced-source retry can race through the "_forzaUdp == null"
+        // create window and bind a SECOND listener to the same port. Both
+        // binds succeed (ReuseAddress), only one of them receives datagrams,
+        // and if the orphaned one wins, the active source starves forever
+        // (observed as sign-out killing car-change detection).
+        private readonly object _sourceSwapLock = new object();
+
+        // Config fingerprint of the live _forzaUdp (set at create time) so
+        // ApplyForzaSettings(onlyIfChanged: true) can keep a healthy listener
+        // in place when the effective port/bind/forward config is identical.
+        private string _forzaUdpConfigKey = "";
 
         // True when a Forza title is active and our Forza UDP listener is bound
         // but silent (Forza's Data Out is pointed at SimHub, not us), while
@@ -1951,6 +1962,87 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
+            // One-time engine-choice relocation (2026-07 centralization): the
+            // per-car engine picks that used to live on CarOverride.EnginePulse
+            // (Layout / CustomEngineId) move into the matching CarFacts
+            // variants' UserEngineLayout pin. Runs after the car files are
+            // loaded into Settings.CarOverrides and after id normalization so
+            // carIds line up with CarFacts keys. Global/game-preset picks are
+            // dropped deliberately (they aren't car-bound). Idempotent;
+            // flag-gated.
+            if (!Settings.EngineChoiceMovedToCarFactsV1)
+            {
+                try
+                {
+                    MigrateEngineChoicesToCarFacts();
+                    // Latch only on SUCCESS: the migration is idempotent
+                    // (existing pins are never overwritten), so a throw
+                    // simply retries on the next start instead of silently
+                    // abandoning unmigrated picks.
+                    Settings.EngineChoiceMovedToCarFactsV1 = true;
+                    try { PersistSettingsCore(); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] Engine-choice migration failed (will retry next start): {ex.Message}");
+                }
+            }
+
+            // Follow-up prune: overrides whose only purpose was the engine
+            // pick (relocated above) kept an "overridden" Engine badge and
+            // froze feel against future preset edits for no reason. Runs
+            // after the relocation so the pick already lives in the pin.
+            if (!Settings.EngineOnlyOverridesPrunedV1)
+            {
+                try
+                {
+                    PruneEngineOnlyCarOverrides();
+                    Settings.EngineOnlyOverridesPrunedV1 = true;
+                    try { PersistSettingsCore(); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] Engine-only override prune failed (will retry next start): {ex.Message}");
+                }
+            }
+
+            // Anon car facts (0100): whenever sharing is on (the default, or
+            // an old opt-in), treat the consent question as answered and make
+            // sure the anon id exists (covers fresh installs, the upgrade
+            // path, and a restored backup missing the id).
+            if (Settings.AutoSubmitCarFacts)
+            {
+                if (!Settings.CarFactsConsentAsked)
+                {
+                    Settings.CarFactsConsentAsked = true;
+                    try { PersistSettingsCore(); } catch { }
+                }
+                EnsureCarFactsAnonId();
+            }
+
+            // Default-on re-pitch: CommunityEnabled's default flipped to ON,
+            // but existing settings files carry an explicit false from the
+            // old opt-in default. Re-show the networked welcome once for
+            // those installs; any dismissal of it enables community +
+            // sharing (the old pitch required an account, the new one
+            // doesn't, so one more look is fair). Community-on users are NOT
+            // re-pitched: they accepted a stricter pitch already, and if
+            // their stored AutoSubmitCarFacts is false the consent gate asks
+            // once at their next fact-worthy save instead.
+            if (!Settings.CommunityDefaultOnRepitchedV1)
+            {
+                if (!Settings.CommunityEnabled)
+                {
+                    Settings.HasSeenNetworkedWelcome = false;
+                    Settings.WelcomeDeclineCount     = 0;
+                    Settings.WelcomeNextShowAt       = null;
+                }
+                Settings.CommunityDefaultOnRepitchedV1 = true;
+                try { PersistSettingsCore(); } catch { }
+            }
+
             // Rename Car_NNN-style car-preset names to their human-readable
             // car names (per game). Runs here, not earlier, because _carStore
             // must be initialised + LoadAndMigrateCarPresets must have moved
@@ -2113,16 +2205,10 @@ namespace TrueforceForAll.Plugin
                 LoadAndMigrateCarPresets();
             }
             MigrateEngineHighRpmHelpersDefaults();
-            // One-shot: bump rev-limiter engage threshold 0.97 -> 0.85 for
-            // presets still on the old default (issue #8). Runs after the car
-            // store loads so .tfcar.json files are migrated too. Latched so a
-            // user who later re-picks 0.97 keeps it.
-            if (!Settings.RevLimiterThresholdDefaultMigrated)
-            {
-                MigrateRevLimiterThresholdDefault();
-                Settings.RevLimiterThresholdDefaultMigrated = true;
-                try { PersistSettingsCore(); } catch { }
-            }
+            // (The 0.97 -> 0.85 rev-limiter Threshold migration was removed
+            // along with the Threshold field itself, 2026-07-17: the redline
+            // comes from the Car facts cascade now. Its latch field
+            // RevLimiterThresholdDefaultMigrated was retired with it.)
 
             // Make sure all three folders exist with their READMEs, then auto-
             // import anything the user dropped into the imports folder. All
@@ -4296,9 +4382,6 @@ namespace TrueforceForAll.Plugin
                     string liveSig = ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
                     if (!string.Equals(liveSig, _lastAppliedVariantSignature, StringComparison.Ordinal))
                     {
-                        // Switching variants (tunes) discards an unsaved redline
-                        // draft: it belonged to the previous variant.
-                        if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
                         ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
                         // Swap the grip auto-cal learner to this variant: its
                         // tires / downforce, and so its grip ceiling, can differ
@@ -5758,12 +5841,20 @@ namespace TrueforceForAll.Plugin
         /// (AC's MMF reader for "AssettoCorsa", Forza UDP listener for any
         /// Forza title, SimHub fallback otherwise) and hand-off OnFrame so
         /// exactly one source dispatches at a time. Called from DataUpdate on
-        /// the SimHub data thread; the new source's polling thread is fully
-        /// started before the old source is detached, so the briefest
-        /// possible window of "no dispatch" covers the swap.
+        /// the SimHub data thread AND from ApplyForzaSettings on the UI
+        /// thread; _sourceSwapLock serializes the two so the Forza create
+        /// block can never run twice concurrently (a double bind leaks a
+        /// listener that steals the port's datagrams). The new source's
+        /// polling thread is fully started before the old source is detached,
+        /// so the briefest possible window of "no dispatch" covers the swap.
         /// Pass <paramref name="silent"/>=true on retry attempts so we don't
         /// log a "fell back" message every second while AC is loading.</summary>
         private void SwapTelemetrySource(string game, bool silent = false)
+        {
+            lock (_sourceSwapLock) SwapTelemetrySourceLocked(game, silent);
+        }
+
+        private void SwapTelemetrySourceLocked(string game, bool silent)
         {
             bool gameIsForza = IsForzaGameName(game);
             ITelemetrySource newSource = null;
@@ -5811,6 +5902,7 @@ namespace TrueforceForAll.Plugin
                         fz.GapBridge.Enabled = Settings.Forza.ForwardGapBridge;
                         fz.Start();
                         _forzaUdp = fz;
+                        _forzaUdpConfigKey = CurrentForzaConfigKey();
                     }
                     catch (Exception ex)
                     {
@@ -6089,37 +6181,70 @@ namespace TrueforceForAll.Plugin
         /// rebuilt whenever either (a) a Forza source is currently running
         /// (so port/bind/forward changes take effect, or a disable tears it
         /// down) or (b) a Forza title is the active game (so a port/bind
-        /// change applies without waiting for a game change).</summary>
-        public void ApplyForzaSettings()
+        /// change applies without waiting for a game change).
+        /// <paramref name="onlyIfChanged"/>=true (bulk re-apply paths: slot
+        /// mount, backup restore) skips the rebuild when the live listener was
+        /// built from an identical config, so those paths never disturb a
+        /// healthy stream.</summary>
+        public void ApplyForzaSettings(bool onlyIfChanged = false)
         {
             if (Settings?.Forza == null) return;
             PersistSettingsCore();
 
-            // Test against the keep-alive listener, not the active source: while
-            // on the SimHub fallback _telemetrySource is SimHub even though a
-            // Forza listener is still bound and needs rebuilding.
-            bool currentlyForza = _forzaUdp != null;
-            bool shouldListen   = !string.IsNullOrEmpty(_activeGame) && IsForzaGameName(_activeGame);
-            if (!currentlyForza && !shouldListen) return;
-
-            // Tear the Forza listener down so SwapTelemetrySource rebuilds it
-            // with the new port/bind/forward settings. Route the active source
-            // back to the SimHub fallback first (if it was the enhanced one) so
-            // the dispose runs cleanly; SwapTelemetrySource re-attaches and
-            // EvaluateForzaTelemetryFallback re-evaluates from there.
-            if (_forzaUdp != null)
+            lock (_sourceSwapLock)
             {
-                if (_telemetrySource == _forzaUdp)
+                // Test against the keep-alive listener, not the active source: while
+                // on the SimHub fallback _telemetrySource is SimHub even though a
+                // Forza listener is still bound and needs rebuilding.
+                bool currentlyForza = _forzaUdp != null;
+                bool shouldListen   = !string.IsNullOrEmpty(_activeGame) && IsForzaGameName(_activeGame);
+                if (!currentlyForza && !shouldListen) return;
+
+                // Bulk re-apply paths (slot mount, backup restore) usually leave the
+                // Forza config untouched; keep the healthy listener in place then
+                // rather than blipping telemetry mid-drive with a dispose/rebind.
+                // Explicit UI edits keep the unconditional rebuild (a re-typed port
+                // stays a usable "kick the listener" gesture).
+                if (onlyIfChanged && _forzaUdp != null
+                    && string.Equals(CurrentForzaConfigKey(), _forzaUdpConfigKey, StringComparison.Ordinal))
+                    return;
+
+                // Tear the Forza listener down so SwapTelemetrySource rebuilds it
+                // with the new port/bind/forward settings. Route the active source
+                // back to the SimHub fallback first (if it was the enhanced one) so
+                // the dispose runs cleanly; SwapTelemetrySource re-attaches and
+                // EvaluateForzaTelemetryFallback re-evaluates from there.
+                if (_forzaUdp != null)
                 {
-                    _forzaUdp.OnFrame = null;
-                    _simHubSource.OnFrame = DispatchFrame;
-                    _telemetrySource = _simHubSource;
+                    if (_telemetrySource == _forzaUdp)
+                    {
+                        _forzaUdp.OnFrame = null;
+                        _simHubSource.OnFrame = DispatchFrame;
+                        _telemetrySource = _simHubSource;
+                    }
+                    try { _forzaUdp.Dispose(); } catch { }
+                    _forzaUdp = null;
+                    _forzaOnSimHubFallback = false;
                 }
-                try { _forzaUdp.Dispose(); } catch { }
-                _forzaUdp = null;
-                _forzaOnSimHubFallback = false;
+                SwapTelemetrySourceLocked(_activeGame, silent: false);
             }
-            SwapTelemetrySource(_activeGame);
+        }
+
+        // Fingerprint of the settings ForzaUdpTelemetrySource is constructed
+        // from (port, bind, forward endpoint, gap bridge). Matches the live
+        // listener's stamp (_forzaUdpConfigKey) when a rebuild would produce
+        // an identical source.
+        private string CurrentForzaConfigKey()
+        {
+            var f = Settings?.Forza;
+            if (f == null) return "";
+            try
+            {
+                var fwd = BuildForzaForwardEndpoint(f);
+                return f.Port + "|" + ParseIpOrAny(f.BindAddress) + "|"
+                     + (fwd == null ? "" : fwd.ToString()) + "|" + f.ForwardGapBridge;
+            }
+            catch { return ""; }
         }
 
         public Control GetWPFSettingsControl(PluginManager pluginManager) => new SettingsControl(this);
@@ -6431,100 +6556,32 @@ namespace TrueforceForAll.Plugin
         {
             if (EnginePulse == null || s == null) return;
 
-            // One-shot legacy migration: pre-flat-enum settings carry
-            // (Cylinders, EngineConfig, FiringOrderEnabled) and a default-Auto
-            // Layout. Fold them into Layout and clear so we don't migrate
-            // again on the next apply. Layout != Auto means the user (or a
-            // prior migration) has already set the new field.
-            if (s.Layout == Effects.EngineLayout.Auto
-                && (s.Cylinders != 0 || s.EngineConfig != Effects.EngineConfig.Auto))
-            {
-                s.Layout = Effects.FiringPatternDb.LayoutFromLegacy(
-                    s.Cylinders, s.EngineConfig, false);
-                s.Cylinders     = 0;
-                s.EngineConfig  = Effects.EngineConfig.Auto;
-            }
-
-            // Custom-engine library migration: pre-library presets stored the
-            // custom pattern inline in CustomFiringPattern + Name. Mint a
-            // library entry (if one with this pattern doesn't exist yet),
-            // point CustomEngineId at it, and clear the inline strings so the
-            // next apply skips this branch.
-            if (s.Layout == Effects.EngineLayout.Custom
-                && string.IsNullOrEmpty(s.CustomEngineId)
-                && !string.IsNullOrWhiteSpace(s.CustomFiringPattern))
-            {
-                var def = new CustomEngineDef
-                {
-                    Id         = Guid.NewGuid().ToString("N"),
-                    Name       = string.IsNullOrWhiteSpace(s.CustomFiringPatternName)
-                                    ? "Imported custom"
-                                    : s.CustomFiringPatternName.Trim(),
-                    IsElectric = false,
-                    Pattern    = s.CustomFiringPattern,
-                };
-                if (Settings.CustomEngines == null)
-                    Settings.CustomEngines = new System.Collections.Generic.List<CustomEngineDef>();
-                Settings.CustomEngines.Add(def);
-                s.CustomEngineId           = def.Id;
-                s.CustomFiringPattern      = "";
-                s.CustomFiringPatternName  = "";
-            }
+            // 2026-07 engine centralization: the engine TYPE no longer comes
+            // from the preset. EnginePulse.Layout / CustomPattern /
+            // ActiveCustomIsElectric are owned by the car-facts resolution
+            // (the variant's UserEngineLayout pin; see
+            // ResolveAndApplyCarFactsForActiveCar), which re-runs after preset
+            // applies. The legacy Layout / CustomEngineId fields on
+            // EnginePulseSettings are relocated once at Init
+            // (EngineChoiceMovedToCarFactsV1) and ignored here. This method
+            // applies FEEL only.
 
             EnginePulse.Enabled            = s.Enabled;
             EnginePulse.Gain               = SafeMath.SafeFloat(s.Gain, 0.0f, 10.0f, 1.0f);
             EnginePulse.PitchMultiplier    = SafeMath.SafeFloat(s.Pitch, 0.1f, 4.0f, 1.0f);
             EnginePulse.LowpassHz          = SafeMath.SafeDouble(s.LowpassHz, 20.0, 20000.0, 12000.0);
             EnginePulse.Waveform           = s.Waveform;
-            EnginePulse.Layout             = s.Layout;
             EnginePulse.LoadLayerEnabled   = s.LoadLayerEnabled;
             EnginePulse.LoadLayerGain      = SafeMath.SafeFloat(s.LoadLayerGain, 0.0f, 10.0f, 1.0f);
             EnginePulse.HighRpmBoostEnabled = s.HighRpmBoostEnabled;
             EnginePulse.HighRpmBoostAmount = SafeMath.SafeFloat(s.HighRpmBoostAmount, 0.0f, 2.0f, 0.4f);
 
-            // Custom-engine resolution. When Layout == Custom, look up the
-            // referenced entry in the global library and write its pattern /
-            // electric flag into the runtime effect.
-            CustomEngineDef activeCustom = null;
-            if (s.Layout == Effects.EngineLayout.Custom
-                && !string.IsNullOrEmpty(s.CustomEngineId)
-                && Settings.CustomEngines != null)
-            {
-                foreach (var c in Settings.CustomEngines)
-                {
-                    if (string.Equals(c?.Id, s.CustomEngineId, StringComparison.Ordinal))
-                    {
-                        activeCustom = c;
-                        break;
-                    }
-                }
-            }
-            EnginePulse.ActiveCustomIsElectric = activeCustom != null && activeCustom.IsElectric;
-            EnginePulse.CustomPattern = activeCustom != null && !activeCustom.IsElectric
-                                        && !string.IsNullOrWhiteSpace(activeCustom.Pattern)
-                ? Effects.FiringPatternDb.ParseCustom(activeCustom.Pattern)
-                : null;
-
-            // Runtime safety net: a Custom layout we couldn't resolve to a real
-            // engine (deleted out from under the preset, dangling after a sync
-            // restore, or never picked) plays as Auto instead of going silent,
-            // so the wheel keeps a sensible resolver/telemetry-driven engine feel
-            // until the user repicks. Deleting an engine also eagerly rewrites
-            // stored presets to Auto; this covers anything that path missed.
-            if (s.Layout == Effects.EngineLayout.Custom && activeCustom == null)
-            {
-                EnginePulse.Layout = Effects.EngineLayout.Auto;
-                SimHub.Logging.Current.Info(
-                    $"[TF4ALL] Custom engine Id '{s.CustomEngineId}' is not in the library; "
-                    + "falling back to Auto engine layout.");
-            }
-
-            // ElectricMode cascade: if the active custom is electric, its mode
-            // wins (a per-custom override of the per-preset default). Else
-            // the per-preset setting drives EV behavior, matching the prior
-            // single-Electric-mode model.
-            EnginePulse.ElectricMode = (activeCustom != null && activeCustom.IsElectric)
-                ? activeCustom.ElectricMode
+            // ElectricMode cascade: if the pinned custom engine is electric,
+            // its mode wins (a per-custom override of the per-preset default).
+            // Else the per-preset setting drives EV behavior.
+            var pinCustom = _activePinnedCustomEngine;
+            EnginePulse.ElectricMode = (pinCustom != null && pinCustom.IsElectric)
+                ? pinCustom.ElectricMode
                 : s.ElectricMode;
         }
         private void ApplyBumpsSettings(RoadBumpsSettings s)
@@ -6661,13 +6718,7 @@ namespace TrueforceForAll.Plugin
             RevLimiter.PulseFreq = SafeMath.SafeFloat(s.PulseFreq, 1.0f, 500.0f, 10.0f);
             RevLimiter.DutyCycle = SafeMath.SafeFloat(s.DutyCycle, 0.0f, 1.0f, 0.5f);
             RevLimiter.ActiveAmp = SafeMath.SafeFloat(s.ActiveAmp, 0.0f, 10.0f, 1.0f);
-            // Threshold is a fraction of MaxRpm (0..1), not absolute RPM.
-            // It's the Auto-mode source of truth: the resolver derives the
-            // buzz point from Threshold * live MaxRpm so it follows tunes.
-            RevLimiter.Threshold = SafeMath.SafeFloat(s.Threshold, 0.0f, 1.0f, 0.85f);
-            RevLimiter.RedlineRpm = s.RedlineRpm;
             RevLimiter.RedlineOffsetRpm = s.RedlineOffsetRpm;
-            RevLimiter.EngageMode = s.EngageMode;
             RevLimiter.Waveform  = s.Waveform;
         }
         // Airborne ducking can be per-car (override) or global; this reads the
@@ -6741,7 +6792,7 @@ namespace TrueforceForAll.Plugin
         private static CollisionSettings    Clone(CollisionSettings s)
             => new CollisionSettings    { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, EnvelopeMs = s.EnvelopeMs, MinThreshold = s.MinThreshold, MinAmp = s.MinAmp, MaxAmp = s.MaxAmp, NormalizationScale = s.NormalizationScale, RefractoryMs = s.RefractoryMs, Waveform = s.Waveform };
         private static RevLimiterSettings   Clone(RevLimiterSettings s)
-            => new RevLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, Threshold = s.Threshold, RedlineRpm = s.RedlineRpm, RedlineOffsetRpm = s.RedlineOffsetRpm, EngageMode = s.EngageMode, Waveform = s.Waveform };
+            => new RevLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, RedlineOffsetRpm = s.RedlineOffsetRpm, Waveform = s.Waveform };
         private static AirborneSettings     Clone(AirborneSettings s)
             => new AirborneSettings     { Enabled = s.Enabled, Reduction = s.Reduction, DuckEngine = s.DuckEngine, DuckAudio = s.DuckAudio, DuckRoadBumps = s.DuckRoadBumps, DuckTractionLoss = s.DuckTractionLoss, DuckRevLimiter = s.DuckRevLimiter, DuckGearShift = s.DuckGearShift, DuckAbs = s.DuckAbs, DuckPitLimiter = s.DuckPitLimiter, DuckDrs = s.DuckDrs, DuckCollision = s.DuckCollision };
 
@@ -6765,6 +6816,14 @@ namespace TrueforceForAll.Plugin
         /// from both folders (built-in + user library), so just delegate.</summary>
         private void InstallBuiltinPresetsIfMissing()
             => RebuildPresetCacheFromFolders();
+
+        // Games whose USER default binding was dropped as stale on a library
+        // rebuild (target renamed or removed). The Settings UI surfaces these
+        // once as a card banner so the silent fall-back to the built-in
+        // default is no longer silent; cleared when the user dismisses it.
+        private readonly List<string> _droppedGameDefaultNotices = new List<string>();
+        public IReadOnlyList<string> DroppedGameDefaultNotices => _droppedGameDefaultNotices;
+        public void ClearDroppedGameDefaultNotices() => _droppedGameDefaultNotices.Clear();
 
         /// <summary>Rebuild the runtime Settings.Presets / GameDefaults cache
         /// from the file folders: user library first (mark as user), then
@@ -6848,6 +6907,32 @@ namespace TrueforceForAll.Plugin
                 {
                     SimHub.Logging.Current.Warn($"[TF4ALL] Game default for '{k}' dropped: target '{Settings.GameDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.GameDefaults.Remove(k);
+                    if (!_droppedGameDefaultNotices.Contains(k)) _droppedGameDefaultNotices.Add(k);
+                }
+                // Heal the STORE, not just the in-memory view: without this a
+                // stale entry re-imports from the device-wide game-defaults
+                // file on every reload (warning forever) while the factory
+                // seed below silently takes the game over - the trap that had
+                // a user editing the built-in believing it was their own
+                // preset (2026-07-19). Only entries that actually came from
+                // the file are written back.
+                if (rekey.Count > 0 || stale.Count > 0)
+                {
+                    try
+                    {
+                        bool wrote = false;
+                        foreach (var p in rekey)
+                            if (UserPresets.GameDefaults.ContainsKey(p.Key))
+                            { BuiltinPresetWriter.SetGameDefault(UserPresets.CurrentFolder, p.Key, p.Value); wrote = true; }
+                        foreach (var k in stale)
+                            if (UserPresets.GameDefaults.ContainsKey(k))
+                            { BuiltinPresetWriter.RemoveGameDefault(UserPresets.CurrentFolder, k); wrote = true; }
+                        if (wrote) UserPresets.Reload();
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Healing the game-defaults file failed: {ex.Message}");
+                    }
                 }
             }
 
@@ -6889,6 +6974,10 @@ namespace TrueforceForAll.Plugin
                         continue;
                     if (!Settings.Presets.ContainsKey(kv.Value)) continue;
                     Settings.GameDefaults[kv.Key] = kv.Value;
+                    // A per-user override covers this game, so a device-wide
+                    // binding dropped as stale above never reaches the user:
+                    // no notice needed.
+                    _droppedGameDefaultNotices.Remove(kv.Key);
                 }
             }
         }
@@ -8636,6 +8725,29 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Warn($"[TF4ALL] Car default for '{k}' dropped: target '{Settings.CarDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.CarDefaults.Remove(k);
                 }
+                // Heal the device-wide car-defaults file the same way the
+                // game-defaults reconciler does, so a stale binding warns
+                // once instead of re-importing forever. Only entries that
+                // actually came from the file are written back (in-memory
+                // seeds from ResolveActiveCarPresetName never are).
+                if (rekey.Count > 0 || stale.Count > 0)
+                {
+                    try
+                    {
+                        bool wrote = false;
+                        foreach (var p in rekey)
+                            if (UserPresets.CarDefaults.ContainsKey(p.Key))
+                            { BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, p.Key, p.Value); wrote = true; }
+                        foreach (var k in stale)
+                            if (UserPresets.CarDefaults.ContainsKey(k))
+                            { BuiltinPresetWriter.RemoveCarDefault(UserPresets.CurrentFolder, k); wrote = true; }
+                        if (wrote) UserPresets.Reload();
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Healing the car-defaults file failed: {ex.Message}");
+                    }
+                }
             }
 
             // Overlay the active user's per-user CAR default overrides on
@@ -9646,6 +9758,60 @@ namespace TrueforceForAll.Plugin
             ApplyActiveCarOverride();
         }
 
+        /// <summary>WYSIWYG for whole-preset saves: live effect edits made
+        /// while a car is loaded sit in the car's in-memory draft override
+        /// (EnsureSectionDraft), so SnapshotCurrentAsPreset's read of the
+        /// GLOBAL sections would silently save pre-edit values and leave the
+        /// edited sections dirty. Folds every PURE draft (a section present
+        /// on the live override but absent from the persisted car baseline,
+        /// i.e. never committed to the car preset) into its global and drops
+        /// the draft - like PromoteSectionToGlobal, but WITHOUT touching the
+        /// car preset file: drafts were never on disk, and persisting here
+        /// would silently commit sibling drafts to the car file. Sections
+        /// present in the SAVED car preset are intentional per-car tuning:
+        /// they stay overridden and belong to the car Save button. No-op
+        /// during offline CAR editing, where every draft is destined for the
+        /// car preset instead.</summary>
+        private void FoldDraftSectionsIntoGlobals()
+        {
+            if (IsOfflineEditingCar) return;
+            if (Settings?.CarOverrides == null || string.IsNullOrEmpty(_activeCarId)) return;
+            if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var live) || live == null) return;
+            _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var saved);
+
+            bool folded = false;
+            foreach (SectionKind kind in Enum.GetValues(typeof(SectionKind)))
+            {
+                if (!SectionHasCarScope(kind)) continue;
+                if (!OverrideHasSection(live, kind)) continue;
+                if (saved != null && OverrideHasSection(saved, kind)) continue;   // saved car tuning, not a draft
+                switch (kind)
+                {
+                    case SectionKind.Engine:     Settings.EnginePulse  = Clone(live.EnginePulse);        live.EnginePulse  = null; break;
+                    case SectionKind.Bumps:      Settings.RoadBumps    = Clone(live.RoadBumps);          live.RoadBumps    = null; break;
+                    case SectionKind.Traction:   Settings.TractionLoss = Clone(live.TractionLoss);       live.TractionLoss = null; break;
+                    case SectionKind.AxleSlip:   Settings.AxleSlip     = Clone(live.AxleSlip);           live.AxleSlip     = null; break;
+                    case SectionKind.KerbThump:  Settings.KerbThump    = Clone(live.KerbThump);          live.KerbThump    = null; break;
+                    case SectionKind.LockupJudder: Settings.LockupJudder = Clone(live.LockupJudder);     live.LockupJudder = null; break;
+                    case SectionKind.Shift:      Settings.GearShift    = Clone(live.GearShift);          live.GearShift    = null; break;
+                    case SectionKind.Abs:        Settings.AbsClick     = Clone(live.AbsClick);           live.AbsClick     = null; break;
+                    case SectionKind.PitLimiter: Settings.PitLimiter   = Clone(live.PitLimiter);         live.PitLimiter   = null; break;
+                    case SectionKind.Drs:        Settings.Drs          = Clone(live.Drs);                live.Drs          = null; break;
+                    case SectionKind.Collision:  Settings.Collision    = Clone(live.Collision);          live.Collision    = null; break;
+                    case SectionKind.RevLimiter: Settings.RevLimiter   = Clone(live.RevLimiter);         live.RevLimiter   = null; break;
+                    case SectionKind.Audio:      Settings.AudioCapture = CloneOrNull(live.AudioCapture); live.AudioCapture = null; break;
+                    case SectionKind.Airborne:   Settings.Airborne     = Clone(live.Airborne);           live.Airborne     = null; break;
+                    default: continue;
+                }
+                folded = true;
+            }
+            if (!folded) return;
+            if (live.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
+            // Effective values are unchanged (they moved from the draft to
+            // the global); re-derive so the pipeline reads the new location.
+            ApplyActiveCarOverride();
+        }
+
         /// <summary>True if the named preset is a built-in / read-only one.
         /// Built-ins refuse delete and refuse in-place overwrite, the UI
         /// forks to a user-named preset instead.</summary>
@@ -10439,6 +10605,21 @@ namespace TrueforceForAll.Plugin
             return e;
         }
 
+        /// <summary>Mint the car-fact fallback submitter id on first consent:
+        /// a random GUID, never derived from hardware or the account, sent as
+        /// submit_car_fact's p_anon_id. Only used server-side when the request
+        /// carries no user token (signed-in submissions are keyed to the
+        /// account instead). Idempotent; persists only when it actually
+        /// minted. Travels in backups (BackupProjection Portable) so one
+        /// human counts as one contributor across PCs.</summary>
+        internal void EnsureCarFactsAnonId()
+        {
+            if (Settings == null) return;
+            if (!string.IsNullOrEmpty((Settings.CarFactsAnonId ?? "").Trim())) return;
+            Settings.CarFactsAnonId = Guid.NewGuid().ToString("N");
+            try { PersistSettingsCore(); } catch { }
+        }
+
         /// <summary>Fire-and-forget submission of a redline correction.
         /// Mirrors <see cref="SubmitEngineLayoutToCommunity"/>: gated by
         /// CommunityEnabled, plumbs the active car's variant signature
@@ -10448,7 +10629,10 @@ namespace TrueforceForAll.Plugin
         {
             _community?.SubmitRedlineAsync(game, carId, rpm,
                 ComputeActiveCarVariantSignature(game, carId), perGear);
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 
@@ -10505,6 +10689,16 @@ namespace TrueforceForAll.Plugin
             // time a community fetch returns, briefly emptying it until
             // the next telemetry frame.
             EnginePulse.CatalogCyl = null;
+            // Pin state must not outlive its car: since the 2026-07
+            // centralization this method is the ONLY writer of the effect's
+            // user slot, so clear it up front (the pin block below re-sets it
+            // when a pin resolves for the current car). Without this, a
+            // no-car resolve (back to menu) kept playing the previous car's
+            // pinned engine.
+            EnginePulse.Layout = Effects.EngineLayout.Auto;
+            EnginePulse.CustomPattern = null;
+            EnginePulse.ActiveCustomIsElectric = false;
+            _activePinnedCustomEngine = null;
             _activeCarDisplayName = null;
             _activeCarCommunityDisplayName = null;
 
@@ -10605,27 +10799,64 @@ namespace TrueforceForAll.Plugin
                     ? (int?)_activeCarCommunityRedlineConsensus.Rpm : null;
                 var commGears = communityKeyMatches ? _activeCarCommunityRedlineConsensus.Gears : null;
                 RevLimiter.CommunityGearRedlines = (commGears != null && commGears.Count > 0) ? commGears : null;
-                // EV awareness: the limiter stays silent on EVs unless the user
-                // explicitly opted in (any user gear redline, a Manual value, or
-                // a live slider draft).
-                RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
+                // (RevLimiter.IsElectric is set at the END of this method:
+                // the pin block and layout resolution below are what decide
+                // the effect's electric state, so gating here read stale
+                // pre-pin data and lagged a resolve behind a pin change.)
             }
+
+            // User engine pin (Car facts): the engine analogue of the redline
+            // pin. A pinned UserEngineLayout on the stored variant wins the
+            // whole cascade below by writing the effect's user slot
+            // (EnginePulse.Layout); auto-detection keeps resolving underneath
+            // so clearing the pin falls straight back to it. A Custom pin
+            // resolves against the library; a dangling reference plays as
+            // Auto (same safety net the retired preset path had).
+            var pinnedVariant = FindActiveStoredVariant();
+            var pinLayout = pinnedVariant?.UserEngineLayout;
+            CustomEngineDef pinCustom = null;
+            if (pinLayout == Effects.EngineLayout.Custom)
+            {
+                string pinId = pinnedVariant?.UserCustomEngineId;
+                if (!string.IsNullOrEmpty(pinId) && Settings.CustomEngines != null)
+                {
+                    foreach (var c in Settings.CustomEngines)
+                        if (string.Equals(c?.Id, pinId, StringComparison.Ordinal)) { pinCustom = c; break; }
+                }
+                if (pinCustom == null)
+                {
+                    pinLayout = null;
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Pinned custom engine Id '{pinId}' is not in the library; "
+                        + "falling back to Auto engine layout.");
+                }
+            }
+            _activePinnedCustomEngine = pinCustom;
+            EnginePulse.Layout = pinLayout ?? Effects.EngineLayout.Auto;
+            EnginePulse.ActiveCustomIsElectric = pinCustom != null && pinCustom.IsElectric;
+            EnginePulse.CustomPattern = pinCustom != null && !pinCustom.IsElectric
+                                        && !string.IsNullOrWhiteSpace(pinCustom.Pattern)
+                ? Effects.FiringPatternDb.ParseCustom(pinCustom.Pattern)
+                : null;
+            if (pinCustom != null && pinCustom.IsElectric)
+                EnginePulse.ElectricMode = pinCustom.ElectricMode;
+            else if (ActiveEngine != null)
+                EnginePulse.ElectricMode = ActiveEngine.ElectricMode;
 
             // Community Custom: special apply path. The synthesized
             // variant carries cyl=0 + EngineConfig.Custom; the firing
             // pattern + electric flag come from the community def
             // (_activeCarCommunityConsensus.Custom). Only honored when
-            // the user's preset is Layout=Auto - an explicit Custom +
-            // CustomEngineId already drives the path through
-            // ApplyEnginePulseSettings, which mustn't be overridden.
+            // the user hasn't pinned an engine for this variant - an
+            // explicit pin already drove the path above and mustn't be
+            // overridden.
             bool communityCustomAvailable =
                    haveVariant
                 && v.Source == CarFactSource.Community
                 && v.EngineConfig == Effects.EngineConfig.Custom
                 && _activeCarCommunityConsensus?.Custom != null
                 && !string.IsNullOrEmpty(_activeCarCommunityConsensus.Custom.Name)
-                && ActiveEngine != null
-                && ActiveEngine.Layout == Effects.EngineLayout.Auto;
+                && pinLayout == null;
             if (communityCustomAvailable)
             {
                 var def = _activeCarCommunityConsensus.Custom;
@@ -10646,6 +10877,11 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info(
                         $"[TF4ALL] Car '{carId}' resolved to community custom "
                         + $"'{def.Name}' (electric={def.IsElectric})");
+                // EV awareness for the limiter: computed from the electric
+                // state THIS branch just wrote (early return skips the shared
+                // assignment at the end of the method).
+                if (RevLimiter != null)
+                    RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
                 return;
             }
 
@@ -10743,6 +10979,13 @@ namespace TrueforceForAll.Plugin
             // re-enters this method on the next frame.
             _lastAppliedVariantSignature =
                 ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
+
+            // EV awareness: the limiter stays silent on EVs unless the user
+            // explicitly opted in. Set LAST so it reflects the pin block and
+            // the layout resolution above (setting it earlier gated on the
+            // previous resolve's electric state).
+            if (RevLimiter != null)
+                RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
         }
 
         /// <summary>Auto-create or upgrade the stored EngineVariant for the
@@ -11023,36 +11266,9 @@ namespace TrueforceForAll.Plugin
                 && c.SupportingSubmissions >= CommunityRedlineMinSupport;
         }
 
-        /// <summary>True when a live, unsaved redline draft is in flight.</summary>
-        public bool HasRedlinePreview => RevLimiter?.PreviewRedlineRpm != null;
-
-        /// <summary>The live, unsaved redline draft value (null when none).</summary>
-        public int? RedlinePreviewRpm => RevLimiter?.PreviewRedlineRpm;
-
-        /// <summary>Set the live (unsaved) redline preview the slider drives in
-        /// Auto mode. Passing a sub-500 value clears it. A value equal to the
-        /// redline the variant ALREADY resolves to (the saved pin, else the live
-        /// effective redline) is NOT a change, so it clears the preview too, that
-        /// keeps the "Save for this variant" control from showing when the slider
-        /// just sits on (or is re-synced to) the current value.</summary>
-        public void SetRedlinePreview(int? rpm)
-        {
-            if (RevLimiter == null) return;
-            if (!rpm.HasValue || rpm.Value < 500)
-            {
-                RevLimiter.PreviewRedlineRpm = null;
-                return;
-            }
-            int? baseline = GetActiveVariantUserRedline() ?? RevLimiter.EffectiveRedlineRpm;
-            RevLimiter.PreviewRedlineRpm =
-                (baseline.HasValue && baseline.Value == rpm.Value) ? (int?)null : rpm;
-        }
-
-        /// <summary>Discard the unsaved redline draft.</summary>
-        public void ClearRedlinePreview()
-        {
-            if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
-        }
+        // (The live redline slider draft, PreviewRedlineRpm, was removed with
+        // the car-facts centralization: the Car facts redline box commits via
+        // SaveActiveVariantUserRedline directly, no draft state.)
 
         /// <summary>Commit the given value as THIS variant's user redline. Ensures
         /// a stored variant row exists for the live signature, stamps it,
@@ -11071,40 +11287,237 @@ namespace TrueforceForAll.Plugin
                 variant.UserRedlineRpm = rpm;
                 variant.AdoptedCommunityRedlineRpm = null;   // a deliberate pin supersedes any adopted community value
             }
-            if (RevLimiter != null) RevLimiter.PreviewRedlineRpm = null;
             ScheduleCarFactsFlush();
             ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
             return rpm;
         }
 
-        // NOTE: "adopt community redline" was retired. In Auto the cascade already
-        // applies the community value directly (so copying it into a local pin was
-        // ceremony), and the useful community action is now Confirm (re-submit the
-        // value so it reaches confirmed consensus), handled in the UI via
-        // SubmitRedlineToCommunity. The dismissed-profile plumbing below is reused
-        // to suppress a repeat Confirm prompt for a value the user dismissed.
+        // The library CustomEngineDef the active variant's engine pin resolves
+        // to, set by ResolveAndApplyCarFactsForActiveCar. Read by
+        // ApplyEngineSettings so a feel-slider apply can't clobber an electric
+        // custom's ElectricMode override. null = no custom pinned.
+        private CustomEngineDef _activePinnedCustomEngine;
 
-        /// <summary>The community redline PROFILE signature the user declined for
-        /// the active variant (per-gear-aware), or null. The UI compares it to the
-        /// live community profile so a repeat offer is suppressed only while the
-        /// community profile is unchanged.</summary>
-        public string GetActiveVariantDeclinedCommunityProfileSig()
-            => FindActiveStoredVariant()?.DeclinedCommunityRedlineSig;
-
-        /// <summary>Record that the user dismissed the community redline PROFILE
-        /// (overall + per-gear) for the active variant, keyed by its signature so
-        /// a later community shift in any gear re-surfaces the offer.</summary>
-        public void DeclineCommunityRedlineProfileForActiveVariant(string profileSig)
+        /// <summary>The user's saved per-variant engine pin for the active
+        /// variant, or (null, "") when they haven't pinned one.</summary>
+        public (Effects.EngineLayout? layout, string customId) GetActiveVariantUserEngine()
         {
-            if (Settings == null || string.IsNullOrEmpty(profileSig)) return;
+            var v = FindActiveStoredVariant();
+            return (v?.UserEngineLayout, v?.UserCustomEngineId ?? "");
+        }
+
+        /// <summary>Commit the given engine type as THIS variant's user pin
+        /// (the engine analogue of SaveActiveVariantUserRedline). Auto / null
+        /// clears the pin so the cascade (community / telemetry / heuristic)
+        /// takes over again; customId is only meaningful with Layout ==
+        /// Custom. Persists and re-resolves. Returns false when no variant
+        /// signature is available yet (no telemetry observed).</summary>
+        public bool SaveActiveVariantUserEngine(Effects.EngineLayout? layout, string customId)
+        {
+            if (Settings == null) return false;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (layout == Effects.EngineLayout.Auto) layout = null;   // Auto = no pin
             lock (_carFactsLock)
             {
-                var variant = FindActiveStoredVariant();
-                if (variant == null) return;
-                variant.DeclinedCommunityRedlineSig = profileSig;
+                var variant = EnsureVariantForLiveSignatureCore_Locked(out _);
+                if (variant == null) return false;  // no discriminator observed yet
+                variant.UserEngineLayout   = layout;
+                variant.UserCustomEngineId = layout == Effects.EngineLayout.Custom ? (customId ?? "") : "";
             }
             ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return true;
         }
+
+        /// <summary>The user's engine pin for a SPECIFIC stored variant of the
+        /// active car, by variant Id (the Manage-variants modal edits any
+        /// variant, not just the one currently driven). (null, "") = no pin
+        /// or unknown id.</summary>
+        public (Effects.EngineLayout? layout, string customId) GetActiveCarVariantUserEngineById(string variantId)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return (null, "");
+            if (string.IsNullOrEmpty(variantId) || Settings?.CarFacts == null) return (null, "");
+            string key = _activeGame + "/" + _activeCarId;
+            // Dictionary lookup INSIDE the lock: the telemetry thread's variant
+            // auto-create adds CarFacts keys under it, and an unlocked
+            // TryGetValue can misread mid-rehash.
+            lock (_carFactsLock)
+            {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return (null, "");
+                foreach (var v in bundle.EngineVariants)
+                    if (v != null && v.Id == variantId)
+                        return (v.UserEngineLayout, v.UserCustomEngineId ?? "");
+            }
+            return (null, "");
+        }
+
+        /// <summary>Commit an engine pin on a SPECIFIC stored variant of the
+        /// active car, by variant Id (Manage-variants modal). Auto / null
+        /// clears the pin. Persists and re-resolves so a pin on the live
+        /// variant applies immediately; a pin on another variant applies
+        /// when that variant next matches telemetry.</summary>
+        public bool SaveActiveCarVariantUserEngineById(string variantId, Effects.EngineLayout? layout, string customId)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (string.IsNullOrEmpty(variantId) || Settings?.CarFacts == null) return false;
+            if (layout == Effects.EngineLayout.Auto) layout = null;   // Auto = no pin
+            string key = _activeGame + "/" + _activeCarId;
+            bool saved = false;
+            // Dictionary lookup INSIDE the lock (see GetActiveCarVariantUserEngineById).
+            lock (_carFactsLock)
+            {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
+                foreach (var v in bundle.EngineVariants)
+                {
+                    if (v == null || v.Id != variantId) continue;
+                    v.UserEngineLayout   = layout;
+                    v.UserCustomEngineId = layout == Effects.EngineLayout.Custom ? (customId ?? "") : "";
+                    saved = true;
+                    break;
+                }
+            }
+            if (!saved) return false;
+            ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return true;
+        }
+
+        /// <summary>Re-run car-facts resolution for the active car. Public
+        /// wrapper for UI paths that change resolution inputs without going
+        /// through a pin save (e.g. editing a custom engine's pattern).</summary>
+        public void ReresolveActiveCarFacts()
+        {
+            if (!string.IsNullOrEmpty(_activeCarId))
+                ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+        }
+
+        // One-time relocation of per-car engine picks (2026-07 engine
+        // centralization). For every cached CarOverride whose EnginePulse
+        // carries an explicit engine choice (after folding the two pre-2026
+        // legacy shapes), pin every variant of every CarFacts bundle for that
+        // carId that doesn't already carry a pin. CarOverrides is keyed by
+        // carId alone (game-agnostic, exactly as the old apply path was), so
+        // all games' bundles for that carId receive the pin - a faithful
+        // translation of the old behavior. Cars with a pick but no facts
+        // bundle yet lose the pick (auto-detect takes over on next drive).
+        private void MigrateEngineChoicesToCarFacts()
+        {
+            if (Settings?.CarOverrides == null || Settings.CarFacts == null) return;
+            int pinned = 0;
+            foreach (var kv in Settings.CarOverrides)
+            {
+                var s = kv.Value?.EnginePulse;
+                if (s == null) continue;
+
+                // Fold the pre-flat-enum shape (Cylinders + EngineConfig).
+                var layout = s.Layout;
+                if (layout == Effects.EngineLayout.Auto
+                    && (s.Cylinders != 0 || s.EngineConfig != Effects.EngineConfig.Auto))
+                    layout = Effects.FiringPatternDb.LayoutFromLegacy(s.Cylinders, s.EngineConfig, false);
+
+                // Fold the pre-library inline custom pattern into a library def.
+                string customId = s.CustomEngineId ?? "";
+                if (layout == Effects.EngineLayout.Custom && string.IsNullOrEmpty(customId)
+                    && !string.IsNullOrWhiteSpace(s.CustomFiringPattern))
+                {
+                    var def = new CustomEngineDef
+                    {
+                        Id         = Guid.NewGuid().ToString("N"),
+                        Name       = string.IsNullOrWhiteSpace(s.CustomFiringPatternName)
+                                        ? "Imported custom" : s.CustomFiringPatternName.Trim(),
+                        IsElectric = false,
+                        Pattern    = s.CustomFiringPattern,
+                    };
+                    if (Settings.CustomEngines == null)
+                        Settings.CustomEngines = new System.Collections.Generic.List<CustomEngineDef>();
+                    Settings.CustomEngines.Add(def);
+                    customId = def.Id;
+                }
+                if (layout == Effects.EngineLayout.Auto) continue;
+                if (layout == Effects.EngineLayout.Custom && string.IsNullOrEmpty(customId)) continue;
+
+                string carId = kv.Key;
+                if (string.IsNullOrEmpty(carId)) continue;
+                lock (_carFactsLock)
+                {
+                    foreach (var fb in Settings.CarFacts)
+                    {
+                        if (fb.Value?.EngineVariants == null) continue;
+                        if (!fb.Key.EndsWith("/" + carId, StringComparison.Ordinal)) continue;
+                        foreach (var variant in fb.Value.EngineVariants)
+                        {
+                            if (variant == null || variant.UserEngineLayout != null) continue;
+                            variant.UserEngineLayout   = layout;
+                            variant.UserCustomEngineId = layout == Effects.EngineLayout.Custom ? customId : "";
+                            pinned++;
+                        }
+                    }
+                }
+            }
+            if (pinned > 0)
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Engine-choice migration: pinned {pinned} variant(s) from per-car presets.");
+        }
+
+        // One-time cleanup after the engine relocation: a per-car override
+        // whose ONLY content was the engine pick does nothing anymore (the
+        // pick lives in the variant pin), but its EnginePulse section kept
+        // the "overridden" Engine badge lit and froze feel against future
+        // preset edits. Drop the section when: the entry carried a pick,
+        // every OTHER section is null, the feel fields equal the current
+        // global (Eq ignores the legacy engine fields), and the entry has no
+        // community share identity (shared bodies keep their exact content).
+        private void PruneEngineOnlyCarOverrides()
+        {
+            int pruned = 0;
+            foreach (var carKv in GetAllCarPresets())
+            {
+                foreach (var pKv in carKv.Value)
+                {
+                    var entry = pKv.Value;
+                    if (entry == null || entry.IsBuiltin || entry.Override == null) continue;
+                    var ov = entry.Override;
+                    if (ov.EnginePulse == null) continue;
+                    if (!string.IsNullOrEmpty(ov.CommunitySourceId)
+                        || !string.IsNullOrEmpty(ov.CommunityUploadedById)) continue;
+                    bool hadPick = ov.EnginePulse.Layout != Effects.EngineLayout.Auto
+                        || !string.IsNullOrEmpty(ov.EnginePulse.CustomEngineId)
+                        || ov.EnginePulse.Cylinders != 0
+                        || ov.EnginePulse.EngineConfig != Effects.EngineConfig.Auto;
+                    if (!hadPick) continue;
+                    bool othersNull =
+                           ov.RoadBumps == null && ov.TractionLoss == null && ov.GearShift == null
+                        && ov.AbsClick == null && ov.PitLimiter == null && ov.Drs == null
+                        && ov.Collision == null && ov.RevLimiter == null && ov.AxleSlip == null
+                        && ov.KerbThump == null && ov.LockupJudder == null && ov.AudioCapture == null
+                        && ov.Airborne == null;
+                    if (!othersNull) continue;
+                    if (!Eq(ov.EnginePulse, Settings.EnginePulse)) continue;   // user also tuned feel: keep
+                    ov.EnginePulse = null;   // same instance as the CarOverrides cache entry
+                    try
+                    {
+                        _carStore?.Save(entry.CarId, entry.PresetName, entry.GameName, ov);
+                        pruned++;
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn(
+                            $"[TF4ALL] Engine-only override prune of '{entry.CarId}/{entry.PresetName}' failed: {ex.Message}");
+                    }
+                }
+            }
+            if (pruned > 0)
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Pruned {pruned} engine-only car override section(s).");
+        }
+
+        // NOTE: "adopt community redline" was retired (in Auto the cascade already
+        // applies the community value directly, so copying it into a local pin was
+        // ceremony), and the Confirm banner that replaced it was retired too with
+        // the set-not-share framing pass: agreement now accrues from other
+        // drivers' auto-submitted saves. The variant model's
+        // DeclinedCommunityRedlineSig field is vestigial (nothing reads or
+        // writes it anymore); kept so existing CarFacts files round-trip.
 
         /// <summary>The value currently pinned for the active variant: the user's
         /// own redline, else a previously-adopted community value. Drives the
@@ -11255,7 +11668,7 @@ namespace TrueforceForAll.Plugin
             public bool HasVariant;
             public int Cylinders;               // 0 = unknown
             public string EngineTypeDisplay;    // resolved layout: "V8" / "Inline 6" / "Rotary"; null if unknown
-            public bool EngineTypeIsUserOverride; // the user picked a layout (combo != Auto)
+            public bool EngineTypeIsUserOverride; // the user pinned a layout in Car facts (variant UserEngineLayout)
             public string EngineTypeProvenance;   // "user" | "community" | "game" | "auto"
             public int? MaxRpm;                 // the rev ceiling that defines this variant / tune
             public string VariantLabel;
@@ -11302,8 +11715,9 @@ namespace TrueforceForAll.Plugin
             if (layout != Effects.EngineLayout.Auto)
                 s.EngineTypeDisplay = Effects.FiringPatternDb.LayoutDisplayName(layout);
 
-            var esForType = ActiveEngine;
-            s.EngineTypeIsUserOverride = esForType != null && esForType.Layout != Effects.EngineLayout.Auto;
+            // "User" = a Car facts pin on the active variant (the preset's
+            // Layout field is legacy since the 2026-07 centralization).
+            s.EngineTypeIsUserOverride = FindActiveStoredVariant()?.UserEngineLayout != null;
             if (s.EngineTypeIsUserOverride) s.EngineTypeProvenance = "user";
             else
             {
@@ -11624,7 +12038,10 @@ namespace TrueforceForAll.Plugin
         {
             _community?.SubmitEngineLayoutAsync(game, carId, layout,
                 ComputeActiveCarVariantSignature(game, carId));
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 
@@ -11640,7 +12057,10 @@ namespace TrueforceForAll.Plugin
             _community?.SubmitCustomEngineAsync(game, carId,
                 name, pattern, isElectric, electricMode,
                 ComputeActiveCarVariantSignature(game, carId));
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 
@@ -13102,7 +13522,7 @@ namespace TrueforceForAll.Plugin
                 SyncDeviceToPluginEnabled("Account switch");
                 try { ApplyActiveCarOverride(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Effect re-apply on slot mount failed: " + ex.GetType().Name); }
-                try { ApplyForzaSettings(); }
+                try { ApplyForzaSettings(onlyIfChanged: true); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Telemetry re-apply on slot mount failed: " + ex.GetType().Name); }
                 try { LibraryReloaded?.Invoke(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
@@ -13279,8 +13699,7 @@ namespace TrueforceForAll.Plugin
         // owned by the SimHub main window so it works even when the
         // user hasn't navigated to the Trueforce panel yet. Mirrors
         // the SettingsControl version's latch behavior (consume on
-        // commit, not on display) and the cancelled-sign-in feedback
-        // toast so the user knows their choice registered.
+        // commit, not on display).
         private void MaybeShowNetworkedWelcomeFromInit()
         {
             if (Settings == null) return;
@@ -13313,53 +13732,39 @@ namespace TrueforceForAll.Plugin
             // the dialog isn't off-screen.
             if (owner == null)
                 welcome.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
-            bool? ok = welcome.ShowDialog();
+            welcome.ShowDialog();
 
-            bool signInCancelled = false;
-            if (ok == true && welcome.SignInRequested)
-            {
-                if (!AuthIsSignedIn)
-                {
-                    try
-                    {
-                        var signIn = new SignInWindow(this) { Owner = owner };
-                        if (owner == null)
-                            signIn.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
-                        bool? signedIn = signIn.ShowDialog();
-                        if (signedIn != true || !AuthIsSignedIn) signInCancelled = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        SimHub.Logging.Current.Info(
-                            "[TF4ALL] Init sign-in failed: " + ex.Message);
-                        signInCancelled = true;
-                    }
-                }
-                if (!signInCancelled)
-                {
-                    Settings.HasSeenNetworkedWelcome = true;
-                    Settings.WelcomeNextShowAt       = null;
-                    if (Settings.CommunityEnabled != true) SetCommunityEnabled(true);
-                    try { PersistSettingsCore(); } catch { }
-                    return;
-                }
-            }
-
-            // "Maybe later" path - including the case where the user
-            // clicked Sign in now but cancelled the sign-in dialog.
-            // Mirrors the SettingsControl version so semantics line up.
-            Settings.WelcomeDeclineCount++;
-            if (Settings.WelcomeDeclineCount >= 2)
-            {
-                Settings.HasSeenNetworkedWelcome = true;
-                Settings.WelcomeNextShowAt       = null;
-            }
-            else
-            {
-                Settings.WelcomeNextShowAt =
-                    DateTime.UtcNow.AddDays(WelcomeReshowDays);
-            }
+            // The welcome is a PROCEED, not a consent gate: any dismissal
+            // latches it and leaves the default-on community + car-data
+            // sharing in place (the modal's disclosure line is the sharing
+            // notice; opt-out lives in Settings). Mirrors the
+            // SettingsControl version so semantics line up.
+            Settings.HasSeenNetworkedWelcome = true;
+            Settings.WelcomeNextShowAt       = null;
+            if (Settings.CommunityEnabled != true) SetCommunityEnabled(true);
+            if (Settings.AutoSubmitCarFacts != true) Settings.AutoSubmitCarFacts = true;
+            Settings.CarFactsConsentAsked = true;
+            EnsureCarFactsAnonId();
             try { PersistSettingsCore(); } catch { }
+
+            // Optional account, run after the proceed commit so cancelling
+            // changes nothing. (Username bootstrap is a SettingsControl
+            // concern; the panel runs it on its next account refresh.)
+            if (welcome.SignInRequested && !AuthIsSignedIn)
+            {
+                try
+                {
+                    var signIn = new SignInWindow(this) { Owner = owner };
+                    if (owner == null)
+                        signIn.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
+                    signIn.ShowDialog();
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Init sign-in failed: " + ex.Message);
+                }
+            }
         }
 
         // ---- Community auth passthroughs ----------------------------------
@@ -13668,7 +14073,10 @@ namespace TrueforceForAll.Plugin
         public void SubmitCarNameToCommunity(string game, string carId, string name)
         {
             _community?.SubmitCarNameAsync(game, carId, name, CommunityNameLocaleSig());
-            if (Settings?.CommunityEnabled == true && _auth != null && _auth.IsSignedIn)
+            // Car facts are anonymous: the contribution note tracks whether a
+            // submission actually went out, which needs community on + the
+            // car-data sharing consent, not a signed-in account.
+            if (Settings?.CommunityEnabled == true && Settings.AutoSubmitCarFacts)
                 NoteMotdContribution(MotdContribution.CarFact);
         }
 
@@ -13799,88 +14207,6 @@ namespace TrueforceForAll.Plugin
                 changed = true;
             }
             return changed;
-        }
-
-        // One-shot: bump the rev-limiter engage threshold from the old 0.97
-        // default to the new 0.85 default everywhere a RevLimiterSettings is
-        // persisted (active settings, game-preset snapshots, car overrides, and
-        // .tfcar.json files). Only rewrites a value still at the exact old
-        // default; any threshold the user moved off 0.97 is left alone. Mirrors
-        // MigrateEngineHighRpmHelpersDefaults so it follows the same proven path.
-        private void MigrateRevLimiterThresholdDefault()
-        {
-            if (Settings == null) return;
-            bool changed = false;
-
-            if (MigrateRevLimiterThresholdField(Settings.RevLimiter)) changed = true;
-
-            if (Settings.Presets != null)
-            {
-                foreach (var snap in Settings.Presets.Values)
-                {
-                    if (snap?.RevLimiter == null) continue;
-                    if (MigrateRevLimiterThresholdField(snap.RevLimiter)) changed = true;
-                }
-            }
-
-            if (Settings.CarOverrides != null)
-            {
-                foreach (var ovr in Settings.CarOverrides.Values)
-                {
-                    if (ovr?.RevLimiter == null) continue;
-                    if (MigrateRevLimiterThresholdField(ovr.RevLimiter)) changed = true;
-                }
-                // Resync _lastPersistedCarOverrides so the dirty check against
-                // the live cache matches the just-migrated values (otherwise
-                // every touched car would read as dirty on first load).
-                if (changed)
-                {
-                    foreach (var kv in Settings.CarOverrides)
-                    {
-                        if (kv.Value == null) continue;
-                        _lastPersistedCarOverrides[kv.Key] = CloneCarOverride(kv.Value);
-                    }
-                }
-            }
-
-            // Rewrite .tfcar.json files for any car preset still at the old
-            // default so the new value persists across launches.
-            if (_carStore != null)
-            {
-                var loaded = _carStore.LoadAll();
-                foreach (var carKv in loaded)
-                {
-                    foreach (var entry in carKv.Value.Values)
-                    {
-                        if (entry?.Override?.RevLimiter == null) continue;
-                        if (MigrateRevLimiterThresholdField(entry.Override.RevLimiter))
-                        {
-                            _carStore.Save(entry.CarId, entry.PresetName, entry.GameName,
-                                           entry.Override, entry.IsBuiltin);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-
-            if (changed)
-            {
-                PersistSettingsCore();
-                SimHub.Logging.Current.Info(
-                    "[TF4ALL] Migrated RevLimiter engage threshold default "
-                    + "(0.97 -> 0.85) for presets at the old default.");
-            }
-        }
-
-        private static bool MigrateRevLimiterThresholdField(RevLimiterSettings s)
-        {
-            if (s == null) return false;
-            if (System.Math.Abs(s.Threshold - 0.97f) < 0.001f)
-            {
-                s.Threshold = 0.85f;
-                return true;
-            }
-            return false;
         }
 
         // ---------- per-section dirty check (vs active preset) ----------
@@ -14082,29 +14408,26 @@ namespace TrueforceForAll.Plugin
                 && Settings.DuckFrequencyAware == snap.DuckFrequencyAware;
         }
 
-        // Airborne ducking is a global (non-per-car) section. A preset saved
-        // before this effect existed has no Airborne block (snap.Airborne ==
-        // null); treat that as "no opinion" -> not dirty. ApplyGamePreset leaves
-        // the live Airborne value untouched in that case, so comparing it against
-        // the shipped default (the old behavior) wrongly lit the section dirty
-        // whenever the carried-over value wasn't exactly the default.
+        // Airborne ducking: same scope-aware shape as EffectEquals (live car
+        // override compares against the saved car baseline, falling back to
+        // the preset when the car preset never saved this section; otherwise
+        // global vs preset). A preset saved before this effect existed has no
+        // Airborne block (snap.Airborne == null); treat that as "no opinion"
+        // -> not dirty. ApplyGamePreset leaves the live Airborne value
+        // untouched in that case, so comparing it against the shipped default
+        // (the old behavior) wrongly lit the section dirty whenever the
+        // carried-over value wasn't exactly the default.
         private bool AirborneEquals(GameSettingsSnapshot snap)
         {
             if (snap.Airborne == null) return true;
-            var a = ActiveAirborne ?? new AirborneSettings();
-            var b = snap.Airborne;
-            return a.Enabled          == b.Enabled
-                && EqF2(a.Reduction, b.Reduction)
-                && a.DuckEngine       == b.DuckEngine
-                && a.DuckAudio        == b.DuckAudio
-                && a.DuckRoadBumps    == b.DuckRoadBumps
-                && a.DuckTractionLoss == b.DuckTractionLoss
-                && a.DuckRevLimiter   == b.DuckRevLimiter
-                && a.DuckGearShift    == b.DuckGearShift
-                && a.DuckAbs          == b.DuckAbs
-                && a.DuckPitLimiter   == b.DuckPitLimiter
-                && a.DuckDrs          == b.DuckDrs
-                && a.DuckCollision    == b.DuckCollision;
+            if (_activeCarId != null && Settings.CarOverrides != null
+                && Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo)
+                && liveCo?.Airborne != null)
+            {
+                _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var savedCo);
+                return Eq(liveCo.Airborne, savedCo?.Airborne ?? snap.Airborne);
+            }
+            return Eq(Settings.Airborne, snap.Airborne);
         }
 
         // Tolerances match the UI's display precision so that two values
@@ -14204,6 +14527,12 @@ namespace TrueforceForAll.Plugin
 
         private static bool Eq(EnginePulseSettings a, EnginePulseSettings b)
         {
+            // Layout / CustomEngineId / CustomFiringPattern(Name) are legacy
+            // fields since the 2026-07 engine centralization (the engine type
+            // lives in Car facts now), so they no longer participate in
+            // preset equality. EqIgnoringLayout and
+            // IsEngineSectionOnlyLayoutDirty were deleted with the move: an
+            // engine pick can't dirty a preset anymore.
             if (a == null || b == null) return a == b;
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain,      b.Gain)
@@ -14211,78 +14540,10 @@ namespace TrueforceForAll.Plugin
                 && EqI (a.LowpassHz, b.LowpassHz)
                 && a.Waveform == b.Waveform
                 && a.ElectricMode == b.ElectricMode
-                && a.Layout == b.Layout
-                && string.Equals(a.CustomEngineId ?? "", b.CustomEngineId ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPattern ?? "", b.CustomFiringPattern ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPatternName ?? "", b.CustomFiringPatternName ?? "", System.StringComparison.Ordinal)
                 && a.LoadLayerEnabled    == b.LoadLayerEnabled
                 && EqF2(a.LoadLayerGain,      b.LoadLayerGain)
                 && a.HighRpmBoostEnabled == b.HighRpmBoostEnabled
                 && EqF2(a.HighRpmBoostAmount, b.HighRpmBoostAmount);
-        }
-
-        // Same as Eq(EnginePulseSettings) but ignores the Layout field.
-        // Used by IsEngineSectionOnlyLayoutDirty so the save-flow popover
-        // can skip the car-vs-game choice when the user only changed the
-        // car-fact axis (game default is meaningless for "what's actually
-        // in this car").
-        private static bool EqIgnoringLayout(EnginePulseSettings a, EnginePulseSettings b)
-        {
-            if (a == null || b == null) return a == b;
-            return a.Enabled == b.Enabled
-                && EqF2(a.Gain,      b.Gain)
-                && EqF2(a.Pitch,     b.Pitch)
-                && EqI (a.LowpassHz, b.LowpassHz)
-                && a.Waveform == b.Waveform
-                && a.ElectricMode == b.ElectricMode
-                // Layout intentionally skipped
-                && string.Equals(a.CustomEngineId ?? "", b.CustomEngineId ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPattern ?? "", b.CustomFiringPattern ?? "", System.StringComparison.Ordinal)
-                && string.Equals(a.CustomFiringPatternName ?? "", b.CustomFiringPatternName ?? "", System.StringComparison.Ordinal)
-                && a.LoadLayerEnabled    == b.LoadLayerEnabled
-                && EqF2(a.LoadLayerGain,      b.LoadLayerGain)
-                && a.HighRpmBoostEnabled == b.HighRpmBoostEnabled
-                && EqF2(a.HighRpmBoostAmount, b.HighRpmBoostAmount);
-        }
-
-        /// <summary>True iff the Engine section is dirty AND the ONLY thing
-        /// that's different from the saved baseline is the Layout field.
-        /// Lets the save-flow popover skip the car-vs-game-default choice in
-        /// the common car-fact-only case: when you just picked a different
-        /// engine type, the only sensible save target is the car. Mirrors
-        /// IsSectionDirty's two-branch baseline lookup so the comparison
-        /// uses the same anchor.</summary>
-        public bool IsEngineSectionOnlyLayoutDirty()
-        {
-            if (!IsSectionDirty(SectionKind.Engine)) return false;
-            var live = EnginePulse == null ? null : ActiveEngine;
-            if (live == null) return false;
-
-            EnginePulseSettings baseline = null;
-
-            // Branch 1 (matches IsSectionDirty's hasGamePreset path): compare
-            // live ActiveEngine against the game preset's EnginePulse.
-            if (!string.IsNullOrEmpty(_activePresetName)
-                && Settings?.Presets != null
-                && Settings.Presets.TryGetValue(_activePresetName, out var snap)
-                && snap != null)
-            {
-                baseline = snap.EnginePulse;
-            }
-            // Branch 2: per-car override case (no game preset).
-            else if (!string.IsNullOrEmpty(_activeCarId)
-                     && Settings?.CarOverrides != null
-                     && Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo)
-                     && liveCo?.EnginePulse != null)
-            {
-                _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var savedCo);
-                live = liveCo.EnginePulse;
-                baseline = savedCo?.EnginePulse;
-            }
-            if (baseline == null) return false;
-
-            // Only Layout differs iff non-Layout fields match AND Layout doesn't.
-            return EqIgnoringLayout(live, baseline) && live.Layout != baseline.Layout;
         }
         private static bool Eq(RoadBumpsSettings a, RoadBumpsSettings b)
         {
@@ -14399,21 +14660,13 @@ namespace TrueforceForAll.Plugin
         private static bool Eq(RevLimiterSettings a, RevLimiterSettings b)
         {
             if (a == null || b == null) return a == b;
-            // RedlineRpm is the user's explicit engagement value since the
-            // unification migration. Without it in this comparator, slider
-            // edits to the redline read clean (Save button never appears).
-            bool redlineRpmEq = (a.RedlineRpm.HasValue == b.RedlineRpm.HasValue)
-                && (!a.RedlineRpm.HasValue || a.RedlineRpm.Value == b.RedlineRpm.Value);
             return a.Enabled == b.Enabled
                 && EqF2(a.Gain,      b.Gain)
                 && EqI (a.Freq,      b.Freq)
                 && EqF1(a.PulseFreq, b.PulseFreq)
                 && EqF2(a.DutyCycle, b.DutyCycle)
                 && EqF2(a.ActiveAmp, b.ActiveAmp)
-                && EqF2(a.Threshold, b.Threshold)
-                && redlineRpmEq
                 && EqI (a.RedlineOffsetRpm, b.RedlineOffsetRpm)
-                && a.EngageMode == b.EngageMode
                 && a.Waveform == b.Waveform;
         }
         private static bool Eq(AudioCaptureSettings a, AudioCaptureSettings b)
@@ -14763,6 +15016,13 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to overwrite built-in preset '{presetName}'.");
                 return false;
             }
+            // Fold in-car draft edits into the globals first so the snapshot
+            // below captures what the user is actually hearing. Without this,
+            // the header Save / fork / save-as paths silently wrote the
+            // pre-edit globals and the edited sections stayed dirty (the
+            // per-effect save popover got this right via PromoteSectionToGlobal;
+            // the whole-preset paths never did).
+            FoldDraftSectionsIntoGlobals();
             // Skip the active-preset rename + log on disk failure so the
             // UI's "Saved as X" status doesn't drift from the on-disk
             // truth. The PersistGamePresetToFolder warn-log records the
@@ -17010,9 +17270,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Count where a custom engine is referenced: the global
         /// default, every game preset (incl. inline car overrides), every car
-        /// preset, and the active config. Optional exclusions skip a pack's own
-        /// presets so pack-removal math counts only references that would
-        /// survive the removal. Public for the Customs-tab delete warning.</summary>
+        /// preset, the active config, and (since the 2026-07 centralization the
+        /// LIVE reference class) every Car facts variant pinned to it. Optional
+        /// exclusions skip a pack's own presets so pack-removal math counts only
+        /// references that would survive the removal. Public for the Customs-tab
+        /// delete warning.</summary>
         public EngineUsage GetEngineUsage(string engineId) => AnalyzeEngineUsage(engineId, null, null);
 
         private EngineUsage AnalyzeEngineUsage(string engineId,
@@ -17052,6 +17314,23 @@ namespace TrueforceForAll.Plugin
 
             var activeEp = GetActiveCarOverride()?.EnginePulse ?? Settings.EnginePulse;
             if (EnginePulseRefsEngine(activeEp, engineId)) u.ActiveConfig = true;
+
+            // Car facts variant pins: the live way an engine is referenced since
+            // the 2026-07 centralization (the preset fields above are legacy).
+            // No exclusions apply - pins are car truth, not pack entries, so
+            // they always survive a pack removal.
+            lock (_carFactsLock)
+            {
+                if (Settings.CarFacts != null)
+                    foreach (var fb in Settings.CarFacts.Values)
+                    {
+                        if (fb?.EngineVariants == null) continue;
+                        foreach (var v in fb.EngineVariants)
+                            if (v != null && v.UserEngineLayout == Effects.EngineLayout.Custom
+                                && string.Equals(v.UserCustomEngineId, engineId, StringComparison.Ordinal))
+                                u.VariantPinCount++;
+                    }
+            }
 
             return u;
         }
@@ -17098,7 +17377,7 @@ namespace TrueforceForAll.Plugin
         {
             if (CountOtherPacksWithEngine(engineId, pack) > 0) return true;
             var (xg, xc) = PackEntryExclusions(pack);
-            return AnalyzeEngineUsage(engineId, xg, xc).TotalPresetRefs > 0;
+            return AnalyzeEngineUsage(engineId, xg, xc).TotalRefs > 0;
         }
 
         // An engine pack entry counts as "edited" only when its install-time
@@ -17142,7 +17421,7 @@ namespace TrueforceForAll.Plugin
                     if (EngineEntryEdited(e)) impact.EditedEntryCount++;
                     int otherPacks  = CountOtherPacksWithEngine(e.EngineId, pack);
                     var (xg, xc)    = PackEntryExclusions(pack);
-                    int outsideRefs = AnalyzeEngineUsage(e.EngineId, xg, xc).TotalPresetRefs;
+                    int outsideRefs = AnalyzeEngineUsage(e.EngineId, xg, xc).TotalRefs;
                     if (otherPacks > 0 || outsideRefs > 0)
                         impact.SharedEngines.Add(new SharedEngineRef
                         {
@@ -17232,6 +17511,30 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             { SimHub.Logging.Current.Warn($"[TF4ALL] Engine auto-fallback car-preset sweep failed: {ex.Message}"); }
 
+            // Car facts variant pins (2026-07 centralization): clear any
+            // UserEngineLayout pin that referenced a deleted custom so the
+            // variant falls back to the auto cascade instead of dangling.
+            lock (_carFactsLock)
+            {
+                if (Settings?.CarFacts != null)
+                    foreach (var fb in Settings.CarFacts.Values)
+                    {
+                        if (fb?.EngineVariants == null) continue;
+                        foreach (var variant in fb.EngineVariants)
+                        {
+                            if (variant == null) continue;
+                            if (variant.UserEngineLayout == Effects.EngineLayout.Custom
+                                && !string.IsNullOrEmpty(variant.UserCustomEngineId)
+                                && deletedIds.Contains(variant.UserCustomEngineId))
+                            {
+                                variant.UserEngineLayout   = null;
+                                variant.UserCustomEngineId = "";
+                                rewritten++;
+                            }
+                        }
+                    }
+            }
+
             return rewritten;
         }
 
@@ -17253,6 +17556,11 @@ namespace TrueforceForAll.Plugin
             PersistSettings();
             if (!string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
             ApplyActiveCarOverride();
+            // The pin heal above edits Settings.CarFacts, and since the 2026-07
+            // centralization ApplyEngineSettings applies FEEL only: without a
+            // re-resolve the live effect keeps playing the deleted engine's
+            // pattern until the next car change.
+            ReresolveActiveCarFacts();
             return removed;
         }
 
@@ -17357,7 +17665,14 @@ namespace TrueforceForAll.Plugin
             }
 
             if (carTouched && !string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
-            if (deletedEngineIds.Count > 0) ApplyActiveCarOverride();
+            if (deletedEngineIds.Count > 0)
+            {
+                ApplyActiveCarOverride();
+                // Same as DeleteCustomEngines: the pin heal edits CarFacts and
+                // ApplyEngineSettings is feel-only now, so re-resolve or the
+                // deleted engine keeps playing until the next car change.
+                ReresolveActiveCarFacts();
+            }
 
             return summary;
         }
@@ -18896,7 +19211,7 @@ namespace TrueforceForAll.Plugin
             // pipeline re-init isn't safe (InitPipeline is once-only: helper process + threads + mixer).
             try { ApplyActiveCarOverride(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: effect re-apply failed: " + ex.Message); }
-            try { ApplyForzaSettings(); }
+            try { ApplyForzaSettings(onlyIfChanged: true); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: telemetry re-apply failed: " + ex.Message); }
             // Tell any open preset browser to redraw from the rebuilt caches (no manual Refresh).
             try { LibraryReloaded?.Invoke(); }

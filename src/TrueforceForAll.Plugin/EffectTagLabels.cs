@@ -14,7 +14,7 @@ namespace TrueforceForAll.Plugin
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             { "engine",       "Engine pulse" },
-            { "revlimiter",   "Rev limiter" },
+            { "revlimiter",   "Redline buzz" },
             { "roadbumps",    "Road bumps" },
             { "tractionloss", "Traction loss" },
             { "axleslip",     "Axle slip" },

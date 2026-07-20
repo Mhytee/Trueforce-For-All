@@ -25,7 +25,7 @@ namespace TrueforceForAll.Plugin
         private static readonly (string tag, string label)[] AllSections = new (string, string)[]
         {
             ("engine",       "Engine pulse"),
-            ("revlimiter",   "Rev limiter"),
+            ("revlimiter",   "Redline buzz"),
             ("roadbumps",    "Road bumps"),
             ("tractionloss", "Traction loss"),
             ("axleslip",     "Axle slip"),

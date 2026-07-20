@@ -921,11 +921,9 @@
                         <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock x:Name="HeaderCarText" Text="(none)" FontSize="12"
                                        TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                            <Button x:Name="HeaderCarRenameBtn" Content="Rename…" Margin="8,0,0,0"
-                                    Padding="6,0,6,0" FontSize="10" Height="18"
-                                    VerticalAlignment="Center" Visibility="Collapsed"
-                                    Click="HeaderCarRename_Click"
-                                    ToolTip="Rename this car (set its official in-game name). Always saved locally; if 'Enable community features (online)' is on you'll be asked to confirm or correct the community name for your language."/>
+                            <!-- The header "Rename…" button was removed: car naming lives in
+                                 the Car facts panel right below (Name box + Save), which runs
+                                 the same CarNameShareFlow. -->
                             <!-- Old "★ N community" discoverability chip + popover
                                  removed in favour of the inline "── Top community
                                  presets ──" section that the car preset dropdown
@@ -1084,15 +1082,23 @@
                          knows about the active car (name, engine/variant + its
                          source, redline + its source), editable inline for the
                          name and redline. Engine/variant edits route to the
-                         existing Manage Variants modal. Shown only when a car is
-                         active; collapsed by default. Populated by
-                         RefreshCarFactsPanel. -->
-                    <Expander x:Name="CarFactsExpander" IsExpanded="False" Margin="0,10,0,0" Visibility="Collapsed"
-                              ToolTip="What the plugin currently believes about this car. Correct anything that looks wrong; your values win over the community for this car / variant.">
+                         existing Manage Variants modal. ALWAYS visible and
+                         EXPANDED by default (people open the plugin before the
+                         game; they should discover car facts exist and that a
+                         wrong-feeling redline buzz or shift lights get fixed
+                         here); with no active car the body is just the hint
+                         line. Populated by RefreshCarFactsPanel. -->
+                    <Expander x:Name="CarFactsExpander" IsExpanded="True" Margin="0,10,0,0"
+                              ToolTip="What the plugin currently believes about the car you're driving. Correct anything that looks wrong.">
                         <Expander.Header>
                             <TextBlock Text="Car facts" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,0">
+                            <!-- No-car placeholder: tells the user what will appear
+                                 here and why they'd care, before they ever drive. -->
+                            <TextBlock x:Name="CarFactsNoCarHint" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                                       Text="Once you're driving, the car's facts (name, engine, redline) show here. If the redline buzz or the shift lights fire at the wrong RPM, this is where to fix it."/>
+                            <StackPanel x:Name="CarFactsRowsPanel">
                             <!-- Name -->
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -1106,13 +1112,16 @@
                             </Grid>
                             <TextBlock x:Name="CarFactsCommunityNameText" FontSize="11" Opacity="0.55"
                                        Margin="64,0,0,6" Visibility="Collapsed"/>
-                            <!-- Engine type (inline editable, same picker as the
-                                 Engine Pulse section's Layout dropdown) + a meta
-                                 line for the rev ceiling and the fact's source. -->
+                            <!-- Engine type: THE engine picker since the 2026-07
+                                 centralization (pins the active variant; the gray
+                                 readout below carries the auto-detect context and
+                                 rev ceiling). -->
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Engine" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <ComboBox  Grid.Column="1" x:Name="CarFactsEngineCombo" SelectionChanged="CarFactsEngine_Changed"
+                                           DropDownClosed="CarFactsEngine_DropDownClosed"
+                                           LostKeyboardFocus="CarFactsEngine_LostKeyboardFocus"
                                            VerticalAlignment="Center" Margin="0,0,8,0"
                                            ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong."/>
                                 <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" VerticalAlignment="Center">
@@ -1122,7 +1131,12 @@
                                     <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
                                 </TextBlock>
                             </Grid>
-                            <TextBlock x:Name="CarFactsEngineMetaText" FontSize="11" Opacity="0.55" Margin="64,0,0,6"/>
+                            <!-- Auto-detect readout (max RPM rides its end) + community
+                                 context. The x:Names are load-bearing: their updaters
+                                 also drive the shared per-car community fetch. Custom-
+                                 engine authoring lives in the Manage variants modal. -->
+                            <TextBlock x:Name="EngineLayoutAutoText" FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="64,0,0,2" Text=""/>
+                            <TextBlock x:Name="EngineCommunityText" FontSize="11" Opacity="0.55" Margin="64,0,0,6" Text="" Visibility="Collapsed"/>
                             <!-- Redline -->
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions>
@@ -1137,27 +1151,21 @@
                                 <Button    Grid.Column="3" x:Name="CarFactsRedlineSetBtn" Content="Set"
                                            Style="{StaticResource EffectSaveButton}" Visibility="Visible"
                                            Click="CarFactsRedlineSet_Click"
-                                           ToolTip="Pin the redline start for this variant (this tune). Wins over the community value for this variant."/>
+                                           ToolTip="Save the redline start for this variant (this tune)."/>
                                 <TextBlock Grid.Column="4" x:Name="CarFactsRedlineSourceText" FontSize="11" Opacity="0.6"
                                            VerticalAlignment="Center" Margin="2,0,0,0"/>
                             </Grid>
                             <TextBlock Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
                                        Text="The redline start: where the tachometer turns red and you upshift. Not the rev limiter cutoff (that sits a little higher)."/>
-                            <!-- Nudge to contribute when we have no community redline for
-                                 this car/variant yet. Gold so it reads as a gentle prompt. -->
+                            <!-- Factual note when no community redline exists yet. No share
+                                 button: Set routes through the submit path by itself. -->
                             <TextBlock x:Name="CarFactsNoCommunityNudge" Margin="64,4,0,0" FontSize="11"
                                        Foreground="#FFE082" TextWrapping="Wrap" Visibility="Collapsed"/>
-                            <StackPanel Orientation="Horizontal" Margin="64,4,0,2">
-                                <Button x:Name="CarFactsShareBtn" Content="★ Share with community"
-                                        Style="{StaticResource HeaderShareButton}" Visibility="Collapsed"
-                                        Click="CarFactsShareRedline_Click"
-                                        ToolTip="Submit this car's redline start for this variant so other drivers get it too."/>
-                            </StackPanel>
                             <!-- Per-gear redline overrides (gears 1..N). The redline above
                                  is the default (gear 0); rows here override specific gears,
                                  e.g. a lower 1st-gear limit. Rows are built in code by
-                                 RebuildPerGearEditors and kept in sync with the Rev Limiter
-                                 section's copy. -->
+                                 RebuildPerGearEditors. This is the ONLY per-gear editor
+                                 (the Redline buzz section's duplicate was retired). -->
                             <Expander x:Name="CarFactsPerGearExpander" IsExpanded="False" Margin="0,6,0,0" Visibility="Collapsed">
                                 <Expander.Header>
                                     <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
@@ -1170,6 +1178,7 @@
                                             Padding="10,2" Margin="0,2,0,0" Click="CarFactsAddGear_Click"/>
                                 </StackPanel>
                             </Expander>
+                            </StackPanel>
                         </StackPanel>
                     </Expander>
 
@@ -1277,6 +1286,26 @@
                                        FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
                                        Text=""/>
                         </StackPanel>
+                    </Border>
+
+                    <!-- Dropped-default notice: a game's default preset pointed at
+                         a name that no longer exists, so the built-in default took
+                         over. Previously log-only, which let a user unknowingly
+                         edit the built-in (2026-07-19). Dismiss clears the notice. -->
+                    <Border x:Name="DefaultDroppedBanner" Visibility="Collapsed"
+                            Background="#1565C0" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="ⓘ" FontSize="14" Foreground="White"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" x:Name="DefaultDroppedText" Foreground="White"
+                                       FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Text=""/>
+                            <Button Grid.Column="2" Content="Dismiss" Padding="10,3" Margin="10,0,0,0"
+                                    VerticalAlignment="Center" Click="DefaultDroppedDismiss_Click"/>
+                        </Grid>
                     </Border>
 
                     <!-- "+N more" reveal. Shown only when more than one issue is
@@ -1598,6 +1627,10 @@
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
+                        <!-- Evergreen guidance (not a migration note) so it reads
+                             right for new users too. -->
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                                   Text="For the most accurate engine pulse, make sure the engine type is correct in Car facts on the active car card."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -1633,71 +1666,18 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Electric cars:" Style="{StaticResource LabelText}"
-                                       ToolTip="What Engine pulse does for cars detected as pure electric. Most users prefer the muted hum since real EVs aren't silent (many pump synthetic engine sound). Pick Silent if you want true silence on EVs."/>
+                                       ToolTip="What Engine pulse does for electric cars (detected as electric, or set to Electric in Car facts). Most users prefer the muted hum since real EVs aren't silent (many pump synthetic engine sound). Pick Silent if you want true silence on EVs."/>
                             <ComboBox  Grid.Column="1" x:Name="EngineElectricModeCombo" SelectionChanged="EngineElectricMode_Changed">
                                 <ComboBoxItem Content="Muted hum (50%)"/>
                                 <ComboBoxItem Content="Silent (off)"/>
                             </ComboBox>
                         </Grid>
-                        <Separator Margin="0,4,0,8"/>
-                        <!-- Engine type. Each entry implies its cylinder/rotor
-                             count and firing pattern, so there's no separate
-                             cylinder control. Auto defers to the car-resolver
-                             (AC bake / Forza telemetry); Electric routes
-                             through the EV behavior selector above; Custom
-                             uses the firing-pattern textbox below. -->
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Engine type:" Style="{StaticResource LabelText}"
-                                       ToolTip="Pick the engine that best matches the active car. Auto defers to detection; Electric uses the EV behavior above; Custom uses the firing pattern below."/>
-                            <!-- Items are populated dynamically in SettingsControl.RebuildEngineLayoutDropdown
-                                 so the user's saved customs appear alongside built-ins. The
-                                 create / manage actions live in the links below, not in the list. -->
-                            <ComboBox  Grid.Column="1" x:Name="EngineLayoutCombo" SelectionChanged="EngineLayout_Changed"/>
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Margin="140,2,0,6">
-                            <TextBlock Style="{StaticResource HelpText}">
-                                <Hyperlink Click="EngineCustomNew_Click">Create custom engine…</Hyperlink>
-                            </TextBlock>
-                            <TextBlock x:Name="EngineCustomManageLink" Style="{StaticResource HelpText}" Margin="14,0,0,0" Visibility="Collapsed">
-                                <Hyperlink Click="EngineCustomManage_Click">Manage customs…</Hyperlink>
-                            </TextBlock>
-                        </StackPanel>
-                        <!-- Auto-detect indicator: shows the layout the resolver
-                             chose for the active car when the user has Auto
-                             selected. Empty otherwise. The Community context
-                             line below surfaces what other drivers said for
-                             this car so the user can confirm it (re-submit the
-                             same value) or correct it (submit a different one)
-                             upfront rather than only after a save. -->
-                        <TextBlock x:Name="EngineLayoutAutoText" Style="{StaticResource HelpText}" Margin="140,0,0,4" Text=""/>
-                        <TextBlock x:Name="EngineCommunityText" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="" Visibility="Collapsed"/>
-                        <!-- Active variant readout + Manage link. Auto-detect
-                             keys on the live telemetry signature so the picker
-                             dropdown is gone: the row that matches your engine
-                             IS what's applied. The readout shows the matched
-                             label; the Manage link opens the rename/delete UI. -->
-                        <Grid x:Name="EngineVariantRow" Margin="0,0,0,4" Visibility="Collapsed">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Variant:" Style="{StaticResource LabelText}"
-                                       ToolTip="The stored variant whose cylinder + max-RPM signature matches your live telemetry. Auto-detected; rename or delete via Manage variants."/>
-                            <TextBlock Grid.Column="1" x:Name="EngineVariantActiveText"
-                                       Foreground="#FFE0E0E0" VerticalAlignment="Center"/>
-                        </Grid>
-                        <TextBlock x:Name="EngineVariantManageLink" Style="{StaticResource HelpText}" Margin="140,0,0,8" Visibility="Collapsed">
-                            <Hyperlink x:Name="EngineVariantManageHyperlink" Click="EngineVariantManage_Click">Manage variants…</Hyperlink>
-                        </TextBlock>
-                        <!-- Active pattern readout: shows what's being synthesized
-                             for the currently selected engine type. Read-only.
-                             Authoring custom engines happens in the Custom...
-                             dialog, not inline. -->
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Pattern:" Style="{StaticResource LabelText}"
-                                       ToolTip="Diagnostic readout: comma-separated phase positions in [0, 1) where each pulse fires within one 720° engine cycle. Useful for submitting corrections if a built-in pattern sounds wrong."/>
-                            <TextBox   Grid.Column="1" x:Name="EngineFiringPatternText"
-                                       FontFamily="Consolas" IsReadOnly="True"/>
-                        </Grid>
+                        <!-- Engine TYPE, its auto-detect/community context, the
+                             variant readout, and the pattern readout all moved to
+                             the Car facts panel on the active card (2026-07
+                             centralization): the engine is car truth, not preset
+                             feel. This section keeps feel knobs only; the Car
+                             facts guidance line sits at the top of the section. -->
                         <!-- High-RPM perceptibility helpers. On by default;
                              keep the engine feel present where the wheel
                              motor naturally rolls off the firing pulse. -->
@@ -2394,7 +2374,7 @@
                     </StackPanel>
                 </Expander>
 
-                <!-- Rev limiter (modal RPM-threshold effect). Hard buzz when
+                <!-- Redline buzz (modal RPM-threshold effect). Hard buzz when
                      RPM reaches the shift point / limiter, held while bouncing
                      off it. Independent of engine pulse; an unmistakable
                      "shift now / on the limiter" cue. Works wherever RPM is
@@ -2402,7 +2382,7 @@
                 <Expander x:Name="RevLimiterExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="RevLimiterEnabledCheck" Content="Rev limiter"
+                            <CheckBox x:Name="RevLimiterEnabledCheck" Content="Redline buzz"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="RevLimiterEnabled_Changed" Unchecked="RevLimiterEnabled_Changed"/>
                             <Border x:Name="RevLimiterNewBadge" Style="{StaticResource NewEffectBadge}">
@@ -2416,7 +2396,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A hard buzz that engages at your redline start (the shift point) and holds while you sit on or bounce off the rev limiter above it. A clearer shift cue than the engine-pulse change near redline, for when you run engine pulse low or just want an unmistakable signal. Triggers off RPM, so it works in any game that reports it."/>
+                                   Text="A hard buzz when you enter the redline start: an unmistakable shift cue. If it fires at the wrong RPM, fix the redline start in Car facts."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2424,56 +2404,19 @@
                                         TickFrequency="0.25" ValueChanged="RevLimiterGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="RevLimiterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.10"/>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Engage mode:" Style="{StaticResource LabelText}"
-                                       ToolTip="Auto: prefer the game's reported redline, fall back to community / saved value / 85% of the rev limit. Manual: always use the redline RPM you set below. Good for cars where the game reports the wrong redline."/>
-                            <ComboBox  Grid.Column="1" x:Name="RevLimiterEngageModeCombo" SelectionChanged="RevLimiterEngageMode_Changed">
-                                <ComboBoxItem Content="Auto (trust the game)"/><ComboBoxItem Content="Manual (set my own redline)"/>
-                            </ComboBox>
-                        </Grid>
-                        <Grid x:Name="RevLimiterRedlineRow" Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Redline RPM:" Style="{StaticResource LabelText}"
-                                       ToolTip="RPM where the rev limiter buzz fires. Set it to the redline start (where the tachometer turns red and you upshift), not the hard rev limiter cutoff. In Auto mode this is the fallback when the game doesn't report a redline; in Manual mode it's always used. The slider opens up to the car's max RPM once telemetry observes it."/>
-                            <Slider     Grid.Column="1" x:Name="RevLimiterRedlineSlider" Minimum="500" Maximum="15000" SmallChange="100" LargeChange="500"
-                                        TickFrequency="1000" ValueChanged="RevLimiterRedlineSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="RevLimiterRedlineText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6800"/>
-                        </Grid>
-                        <!-- Per-variant redline save: appears in Auto mode while
-                             the user is dragging a redline they haven't committed.
-                             Saving pins it to THIS engine variant (this tune) in
-                             the CarFacts layer, where it wins over the community
-                             value for that variant. Revert discards the draft. -->
-                        <Grid x:Name="RevLimiterRedlineSaveRow" Margin="140,0,0,10" Visibility="Collapsed">
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="Save for this variant" Click="SaveVariantRedline_Click" Padding="10,3" Margin="0,0,8,0"
-                                        ToolTip="Saves the redline start shown above for this variant (this tune). It wins over the community value for this variant; switching to another variant loads that variant's own value."/>
-                                <Button Content="Revert" Click="RevertVariantRedline_Click" Padding="10,3"
-                                        ToolTip="Discard this unsaved redline change."/>
-                            </StackPanel>
-                        </Grid>
-                        <!-- Per-gear redline overrides (gears 1..N). The redline slider
-                             above is the default (gear 0). Same editor as the Car Facts
-                             panel; both are rebuilt by RebuildPerGearEditors. -->
-                        <Expander x:Name="RevLimiterPerGearExpander" IsExpanded="False" Margin="140,0,0,8" Visibility="Collapsed">
-                            <Expander.Header>
-                                <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
-                            </Expander.Header>
-                            <StackPanel Margin="0,4,0,0">
-                                <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="Optional. Set a different redline start (where you upshift) for specific gears, e.g. a lower 1st-gear shift point. Gears you don't list use the redline above."/>
-                                <StackPanel x:Name="RevLimiterPerGearRows"/>
-                                <Button x:Name="RevLimiterAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
-                                        Padding="10,2" Margin="0,2,0,0" Click="RevLimiterAddGear_Click"/>
-                            </StackPanel>
-                        </Expander>
+                        <!-- (The Engage mode combo, the Redline RPM slider + per-variant
+                             save row, and the duplicate per-gear editor were retired
+                             2026-07-17: the redline is car truth, edited ONLY in the
+                             Car facts panel on the active card. This panel keeps the
+                             feel knobs: gain, offset, waveform, tone.) -->
                         <!-- Coverage badge: shown when the rev-limiter cascade fell
-                             all the way to the 0.85 × MaxRpm estimate (no telemetry
-                             redline, no CarFacts, no preset, no legacy Threshold).
-                             Tells the user the shift cue is a guess and offers two
-                             affordances: focus the slider to fix it locally, or
-                             share via the redline submission flow. -->
+                             all the way to the 0.85 × MaxRpm estimate (no user value,
+                             no telemetry redline, no community value). Tells the user
+                             the shift cue is a guess and offers ONE affordance: jump
+                             to the Car facts redline box to set it. Setting is the
+                             whole story (auto-submit carries it to the community by
+                             itself); a separate share link would reframe saving a
+                             value as a contribution act and add pressure. -->
                         <Border x:Name="RedlineGuessBadge" Visibility="Collapsed"
                                 Background="#33D89F00" BorderBrush="#FFD89F00" BorderThickness="1"
                                 CornerRadius="3" Padding="10,8" Margin="140,0,0,10">
@@ -2486,35 +2429,14 @@
                                     <TextBlock Margin="0,0,12,0" Style="{StaticResource HelpText}">
                                         <Hyperlink x:Name="RedlineGuessSetValueLink" Click="RedlineGuessSetValue_Click">Set the redline start</Hyperlink>
                                     </TextBlock>
-                                    <TextBlock Style="{StaticResource HelpText}">
-                                        <Hyperlink x:Name="RedlineGuessShareLink" Click="RedlineGuessShare_Click">Share with community</Hyperlink>
-                                    </TextBlock>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <!-- Community-redline CONFIRM prompt. Non-modal: surfaced
-                             inline (NOT a popup off the meter tick) when the
-                             community redline for this variant is still unconfirmed
-                             (a single submitter) and the user hasn't set their own.
-                             Confirm makes the user a second supporter so it becomes
-                             confirmed consensus; correcting is just setting your own
-                             redline above. The tick toggles it via
-                             UpdateRedlineConfirmPrompt. -->
-                        <Border x:Name="RedlineConfirmBanner" Visibility="Collapsed"
-                                Background="#2633C2FF" BorderBrush="#FF4FB0E0" BorderThickness="1"
-                                CornerRadius="3" Padding="10,8" Margin="140,0,0,10">
-                            <StackPanel>
-                                <TextBlock x:Name="RedlineConfirmBannerText" TextWrapping="Wrap"
-                                           Foreground="#FFD4ECFA" FontSize="12"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <Button x:Name="RedlineConfirmBtn" Content="Confirm"
-                                            Padding="10,2" Margin="0,0,8,0" Click="RedlineConfirm_Click"
-                                            ToolTip="Agree this is the redline start. Your confirmation counts toward a confirmed community redline once the server records it."/>
-                                    <Button x:Name="RedlineConfirmDismissBtn" Content="Dismiss"
-                                            Padding="10,2" Click="RedlineConfirmDismiss_Click"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                        <!-- (The community-redline Confirm banner was retired with the
+                             set-not-share framing pass: the cascade applies community
+                             values directly, corrections are just setting your own
+                             redline, and agreement accrues from other drivers'
+                             auto-submitted saves rather than a dedicated prompt.) -->
                         <Grid x:Name="RevLimiterOffsetRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Redline offset:" Style="{StaticResource LabelText}"
@@ -2609,7 +2531,7 @@
                             <CheckBox x:Name="AirborneDuckAudioCheck"       Content="Captured audio" Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckRoadBumpsCheck"   Content="Road bumps"     Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckTractionCheck"    Content="Traction loss"  Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="Rev limiter"    Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="Redline buzz"   Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckGearShiftCheck"   Content="Gear shift"     Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckAbsCheck"         Content="ABS"            Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckPitLimiterCheck"  Content="Pit limiter"    Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
@@ -3408,7 +3330,7 @@
                               Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
                               ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, and sharing presets. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12" TextWrapping="Wrap">
-                        <Run Text="Sign-in required to share. Anything you share (presets, packs, custom engines) shows your username; car facts and votes never do. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
+                        <Run Text="Sign-in is only needed for presets. Anything you share there (presets, packs, custom engines) shows your username; car facts are anonymous and need no account. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
                     </TextBlock>
                     <TextBlock Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap" Foreground="#E5C04A"
                                Text="Pre-release: the community backend is in testing. Shared presets, packs, and custom engines are test data and may be reset before the public launch. Your account, achievements, and car data you contribute are kept."/>
@@ -3424,17 +3346,19 @@
                               ToolTip="Apply community-sourced car facts to your cars: human-readable names, engine types, and redlines. Uses a local cache, so it keeps working offline and only refreshes from the server every few days (or when you hit the refresh icon). Turn off to ignore community car facts entirely and use only your own values."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
                                Text="Cached locally and refreshed at most weekly per car, so it works offline and keeps server traffic low."/>
-                    <!-- Auto-submit car-fact corrections. Off by default; the user opts in via
-                         the "Always submit" button in a share prompt or here. Gated by the
-                         community master toggle + sign-in just like the per-edit prompts. -->
+                    <!-- Car-data sharing. ON by default (opt-out posture; the welcome
+                         modal is the disclosure). This checkbox is the opt-out; gated by
+                         the community master toggle; no sign-in needed (signed-out
+                         submissions use the anon fallback id). Toggling here also
+                         answers the residual consent ask (CarFactsConsentGate). -->
                     <CheckBox x:Name="AutoSubmitCarFactsCheck"
-                              Content="Auto-submit my car fact corrections to the community"
+                              Content="Share my car data with the community"
                               Margin="0,0,0,2"
                               Checked="AutoSubmitCarFacts_Changed"
                               Unchecked="AutoSubmitCarFacts_Changed"
-                              ToolTip="When on, your redline, engine-type, and car-name corrections are shared with the community without asking each time. Requires community features on and being signed in. Turn off to be asked each time."/>
+                              ToolTip="When on, your redline and engine-type corrections are submitted automatically, and naming a car offers a share prompt. Needs community features on; no account required. Turn off to stop sharing car data."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="Shares the same corrections the per-edit prompt would, just without asking. Submitted as your signed-in account; your username isn't shown on car-fact submissions."/>
+                               Text="Submissions are anonymous and work without an account; signed-in contributions count toward achievements."/>
 
                     <!-- ===== Community presets: share buttons + auto-update of downloads ===== -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">

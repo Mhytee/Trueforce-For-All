@@ -137,6 +137,20 @@ namespace TrueforceForAll.Plugin
         // CarFacts dict above. Migrate-once + idempotent.
         public bool CarFactsMigratedV1 { get; set; } = false;
 
+        // One-time migration latch (2026-07 engine centralization). Flips
+        // true after per-car engine picks (CarOverrides[..].EnginePulse
+        // Layout / CustomEngineId) have been relocated into the matching
+        // car's variant UserEngineLayout pin in CarFacts. Game-preset-scoped
+        // picks are dropped deliberately: they aren't car-bound. Migrate-once
+        // + idempotent.
+        public bool EngineChoiceMovedToCarFactsV1 { get; set; } = false;
+
+        // One-time cleanup latch (follow-up to the relocation above): car
+        // overrides whose ONLY content was the engine pick get their
+        // EnginePulse section dropped, clearing the stray "overridden"
+        // Engine badge and unfreezing feel. Migrate-once + idempotent.
+        public bool EngineOnlyOverridesPrunedV1 { get; set; } = false;
+
         // One-time migration latch. Flips true after car presets whose name
         // matches the ordinal "Car_NNN" pattern have been renamed to their
         // baked human-readable car name (per game, via
@@ -170,26 +184,31 @@ namespace TrueforceForAll.Plugin
         // collides with an existing Car_<n> is merged, never dropped).
         public bool ForzaCarIdsNormalizedV1 { get; set; } = false;
 
-        // Community backend settings. Defaults are inert: CommunityEnabled
-        // is off, no HTTP calls are made. Enabling it activates fire-and-
-        // forget submission of User-source CarFacts corrections + (later)
-        // pulls of trusted consensus entries on startup. See
-        // supabase/README.md for the schema and setup.
+        // Community backend settings. ON BY DEFAULT (owner decision
+        // 2026-07-16): car facts are trivial non-personal data (redlines,
+        // engine types, car names), so the posture is opt-out with
+        // disclosure, not a consent ceremony. The networked welcome modal is
+        // the disclosure moment (it says sharing is on and where the off
+        // switch lives); PRIVACY.md documents what is sent. Existing
+        // installs whose settings file carries the old explicit false get a
+        // one-time welcome re-pitch (CommunityDefaultOnRepitchedV1) because
+        // the old pitch required an account and this one doesn't.
         //
-        // Identity (submitter_id) is derived server-side from a hash of the
-        // client IP and a rotating salt, so the plugin holds no persistent
-        // submitter id and cannot frame another user. Anti-spam is enforced
-        // server-side via a per-IP rate limit. The anon API key shipped to
-        // the backend is treated as PUBLIC by the schema design - the only
-        // operations it can perform are: SELECT from car_fact_consensus,
-        // and CALL submit_car_fact (car-fact consensus is confirm/correct
-        // based, not voted).
+        // Car facts are account-FREE (since 0100): no username is ever shown
+        // to other users, and no account is needed to contribute. Signed-in
+        // submissions still carry the user token so the server keys them to
+        // the account (achievements, moderation, export/delete); signed-out
+        // submissions fall back to CarFactsAnonId, a client-minted random
+        // GUID prefixed 'anon:' server-side, rate-limited per id AND per
+        // hashed client IP. Consensus reads work on the plain anon key.
+        // Account features (preset browser/sharing, votes, backup) still
+        // require sign-in.
         //
         // Backend URL + anon key are blank by default. For release builds
         // they get baked in as CommunityClient constants and the toggle is
         // the only switch users see. For dev builds the user can override
         // via these fields to point at a staging project.
-        public bool   CommunityEnabled         { get; set; } = false;
+        public bool   CommunityEnabled         { get; set; } = true;
 
         // Show the preset "Share" buttons on the active car/game header card (the
         // Effects tab). Default on for discovery; a user who uses community data but
@@ -312,11 +331,38 @@ namespace TrueforceForAll.Plugin
 
         // Opt-in standing consent: once on, the user's car-fact corrections
         // (redline, engine layout, car name) are submitted to the community
-        // without the per-edit "share this?" prompt. Default off; the user
-        // turns it on by picking "Always submit" in that prompt, or via the
-        // Settings checkbox. Still gated by CommunityEnabled + sign-in exactly
-        // like the prompts, so it never sends anything the prompt wouldn't have.
-        public bool   AutoSubmitCarFacts { get; set; } = false;
+        // without per-edit prompts. Default ON (same opt-out posture as
+        // CommunityEnabled; the welcome modal is the disclosure); the
+        // Settings checkbox withdraws it. Submissions never show a username,
+        // need no account, and are gated by CommunityEnabled; car names
+        // additionally keep their confirm/correct modal because a name is
+        // editorial, not measured.
+        public bool   AutoSubmitCarFacts { get; set; } = true;
+
+        // Latch for the "share car data with the community?" consent modal
+        // (CarFactsConsentGate). With sharing on by default the modal is a
+        // residual path: it only fires for upgraders who had community ON
+        // but sharing OFF in their stored settings (they answered a stricter
+        // pitch, so their next fact-worthy save asks once). True once
+        // answered either way; explicit Share/Confirm clicks may re-offer.
+        public bool   CarFactsConsentAsked { get; set; } = false;
+
+        // Fallback submitter identity for SIGNED-OUT car-fact submissions: a
+        // random GUID minted when consent is granted, sent as
+        // submit_car_fact's p_anon_id so consensus can count distinct
+        // contributors without requiring an account. Ignored server-side
+        // when a user token rides the request (signed-in submissions are
+        // keyed to the account for achievements). Never derived from
+        // hardware. Travels in backups so one human stays one contributor
+        // across PCs.
+        public string CarFactsAnonId { get; set; } = "";
+
+        // One-time latch for the community-default flip: existing installs
+        // whose settings file carries CommunityEnabled=false from the old
+        // opt-in default get the networked welcome re-shown once (the old
+        // pitch required an account; the new proceed doesn't). Fresh
+        // installs never need the reset (community already on).
+        public bool   CommunityDefaultOnRepitchedV1 { get; set; } = false;
 
         // Single "last view was online" latch for the Preset Manager: true when
         // the user left the manager in Community / My uploads, so the next open
@@ -762,13 +808,11 @@ namespace TrueforceForAll.Plugin
         // EXCLUDED from backup (transient local UI state; resets on account switch).
         public bool AchievementUnseen { get; set; } = false;
 
-        // Welcome modal lifecycle. We show the pitch up to TWO times:
-        // first plugin load (DeclineCount==0, NextShowAt==null), then
-        // again after WelcomeReshowDays (~14 days) if the user picked
-        // "Maybe later". A second decline flips HasSeenNetworkedWelcome
-        // true and we never nag again. "Sign in now" (whether or not the
-        // sign-in flow completes) counts as action-taken and stops the
-        // pitch immediately.
+        // Welcome modal lifecycle. The welcome is a PROCEED (disclosure +
+        // optional account): shown once, latched on any dismissal.
+        // DeclineCount / NextShowAt are legacy from the old up-to-two-
+        // pitches consent flow; NextShowAt is still honored as a show gate
+        // for settings files mid-cadence, DeclineCount is only ever reset.
         public bool      HasSeenNetworkedWelcome { get; set; } = false;
         public int       WelcomeDeclineCount     { get; set; } = 0;
         public DateTime? WelcomeNextShowAt       { get; set; } = null;
@@ -921,13 +965,6 @@ namespace TrueforceForAll.Plugin
         // under the realRedline rule (builds before that split faked a redline
         // from MaxRpm and over-learned every game). One-time migration in Init.
         public bool GamesWithRedlineRevalidated { get; set; } = false;
-
-        // Set true once presets still on the old rev-limiter engage default
-        // (0.97) have been bumped to the new default (0.85). On the Forza
-        // percentage path 0.97 only fired when bouncing off the limiter, so the
-        // buzz was effectively dead for most drivers (issue #8). One-time
-        // migration in Init; only touches presets still at the exact old default.
-        public bool RevLimiterThresholdDefaultMigrated { get; set; } = false;
 
         // Per-car active preset assignment. Maps CarId to a preset name in
         // the on-disk car-preset library (TrueforceCars/). When a car is
@@ -1163,6 +1200,23 @@ namespace TrueforceForAll.Plugin
         /// EngineLayout-derived pattern when non-empty. Format mirrors
         /// CustomEngineDef.Pattern (FiringPatternDb.ParseCustom).</summary>
         public string CustomFiringPattern { get; set; } = "";
+
+        /// <summary>The user's own engine-type pick for THIS variant (set via
+        /// the Car facts engine dropdown). Wins over the auto-detected /
+        /// community layout for this variant only, mirroring
+        /// <see cref="UserRedlineRpm"/>: an explicit pin that beats the
+        /// cascade but leaves auto-detection running underneath. null = no
+        /// pin; follow the cascade (variant facts / community / telemetry /
+        /// heuristic).</summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public EngineLayout? UserEngineLayout { get; set; }
+
+        /// <summary>When <see cref="UserEngineLayout"/> == Custom, the Id of
+        /// the <see cref="CustomEngineDef"/> in
+        /// <see cref="TrueforceSettings.CustomEngines"/> that defines the
+        /// pattern / electric behavior. Empty otherwise. Cleared when that
+        /// custom engine is deleted from the library.</summary>
+        public string UserCustomEngineId { get; set; } = "";
 
         /// <summary>Optional absolute redline RPM. Only meaningful for games
         /// whose telemetry doesn't expose a trustworthy RedLineRPM value
@@ -1536,38 +1590,46 @@ namespace TrueforceForAll.Plugin
         [JsonConverter(typeof(StringEnumConverter))]
         public ElectricCarMode ElectricMode { get; set; } = ElectricCarMode.MutedHum;
 
-        /// <summary>Engine layout. Auto defers to the resolver / telemetry;
-        /// any explicit value (V8 cross-plane, Rotary 2-rotor, Electric, etc.)
-        /// wins. Custom uses the user-authored engine identified by
-        /// <see cref="CustomEngineId"/> (or the legacy
-        /// <see cref="CustomFiringPattern"/> string as a fallback during
-        /// migration). Default Auto so fresh presets defer to detection.</summary>
+        /// <summary>LEGACY (pre-2026-07 car-facts centralization). The engine
+        /// type used to be a preset-scoped pick; it now lives in Car facts as
+        /// the per-variant <see cref="EngineVariant.UserEngineLayout"/> pin.
+        /// Kept so old JSON deserializes and so the one-time
+        /// EngineChoiceMovedToCarFactsV1 migration can relocate per-car
+        /// values. Never read at runtime after migration.</summary>
         [JsonConverter(typeof(StringEnumConverter))]
         public EngineLayout Layout { get; set; } = EngineLayout.Auto;
 
-        /// <summary>When <see cref="Layout"/> == Custom, the Id of the
-        /// <see cref="CustomEngineDef"/> in
-        /// <see cref="TrueforceSettings.CustomEngines"/> that defines the
-        /// pattern / electric behavior. Empty when Layout != Custom or
-        /// during legacy migration before the user has picked a saved
-        /// custom.</summary>
+        /// <summary>LEGACY. Companion of <see cref="Layout"/> == Custom: the
+        /// Id of the library <see cref="CustomEngineDef"/> it pointed at.
+        /// Relocated by the same migration as Layout; never read at runtime
+        /// after migration.</summary>
         public string CustomEngineId { get; set; } = "";
 
-        /// <summary>User-supplied firing pattern, used only when
-        /// <see cref="Layout"/> == Custom. Format: comma-separated phase
-        /// positions in [0, 1), optionally with ":amplitude" suffix per
-        /// pulse. See FiringPatternDb.ParseCustom. Round-trips through the
-        /// settings UI textbox so users can copy / paste their tuning back
-        /// to us.</summary>
+        /// <summary>LEGACY (pre-custom-library). Inline user-supplied firing
+        /// pattern; the one-time migration in the engine-choice relocation
+        /// mints a library <see cref="CustomEngineDef"/> from it. Format:
+        /// comma-separated phase positions in [0, 1), optionally with
+        /// ":amplitude" per pulse (FiringPatternDb.ParseCustom). Never read
+        /// after migration.</summary>
         public string CustomFiringPattern { get; set; } = "";
 
-        /// <summary>Optional human-friendly name for a custom firing pattern.
-        /// Built-in layouts ship with descriptive names; this lets users tag
-        /// their own custom patterns the same way ("LS3 swap, dyno-tuned" /
-        /// "Ferrari 360 flat-plane bias"). Surfaces in the engine-data
-        /// submission body. Used only when Layout == Custom; ignored
-        /// otherwise.</summary>
+        /// <summary>LEGACY. Human-friendly name tag for
+        /// <see cref="CustomFiringPattern"/>; migrated with it.</summary>
         public string CustomFiringPatternName { get; set; } = "";
+
+        // ---- Serialization gates (2026-07 centralization) ----
+        // The legacy engine-type fields DESERIALIZE (old files and the
+        // one-time migration need them) but are never written again: new
+        // saves, uploads, backups and healed files all drop the keys, so a
+        // recipient on any plugin version falls back to auto-detection
+        // instead of inheriting a stale preset engine.
+        public bool ShouldSerializeLayout()                  => false;
+        public bool ShouldSerializeCustomEngineId()          => false;
+        public bool ShouldSerializeCustomFiringPattern()     => false;
+        public bool ShouldSerializeCustomFiringPatternName() => false;
+        public bool ShouldSerializeCylinders()               => false;
+        public bool ShouldSerializeEngineConfig()            => false;
+        public bool ShouldSerializeFiringOrderEnabled()      => false;
 
         // ---- High-RPM perceptibility helpers ----
         //
@@ -1591,11 +1653,11 @@ namespace TrueforceForAll.Plugin
         // ---- Legacy migration fields (pre-2026-05-11) ----
         //
         // Pre-flat-enum settings stored Cylinders (int) + EngineConfig (enum)
-        // + FiringOrderEnabled (bool) as the engine-shape definition. New
-        // code reads/writes Layout only. These fields are kept on the type
-        // so Newtonsoft can still deserialize old JSON (and serialize them
-        // back at minimal cost), one-time migration in ApplyEngineSettings
-        // folds them into Layout on first load.
+        // + FiringOrderEnabled (bool) as the engine-shape definition. These
+        // fields are kept on the type so Newtonsoft can still deserialize old
+        // JSON; the one-time EngineChoiceMovedToCarFactsV1 migration folds
+        // them when relocating per-car engine picks into variant pins.
+        // Runtime never reads them (2026-07 centralization).
 
         /// <summary>LEGACY (pre-flat-enum). Old per-cylinder count. Read on
         /// load and folded into <see cref="Layout"/> via
@@ -1813,36 +1875,19 @@ namespace TrueforceForAll.Plugin
         public float PulseFreq  { get; set; } = 20.0f;
         public float DutyCycle  { get; set; } = 0.5f;
         public float ActiveAmp  { get; set; } = 0.35f;
-        // Fraction of MaxRpm on the percentage path. DEPRECATED:
-        // kept for legacy preset deserialization + a one-shot lazy
-        // migration to RedlineRpm below. New presets should leave
-        // this at default (0.85) and tune RedlineRpm instead. The
-        // effect's lazy migration converts Threshold-only presets to
-        // RedlineRpm the first time MaxRpm telemetry is observed.
-        public float Threshold  { get; set; } = 0.85f;
+        // (Threshold, RedlineRpm, and EngageMode were retired with the
+        // car-facts centralization, 2026-07-17: the redline is car truth,
+        // edited in the Car facts panel and stored per variant, not a
+        // preset knob. Old preset JSONs carrying those keys deserialize
+        // harmlessly; the values are ignored. A user whose Manual redline
+        // stops applying will feel the buzz move and set the redline in
+        // Car facts, which also serves the community.)
 
-        // Absolute redline RPM. The unified rev-limiter knob: when set,
-        // the buzz fires at this RPM (plus RedlineOffsetRpm) regardless
-        // of whether the game telemetry exposes its own redline. Null =
-        // fall through to telemetry redline (when sane) or to
-        // MaxRpm * 0.85 as the runtime default. Replaces the old
-        // Threshold-percent + Redline-mode bifurcation so Forza-family
-        // and AC-family titles share one control. Migrated lazily from
-        // legacy Threshold values when the user drives the car.
-        public int?  RedlineRpm { get; set; } = null;
-
-        // RPM offset applied on the real-redline path only (ignored on the
-        // percentage path). Negative = fire before the redline, positive =
-        // after, 0 = right at it. Lets redline-reporting games (AC, iRacing)
-        // tune an early/late shift cue without a percentage.
+        // RPM offset applied to the resolved engage point on every path.
+        // Negative = fire before the redline, positive = after, 0 = right
+        // at it. The one preset-scoped feel knob for WHERE the buzz fires;
+        // the redline itself comes from the Car facts cascade.
         public float RedlineOffsetRpm { get; set; } = 0.0f;
-
-        // Engage-point override. Auto = trust the game (fire at redline if it
-        // reports a sane one, else at Threshold% of MaxRpm). Percentage / Redline
-        // are the manual escape hatch when auto-detection misreads and the buzz
-        // stops firing. Defaults to Auto so existing presets are unchanged.
-        [JsonConverter(typeof(StringEnumConverter))]
-        public RevLimiterEngageMode EngageMode { get; set; } = RevLimiterEngageMode.Auto;
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform Waveform { get; set; } = Waveform.Square;

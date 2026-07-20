@@ -21,10 +21,6 @@
     "LowpassHz": 510.1833,
     "Waveform": "Sine",
     "ElectricMode": "MutedHum",
-    "Layout": "Auto",
-    "CustomEngineId": "",
-    "CustomFiringPattern": "",
-    "CustomFiringPatternName": "",
     "LoadLayerEnabled": true,
     "LoadLayerGain": 0.8,
     "HighRpmBoostEnabled": true,
@@ -133,7 +129,6 @@
     "PulseFreq": 20.0,
     "DutyCycle": 0.5,
     "ActiveAmp": 0.35,
-    "Threshold": 0.97,
     "Waveform": "Square"
   },
   "Airborne": {

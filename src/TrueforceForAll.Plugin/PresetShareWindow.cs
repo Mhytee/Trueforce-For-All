@@ -6,7 +6,7 @@
 // UploadedPresetId property so the caller can record it / surface a
 // success toast.
 //
-// Styled to match CarFactsShareWindow / CarNameInputWindow.
+// Styled to match CarFactsShareWindow.
 
 using System;
 using System.Collections.Generic;

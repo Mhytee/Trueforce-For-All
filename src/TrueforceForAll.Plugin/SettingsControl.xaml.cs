@@ -30,16 +30,15 @@ namespace TrueforceForAll.Plugin
         private string _engineCommunityFetchedKey;
         private bool   _engineCommunityFetchInFlight;
         private EngineLayoutConsensus _engineCommunityCache;
+        // True while the auto-detect line above already reads
+        // "Auto-detected: X (community)": a "Community: X" row underneath
+        // would state the same fact twice, so the renderer collapses it.
+        // Recomputed in the 4 Hz readout tick (which has the pin + detect
+        // source in hand) right before RenderEngineCommunityRow runs.
+        private bool _engineCommunityRowRedundant;
         // Sibling redline cache, populated by the same per-car fetch loop.
         // Drives the engine-pulse panel's "Car's redline" line.
         private RedlineConsensus _engineRedlineCache;
-        // Variants (game/carId/sig) the user shared a redline for THIS session.
-        // Used to soften the "no community redline yet" nudge into a "pending
-        // confirmation" message: a fresh submission isn't consensus yet, so the
-        // community readout legitimately still shows nothing, but nagging the
-        // user to "share yours" right after they did would read as a bug.
-        private readonly System.Collections.Generic.HashSet<string> _redlineSharedThisSession
-            = new System.Collections.Generic.HashSet<string>();
         private string _lastShownCarId;
         private string _lastShownGame;
         // Last text we pushed into the CarFacts name / redline boxes. The 16ms
@@ -176,7 +175,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.PitLimiter:     return "Pit limiter";
                 case EffectKind.Drs:            return "DRS";
                 case EffectKind.Collision:      return "Collision";
-                case EffectKind.RevLimiter:     return "Rev limiter";
+                case EffectKind.RevLimiter:     return "Redline buzz";
                 case EffectKind.Airborne:       return "Airborne ducking";
                 case EffectKind.AxleSlip:       return "Axle slip";
                 case EffectKind.KerbThump:      return "Kerb thump";
@@ -705,15 +704,6 @@ namespace TrueforceForAll.Plugin
 
                 bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
 
-                // Rename affordance: only meaningful when a car is detected.
-                // Available regardless of CommunityEnabled - rename is a
-                // local-first action; community submission rides along when
-                // the user opts in inside the rename modal.
-                if (HeaderCarRenameBtn != null)
-                    HeaderCarRenameBtn.Visibility = carDetected
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-
                 // Discoverability surface: hide the count chip eagerly, then
                 // kick a background fetch on car/game change. The fetch sets
                 // visibility + content when results arrive (or stays hidden
@@ -747,13 +737,10 @@ namespace TrueforceForAll.Plugin
                         EngineHighRpmBoostText.Text          = es.HighRpmBoostAmount.ToString("F2");
                     }
 
-                    // Engine layout dropdown is populated dynamically (built-ins
-                    // + user-saved customs + action entries). ApplyEngineSettings
-                    // migrates any pre-flat-enum (Cylinders, EngineConfig) state
-                    // into Layout before we read it here.
+                    // Car facts engine dropdown is populated dynamically
+                    // (built-ins + user-saved customs); selection reflects the
+                    // active variant's pin.
                     RebuildEngineLayoutDropdown();
-                    UpdateFiringPatternReadout(es);
-                    RebuildEngineVariantPicker();
                 }
                 RefreshCarFactsPanel();
                 RebuildPerGearEditors();
@@ -933,46 +920,8 @@ namespace TrueforceForAll.Plugin
                     RevLimiterActiveAmpSlider.Value     = rl.ActiveAmp;
                     RevLimiterActiveAmpText.Text        = rl.ActiveAmp.ToString("F2");
 
-                    // Engage mode collapsed to Auto/Manual. Legacy
-                    // Percentage maps to Auto (its old behaviour
-                    // becomes the auto-cascade fallback); legacy
-                    // Redline maps to Manual.
-                    RevLimiterEngageModeCombo.SelectedIndex =
-                        rl.EngageMode == RevLimiterEngageMode.Redline ? 1 : 0;
-                    // Slider max snaps to the observed MaxRpm when
-                    // we have it (caps the slider at the car's hard
-                    // rev limit so the user can't accidentally set a
-                    // redline above the limiter); falls back to
-                    // 15000 RPM when no MaxRpm is observed yet.
-                    double observedMax = _plugin?.EnginePulse?.ObservedMaxRpm ?? 0;
-                    bool haveRealMax = observedMax >= 1000;
-                    double sliderMax = haveRealMax ? observedMax : 15000;
-                    RevLimiterRedlineSlider.Maximum = sliderMax;
-                    // Pre-fill rules:
-                    //   1. Manual mode: the saved absolute RedlineRpm.
-                    //   2. Else the live resolved redline (CarFacts /
-                    //      telemetry / Threshold-percent of MaxRpm) so Auto
-                    //      shows what the buzz will actually fire at and tracks
-                    //      tune / variant changes.
-                    //   3. Else, before telemetry, Threshold * observed MaxRpm
-                    //      (or the 0.85 default), and finally the slider minimum
-                    //      so we never show a misleading estimate with no MaxRpm.
-                    int rpmValue;
-                    bool manualMode = rl.EngageMode == RevLimiterEngageMode.Redline;
-                    int? eff = _plugin?.RevLimiter?.EffectiveRedlineRpm;
-                    if (manualMode && rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
-                        rpmValue = rl.RedlineRpm.Value;
-                    else if (eff.HasValue && eff.Value >= 500)
-                        rpmValue = eff.Value;
-                    else if (haveRealMax && rl.Threshold >= 0.50f && rl.Threshold <= 1.00f
-                             && Math.Abs(rl.Threshold - 0.85f) > 0.0001f)
-                        rpmValue = (int)Math.Round(observedMax * rl.Threshold);
-                    else if (haveRealMax)
-                        rpmValue = (int)Math.Round(observedMax * 0.85);
-                    else
-                        rpmValue = (int)RevLimiterRedlineSlider.Minimum;
-                    RevLimiterRedlineSlider.Value = rpmValue;
-                    RevLimiterRedlineText.Text    = rpmValue.ToString();
+                    // (The engage-mode combo and redline slider were retired:
+                    // the redline is edited in the Car facts panel only.)
                     RevLimiterOffsetSlider.Value = rl.RedlineOffsetRpm;
                     RevLimiterOffsetText.Text    = FormatRedlineOffset(rl.RedlineOffsetRpm);
                 }
@@ -1285,17 +1234,6 @@ namespace TrueforceForAll.Plugin
             // flag flips with each ResolveEffectiveRedline call.
             RefreshRedlineGuessBadge();
 
-            // Keep the redline slider's range + displayed value tracking live
-            // telemetry between full RefreshFromPlugin passes (those only run
-            // on car change). In Auto the buzz is derived, so the number must
-            // move when a tune raises MaxRpm or a variant swap loads a
-            // different redline.
-            RefreshRedlineLive();
-            // Hide the per-variant save controls once a draft is cleared (e.g.
-            // a variant change discarded it), and surface the "adopt community
-            // redline?" prompt when arriving at a variant where it differs.
-            UpdateRedlineSaveControls();
-            UpdateRedlineConfirmPrompt();
             RefreshCarFactsPanel();
 
             var src = _plugin?.AudioCapture;
@@ -1422,51 +1360,39 @@ namespace TrueforceForAll.Plugin
                 // This is the user's primary "is my Data Out
                 // wiring working" feedback so make it specific.
                 // Engine auto-detect indicator: shows the layout the resolver
-                // chose for the active car when Layout=Auto, or surfaces the
-                // resolver's pick when the user has manually overridden it.
-                if (EngineLayoutAutoText != null)
+                // chose for the active car when no pin is set, or surfaces
+                // what Auto would be when the user has pinned a type in Car
+                // facts. Throttled: the pin + summary reads take the car-facts
+                // lock, and 4 Hz is plenty for a readout (the 16 ms tick was
+                // hitting that lock ~5 times per frame).
+                if (EngineLayoutAutoText != null && DateTime.UtcNow >= _engineReadoutNextTick)
                 {
+                    _engineReadoutNextTick = DateTime.UtcNow.AddMilliseconds(250);
                     var ep = _plugin.EnginePulse;
-                    var esLive = _plugin.ActiveEngine;
                     string activeCar = _plugin.ActiveCarId;
-                    bool userIsAuto = esLive != null && esLive.Layout == Effects.EngineLayout.Auto;
+                    // The user's engine choice is the Car facts variant pin
+                    // (the preset Layout field is legacy since the 2026-07
+                    // centralization).
+                    var (pinnedLayout, pinnedCustomId) = _plugin.GetActiveVariantUserEngine();
+                    bool userIsAuto = pinnedLayout == null;
+                    // Rev ceiling readout: rides the END of this same line
+                    // (the separate Car facts meta line was removed).
+                    var facts = _plugin.GetActiveCarFactsSummary();
+                    string maxPart = facts.HasCar && facts.MaxRpm.HasValue
+                        ? facts.MaxRpm.Value + " max RPM" : "";
 
                     if (ep != null && userIsAuto && ep.AutoLayout is Effects.EngineLayout autoL)
                     {
                         string detectSrc = ep.AutoLayoutSource;
-                        string srcSuffix;
-                        if (string.Equals(detectSrc, "telemetry", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (from telemetry)";
-                        else if (string.Equals(detectSrc, "baked", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (from built-in car list)";
-                        else if (string.Equals(detectSrc, "cache", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (cached from earlier session)";
-                        else if (string.Equals(detectSrc, "community", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (community-confirmed)";
-                        else if (string.Equals(detectSrc, "user-set", StringComparison.OrdinalIgnoreCase))
-                            // User-source variants are no longer in the
-                            // resolver cascade (Share writes to community
-                            // only). This branch is only reachable from
-                            // stale settings written by older versions;
-                            // hide the suffix entirely so the line reads
-                            // as plain Auto-detected output. Existing
-                            // User-source variants in CarFacts are filtered
-                            // by PickStoredVariant; this label path will
-                            // disappear once those settings are migrated.
-                            srcSuffix = "";
-                        else if (!string.IsNullOrEmpty(detectSrc))
-                            srcSuffix = $" (heuristic: {detectSrc})";
-                        else
-                            srcSuffix = "";
+                        string srcSuffix = FriendlyDetectSourceSuffix(detectSrc);
                         string autoLine = $"Auto-detected: {Effects.FiringPatternDb.LayoutDisplayName(autoL)}{srcSuffix}";
                         // When community is the source AND the resolver could
                         // also reach a concrete non-community value, surface
                         // it as passive context. Lets the user see what
                         // they'd get from the built-in path and decide
-                        // whether to pick that value in the Layout dropdown
-                        // (which then triggers the existing save -> share
-                        // flow). No inline action - corrections come through
-                        // save, not a "switch source" click.
+                        // whether to pin that value in the Car facts engine
+                        // dropdown (which commits + submits through the usual
+                        // pin path). No inline action.
                         if (string.Equals(detectSrc, "community", StringComparison.OrdinalIgnoreCase)
                             && ep.NonCommunityAutoLayout is Effects.EngineLayout altLayout
                             && altLayout != autoL)
@@ -1494,32 +1420,62 @@ namespace TrueforceForAll.Plugin
                     {
                         EngineLayoutAutoText.Text =
                             $"Could not auto-detect engine type for '{activeCar}'. "
-                            + "Pick the closest match from the list, or use Test to A/B.";
+                            + "Pick the closest match in the Engine dropdown above; the Engine pulse Test button can help you A/B.";
                     }
-                    else if (ep != null && esLive != null
-                             && esLive.Layout != Effects.EngineLayout.Auto
+                    else if (ep != null && pinnedLayout is Effects.EngineLayout pinnedL
                              && ep.AutoLayout is Effects.EngineLayout autoOverridden
-                             && autoOverridden != esLive.Layout)
+                             && autoOverridden != pinnedL)
                     {
-                        // Manual override that disagrees with the resolver.
-                        string srcSuffix = string.IsNullOrEmpty(ep.AutoLayoutSource)
-                            ? ""
-                            : $" ({ep.AutoLayoutSource})";
+                        // User pin that disagrees with the resolver.
                         EngineLayoutAutoText.Text =
-                            $"Manual override: {Effects.FiringPatternDb.LayoutDisplayName(esLive.Layout)}. "
-                            + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}{srcSuffix}. "
+                            $"Your pick: {DescribePinnedEngine(pinnedL, pinnedCustomId)}. "
+                            + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}"
+                            + $"{FriendlyDetectSourceSuffix(ep.AutoLayoutSource)}. "
                             + "Pick Auto to use detection.";
+                    }
+                    else if (pinnedLayout is Effects.EngineLayout pinnedPick)
+                    {
+                        // Pin agrees with auto-detect (or no auto value yet):
+                        // still mark the type as the user's own pick.
+                        EngineLayoutAutoText.Text =
+                            $"Your pick: {DescribePinnedEngine(pinnedPick, pinnedCustomId)}";
                     }
                     else
                     {
                         EngineLayoutAutoText.Text = "";
                     }
+                    if (!string.IsNullOrEmpty(maxPart))
+                        EngineLayoutAutoText.Text = string.IsNullOrEmpty(EngineLayoutAutoText.Text)
+                            ? maxPart
+                            : EngineLayoutAutoText.Text + "  ·  " + maxPart;
 
-                    // Engine-data submission is driven by the save-flow
-                    // prompt (MaybePromptToSubmitEngineData) directly, not
-                    // by a panel button. The Engine type combo + cyl is the
-                    // correction surface; saving and diverging from auto-
-                    // detect fires the per-field share prompt.
+                    // Keep the combo honest (#2): its selection only synced on
+                    // rebuild events, which on a car change run BEFORE telemetry
+                    // has produced the variant signature - so a pin resolving
+                    // seconds later left the combo saying Auto while this line
+                    // said "Your pick". The pin is already in hand here; re-sync
+                    // the index whenever reality changed, but never while the
+                    // user is interacting or a browse-commit is pending.
+                    if (CarFactsEngineCombo != null && CarFactsEngineCombo.ItemsSource != null
+                        && !CarFactsEngineCombo.IsDropDownOpen
+                        && !CarFactsEngineCombo.IsKeyboardFocusWithin
+                        && !_enginePinCommitPending)
+                    {
+                        int want = FindEngineDropdownIndex(
+                            pinnedLayout ?? Effects.EngineLayout.Auto, pinnedCustomId ?? "");
+                        if (CarFactsEngineCombo.SelectedIndex != want)
+                        {
+                            bool oldSup = _suppressEvents;
+                            _suppressEvents = true;
+                            try { CarFactsEngineCombo.SelectedIndex = want; }
+                            finally { _suppressEvents = oldSup; }
+                        }
+                    }
+
+                    // Engine-data submission fires directly from the Car
+                    // facts engine pick (CommitEnginePin ->
+                    // MaybePromptToSubmitEngineData); there is no panel
+                    // button and no save-flow hook needed.
 
                     // Community context: surface what other drivers said
                     // for THIS car upfront so the user can confirm or correct
@@ -1529,6 +1485,15 @@ namespace TrueforceForAll.Plugin
                     // each tick - Confirm button shows up as soon as an
                     // auto-detected layout is available, even before the
                     // community fetch returns.
+                    // The community row is context, not a second readout: when
+                    // the user is on Auto and the resolver's pick came FROM the
+                    // community (the line above already says "(community)"),
+                    // repeating the value underneath is noise. Keep the row for
+                    // the cases where it adds information: a user pin overriding
+                    // it, or detection that used a different source.
+                    _engineCommunityRowRedundant = userIsAuto && ep != null
+                        && string.Equals(ep.AutoLayoutSource, "community",
+                            StringComparison.OrdinalIgnoreCase);
                     MaybeRefreshEngineCommunityContext(_plugin.ActiveGame, activeCar);
                     RenderEngineCommunityRow();
                 }
@@ -1932,9 +1897,26 @@ namespace TrueforceForAll.Plugin
             if (wantUnverified && UnverifiedWheelText != null && UnverifiedWheelText.Text != notice)
                 UnverifiedWheelText.Text = notice;
 
+            // Dropped-default notice: a game's default binding pointed at a
+            // preset name that no longer exists, so the built-in took over.
+            var droppedDefaults = _plugin?.DroppedGameDefaultNotices;
+            bool wantDropped = droppedDefaults != null && droppedDefaults.Count > 0;
+            if (wantDropped && DefaultDroppedText != null)
+            {
+                string games = string.Join(", ", droppedDefaults);
+                string txt = $"The default preset for {games} couldn't be found (it was renamed or removed), so the built-in default took over. Pick a preset and use Set as default to rebind.";
+                if (DefaultDroppedText.Text != txt) DefaultDroppedText.Text = txt;
+            }
+
             CoalesceCardIssues(
-                new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner },
-                new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified });
+                new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
+                new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
+        }
+
+        private void DefaultDroppedDismiss_Click(object sender, RoutedEventArgs e)
+        {
+            _plugin?.ClearDroppedGameDefaultNotices();
+            RefreshCardIssues();
         }
 
         // Render the coalesced card-issue banners. Shows the highest-severity
@@ -5145,29 +5127,27 @@ namespace TrueforceForAll.Plugin
         //                implies combustion"). Form is a correction.
         private enum EngineSubmitState { None, Contribute, Correct }
 
-        // Classifier shared by the button visibility logic, the save-time
-        // prompt, and the form body's CONFIRM/CONTRIB/CORRECTION marker.
-        // Reads live UI/preset values via _plugin.EnginePulse + ActiveEngine.
+        // Classifier shared by the pin-time prompt and the form body's
+        // CONFIRM/CONTRIB/CORRECTION marker. Reads the resolver state via
+        // _plugin.EnginePulse and the user's choice via the Car facts pin.
         private EngineSubmitState GetEngineSubmitState()
         {
             if (_plugin == null) return EngineSubmitState.None;
             var ep = _plugin.EnginePulse;
-            var es = _plugin.ActiveEngine;
-            if (ep == null || es == null) return EngineSubmitState.None;
+            if (ep == null) return EngineSubmitState.None;
 
             string src = ep.AutoLayoutSource;
             bool detected = !string.IsNullOrEmpty(src) && ep.AutoLayout.HasValue;
-            var userLayout = es.Layout;
-            string customRaw = es.CustomFiringPattern;
+            var (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
+            var userLayout = pinLayout ?? Effects.EngineLayout.Auto;
 
             bool layoutDiff = userLayout != Effects.EngineLayout.Auto
                            && (!detected || userLayout != ep.AutoLayout.Value);
             bool customDiff = userLayout == Effects.EngineLayout.Custom
-                           && !string.IsNullOrEmpty(customRaw);
+                           && !string.IsNullOrEmpty(pinCustomId);
 
             bool anyDiff   = layoutDiff || customDiff;
-            bool userHasData = userLayout != Effects.EngineLayout.Auto
-                            || !string.IsNullOrEmpty(customRaw);
+            bool userHasData = userLayout != Effects.EngineLayout.Auto;
 
             if (!detected)
                 return userHasData ? EngineSubmitState.Contribute : EngineSubmitState.None;
@@ -5193,21 +5173,20 @@ namespace TrueforceForAll.Plugin
         // Classifier (GetEngineSubmitState) is reused unchanged:
         //   Contribute: no detection, user added data.
         //   Correct:    detection present, user's saved values disagree.
-        // Custom-engine submission flow. Fires from the engine save path
-        // when ActiveEngine.Layout == Custom. Resolves the user's
-        // CustomEngineId to a CustomEngineDef in their library, frames
-        // the share modal as First / Confirming / Alternative based on
-        // what (if anything) the community currently has for this car,
-        // submits via SubmitCustomEngineAsync if they accept. Receivers
-        // synthesize the def transiently - no library import.
+        // Custom-engine submission flow. Fires from the engine pin path
+        // when the pinned engine is a Custom. Resolves the pinned
+        // CustomEngineId to a CustomEngineDef in the library, then runs
+        // the one-time car-data consent gate and submits silently via
+        // SubmitCustomEngineAsync. Receivers synthesize the def
+        // transiently - no library import.
         private void MaybePromptToSubmitCustomEngineData(string carId, string game)
         {
             if (_plugin == null) return;
-            var es = _plugin.ActiveEngine;
-            if (es == null || es.Layout != Effects.EngineLayout.Custom) return;
-            if (string.IsNullOrEmpty(es.CustomEngineId)) return;
+            var (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
+            if (pinLayout != Effects.EngineLayout.Custom) return;
+            if (string.IsNullOrEmpty(pinCustomId)) return;
 
-            // Look up the def in the user's library. If the preset
+            // Look up the def in the user's library. If the pin
             // references a Guid that no longer exists locally there's
             // nothing to share (the engine wouldn't play anyway).
             CustomEngineDef def = null;
@@ -5215,7 +5194,7 @@ namespace TrueforceForAll.Plugin
             {
                 foreach (var c in _plugin.Settings.CustomEngines)
                 {
-                    if (c != null && string.Equals(c.Id, es.CustomEngineId, StringComparison.Ordinal))
+                    if (c != null && string.Equals(c.Id, pinCustomId, StringComparison.Ordinal))
                     { def = c; break; }
                 }
             }
@@ -5229,66 +5208,10 @@ namespace TrueforceForAll.Plugin
             string dedupeKey = carId + "|custom|" + def.Id;
             if (!_enginePromptedThisSession.Add(dedupeKey)) return;
 
-            // Standing auto-submit: skip the consensus fetch + share modal and
-            // submit straight away (still gated above by CommunityEnabled +
-            // sign-in, so this never sends what the prompt wouldn't have).
-            if (_plugin.Settings?.AutoSubmitCarFacts == true)
-            {
-                ShareCustomEngineToCommunity(game, carId, def);
-                return;
-            }
-
-            // Fetch current consensus to frame First / Confirming /
-            // Alternative copy in the share modal. Confirming is when
-            // the consensus is also CUSTOM with the same name (close-enough
-            // dedupe - different patterns with same name are still
-            // separate consensus rows server-side).
-            var consensus = _plugin.FetchEngineLayoutConsensus(game, carId);
-            CarFactsShareWindow.ShareState shareState;
-            string consensusDisplay = null;
-            int supportingSubs = 0;
-            if (consensus == null)
-            {
-                shareState = CarFactsShareWindow.ShareState.First;
-            }
-            else
-            {
-                supportingSubs = consensus.SupportingSubmissions;
-                bool sameCustom = string.Equals(consensus.Layout, "CUSTOM",
-                                                StringComparison.OrdinalIgnoreCase)
-                                  && consensus.Custom != null
-                                  && string.Equals(consensus.Custom.Name, defName,
-                                                   StringComparison.Ordinal);
-                if (sameCustom)
-                {
-                    shareState = CarFactsShareWindow.ShareState.Confirming;
-                    consensusDisplay = defName + " (custom)";
-                }
-                else
-                {
-                    shareState = CarFactsShareWindow.ShareState.Alternative;
-                    if (string.Equals(consensus.Layout, "CUSTOM",
-                                      StringComparison.OrdinalIgnoreCase)
-                        && consensus.Custom != null)
-                        consensusDisplay = consensus.Custom.Name + " (custom)";
-                    else if (Enum.TryParse<Effects.EngineLayout>(consensus.Layout, true,
-                                                                  out var consLayout))
-                        consensusDisplay = Effects.FiringPatternDb.LayoutDisplayName(consLayout);
-                    else
-                        consensusDisplay = consensus.Layout;
-                }
-            }
-
-            string userValueDisplay = defName + " (custom)";
-            var dialog = new CarFactsShareWindow(
-                _plugin.ActiveCarDisplayName, carId, userValueDisplay,
-                shareState, consensusDisplay, supportingSubs)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            bool? ok = dialog.ShowDialog();
-            if (ok != true) return;
-            if (dialog.AlwaysChosen) EnableAutoSubmitCarFacts();
+            // One-time consent gate (replaces the old per-fact share modal).
+            // Once granted, measured facts submit silently from here on.
+            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin)) return;
+            SyncAutoSubmitCheckboxFromSettings();
 
             ShareCustomEngineToCommunity(game, carId, def);
         }
@@ -5324,50 +5247,40 @@ namespace TrueforceForAll.Plugin
         }
 
         // Same shape as MaybePromptToSubmitEngineData but for the redline
-        // fact. We derive an "implied redline" from the active RevLimiter
-        // settings and the live telemetry, then compare to the current
-        // community/variant value. Gated by TELEMETRY SHAPE, not by game:
-        // any source that reports MaxRpm but no usable redline puts us on
-        // the percentage path, and the user's Threshold is then their
-        // implicit claim about the rev ceiling (engagement at MaxRpm *
-        // Threshold). When the source DOES report a redline (AC,
-        // iRacing) the game itself is the source of truth and Offset is
-        // personal shift-cue preference, not a redline claim - so the
-        // prompt stays silent.
+        // fact. Gated by TELEMETRY SHAPE, not by game: any source that
+        // reports MaxRpm but no usable redline is where a user's saved
+        // value is a genuine claim worth submitting. When the source DOES
+        // report a redline (AC, iRacing) the game itself is the source of
+        // truth - so the prompt stays silent.
         private void MaybePromptToSubmitRedlineData(string carId, int? overrideRedline = null)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
-            // Community sharing disabled = the underlying submit call
-            // will no-op anyway. Bail before opening the share dialog
-            // so the user isn't asked to share into a network call that
-            // silently drops, AND so the per-car dedupe slot stays free
-            // for the next session after they re-enable Community.
-            if (_plugin.Settings?.CommunityEnabled != true) return;
-            // Signed-out users get the same treatment - the submit RPC
-            // requires auth.uid() and silently drops without it.
-            // Skip the modal entirely; the dedupe slot stays free so
-            // a future signed-in session will surface the prompt.
-            if (!_plugin.AuthIsSignedIn) return;
+            // Consent settled as "no" (or granted but community turned off):
+            // nothing can be submitted. Bail before burning the per-car
+            // dedupe slot so a future consenting session still engages.
+            // Sign-in is NOT required: signed-out submissions use the
+            // anon fallback id; signed-in ones are keyed to the account.
+            if (!CarFactsConsentGate.CanSubmitOrAsk(_plugin)) return;
             string game = _plugin.ActiveGame;
             if (string.IsNullOrEmpty(game)) return;
-            var rl = _plugin.ActiveRevLimiter;
             var ep = _plugin.EnginePulse;
-            if (rl == null || ep == null) return;
+            if (ep == null) return;
 
             // Only relevant when the game doesn't expose its own redline
             // (Forza family). With a telemetry redline the game itself
             // is the source of truth - no community correction needed.
             if (ep.ObservedRedlineRpm >= 500) return;
-            // The claimed value: an explicit per-variant save passes it in;
-            // otherwise the Manual-mode RedlineRpm the user tuned. Auto mode
-            // without either falls back to 0.85 * MaxRpm (the documented
-            // default), and there's nothing to claim about that.
+            // The claimed value: an explicit Car facts Set passes it in;
+            // otherwise the variant's saved user redline. The 0.85 * MaxRpm
+            // fallback is a guess, not a claim, so nothing is submitted
+            // when the user never set anything.
             int claimed;
             if (overrideRedline.HasValue) claimed = overrideRedline.Value;
             else
             {
-                if (!rl.RedlineRpm.HasValue) return;
-                claimed = rl.RedlineRpm.Value;
+                int? userRl = _plugin.GetActiveVariantUserRedline();
+                if (!userRl.HasValue) return;
+                claimed = userRl.Value;
             }
             if (claimed < 500 || claimed > 25000) return;
             // Snap to 50 RPM bands: precise enough to be useful, coarse enough
@@ -5397,22 +5310,11 @@ namespace TrueforceForAll.Plugin
             // certainly the limiter. Warn once; the user can still submit.
             if (!ConfirmRedlineNotLimiter(impliedRedline)) return;
 
-            string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
-            string body = effectiveRedline.HasValue
-                ? $"You're reporting the redline start of '{carDisplay}' as {impliedRedline} RPM. "
-                  + $"The community currently says {effectiveRedline.Value} RPM. "
-                  + "Submit your value as a correction?"
-                : $"You're reporting the redline start of '{carDisplay}' as {impliedRedline} RPM. "
-                  + "No one's recorded it yet. Submit yours as the first answer?";
-            // Standing auto-submit skips the prompt; otherwise offer Submit /
-            // Always submit / Not now. "Always submit" flips the pref on.
-            if (_plugin.Settings?.AutoSubmitCarFacts != true)
-            {
-                var choice = TrueforceDialog.ShowChoice(Window.GetWindow(this),
-                    "Help the community", body, "Submit", "Always submit", "Not now");
-                if (choice == DialogChoice.Cancel) return;
-                if (choice == DialogChoice.Secondary) EnableAutoSubmitCarFacts();
-            }
+            // One-time consent gate (replaces the old per-value Submit /
+            // Always submit / Not now prompt). Once granted, redline saves
+            // submit silently from here on.
+            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin)) return;
+            SyncAutoSubmitCheckboxFromSettings();
 
             // Include the user's per-gear overrides (snapped to 50) so this path
             // submits the SAME payload shape as the explicit Share button -
@@ -5424,11 +5326,7 @@ namespace TrueforceForAll.Plugin
                     if (g != null && g.Gear >= 1 && g.Gear <= 16 && g.Rpm >= 500 && g.Rpm <= 25000)
                         perGear.Add(new GearRedline { Gear = g.Gear, Rpm = (int)Math.Round(g.Rpm / 50.0) * 50 });
             _plugin.SubmitRedlineToCommunity(game, carId, impliedRedline, perGear);
-            // A single submission is NOT consensus, so don't fake a community
-            // value locally. Re-fetch the real server consensus; it stays
-            // unconfirmed (not "the community") until other drivers agree.
-            MarkRedlineSharedThisSession(game, carId);
-            MarkRedlineProfileHandled(impliedRedline, ToGearDict(perGear));
+            // Don't fake a local consensus: re-fetch the real server value.
             RefreshActiveCommunityRedlineFromServer();
         }
 
@@ -5459,28 +5357,25 @@ namespace TrueforceForAll.Plugin
         private void MaybePromptToSubmitEngineData(string carId)
         {
             if (_plugin == null || string.IsNullOrEmpty(carId)) return;
-            // Community sharing off: skip the share dialog entirely so
-            // we don't hand the user a modal that submits into a no-op
-            // and burns the dedupe slot. Mirrors the redline path.
-            if (_plugin.Settings?.CommunityEnabled != true) return;
-            // Signed-out users: same skip. submit_car_fact requires
-            // auth.uid() so the share would silently drop.
-            if (!_plugin.AuthIsSignedIn) return;
+            // Consent settled as "no" (or granted but community turned off):
+            // bail before burning the dedupe slot. Mirrors the redline path.
+            // Sign-in is NOT required: signed-out submissions use the
+            // anon fallback id; signed-in ones are keyed to the account.
+            if (!CarFactsConsentGate.CanSubmitOrAsk(_plugin)) return;
             var state = GetEngineSubmitState();
             if (state == EngineSubmitState.None) return;
 
             string game = _plugin.ActiveGame;
             if (string.IsNullOrEmpty(game)) return;
-            var es = _plugin.ActiveEngine;
             var ep = _plugin.EnginePulse;
-            if (es == null) return;
 
             // Custom layouts get a dedicated submit path: the def (name +
             // pattern + electric) rides the payload so receivers can
             // synthesize without having it in their library. Auto and
             // Electric never submit - Auto is "I don't know" and Electric
             // is a different feature.
-            var userLayout = es.Layout;
+            var (pinLayout, _) = _plugin.GetActiveVariantUserEngine();
+            var userLayout = pinLayout ?? Effects.EngineLayout.Auto;
             if (userLayout == Effects.EngineLayout.Custom)
             {
                 MaybePromptToSubmitCustomEngineData(carId, game);
@@ -5499,60 +5394,11 @@ namespace TrueforceForAll.Plugin
             // auto-detect: nothing to share.
             if (ep != null && ep.AutoLayout.HasValue && ep.AutoLayout.Value == userLayout) return;
 
-            // Standing auto-submit: skip the consensus fetch + share modal and
-            // submit straight away (still gated above by CommunityEnabled +
-            // sign-in, so this never sends what the prompt wouldn't have).
-            if (_plugin.Settings?.AutoSubmitCarFacts == true)
-            {
-                ShareEngineLayoutToCommunity(game, carId, userLayout);
-                return;
-            }
-
-            string layoutText = Effects.FiringPatternDb.LayoutDisplayName(userLayout);
-
-            // Fetch current consensus (best-effort, 2s timeout) so the
-            // share window can frame the contribution as First / Confirming
-            // / Alternative based on what the community already has. Null
-            // result -> First state.
-            var consensus = _plugin.FetchEngineLayoutConsensus(game, carId);
-            string userLayoutEnum = userLayout.ToString().ToUpperInvariant();
-            CarFactsShareWindow.ShareState shareState;
-            string consensusDisplay = null;
-            int supportingSubs = 0;
-            if (consensus == null)
-            {
-                shareState = CarFactsShareWindow.ShareState.First;
-            }
-            else
-            {
-                supportingSubs = consensus.SupportingSubmissions;
-                bool sameAsConsensus = string.Equals(consensus.Layout,
-                    userLayoutEnum, System.StringComparison.OrdinalIgnoreCase);
-                if (sameAsConsensus)
-                {
-                    shareState = CarFactsShareWindow.ShareState.Confirming;
-                    consensusDisplay = layoutText;
-                }
-                else
-                {
-                    shareState = CarFactsShareWindow.ShareState.Alternative;
-                    // Map consensus enum-name back to a friendly display by
-                    // round-tripping through Effects.EngineLayout enum.
-                    consensusDisplay = consensus.Layout;
-                    if (Enum.TryParse<Effects.EngineLayout>(consensus.Layout, true, out var consLayout))
-                        consensusDisplay = Effects.FiringPatternDb.LayoutDisplayName(consLayout);
-                }
-            }
-
-            var dialog = new CarFactsShareWindow(
-                _plugin.ActiveCarDisplayName, carId, layoutText,
-                shareState, consensusDisplay, supportingSubs)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            bool? ok = dialog.ShowDialog();
-            if (ok != true) return;
-            if (dialog.AlwaysChosen) EnableAutoSubmitCarFacts();
+            // One-time consent gate (replaces the old First / Confirming /
+            // Alternative share modal and its consensus fetch). Once granted,
+            // layout corrections submit silently from here on.
+            if (!CarFactsConsentGate.EnsureConsent(Window.GetWindow(this), _plugin)) return;
+            SyncAutoSubmitCheckboxFromSettings();
 
             ShareEngineLayoutToCommunity(game, carId, userLayout);
         }
@@ -5597,30 +5443,20 @@ namespace TrueforceForAll.Plugin
             RenderEngineCommunityRow();
         }
 
-        // Flip on standing auto-submit (the user picked "Always submit" /
-        // "Always share" in a share prompt), persist it, and sync the Settings
-        // checkbox if the panel is built. Downstream submits stay gated by
-        // CommunityEnabled + sign-in, so this never sends what a prompt wouldn't.
-        private void EnableAutoSubmitCarFacts()
+        // Sync the Settings checkbox to the persisted AutoSubmitCarFacts
+        // value after the consent gate may have flipped it (the gate has no
+        // access to this panel's controls; the community checkbox syncs
+        // itself via the CommunityEnabledChanged event).
+        private void SyncAutoSubmitCheckboxFromSettings()
         {
-            if (_plugin?.Settings == null) return;
-            _plugin.Settings.AutoSubmitCarFacts = true;
-            try { _plugin.PersistSettings(); }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Info(
-                    "[TF4ALL] Persist AutoSubmitCarFacts failed: " + ex.Message);
-            }
-            if (AutoSubmitCarFactsCheck != null)
-            {
-                bool prev = _suppressEvents;
-                _suppressEvents = true;
-                try { AutoSubmitCarFactsCheck.IsChecked = true; }
-                finally { _suppressEvents = prev; }
-            }
+            if (AutoSubmitCarFactsCheck == null || _plugin?.Settings == null) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try { AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings.AutoSubmitCarFacts; }
+            finally { _suppressEvents = prev; }
         }
 
-        // ---------- Community context row on the Engine pulse panel ----------
+        // ---------- Community context row (Car facts panel) ----------
 
         // Fetch the current community consensus for (game, carId) at most
         // once per car change, then render the community-context row with
@@ -5657,12 +5493,14 @@ namespace TrueforceForAll.Plugin
             _engineRedlineCache   = cached?.Redline;
             RenderEngineCommunityRow();
 
-            // NETWORK refresh only when the networking master is on, the user is
-            // signed in (consensus reads are authenticated-only, so a signed-out
-            // fetch is doomed - skip it and just ride the cache), AND the cache is
-            // stale (past the TTL) or a manual refresh forced it. Otherwise we ride
-            // the cache - that's the server-load saving + the offline path.
-            bool networkOn = _plugin.Settings?.CommunityEnabled == true && _plugin.AuthIsSignedIn;
+            // NETWORK refresh only when the networking master is on AND the
+            // cache is stale (past the TTL) or a manual refresh forced it.
+            // Sign-in is NOT required: consensus reads are anon-readable
+            // (migration 0100) and the fetch primitives fall back to the anon
+            // key, so account-free users receive community car facts too. The
+            // old sign-in gate here silently starved signed-out users of
+            // engine/name/redline facts while 0.2.4 promises them account-free.
+            bool networkOn = _plugin.Settings?.CommunityEnabled == true;
             bool stale = !_plugin.IsCommunityCacheFresh(game, carId, capturedSignature);
             if (!networkOn || (!force && !stale)) return;
 
@@ -5725,7 +5563,7 @@ namespace TrueforceForAll.Plugin
         {
             if (EngineCommunityText == null) return;
 
-            if (_engineCommunityCache == null)
+            if (_engineCommunityCache == null || _engineCommunityRowRedundant)
             {
                 EngineCommunityText.Visibility = System.Windows.Visibility.Collapsed;
                 return;
@@ -5816,13 +5654,12 @@ namespace TrueforceForAll.Plugin
             Apply(EffectKind.Engine);
         }
 
-        // ---------- Engine layout dropdown (dynamic: built-ins + customs + actions) ----------
+        // ---------- Car facts engine dropdown (dynamic: built-ins + customs) ----------
 
         // Each combobox entry is a DropdownItem so the SelectionChanged handler
         // can branch on kind. Built-ins map to an EngineLayout enum value;
-        // Custom entries carry the CustomEngineDef they reference; Action
-        // entries open dialogs without committing a layout change.
-        private enum EngineDropdownKind { BuiltIn, Custom, ActionNew, ActionManage }
+        // Custom entries carry the CustomEngineDef they reference.
+        private enum EngineDropdownKind { BuiltIn, Custom }
         private sealed class EngineDropdownItem
         {
             public EngineDropdownKind   Kind;
@@ -5833,140 +5670,27 @@ namespace TrueforceForAll.Plugin
         }
         private readonly List<EngineDropdownItem> _engineItems = new List<EngineDropdownItem>();
 
-        /// <summary>(Re)populate the engine-layout dropdown from the built-in
-        /// EngineLayout enum + the user's saved customs in
-        /// TrueforceSettings.CustomEngines, plus the "Custom..." and
-        /// <summary>Refresh the inline variant picker for the active car.
-        /// Hidden when the bundle has fewer than 2 stored variants -
-        /// the single-variant fast-path in PickStoredVariant means there's
-        /// nothing for the user to pick between, and showing an empty
-        /// combo would add visual noise to every non-Forza car. The
-        /// "Manage variants..." link is collapsed in lockstep.</summary>
-        private void RebuildEngineVariantPicker()
-        {
-            if (EngineVariantRow == null || EngineVariantActiveText == null) return;
-            if (_plugin == null) { EngineVariantRow.Visibility = Visibility.Collapsed; return; }
+        // (Removed with the 2026-07 engine centralization: the Engine pulse
+        // panel's variant readout row + its Manage link. The Car facts panel's
+        // "Manage variants…" link is the one entry point; the manage window
+        // itself shows which variant is live.)
 
-            var variants = _plugin.GetActiveCarVariants();
-            // Show the row + manage link as soon as there's at least one
-            // stored variant for this car. With silent auto-create on the
-            // first telemetry-with-discriminator observation, every car
-            // ends up with a row here once telemetry has been seen.
-            // Hide it only when the bundle is empty (game / car not loaded,
-            // telemetry hasn't observed cyl yet).
-            if (variants == null || variants.Count == 0)
-            {
-                EngineVariantRow.Visibility       = Visibility.Collapsed;
-                if (EngineVariantManageLink != null)
-                    EngineVariantManageLink.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            // Identify the variant the resolver picked for live telemetry.
-            // For a single-variant car, that's the only row. For multiple,
-            // PickStoredVariant's signature match wins; mirror that pick
-            // by hand here (cyl + maxRpm band + redline band).
-            EngineVariant active = null;
-            if (variants.Count == 1)
-            {
-                active = variants[0];
-            }
-            else
-            {
-                // Mirror PickStoredVariant's signature match: cyl falls back
-                // to CatalogCyl (resolver/bake) for SimHub-fallback games
-                // whose telemetry doesn't carry NumCylinders.
-                int? telCyl = _plugin.EnginePulse?.ObservedCyl;
-                if (!telCyl.HasValue || telCyl.Value < 1)
-                {
-                    int? cat = _plugin.EnginePulse?.CatalogCyl;
-                    if (cat.HasValue && cat.Value >= 1 && cat.Value <= 16)
-                        telCyl = cat;
-                }
-                double telMax = _plugin.EnginePulse?.ObservedMaxRpm ?? 0;
-                double telRed = _plugin.EnginePulse?.ObservedRedlineRpm ?? 0;
-                int telMaxBand = telMax >= 500 ? (int)Math.Round(telMax / 500.0) * 500 : 0;
-                int telRedBand = telRed >= 500 ? (int)Math.Round(telRed / 500.0) * 500 : 0;
-                for (int i = 0; i < variants.Count; i++)
-                {
-                    var v = variants[i];
-                    if (v == null) continue;
-                    if (v.Cylinders >= 1 && telCyl.HasValue
-                        && v.Cylinders != telCyl.Value) continue;
-                    if (v.MaxRpm.HasValue && telMaxBand > 0
-                        && ((int)Math.Round(v.MaxRpm.Value / 500.0) * 500) != telMaxBand) continue;
-                    if (v.RedlineRpm.HasValue && telRedBand > 0
-                        && ((int)Math.Round(v.RedlineRpm.Value / 500.0) * 500) != telRedBand) continue;
-                    active = v;
-                    break;
-                }
-                if (active == null) active = variants[0];
-            }
-
-            string sourceLabel = MapCarFactSourceForCombo(active.Source);
-            string label = string.IsNullOrEmpty(active.Label) ? "(unnamed)" : active.Label;
-            EngineVariantActiveText.Text = label + "  (" + sourceLabel + ")";
-
-            EngineVariantRow.Visibility = Visibility.Visible;
-            if (EngineVariantManageLink != null)
-                EngineVariantManageLink.Visibility = Visibility.Visible;
-        }
-
-        // Local short label for the variant combo. The plugin's
-        // MapCarFactSourceToUiLabel is private; keep this duplicate
-        // tight (one-line cases) so a future enum addition lands here
-        // without dragging the full label in.
-        private static string MapCarFactSourceForCombo(CarFactSource s)
-        {
-            switch (s)
-            {
-                case CarFactSource.UserVariant: return "yours";
-                case CarFactSource.Community:   return "community";
-                case CarFactSource.Baked:       return "built-in";
-                case CarFactSource.SwapOverride: return "swap";
-                case CarFactSource.Scanner:     return "auto";
-                default:                        return s.ToString().ToLowerInvariant();
-            }
-        }
-
-        // (Removed: EngineVariant_Changed. The dropdown picker is gone;
-        // signature-based auto-detect always drives the pick. Users
-        // rename / delete via the Manage variants window instead.)
-
-        private void EngineVariantManage_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string carId = _plugin.ActiveCarId;
-            string game  = _plugin.ActiveGame;
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
-            var win = new CarFactsVariantsWindow(_plugin, game, carId, _plugin.ActiveCarDisplayName)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            win.ShowDialog();
-            // The window mutates via the plugin's helpers (which
-            // re-resolve internally); rebuild the picker on close so a
-            // delete / rename lands immediately.
-            RebuildEngineVariantPicker();
-            RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout(_plugin.ActiveEngine);
-        }
-
-        /// <summary>Rebuild the engine-layout dropdown with the current
-        /// built-ins, the user's saved custom engines, and the
-        /// "Custom..." / "Manage customs..." action sentinels. Preserves
-        /// the current selection across rebuilds.</summary>
+        /// <summary>Rebuild the Car facts engine dropdown with the current
+        /// built-ins and the user's saved custom engines. Selection reflects
+        /// the active variant's engine pin (Auto when none).</summary>
         private void RebuildEngineLayoutDropdown()
         {
-            if (EngineLayoutCombo == null) return;
-            var es = _plugin?.ActiveEngine;
-            var targetLayout   = es?.Layout ?? Effects.EngineLayout.Auto;
-            var targetCustomId = es?.CustomEngineId ?? "";
+            if (CarFactsEngineCombo == null) return;
+            Effects.EngineLayout? pinLayout = null;
+            string pinCustomId = "";
+            if (_plugin != null) (pinLayout, pinCustomId) = _plugin.GetActiveVariantUserEngine();
+            var targetLayout   = pinLayout ?? Effects.EngineLayout.Auto;
+            var targetCustomId = pinCustomId ?? "";
 
             _engineItems.Clear();
             foreach (Effects.EngineLayout l in Enum.GetValues(typeof(Effects.EngineLayout)))
             {
-                if (l == Effects.EngineLayout.Custom) continue;   // Custom is reached via the library / action
+                if (l == Effects.EngineLayout.Custom) continue;   // customs are listed by name below
                 _engineItems.Add(new EngineDropdownItem
                 {
                     Kind    = EngineDropdownKind.BuiltIn,
@@ -5989,31 +5713,41 @@ namespace TrueforceForAll.Plugin
                     });
                 }
             }
-            // The "Create custom" / "Manage customs" actions live in adjacent links
-            // (EngineCustomNew_Click / EngineCustomManage_Click) rather than as fake
-            // combo entries, so the dropdown lists only real engine values. Show the
-            // Manage link only when there is something to manage.
-            if (EngineCustomManageLink != null)
-                EngineCustomManageLink.Visibility = (customs != null && customs.Count > 0)
-                    ? System.Windows.Visibility.Visible
-                    : System.Windows.Visibility.Collapsed;
+            // Custom-engine authoring lives in the Manage variants modal
+            // (footer link) since 2026-07-19, so the dropdown lists only
+            // real engine values and carries no action links here.
+
+            // A dangling custom pin (engine deleted elsewhere / restored onto
+            // a machine without it) gets its own entry so the combo shows the
+            // stored truth instead of silently displaying Auto while the pin
+            // still exists (mirrors the variants-modal fix).
+            if (pinLayout == Effects.EngineLayout.Custom && !string.IsNullOrEmpty(targetCustomId))
+            {
+                bool inLibrary = false;
+                foreach (var it in _engineItems)
+                    if (it.Kind == EngineDropdownKind.Custom
+                        && string.Equals(it.Custom?.Id, targetCustomId, StringComparison.Ordinal))
+                    { inLibrary = true; break; }
+                if (!inLibrary)
+                    _engineItems.Add(new EngineDropdownItem
+                    {
+                        Kind    = EngineDropdownKind.Custom,
+                        Custom  = new CustomEngineDef { Id = targetCustomId, Name = "(missing custom engine, falling back to Auto)" },
+                        Display = "(missing custom engine, falling back to Auto)",
+                    });
+            }
 
             int idx = FindEngineDropdownIndex(targetLayout, targetCustomId);
             bool old = _suppressEvents;
             _suppressEvents = true;
             try
             {
-                EngineLayoutCombo.ItemsSource = null;
-                EngineLayoutCombo.ItemsSource = _engineItems;
-                EngineLayoutCombo.SelectedIndex = idx;
-                // Mirror into the Car Facts panel's inline engine-type picker
-                // (same items + selection, so editing either stays in sync).
-                if (CarFactsEngineCombo != null)
-                {
-                    CarFactsEngineCombo.ItemsSource = null;
-                    CarFactsEngineCombo.ItemsSource = _engineItems;
-                    CarFactsEngineCombo.SelectedIndex = idx;
-                }
+                CarFactsEngineCombo.ItemsSource = null;
+                CarFactsEngineCombo.ItemsSource = _engineItems;
+                CarFactsEngineCombo.SelectedIndex = idx;
+                // The rebuild snapped the selection back to the stored pin, so
+                // any deferred browse-commit is now moot.
+                _enginePinCommitPending = false;
             }
             finally { _suppressEvents = old; }
         }
@@ -6039,106 +5773,117 @@ namespace TrueforceForAll.Plugin
             return 0;
         }
 
-        private void EngineLayout_Changed(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            ApplyEngineDropdownSelection(EngineLayoutCombo.SelectedItem as EngineDropdownItem);
-        }
+        // The Car facts engine picker: the single engine-type entry point
+        // since the 2026-07 centralization.
+        //
+        // Commit discipline: a closed, focused ComboBox raises SelectionChanged
+        // on every arrow key / wheel notch, and committing per change persisted
+        // a pin (plus, with consent granted, a SILENT community engine
+        // submission) per keystroke. So only a dropdown-open change commits
+        // immediately; closed-combo browsing sets a pending flag that commits
+        // ONCE when the user is done (focus leaves / dropdown closes).
+        private bool _enginePinCommitPending;
 
-        // The Car Facts panel's inline engine-type picker shares the same items
-        // and apply path as the Engine Pulse section's Layout dropdown.
         private void CarFactsEngine_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
+            if (CarFactsEngineCombo != null && !CarFactsEngineCombo.IsDropDownOpen)
+            {
+                _enginePinCommitPending = true;   // keyboard/wheel browsing: defer
+                return;
+            }
+            _enginePinCommitPending = false;
             ApplyEngineDropdownSelection(CarFactsEngineCombo?.SelectedItem as EngineDropdownItem);
+        }
+
+        private void CarFactsEngine_DropDownClosed(object sender, EventArgs e)
+            => CommitPendingEnginePin();
+
+        private void CarFactsEngine_LostKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+            => CommitPendingEnginePin();
+
+        private void CommitPendingEnginePin()
+        {
+            if (!_enginePinCommitPending || _suppressEvents || _plugin == null) return;
+            _enginePinCommitPending = false;
+            ApplyEngineDropdownSelection(CarFactsEngineCombo?.SelectedItem as EngineDropdownItem);
+        }
+
+        // Friendly wording for EnginePulse.AutoLayoutSource tokens, shared by
+        // the auto-detected and your-pick readout branches so raw tokens like
+        // "(baked)" never reach the user. "user-set" hides the suffix: those
+        // variants are stale pre-community-share data, no longer in the
+        // resolver cascade, and the line should read as plain auto output.
+        private static string FriendlyDetectSourceSuffix(string src)
+        {
+            if (string.Equals(src, "telemetry", StringComparison.OrdinalIgnoreCase)) return " (from telemetry)";
+            if (string.Equals(src, "baked",     StringComparison.OrdinalIgnoreCase)) return " (from built-in car list)";
+            if (string.Equals(src, "cache",     StringComparison.OrdinalIgnoreCase)) return " (cached from earlier session)";
+            if (string.Equals(src, "community", StringComparison.OrdinalIgnoreCase)) return " (community-confirmed)";
+            if (string.Equals(src, "user-set",  StringComparison.OrdinalIgnoreCase)) return "";
+            return string.IsNullOrEmpty(src) ? "" : $" (heuristic: {src})";
+        }
+
+        // "Your pick" wording: a pinned custom engine reads by its NAME, not
+        // the generic "Custom (advanced)" enum label.
+        private string DescribePinnedEngine(Effects.EngineLayout layout, string customId)
+        {
+            if (layout != Effects.EngineLayout.Custom)
+                return Effects.FiringPatternDb.LayoutDisplayName(layout);
+            var customs = _plugin?.Settings?.CustomEngines;
+            if (customs != null && !string.IsNullOrEmpty(customId))
+                foreach (var c in customs)
+                    if (c != null && string.Equals(c.Id, customId, StringComparison.Ordinal))
+                        return string.IsNullOrWhiteSpace(c.Name) ? "a custom engine" : c.Name + " (custom)";
+            return "a missing custom engine (falling back to Auto)";
         }
 
         private void ApplyEngineDropdownSelection(EngineDropdownItem item)
         {
             if (item == null || _plugin == null) return;
-            var es = _plugin.ActiveEngine;
 
             switch (item.Kind)
             {
                 case EngineDropdownKind.BuiltIn:
-                    es.Layout         = item.BuiltIn;
-                    es.CustomEngineId = "";
-                    Apply(EffectKind.Engine);
-                    UpdateFiringPatternReadout(es);
-                    RebuildEngineLayoutDropdown();   // keep both pickers in sync
+                    CommitEnginePin(item.BuiltIn, "");
                     break;
 
                 case EngineDropdownKind.Custom:
-                    es.Layout         = Effects.EngineLayout.Custom;
-                    es.CustomEngineId = item.Custom?.Id ?? "";
-                    Apply(EffectKind.Engine);
-                    UpdateFiringPatternReadout(es);
-                    RebuildEngineLayoutDropdown();
-                    break;
-
-                case EngineDropdownKind.ActionNew:
-                    OpenCustomEngineEditorForNew();
-                    break;
-
-                case EngineDropdownKind.ActionManage:
-                    OpenManageCustomEnginesDialog();
+                    CommitEnginePin(Effects.EngineLayout.Custom, item.Custom?.Id ?? "");
                     break;
             }
         }
 
-        // Adjacent-link entry points for creating / managing custom engines. These
-        // replace the old "Custom..." / "Manage customs..." combo action entries so
-        // the engine-type dropdown lists only real values.
-        private void EngineCustomNew_Click(object sender, RoutedEventArgs e)
+        // Commit an engine pick as the active variant's Car facts pin. The
+        // pin is car truth: it persists in CarFacts (not the preset), wins
+        // the resolution cascade, and Auto clears it so detection takes over
+        // again. Mirrors CarFactsRedlineSet_Click, including the self-gating
+        // community submit.
+        private void CommitEnginePin(Effects.EngineLayout layout, string customId)
         {
-            OpenCustomEngineEditorForNew();
-        }
-
-        private void EngineCustomManage_Click(object sender, RoutedEventArgs e)
-        {
-            OpenManageCustomEnginesDialog();
-        }
-
-        // Open the editor with a fresh entry. On Save, append to the library,
-        // activate it on the current preset, and rebuild the dropdown. On
-        // Cancel, just rebuild so the dropdown snaps back to the previous
-        // selection (the user clicked an action item, not a real layout).
-        private void OpenCustomEngineEditorForNew()
-        {
-            if (_plugin?.Settings == null) return;
-            var def = new CustomEngineDef { Id = Guid.NewGuid().ToString("N") };
-            var dlg = new CustomEngineEditor { Owner = Window.GetWindow(this) };
-            dlg.Init(def, "Create custom engine");
-            bool saved = dlg.ShowDialog() == true && dlg.Saved;
-            if (saved)
+            if (_plugin == null) return;
+            bool ok = _plugin.SaveActiveVariantUserEngine(layout, customId);
+            if (!ok)
             {
-                if (_plugin.Settings.CustomEngines == null)
-                    _plugin.Settings.CustomEngines = new List<CustomEngineDef>();
-                _plugin.Settings.CustomEngines.Add(def);
-                // Persist the new engine definition. Apply() marks the
-                // current preset dirty (saves on user Save) but does not
-                // persist the CustomEngines list - without this call the
-                // newly-created engine vanishes on plugin restart.
-                try { _plugin.PersistSettings(); }
-                catch (Exception ex)
-                {
-                    SimHub.Logging.Current.Info(
-                        "[TF4ALL] Persist new custom engine failed: " + ex.Message);
-                }
-
-                var es = _plugin.ActiveEngine;
-                es.Layout         = Effects.EngineLayout.Custom;
-                es.CustomEngineId = def.Id;
-                Apply(EffectKind.Engine);
+                // No variant signature yet (telemetry hasn't identified the
+                // engine). Snap the dropdown back and tell the user why.
+                RebuildEngineLayoutDropdown();
+                TrueforceDialog.Show(Window.GetWindow(this), "Engine type",
+                    "Drive the car for a moment first. The plugin identifies the engine "
+                    + "variant from telemetry, then your pick sticks to that variant.",
+                    DialogKind.Info);
+                return;
             }
             RebuildEngineLayoutDropdown();
-            UpdateFiringPatternReadout(_plugin.ActiveEngine);
+            RefreshCarFactsPanel();
+            if (layout != Effects.EngineLayout.Auto)
+                MaybePromptToSubmitEngineData(_plugin.ActiveCarId);
         }
 
-        private void OpenManageCustomEnginesDialog()
-        {
-            ShowPresetManager(PresetManagerControl.InitialTab.CustomEngines);
-        }
+        // (The main-panel "Create custom engine…" / "Manage customs…" links were
+        // retired 2026-07-19: authoring lives in the Manage variants modal
+        // (CarFactsVariantsWindow.CreateCustom_Click), and the Customs tab of
+        // the Preset library manages the collection.)
 
         /// <summary>Bring the inline preset library (Presets tab) forward,
         /// optionally selecting one of its inner tabs. Mutations made there
@@ -6165,7 +5910,9 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
             RebuildEngineLayoutDropdown();
             Apply(EffectKind.Engine);
-            UpdateFiringPatternReadout(_plugin.ActiveEngine);
+            // A custom-engine edit changes resolution inputs (the pinned
+            // pattern), so re-run car-facts resolution.
+            _plugin.ReresolveActiveCarFacts();
         }
 
         // Community-list refresh for the active car landed. Drop the
@@ -6405,6 +6152,11 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null) return;
             if (AutoSubmitCarFactsCheck == null) return;
             _plugin.Settings.AutoSubmitCarFacts = AutoSubmitCarFactsCheck.IsChecked == true;
+            // Toggling here answers the one-time consent ask either way (never
+            // re-ask someone who already decided in Settings); turning it on
+            // needs the anon submitter id minted.
+            _plugin.Settings.CarFactsConsentAsked = true;
+            if (_plugin.Settings.AutoSubmitCarFacts) _plugin.EnsureCarFactsAnonId();
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
@@ -6981,8 +6733,12 @@ namespace TrueforceForAll.Plugin
         private async Task RefreshSupportersWallAsync()
         {
             if (SupportersWallPanel == null || _plugin == null) return;
+            StopCloudSim();   // every path below rebuilds or clears the wall
             if (_plugin.Settings?.CommunityEnabled != true)
             {
+                // Bump the generation so an in-flight fetch from a previous
+                // refresh can't complete and paint the cloud over this notice.
+                unchecked { ++_supportersWallGen; }
                 SupportersWallPanel.Children.Clear();
                 if (SupportersWallStatus != null)
                 {
@@ -7026,54 +6782,229 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             if (SupportersWallStatus != null) SupportersWallStatus.Visibility = System.Windows.Visibility.Collapsed;
-            RenderSupportersGrouped(rows);
+            RenderSupportersCloud(rows);
         }
 
-        // Group the roster into tier sections (tier header + a wrap of name pills). The server
-        // already returns rows in display order (tier sections by top pledge, top lifetime
-        // spender first within a tier), and sends no amounts, so we just group by tier in
-        // encounter order and preserve the order within each group.
-        private void RenderSupportersGrouped(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
+        // ---- Supporters cloud physics ----
+        // The wall is a lightweight physics toy, not a grid: every pill is a soft body
+        // spring-anchored to its spot in a rank-ordered spiral (rank 0 in the middle, the
+        // rest packed around it), pills shove each other apart on contact, and the mouse
+        // plows through and scatters them before they drift home. The sim only runs while
+        // something is moving or the cursor is over the canvas, then sleeps.
+
+        private sealed class CloudBody
         {
-            var order  = new System.Collections.Generic.List<string>();
-            var byTier = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<SupportersClient.SupporterRow>>();
-            foreach (var r in rows)
+            public System.Windows.FrameworkElement El;
+            public double X, Y, VX, VY, AX, AY, W, H;   // position, velocity, anchor, size
+        }
+
+        private System.Windows.Threading.DispatcherTimer _cloudTimer;
+        private System.Collections.Generic.List<CloudBody> _cloudBodies;
+        private System.Windows.Controls.Canvas _cloudCanvas;
+        private System.Windows.Point? _cloudMouse;
+        private int _cloudCalmFrames;
+
+        // Re-render support: the first render can run before layout has
+        // measured the panel (ActualWidth 0 -> width fallback), and a resized
+        // window would otherwise keep a stale canvas width forever.
+        private System.Collections.Generic.List<SupportersClient.SupporterRow> _cloudRows;
+        private double _cloudRenderedWidth;
+        private bool _cloudSizeHooked;
+
+        private void HookCloudSizeOnce()
+        {
+            if (_cloudSizeHooked || SupportersWallPanel == null) return;
+            _cloudSizeHooked = true;
+            SupportersWallPanel.SizeChanged += (s, e) =>
             {
-                string tier = string.IsNullOrWhiteSpace(r.Tier) ? "Supporters" : r.Tier;
-                if (!byTier.TryGetValue(tier, out var list))
+                if (_cloudRows == null || _cloudCanvas == null) return;
+                if (SupportersWallPanel.Children.Count == 0) return;
+                double w = SupportersWallPanel.ActualWidth;
+                if (double.IsNaN(w) || w < 100) return;
+                double target = Math.Max(240, Math.Min(w, 700));
+                if (Math.Abs(target - _cloudRenderedWidth) < 40) return;
+                RenderSupportersCloud(_cloudRows);
+            };
+        }
+
+        private void RenderSupportersCloud(System.Collections.Generic.List<SupportersClient.SupporterRow> rows)
+        {
+            StopCloudSim();
+            // A re-render (size change) replaces the previous canvas; the
+            // full refresh path clears the panel separately.
+            if (_cloudCanvas != null) SupportersWallPanel.Children.Remove(_cloudCanvas);
+            double width = SupportersWallPanel.ActualWidth;
+            bool measured = !double.IsNaN(width) && width >= 100;
+            width = measured ? Math.Max(240, Math.Min(width, 700)) : 660;
+            _cloudRows = rows;
+            _cloudRenderedWidth = width;
+            HookCloudSizeOnce();
+
+            var canvas = new System.Windows.Controls.Canvas
+            {
+                Width               = width,
+                Background          = System.Windows.Media.Brushes.Transparent,   // hit-test empty space
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            };
+
+            // Measure chips and anchor them along a vertically squashed Archimedean spiral
+            // in rank order, so the biggest names sit in the middle of a wide cloud.
+            // The spiral is CLAMPED horizontally to the canvas: once a ring hits the
+            // walls, growth continues downward (the Support tab scrolls) instead of
+            // past them, where the anchor spring and the wall bounce would fight
+            // forever and keep the sim awake.
+            var bodies = new System.Collections.Generic.List<CloudBody>();
+            var placed = new System.Collections.Generic.List<System.Windows.Rect>();
+            var inf = new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity);
+            double halfW = Math.Max(80, (width - 16) / 2);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var el = (System.Windows.FrameworkElement)BuildSupporterChip(rows[i], i);
+                el.Measure(inf);
+                double w = el.DesiredSize.Width, h = el.DesiredSize.Height;
+                bool Fits(System.Windows.Rect r) => w >= halfW * 2 || (r.X >= -halfW && r.Right <= halfW);
+                var rect = new System.Windows.Rect(-w / 2, -h / 2, w, h);
+                for (double t = 0.35; t < 2000 && (CloudOverlaps(rect, placed) || !Fits(rect)); t += 0.35)
                 {
-                    list = new System.Collections.Generic.List<SupportersClient.SupporterRow>();
-                    byTier[tier] = list; order.Add(tier);
+                    double r = 4 + 5.5 * t;
+                    rect.X = r * Math.Cos(t) - w / 2;
+                    rect.Y = 0.62 * r * Math.Sin(t) - h / 2;
                 }
-                list.Add(r);
+                placed.Add(rect);
+                bodies.Add(new CloudBody { El = el, W = w, H = h, AX = rect.X, AY = rect.Y });
             }
 
-            bool first = true;
-            foreach (var tier in order)
+            // Shift anchors into canvas space and size the canvas to fit the cloud.
+            double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+            foreach (var r in placed)
             {
-                SupportersWallPanel.Children.Add(new System.Windows.Controls.TextBlock
-                {
-                    Text       = tier,
-                    FontSize   = 12,
-                    FontWeight = System.Windows.FontWeights.SemiBold,
-                    Opacity    = 0.85,
-                    Margin     = new System.Windows.Thickness(0, first ? 0 : 12, 0, 5),
-                });
-                first = false;
-                var wrap = new System.Windows.Controls.WrapPanel();
-                foreach (var r in byTier[tier]) wrap.Children.Add(BuildSupporterChip(r));
-                SupportersWallPanel.Children.Add(wrap);
+                minX = Math.Min(minX, r.X); minY = Math.Min(minY, r.Y);
+                maxX = Math.Max(maxX, r.Right); maxY = Math.Max(maxY, r.Bottom);
             }
+            double padX = Math.Max(8, (width - (maxX - minX)) / 2);
+            canvas.Height = Math.Max(140, (maxY - minY) + 16);
+            var rnd = new Random(12345);   // fixed seed: same gentle drift-in every open
+            foreach (var b in bodies)
+            {
+                b.AX += padX - minX; b.AY += 8 - minY;
+                b.X = b.AX + rnd.NextDouble() * 40 - 20;
+                b.Y = b.AY + rnd.NextDouble() * 30 - 15;
+                b.VX = rnd.NextDouble() * 2 - 1;
+                b.VY = rnd.NextDouble() * 2 - 1;
+                System.Windows.Controls.Canvas.SetLeft(b.El, b.X);
+                System.Windows.Controls.Canvas.SetTop(b.El, b.Y);
+                canvas.Children.Add(b.El);
+            }
+
+            canvas.MouseMove  += (s, e) => { _cloudMouse = e.GetPosition(canvas); StartCloudSim(); };
+            canvas.MouseLeave += (s, e) => _cloudMouse = null;
+            canvas.IsVisibleChanged += (s, e) => { if (!canvas.IsVisible) StopCloudSim(); };
+
+            _cloudBodies = bodies;
+            _cloudCanvas = canvas;
+            SupportersWallPanel.Children.Add(canvas);
+            StartCloudSim();   // let the drift-in settle
         }
 
-        // A pill per supporter, tinted by tier (platinum / gold / default blue), mirroring
-        // the supporter-badge accent logic. Tier shows in the tooltip.
-        private System.Windows.UIElement BuildSupporterChip(SupportersClient.SupporterRow row)
+        private static bool CloudOverlaps(System.Windows.Rect rect, System.Collections.Generic.List<System.Windows.Rect> placed)
         {
-            string t = (row.Tier ?? "").Trim().ToLowerInvariant();
-            string accent = t.Contains("platinum") ? "#FFCDD3DE"
-                          : t.Contains("gold")     ? "#FFE5C04A"
-                          :                          "#FF5AA0E5";
+            rect.Inflate(4, 3);
+            foreach (var p in placed) if (rect.IntersectsWith(p)) return true;
+            return false;
+        }
+
+        private void StartCloudSim()
+        {
+            if (_cloudTimer == null)
+            {
+                _cloudTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Render)
+                {
+                    Interval = TimeSpan.FromMilliseconds(16),
+                };
+                _cloudTimer.Tick += (s, e) => CloudTick();
+            }
+            _cloudCalmFrames = 0;
+            _cloudTimer.Start();
+        }
+
+        private void StopCloudSim() => _cloudTimer?.Stop();
+
+        // One 60 fps physics step: anchor springs, mouse shove, pairwise separation,
+        // damping, wall bounce. Sleeps itself once everything settles and the cursor left.
+        private void CloudTick()
+        {
+            var bodies = _cloudBodies; var canvas = _cloudCanvas;
+            if (bodies == null || canvas == null) { StopCloudSim(); return; }
+
+            foreach (var b in bodies)
+            {
+                b.VX += (b.AX - b.X) * 0.015;
+                b.VY += (b.AY - b.Y) * 0.015;
+            }
+            if (_cloudMouse is System.Windows.Point m)
+            {
+                const double reach = 120;
+                foreach (var b in bodies)
+                {
+                    double dx = (b.X + b.W / 2) - m.X, dy = (b.Y + b.H / 2) - m.Y;
+                    double d = Math.Sqrt(dx * dx + dy * dy);
+                    if (d < 1) { dx = 1; dy = 0; d = 1; }
+                    if (d < reach)
+                    {
+                        double f = 1 - d / reach; f = f * f * 2.6;
+                        b.VX += dx / d * f; b.VY += dy / d * f;
+                    }
+                }
+            }
+            for (int i = 0; i < bodies.Count; i++)
+                for (int j = i + 1; j < bodies.Count; j++)
+                {
+                    var a = bodies[i]; var b = bodies[j];
+                    double dx = (a.X + a.W / 2) - (b.X + b.W / 2);
+                    double dy = (a.Y + a.H / 2) - (b.Y + b.H / 2);
+                    // Rectangle-ish separation: distance normalized by combined half-sizes.
+                    double px = (a.W + b.W) / 2 + 6, py = (a.H + b.H) / 2 + 4;
+                    double nx = dx / px, ny = dy / py;
+                    double nd = Math.Sqrt(nx * nx + ny * ny);
+                    if (nd >= 1 || nd < 0.0001) continue;
+                    double push = (1 - nd) * 0.9;
+                    double ux = nx / nd, uy = ny / nd;
+                    a.VX += ux * push; a.VY += uy * push * 1.2;
+                    b.VX -= ux * push; b.VY -= uy * push * 1.2;
+                }
+
+            bool calm = _cloudMouse == null;
+            foreach (var b in bodies)
+            {
+                b.VX *= 0.86; b.VY *= 0.86;
+                double sp = Math.Sqrt(b.VX * b.VX + b.VY * b.VY);
+                if (sp > 14) { b.VX *= 14 / sp; b.VY *= 14 / sp; }
+                b.X += b.VX; b.Y += b.VY;
+                if (b.X < 0) { b.X = 0; b.VX = Math.Abs(b.VX) * 0.5; }
+                if (b.Y < 0) { b.Y = 0; b.VY = Math.Abs(b.VY) * 0.5; }
+                if (b.X + b.W > canvas.Width)  { b.X = canvas.Width - b.W;  b.VX = -Math.Abs(b.VX) * 0.5; }
+                if (b.Y + b.H > canvas.Height) { b.Y = canvas.Height - b.H; b.VY = -Math.Abs(b.VY) * 0.5; }
+                System.Windows.Controls.Canvas.SetLeft(b.El, b.X);
+                System.Windows.Controls.Canvas.SetTop(b.El, b.Y);
+                if (sp > 0.06) calm = false;
+            }
+            if (calm) { if (++_cloudCalmFrames > 30) StopCloudSim(); }
+            else _cloudCalmFrames = 0;
+        }
+
+        // A pill per supporter. Patreon patrons are tinted by tier STANDING (server-computed
+        // tier_level ordinal: 1 gold, 2 silver, 3+ bronze) and carry a small tier badge on the
+        // right; one-time donors stay the neutral blue and show the name alone. The name scales
+        // by rank (24px at the top easing toward the 13px baseline): rank is the only amount
+        // signal the server sends, and a fixed decay keeps sizes stable as the roster grows.
+        private System.Windows.UIElement BuildSupporterChip(SupportersClient.SupporterRow row, int rank)
+        {
+            double nameSize = 13 + 11 * Math.Pow(0.8, rank);
+            bool patreon = string.Equals(row.Source, "patreon", StringComparison.OrdinalIgnoreCase);
+            string accent = !patreon || row.TierLevel == null ? "#FF5AA0E5"
+                          : row.TierLevel == 1                ? "#FFE5C04A"
+                          : row.TierLevel == 2                ? "#FFC6CDDA"
+                          :                                     "#FFCD8A54";
             var col = System.Windows.Media.Colors.SteelBlue;
             try { col = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(accent); } catch { }
             var bg = col; bg.A = 0x22;
@@ -7081,21 +7012,75 @@ namespace TrueforceForAll.Plugin
             {
                 CornerRadius    = new System.Windows.CornerRadius(9),
                 Padding         = new System.Windows.Thickness(10, 3, 10, 3),
-                Margin          = new System.Windows.Thickness(0, 0, 6, 6),
+                Margin          = new System.Windows.Thickness(3),
                 Background      = new System.Windows.Media.SolidColorBrush(bg),
                 BorderBrush     = new System.Windows.Media.SolidColorBrush(col),
                 BorderThickness = new System.Windows.Thickness(1),
+                VerticalAlignment = System.Windows.VerticalAlignment.Center,
             };
+            border.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+            var hoverScale = new System.Windows.Media.ScaleTransform(1.0, 1.0);
+            border.RenderTransform = hoverScale;
+            border.MouseEnter += (s, e) => AnimateChipHover(border, hoverScale, bg, true);
+            border.MouseLeave += (s, e) => AnimateChipHover(border, hoverScale, bg, false);
+            var dock = new System.Windows.Controls.DockPanel { LastChildFill = true };
+            if (patreon && !string.IsNullOrWhiteSpace(row.Tier))
+            {
+                var badgeBg = col; badgeBg.A = 0x3A;
+                var badge = new System.Windows.Controls.Border
+                {
+                    CornerRadius      = new System.Windows.CornerRadius(6),
+                    Padding           = new System.Windows.Thickness(6, 1, 6, 1),
+                    Margin            = new System.Windows.Thickness(8, 0, 0, 0),
+                    Background        = new System.Windows.Media.SolidColorBrush(badgeBg),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
+                    Child = new System.Windows.Controls.TextBlock
+                    {
+                        Text       = row.Tier,
+                        FontSize   = Math.Max(9, nameSize * 0.55),
+                        FontWeight = System.Windows.FontWeights.SemiBold,
+                        Foreground = new System.Windows.Media.SolidColorBrush(col),
+                    },
+                };
+                System.Windows.Controls.DockPanel.SetDock(badge, System.Windows.Controls.Dock.Right);
+                dock.Children.Add(badge);
+                border.ToolTip = "Patreon supporter (" + row.Tier + ")";
+            }
+            else
+            {
+                // A Patreon row can arrive with no entitled tier (legacy or
+                // custom pledges): still a patron, so never label them
+                // one-time.
+                border.ToolTip = patreon ? "Patreon supporter" : "One-time supporter";
+            }
             var text = new System.Windows.Controls.TextBlock
             {
-                Text       = row.Name,
-                FontSize   = 12,
-                FontWeight = System.Windows.FontWeights.SemiBold,
-                Foreground = new System.Windows.Media.SolidColorBrush(col),
+                Text              = row.Name,
+                FontSize          = nameSize,
+                FontWeight        = System.Windows.FontWeights.SemiBold,
+                Foreground        = new System.Windows.Media.SolidColorBrush(col),
+                TextTrimming      = System.Windows.TextTrimming.CharacterEllipsis,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center,
             };
-            if (!string.IsNullOrWhiteSpace(row.Tier)) border.ToolTip = row.Tier;
-            border.Child = text;
+            dock.Children.Add(text);
+            border.Child = dock;
             return border;
+        }
+
+        // Cloud hover: the pill swells slightly and its fill warms up, then settles back.
+        private static void AnimateChipHover(System.Windows.Controls.Border chip,
+            System.Windows.Media.ScaleTransform scale, System.Windows.Media.Color restBg, bool entering)
+        {
+            var ease = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var grow = new System.Windows.Media.Animation.DoubleAnimation(entering ? 1.12 : 1.0,
+                TimeSpan.FromMilliseconds(130)) { EasingFunction = ease };
+            scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
+            scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, grow);
+            var toBg = restBg; if (entering) toBg.A = 0x55;
+            var fill = new System.Windows.Media.Animation.ColorAnimation(toBg,
+                TimeSpan.FromMilliseconds(130)) { EasingFunction = ease };
+            (chip.Background as System.Windows.Media.SolidColorBrush)?.BeginAnimation(
+                System.Windows.Media.SolidColorBrush.ColorProperty, fill);
         }
 
         // ---- Achievement tracker + celebration toast (Phase 2, M5) ----
@@ -7793,16 +7778,36 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Signed in but the server profile has no username: any local
+            // SharingAuthor is a leftover (signed-out freeform alias, or a
+            // previous account's name - plain sign-out doesn't clear it),
+            // and the account row would present it as a username the upload
+            // RPCs reject. Clear it so local state agrees with the server
+            // before we offer the picker; keep the value only as a picker
+            // seed fallback. Safe to set the boxes directly:
+            // AccountAuthor_Changed is LostFocus-wired, so programmatic
+            // Text assignment doesn't fire a rename RPC.
+            string staleAlias = _plugin.Settings.SharingAuthor ?? "";
+            if (!string.IsNullOrWhiteSpace(staleAlias))
+            {
+                _plugin.Settings.SharingAuthor = "";
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
+                if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
+                RefreshAccountRow();
+            }
+
             // No username yet - open the picker with an already-available
             // default so the user can just hit Save. Prefer the email
-            // prefix; fall back to the existing freeform SharingAuthor.
+            // prefix; fall back to the freeform alias we just cleared.
             // If the bare prefix is taken, try +2, +3, ... up to +99
             // before giving up and seeding the picker with the bare
             // prefix (user types something else manually).
             string emailLocal = _plugin.AuthSignedInEmail ?? "";
             int atIdx = emailLocal.IndexOf('@');
             string preferred = atIdx > 0 ? emailLocal.Substring(0, atIdx) : emailLocal;
-            if (string.IsNullOrWhiteSpace(preferred)) preferred = _plugin.Settings.SharingAuthor ?? "";
+            if (string.IsNullOrWhiteSpace(preferred)) preferred = staleAlias;
             string seed = await ResolveAvailableUsernameSeedAsync(preferred);
 
             // Owner re-fetch after the await: SimHub caches the control,
@@ -8750,18 +8755,11 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
-        // Number of days to wait before re-prompting after a "Maybe later"
-        // dismissal. Two declines total then we stop forever.
-        // Backed by TrueforcePlugin.WelcomeReshowDays so the init-side
-        // path and the panel-side path share the same cadence.
-        private const int WelcomeReshowDays = TrueforcePlugin.WelcomeReshowDays;
-
-        // Conditional welcome modal. Shown up to twice:
-        //   * First plugin load with backend configured + HasSeen=false +
-        //     NextShowAt==null
-        //   * After "Maybe later" + WelcomeReshowDays elapsed
-        // "Sign in now" or a second decline locks HasSeen=true and we
-        // never show again.
+        // Conditional welcome modal. Shown once (backend configured +
+        // HasSeen=false), latched on ANY dismissal: the welcome is a
+        // proceed with an optional account, not a consent gate, so there
+        // is no decline / re-show cadence anymore. WelcomeNextShowAt is
+        // still honored as a gate for legacy mid-cadence settings files.
         // iRacing app.ini Trueforce notice. Re-fires each time iRacing becomes
         // the active game until the user dismisses it for good. Trigger lives in
         // RefreshFromPlugin (transition into "IRacing"); this is the show step.
@@ -8899,80 +8897,52 @@ namespace TrueforceForAll.Plugin
             _welcomeTriggeredThisSession = true;
 
             var welcome = new WelcomeWindow { Owner = owner };
-            bool? ok = welcome.ShowDialog();
+            welcome.ShowDialog();
 
-            // User picked "Sign in now": run sign-in BEFORE committing
-            // HasSeenNetworkedWelcome or enabling Community, so a
-            // cancelled sign-in doesn't silently flip Community on and
-            // remove the welcome forever. authConfirmed is the explicit
-            // gate; only on a true value do we treat the welcome as
-            // accepted. A cancelled sign-in just falls through to the
-            // "Maybe later" decline path below; closing the dialog is
-            // self-evident, so we don't pop a separate confirmation.
-            bool authConfirmed = false;
-            if (ok == true && welcome.SignInRequested)
+            // The welcome is a PROCEED, not a consent gate: community
+            // features and car-data sharing are the default posture, so ANY
+            // dismissal (either button, Esc, the X) latches the welcome and
+            // leaves them on. The modal's disclosure line is the sharing
+            // notice, so the consent modal must never re-ask. Opt-out lives
+            // in Settings.
+            _plugin.Settings.HasSeenNetworkedWelcome = true;
+            _plugin.Settings.WelcomeNextShowAt = null;
+            if (_plugin.Settings.CommunityEnabled != true)
+            {
+                _plugin.SetCommunityEnabled(true);
+                if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
+            }
+            if (_plugin.Settings.AutoSubmitCarFacts != true)
+            {
+                _plugin.Settings.AutoSubmitCarFacts = true;
+                SyncAutoSubmitCheckboxFromSettings();
+            }
+            _plugin.Settings.CarFactsConsentAsked = true;
+            _plugin.EnsureCarFactsAnonId();
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+            RefreshAccountRow();
+
+            // Optional account: run sign-in AFTER the proceed commit, so a
+            // cancelled sign-in changes nothing (the Account tab remains).
+            if (welcome.SignInRequested)
             {
                 if (_plugin.AuthIsSignedIn)
                 {
-                    // Already signed in (e.g., session restored from a
-                    // prior install): treat the welcome click as
-                    // confirmation. Still run username bootstrap because
-                    // the restored session may not have a server-side
-                    // username yet (so we don't latch HasSeen=true and
-                    // then surface "set a username first" on the user's
-                    // first upload).
+                    // Already signed in (e.g. session restored from a prior
+                    // install): still run username bootstrap so the first
+                    // upload doesn't surface "set a username first".
                     BootstrapUsernameAfterSignIn();
-                    authConfirmed = true;
                 }
                 else
                 {
                     var signIn = new SignInWindow(_plugin) { Owner = owner };
                     bool? signedIn = signIn.ShowDialog();
                     if (signedIn == true && _plugin.AuthIsSignedIn)
-                    {
                         BootstrapUsernameAfterSignIn();
-                        authConfirmed = true;
-                    }
                 }
-            }
-
-            if (authConfirmed)
-            {
-                // Commit the welcome only after the user authenticated.
-                // Auto-enable Community here is consent: they completed
-                // sign-in, so the community pipeline is OK to wake up.
-                _plugin.Settings.HasSeenNetworkedWelcome = true;
-                _plugin.Settings.WelcomeNextShowAt = null;
-                if (_plugin.Settings.CommunityEnabled != true)
-                {
-                    _plugin.SetCommunityEnabled(true);
-                    if (CommunityEnabledCheck != null) CommunityEnabledCheck.IsChecked = true;
-                }
-                try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 RefreshAccountRow();
-                return;
             }
-
-            // "Maybe later" path covers three cases: (1) user clicked
-            // Maybe later directly, (2) user clicked Sign in now but
-            // cancelled the sign-in dialog, (3) sign-in dialog
-            // completed but auth state never flipped (verify-otp
-            // failure). Treat all as a decline so the welcome re-shows
-            // later, and importantly: do not touch CommunityEnabled.
-            _plugin.Settings.WelcomeDeclineCount++;
-            if (_plugin.Settings.WelcomeDeclineCount >= 2)
-            {
-                _plugin.Settings.HasSeenNetworkedWelcome = true;
-                _plugin.Settings.WelcomeNextShowAt = null;
-            }
-            else
-            {
-                _plugin.Settings.WelcomeNextShowAt =
-                    DateTime.UtcNow.AddDays(WelcomeReshowDays);
-            }
-            try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the
@@ -8981,68 +8951,9 @@ namespace TrueforceForAll.Plugin
         {
         }
 
-        // Sync the pattern readout textbox to the currently selected layout.
-        // Read-only. Authoring custom engines happens in the modal dialog,
-        // not inline. Shows a friendly message for Electric / dangling custom
-        // references; shows the FiringPattern's Name + serialized positions
-        // for built-ins and combustion customs.
-        private void UpdateFiringPatternReadout(EnginePulseSettings es)
-        {
-            if (EngineFiringPatternText == null || es == null) return;
-
-            string display;
-            if (es.Layout == Effects.EngineLayout.Electric)
-            {
-                display = "Electric: no firing pattern (behavior above)";
-            }
-            else if (es.Layout == Effects.EngineLayout.Custom)
-            {
-                var custom = FindCustomById(es.CustomEngineId);
-                if (custom == null)
-                {
-                    display = "Custom: referenced engine not found in library";
-                }
-                else if (custom.IsElectric)
-                {
-                    display = $"Electric custom: {custom.Name} ({(custom.ElectricMode == ElectricCarMode.Silent ? "silent" : "muted hum")})";
-                }
-                else
-                {
-                    var parsed = Effects.FiringPatternDb.ParseCustom(custom.Pattern);
-                    display = parsed == null
-                        ? $"Custom: {custom.Name} (invalid pattern)"
-                        : $"Custom: {custom.Name}, {Effects.FiringPatternDb.Format(parsed)}";
-                }
-            }
-            else
-            {
-                // Show the layout's built-in pattern. Effective layout cascades
-                // Auto through the resolver's pick when one is available.
-                var ep = _plugin.EnginePulse;
-                var layout = ep?.EffectiveLayout ?? es.Layout;
-                var pat = Effects.FiringPatternDb.ResolveLayout(layout);
-                display = pat == null
-                    ? ""
-                    : $"{pat.Name}: {Effects.FiringPatternDb.Format(pat)}";
-            }
-            bool old = _suppressEvents;
-            _suppressEvents = true;
-            try { EngineFiringPatternText.Text = display; }
-            finally { _suppressEvents = old; }
-        }
-
-        private CustomEngineDef FindCustomById(string id)
-        {
-            if (string.IsNullOrEmpty(id)) return null;
-            var customs = _plugin?.Settings?.CustomEngines;
-            if (customs == null) return null;
-            foreach (var c in customs)
-            {
-                if (c != null && string.Equals(c.Id, id, StringComparison.Ordinal))
-                    return c;
-            }
-            return null;
-        }
+        // (The firing-pattern readout was removed 2026-07-19: raw phase
+        // positions were developer noise. The auto-detect line under the Car
+        // facts engine dropdown is the user-facing engine feedback.)
 
         // ---------- Road bumps ----------
 
@@ -9309,211 +9220,46 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveRevLimiter.Gain = v;
             Apply(EffectKind.RevLimiter);
         }
-        private void RevLimiterRedlineSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            int rpm = (int)Math.Round(e.NewValue);
-            RevLimiterRedlineText.Text = rpm.ToString();
-            var rl = _plugin.ActiveRevLimiter;
-            if (rl.EngageMode == RevLimiterEngageMode.Redline)
-            {
-                // Manual mode: a fixed absolute redline (global / per-car preset).
-                _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
-                rl.RedlineRpm = rpm >= 500 ? (int?)rpm : null;
-                Apply(EffectKind.RevLimiter);
-            }
-            else
-            {
-                // Auto mode: a PER-VARIANT redline. Dragging previews it live;
-                // "Save for this variant" commits it to the CarFacts layer. It's
-                // not a preset edit, so it doesn't touch the section draft/dirty.
-                _plugin.SetRedlinePreview(rpm);
-                UpdateRedlineSaveControls();
-            }
-        }
+        // (The redline slider, its Manual mode, and the per-variant draft
+        // Save/Revert row were retired with the car-facts centralization:
+        // the Car facts panel's redline box + Set button is the single
+        // editor, committing straight to the variant.)
 
-        // Show the per-variant "Save / Revert" controls only while an unsaved
-        // Auto-mode redline draft is in flight.
-        private void UpdateRedlineSaveControls()
-        {
-            if (RevLimiterRedlineSaveRow == null) return;
-            bool auto = _plugin?.ActiveRevLimiter != null
-                && _plugin.ActiveRevLimiter.EngageMode != RevLimiterEngageMode.Redline;
-            bool show = auto && (_plugin?.HasRedlinePreview ?? false);
-            var want = show ? Visibility.Visible : Visibility.Collapsed;
-            if (RevLimiterRedlineSaveRow.Visibility != want)
-                RevLimiterRedlineSaveRow.Visibility = want;
-        }
-
-        private void SaveVariantRedline_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            int rpm = (int)Math.Round(RevLimiterRedlineSlider.Value);
-            int? saved = _plugin.SaveActiveVariantUserRedline(rpm);
-            if (saved == null)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Save redline",
-                    "Couldn't identify this car's engine variant yet. Drive for a moment so "
-                    + "the plugin sees the rev range, then save again.", DialogKind.Info);
-                return;
-            }
-            UpdateRedlineSaveControls();
-            RefreshFromPlugin();
-            // Offer to share the value with the community (rounded to 50 RPM).
-            string carId = _plugin.ActiveCarId;
-            if (!string.IsNullOrEmpty(carId))
-                MaybePromptToSubmitRedlineData(carId, saved.Value);
-        }
-
-        private void RevertVariantRedline_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            _plugin.ClearRedlinePreview();
-            UpdateRedlineSaveControls();
-            RefreshFromPlugin();
-        }
-
-        // Inline (NON-MODAL) "confirm this community redline" prompt. When the
-        // community redline for the active variant is still UNCONFIRMED (a single
-        // submitter), the cascade already uses it, but we invite the user to either
-        // confirm it (become the second supporter, turning it into confirmed
-        // consensus) or correct it (just set their own redline above). Surfaced
-        // inline - never a modal off the 60fps tick - so it can't jump in
-        // unprompted on another tab. Replaced the old "adopt" banner: in Auto the
-        // community value is applied anyway, so the useful action is growing
-        // consensus, not copying the value into a local pin.
-        //
-        // The tick toggles it; the buttons do the work. Idempotent, so no
-        // once-per-arrival key is needed.
-        private string _pendingConfirmSig;   // community profile sig currently offered (for Dismiss)
-
-        private void UpdateRedlineConfirmPrompt()
-        {
-            if (RedlineConfirmBanner == null) return;
-            if (!ShouldOfferRedlineConfirm(out string commSig, out int communityRpm))
-            {
-                _pendingConfirmSig = null;
-                if (RedlineConfirmBanner.Visibility != Visibility.Collapsed)
-                    RedlineConfirmBanner.Visibility = Visibility.Collapsed;
-                return;
-            }
-            _pendingConfirmSig = commSig;
-            string carDisplay = _plugin.ActiveCarDisplayName ?? _plugin.ActiveCarId ?? "this car";
-            string text = $"One driver reported the redline start for this variant of '{carDisplay}' as {communityRpm} RPM. "
-                        + "Confirm it if that matches where your tachometer turns red, or set your own redline above to correct it.";
-            if (RedlineConfirmBannerText != null && RedlineConfirmBannerText.Text != text)
-                RedlineConfirmBannerText.Text = text;
-            if (RedlineConfirmBanner.Visibility != Visibility.Visible)
-                RedlineConfirmBanner.Visibility = Visibility.Visible;
-        }
-
-        // Offer the confirm prompt only in Auto mode, only when there's an
-        // UNCONFIRMED community redline (a single submitter) the user hasn't
-        // overridden with their own value, isn't their own submission this session,
-        // and hasn't already dismissed.
-        private bool ShouldOfferRedlineConfirm(out string commSig, out int communityRpm)
-        {
-            commSig = null; communityRpm = 0;
-            if (_plugin == null) return false;
-            var rl = _plugin.ActiveRevLimiter;
-            if (rl == null || rl.EngageMode == RevLimiterEngageMode.Redline) return false;  // Auto only
-            if (_plugin.Settings?.CommunityEnabled != true) return false;
-            var consensus = _plugin.GetActiveVariantCommunityConsensus();
-            if (consensus == null || consensus.Rpm < 500 || consensus.Rpm > 25000) return false;
-            // Only while UNCONFIRMED; a confirmed value needs no nudge. (Single
-            // source of truth for the confirmed threshold lives in the plugin.)
-            if (_plugin.IsActiveCommunityRedlineConfirmed()) return false;
-            // The user already has their own value -> they've decided; no nudge.
-            if (_plugin.GetActiveVariantPinnedRedline().HasValue) return false;
-            var userGears = _plugin.GetActiveVariantPerGearRedlines();
-            if (userGears != null && userGears.Count > 0) return false;
-            // Don't ask the user to confirm their OWN submission. The session latch
-            // covers the immediate post-share window (before the server reflects
-            // it); the durable dismissed/submitted sig (below) covers across
-            // restarts so a lone self-submission never re-nags next session.
-            if (WasRedlineSharedThisSession()) return false;
-            communityRpm = consensus.Rpm;
-            commSig = RedlineProfileSig(consensus.Rpm, consensus.Gears);
-            string dismissed = _plugin.GetActiveVariantDeclinedCommunityProfileSig();
-            if (dismissed != null && dismissed == commSig) return false;
-            return true;
-        }
-
-        // Stable signature of a redline profile: overall, then "gear:rpm" pairs
-        // sorted by gear. Server values are already canonical, so this is stable
-        // across calls and matches the dismissed-profile sig.
-        private static string RedlineProfileSig(int overall,
-            System.Collections.Generic.IReadOnlyDictionary<int, int> gears)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.Append(overall);
-            if (gears != null)
-            {
-                var keys = new System.Collections.Generic.List<int>(gears.Keys);
-                keys.Sort();
-                foreach (var g in keys)
-                    if (g >= 1) sb.Append(';').Append(g).Append(':').Append(gears[g]);
-            }
-            return sb.ToString();
-        }
-
-        private void RedlineConfirm_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            if (!_plugin.AuthIsSignedIn)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Confirm redline",
-                    "Sign in on the Account tab to confirm community values.", DialogKind.Info);
-                return;
-            }
-            var consensus = _plugin.GetActiveVariantCommunityConsensus();
-            if (consensus == null || consensus.Rpm < 500 || consensus.Rpm > 25000) return;
-            // Confirm = re-submit the SAME profile as your own, so you become a
-            // second distinct supporter and it becomes confirmed consensus.
-            var perGear = new System.Collections.Generic.List<GearRedline>();
-            if (consensus.Gears != null)
-                foreach (var kv in consensus.Gears)
-                    if (kv.Key >= 1 && kv.Key <= 16 && kv.Value >= 500 && kv.Value <= 25000)
-                        perGear.Add(new GearRedline { Gear = kv.Key, Rpm = kv.Value });
-            _plugin.SubmitRedlineToCommunity(game, carId, consensus.Rpm, perGear);
-            MarkRedlineSharedThisSession(game, carId);
-            MarkRedlineProfileHandled(consensus.Rpm, consensus.Gears);
-            RefreshActiveCommunityRedlineFromServer();
-            if (RedlineConfirmBanner != null) RedlineConfirmBanner.Visibility = Visibility.Collapsed;
-            _pendingConfirmSig = null;
-            // Neutral copy: the submit is fire-and-forget, so don't assert a server
-            // outcome. It becomes confirmed once the server records your agreement.
-            TrueforceDialog.Show(Window.GetWindow(this), "Thanks",
-                "Thanks for confirming. It counts toward the community value once the server records it.", DialogKind.Info);
-        }
-
-        private void RedlineConfirmDismiss_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            if (!string.IsNullOrEmpty(_pendingConfirmSig))
-                _plugin.DeclineCommunityRedlineProfileForActiveVariant(_pendingConfirmSig);
-            _pendingConfirmSig = null;
-            if (RedlineConfirmBanner != null) RedlineConfirmBanner.Visibility = Visibility.Collapsed;
-        }
+        // (The inline "confirm this community redline" banner was retired with
+        // the set-not-share framing pass. The cascade applies community values
+        // directly, corrections are just setting your own redline, and with
+        // auto-submit on by default agreement accrues from other drivers'
+        // saves; a dedicated confirm affordance was community chrome asking
+        // users to interact for the system's sake.)
 
         // ---- Car Facts summary panel (active card) ----
 
-        // Render the at-a-glance facts. Cheap visibility toggle always; the
-        // fuller summary only while the expander is open. Skips the name /
-        // redline boxes while they're focused so it doesn't clobber an edit.
+        // Render the at-a-glance facts. The expander is ALWAYS visible (people
+        // open the plugin before starting the game; they should discover that
+        // car facts exist and that a wrong-feeling rev limiter or shift lights
+        // get fixed here). With no active car the body is just the hint line;
+        // the fuller summary renders only while the expander is open. Skips the
+        // name / redline boxes while they're focused so it doesn't clobber an
+        // edit.
         private void RefreshCarFactsPanel()
         {
             if (CarFactsExpander == null || _plugin == null) return;
             bool hasCar = !string.IsNullOrEmpty(_plugin.ActiveCarId);
-            CarFactsExpander.Visibility = hasCar ? Visibility.Visible : Visibility.Collapsed;
+            if (CarFactsNoCarHint != null)
+                CarFactsNoCarHint.Visibility = hasCar ? Visibility.Collapsed : Visibility.Visible;
+            if (CarFactsRowsPanel != null)
+                CarFactsRowsPanel.Visibility = hasCar ? Visibility.Visible : Visibility.Collapsed;
             if (!hasCar || !CarFactsExpander.IsExpanded) return;
 
             var s = _plugin.GetActiveCarFactsSummary();
             if (!s.HasCar) return;
 
             string carNameText = s.CarName ?? "";
+            // The raw car id ("Car_242") is the display fallback for unnamed
+            // cars, not a name: show the box empty instead so typing a real
+            // name doesn't start with deleting the id.
+            if (string.Equals(carNameText, _plugin.ActiveCarId, StringComparison.Ordinal))
+                carNameText = "";
             if (CarFactsNameBox != null && !CarFactsNameBox.IsKeyboardFocusWithin
                 && carNameText != _lastCarFactsNameText)
             {
@@ -9532,36 +9278,12 @@ namespace TrueforceForAll.Plugin
             }
 
             // The engine TYPE is the inline CarFactsEngineCombo (populated by
-            // RebuildEngineLayoutDropdown). Make sure it's filled the first time
-            // the panel opens, then show a meta line with the rev ceiling that
-            // distinguishes tunes/swaps and where the fact came from.
+            // RebuildEngineLayoutDropdown). Make sure it's filled the first
+            // time the panel opens. The auto-detect line right below the
+            // combo (EngineLayoutAutoText) carries the rev-ceiling readout on
+            // the same line, so there is no separate meta line anymore.
             if (CarFactsEngineCombo != null && CarFactsEngineCombo.ItemsSource == null)
                 RebuildEngineLayoutDropdown();
-            if (CarFactsEngineMetaText != null)
-            {
-                string maxPart = s.MaxRpm.HasValue ? s.MaxRpm.Value + " max RPM" : "";
-                string meta;
-                if (s.EngineTypeIsUserOverride)
-                {
-                    // The combo already shows the type the user chose; the meta
-                    // just carries the rev ceiling and "you set this".
-                    meta = string.IsNullOrEmpty(maxPart) ? "You set this" : maxPart + "  ·  You set this";
-                }
-                else
-                {
-                    // Picker shows "Auto", so spell out what auto-detection
-                    // resolved to and where it came from.
-                    string head;
-                    if (string.IsNullOrEmpty(s.EngineTypeDisplay)) head = "Detecting engine…";
-                    else if (s.EngineTypeProvenance == "community") head = "Auto-detected " + s.EngineTypeDisplay + " (from the community)";
-                    else if (s.EngineTypeProvenance == "game")      head = "Auto-detected " + s.EngineTypeDisplay + " (from the game)";
-                    else                                            head = "Auto-detected " + s.EngineTypeDisplay;
-                    meta = string.IsNullOrEmpty(maxPart) ? head : head + "  ·  " + maxPart;
-                }
-                CarFactsEngineMetaText.Text = meta;
-                CarFactsEngineMetaText.Visibility = string.IsNullOrEmpty(meta)
-                    ? Visibility.Collapsed : Visibility.Visible;
-            }
 
             // Prefer the user's EXACT pinned value over the resolver's
             // EffectiveRedlineRpm, which only recomputes on a telemetry frame
@@ -9577,45 +9299,19 @@ namespace TrueforceForAll.Plugin
             if (CarFactsRedlineSourceText != null)
                 CarFactsRedlineSourceText.Text = RedlineSourceFriendly(s.RedlineSource);
 
-            // Share appears once the user has pinned their own value and the
-            // community is enabled (sign-in is handled on click). Hidden when
-            // always-share is on (Set pushes the value itself) OR once this
-            // variant's redline was already shared this session (nothing left
-            // to submit until they change it again; the nudge below switches
-            // to a thank-you). The panel re-runs after a share via
-            // RefreshActiveCommunityRedlineFromServer, so this hides promptly.
-            bool communityOn = _plugin.Settings?.CommunityEnabled == true;
-            bool autoSubmit  = _plugin.Settings?.AutoSubmitCarFacts == true;
-            if (CarFactsShareBtn != null)
-                CarFactsShareBtn.Visibility =
-                    (s.HasUserRedline && communityOn && !autoSubmit && !WasRedlineSharedThisSession())
-                        ? Visibility.Visible : Visibility.Collapsed;
-
-            // Surface that we have nothing from the community yet. When the user
-            // has their own value, gently invite a share (the button is right
-            // there). When they don't, keep it purely factual: no "set one then
-            // share" pressure that implies sharing is required. Opted-in only.
+            // Surface that we have nothing from the community yet. Purely
+            // factual: no thank-you after a submission, no "share yours"
+            // invite, no Share button (Set routes through the submit path by
+            // itself). Setting a redline is just saving a value; framing it
+            // as an act of sharing only adds pressure.
             if (CarFactsNoCommunityNudge != null)
             {
-                bool showNudge = communityOn && !s.CommunityRedline.HasValue;
+                bool showNudge = _plugin.Settings?.CommunityEnabled == true
+                                 && !s.CommunityRedline.HasValue;
                 if (showNudge)
-                {
-                    if (WasRedlineSharedThisSession())
-                        // They just submitted: it isn't consensus yet (support
-                        // floor), so the community line is legitimately empty.
-                        // Say so plainly rather than re-nagging them to share.
-                        CarFactsNoCommunityNudge.Text =
-                            "Thanks for sharing. Your redline will show as a community value once other drivers confirm it.";
-                    else
-                        CarFactsNoCommunityNudge.Text = s.HasUserRedline
-                            ? "No community redline for this car yet. Share your redline start to help other drivers."
-                            : "No community redline exists for this car yet.";
-                }
+                    CarFactsNoCommunityNudge.Text = "No community redline exists for this car yet.";
                 CarFactsNoCommunityNudge.Visibility = showNudge ? Visibility.Visible : Visibility.Collapsed;
             }
-            // (The old "Use community value" link was removed with adopt: in Auto
-            // the community value is applied directly, and confirming/correcting an
-            // unconfirmed value is handled by the inline Confirm prompt + Set.)
         }
 
         // Provenance phrased so it reads as "where this value came from", not as
@@ -9624,12 +9320,17 @@ namespace TrueforceForAll.Plugin
         {
             switch (src)
             {
-                case "user":                  return "(your value)";
+                // A value the user set themselves needs no label: they set
+                // it, the box shows it. Labels are for external sources.
+                case "user":                  return "";
                 case "community":             return "(from the community)";
                 case "community_unconfirmed": return "(from the community, unconfirmed)";
                 case "game":                  return "(from the game)";
                 case "estimated":             return "(estimated guess)";
-                case "derived":               return "(from your % setting)";
+                // Auto % of max (including the 0.85 default): no suffix.
+                // "(from your % setting)" explained plumbing nobody asked
+                // about; the number speaks for itself.
+                case "derived":               return "";
                 default:                      return "";
             }
         }
@@ -9696,127 +9397,18 @@ namespace TrueforceForAll.Plugin
                     + "plugin sees the rev range, then set it again.", DialogKind.Info);
                 return;
             }
-            // With always-share on, Set pushes to the community itself (the
-            // manual Share button is hidden in that mode) so the CarFacts box
-            // matches the Rev Limiter save. MaybePromptToSubmitRedlineData
-            // submits silently when AutoSubmitCarFacts is set, and self-gates on
-            // CommunityEnabled / signed-in / Forza-only inside. Without it Set
-            // just saves and the visible Share button is how the user pushes.
-            if (_plugin.Settings?.AutoSubmitCarFacts == true)
-                MaybePromptToSubmitRedlineData(_plugin.ActiveCarId, saved.Value);
+            // Set is the whole story: it routes through the self-gating submit
+            // path (sharing on = silent submit, consent unasked = the one-time
+            // ask, sharing off = local-only save). There is no separate Share
+            // button anymore; saving a value IS how it reaches the community.
+            MaybePromptToSubmitRedlineData(_plugin.ActiveCarId, saved.Value);
             RefreshFromPlugin();
         }
 
-        private void CarFactsShareRedline_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            // Per-gear overrides, snapped to 50 RPM so near-identical profiles
-            // cluster in consensus.
-            var src = _plugin.GetActiveVariantPerGearRedlines();
-            var perGear = new System.Collections.Generic.List<GearRedline>();
-            if (src != null)
-                foreach (var g in src)
-                    if (g != null && g.Gear >= 1 && g.Gear <= 16 && g.Rpm >= 500 && g.Rpm <= 25000)
-                        perGear.Add(new GearRedline { Gear = g.Gear, Rpm = (int)Math.Round(g.Rpm / 50.0) * 50 });
-
-            // The overall (gear-0) value to submit: a genuine user default, never
-            // the 0.85 guess or community's own. If the user only set per-gear
-            // values (no default), use the highest as the overall redline.
-            int? rl = _plugin.GetActiveVariantUserRedline();
-            if (!rl.HasValue && perGear.Count > 0)
-            {
-                int hi = 0;
-                foreach (var g in perGear) if (g.Rpm > hi) hi = g.Rpm;
-                rl = hi;
-            }
-            if (!rl.HasValue || rl.Value < 500 || rl.Value > 25000) return;
-            int rpm = (int)Math.Round(rl.Value / 50.0) * 50;
-
-            if (_plugin.Settings?.CommunityEnabled != true)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Share redline",
-                    "Turn on 'Enable community features (online)' first to share your redline with the community.",
-                    DialogKind.Info);
-                return;
-            }
-            if (!_plugin.AuthIsSignedIn)
-            {
-                TrueforceDialog.Show(Window.GetWindow(this), "Share redline",
-                    "Sign in on the Account tab to share your redline with the community.",
-                    DialogKind.Info);
-                return;
-            }
-            if (!ConfirmRedlineNotLimiter(rpm)) return;
-            string carDisplay = _plugin.ActiveCarDisplayName ?? carId;
-            string body = perGear.Count > 0
-                ? $"Share your redline start of {rpm} RPM plus {perGear.Count} per-gear override{(perGear.Count == 1 ? "" : "s")} for '{carDisplay}' (this engine variant) with the community?"
-                : $"Share your redline start of {rpm} RPM for '{carDisplay}' (this engine variant) with the community?";
-            // Offer to keep sharing automatically. Pre-checked, so submitting
-            // also turns on auto-submit for future car facts unless the user
-            // unchecks it (then they'll be prompted again next time).
-            bool keepSharing;
-            if (TrueforceDialog.ShowConfirmWithCheckbox(Window.GetWindow(this), "Share redline", body,
-                    "Keep sharing my car facts automatically", checkboxDefault: true,
-                    out keepSharing, okLabel: "Submit") != true)
-                return;
-            if (keepSharing) EnableAutoSubmitCarFacts();
-            _plugin.SubmitRedlineToCommunity(game, carId, rpm, perGear);
-            // Don't fake a local consensus: one submission isn't "the community".
-            // Re-fetch the real server consensus, which stays unconfirmed (not
-            // shown as community) until other drivers confirm the same value.
-            MarkRedlineSharedThisSession(game, carId);
-            MarkRedlineProfileHandled(rpm, ToGearDict(perGear));
-            RefreshActiveCommunityRedlineFromServer();
-            TrueforceDialog.Show(Window.GetWindow(this), "Shared",
-                "Thanks. Your redline was submitted to the community. It'll show as a community value once other drivers confirm it.",
-                DialogKind.Info);
-        }
-
-        // Active variant key (game/carId/sig) for the shared-this-session latch.
-        private string ActiveRedlineShareKey()
-        {
-            if (_plugin == null) return null;
-            string game = _plugin.ActiveGame, carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
-            return game + "/" + carId + "/" + (_plugin.ComputeActiveCarVariantSignatureForActive() ?? "");
-        }
-
-        private void MarkRedlineSharedThisSession(string game, string carId)
-        {
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-            _redlineSharedThisSession.Add(game + "/" + carId + "/"
-                + (_plugin?.ComputeActiveCarVariantSignatureForActive() ?? ""));
-        }
-
-        private bool WasRedlineSharedThisSession()
-        {
-            string k = ActiveRedlineShareKey();
-            return k != null && _redlineSharedThisSession.Contains(k);
-        }
-
-        private static System.Collections.Generic.Dictionary<int, int> ToGearDict(
-            System.Collections.Generic.IEnumerable<GearRedline> perGear)
-        {
-            var d = new System.Collections.Generic.Dictionary<int, int>();
-            if (perGear != null)
-                foreach (var g in perGear)
-                    if (g != null && g.Gear >= 1) d[g.Gear] = g.Rpm;
-            return d;
-        }
-
-        // Durably record that the user has acted on (submitted or confirmed) this
-        // redline profile, so the Confirm prompt is never re-offered for it -
-        // including across restarts (the session latch only covers this session).
-        // Reuses the dismissed-profile field; the effect is identical (this profile
-        // is handled, don't nudge about it).
-        private void MarkRedlineProfileHandled(int overallRpm,
-            System.Collections.Generic.IReadOnlyDictionary<int, int> gears)
-        {
-            if (_plugin == null) return;
-            _plugin.DeclineCommunityRedlineProfileForActiveVariant(RedlineProfileSig(overallRpm, gears));
-        }
+        // (The manual "Share with community" button and its shared-this-session
+        // latch were removed with the set-not-share framing pass: Set routes
+        // through the same self-gating submit path as any save, so a separate
+        // share affordance only reframed saving a value as a contribution act.)
 
         // Re-pull the real community redline consensus from the server and push it
         // into the plugin (replacing the old optimistic local-injection on share).
@@ -9845,8 +9437,8 @@ namespace TrueforceForAll.Plugin
             });
         }
 
-        // ---- Per-gear redline editor (shared by the Car Facts panel + the Rev
-        // Limiter section; both show the same gears, kept in sync) ----
+        // ---- Per-gear redline editor (Car Facts panel; the Rev Limiter
+        // section's duplicate copy was retired with the centralization) ----
 
         private void RebuildPerGearEditors()
         {
@@ -9854,7 +9446,6 @@ namespace TrueforceForAll.Plugin
             bool show = !string.IsNullOrEmpty(_plugin.ActiveCarId);
             var list = show ? _plugin.GetActiveVariantPerGearRedlines() : null;
             BuildPerGearRows(CarFactsPerGearRows, CarFactsPerGearExpander, list, show);
-            BuildPerGearRows(RevLimiterPerGearRows, RevLimiterPerGearExpander, list, show);
         }
 
         private void BuildPerGearRows(StackPanel container, Expander expander,
@@ -9911,8 +9502,8 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Set the rpm box for a given gear in BOTH per-gear panels (kept in sync)
-        // without rebuilding rows, so focus / Tab order survives an edit.
+        // Set the rpm box for a given gear without rebuilding rows, so
+        // focus / Tab order survives an edit.
         private void MirrorPerGearBox(int gear, string text)
         {
             bool prev = _suppressEvents;
@@ -9920,7 +9511,6 @@ namespace TrueforceForAll.Plugin
             try
             {
                 SetPerGearBoxText(CarFactsPerGearRows, gear, text);
-                SetPerGearBoxText(RevLimiterPerGearRows, gear, text);
             }
             finally { _suppressEvents = prev; }
         }
@@ -9950,7 +9540,6 @@ namespace TrueforceForAll.Plugin
         }
 
         private void CarFactsAddGear_Click(object sender, RoutedEventArgs e) => AddGearCommon();
-        private void RevLimiterAddGear_Click(object sender, RoutedEventArgs e) => AddGearCommon();
         private void AddGearCommon()
         {
             if (_plugin == null) return;
@@ -9992,65 +9581,25 @@ namespace TrueforceForAll.Plugin
 
         private void CarFactsManageVariants_Click(object sender, RoutedEventArgs e)
         {
-            EngineVariantManage_Click(sender, e);   // reuse the existing Manage Variants modal
+            if (_plugin == null) return;
+            string carId = _plugin.ActiveCarId;
+            string game  = _plugin.ActiveGame;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(game)) return;
+            var win = new CarFactsVariantsWindow(_plugin, game, carId, _plugin.ActiveCarDisplayName)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            win.ShowDialog();
+            // The window mutates via the plugin's helpers (which re-resolve
+            // internally); rebuild so a delete / rename lands immediately.
+            RebuildEngineLayoutDropdown();
             RefreshFromPlugin();
         }
 
         // Refresh the "redline is a guess" badge from RevLimiter.IsRedlineGuessed.
         // Called from MeterTimer_Tick so the badge appears/disappears as
         // the cascade re-resolves each frame. Visible only when the effect
-        // is enabled, in Auto mode, and the cascade fell to the default
-        // 0.85 × MaxRpm branch.
-        // Live-update the redline slider's range + shown value from the
-        // resolver, without a full RefreshFromPlugin. Lets MaxRpm changes
-        // (tune upgrades) and variant swaps reflect immediately. Cheap: the
-        // slider is only touched when the resolved value actually changes.
-        private void RefreshRedlineLive()
-        {
-            if (_plugin == null || RevLimiterRedlineSlider == null) return;
-            var rl = _plugin.ActiveRevLimiter;
-            if (rl == null) return;
-            // Never fight an in-progress drag / keyboard edit.
-            if (RevLimiterRedlineSlider.IsMouseCaptureWithin
-                || RevLimiterRedlineSlider.IsKeyboardFocusWithin) return;
-
-            double observedMax = _plugin.EnginePulse?.ObservedMaxRpm ?? 0;
-            double sliderMax = observedMax >= 1000 ? observedMax : 15000;
-            if (Math.Abs(RevLimiterRedlineSlider.Maximum - sliderMax) > 0.5)
-                RevLimiterRedlineSlider.Maximum = sliderMax;
-
-            bool manualMode = rl.EngageMode == RevLimiterEngageMode.Redline;
-            int? preview = _plugin.RedlinePreviewRpm;
-            int rpmValue;
-            if (preview.HasValue && preview.Value >= 500)
-                rpmValue = preview.Value;                      // hold the live draft, even if telemetry pauses
-            else if (manualMode && rl.RedlineRpm.HasValue && rl.RedlineRpm.Value >= 500)
-                rpmValue = rl.RedlineRpm.Value;
-            else
-            {
-                // Prefer the exact pinned value so a just-saved redline shows
-                // precisely even while paused (EffectiveRedlineRpm lags a frame).
-                int? pin = _plugin.GetActiveVariantUserRedline();
-                if (pin.HasValue && pin.Value >= 500) rpmValue = pin.Value;
-                else
-                {
-                    int? eff = _plugin.RevLimiter?.EffectiveRedlineRpm;
-                    if (!eff.HasValue || eff.Value < 500) return;  // nothing resolved yet
-                    rpmValue = eff.Value;
-                }
-            }
-
-            if ((int)Math.Round(RevLimiterRedlineSlider.Value) == rpmValue) return;
-            bool prev = _suppressEvents;
-            _suppressEvents = true;
-            try
-            {
-                RevLimiterRedlineSlider.Value = rpmValue;
-                RevLimiterRedlineText.Text    = rpmValue.ToString();
-            }
-            finally { _suppressEvents = prev; }
-        }
-
+        // is enabled and the cascade fell to the default 0.85 × MaxRpm branch.
         private void RefreshRedlineGuessBadge()
         {
             if (RedlineGuessBadge == null) return;
@@ -10058,7 +9607,6 @@ namespace TrueforceForAll.Plugin
             var effect   = _plugin?.RevLimiter;
             bool show = settings != null && effect != null
                 && settings.Enabled
-                && settings.EngageMode != RevLimiterEngageMode.Redline
                 && effect.IsRedlineGuessed;
             var want = show ? Visibility.Visible : Visibility.Collapsed;
             if (RedlineGuessBadge.Visibility != want)
@@ -10067,27 +9615,18 @@ namespace TrueforceForAll.Plugin
 
         private void RedlineGuessSetValue_Click(object sender, RoutedEventArgs e)
         {
-            // Just put focus on the slider so the user can type / drag.
-            // Acts as a "scroll-to-here + give me the cursor" affordance
-            // for users who weren't sure where to find it.
+            // Jump to the Car facts redline box (the single redline editor):
+            // expand the panel and hand it the cursor, for users who weren't
+            // sure where to find it.
             try
             {
-                RevLimiterRedlineSlider?.Focus();
-                RevLimiterRedlineSlider?.BringIntoView();
+                if (CarFactsExpander != null) CarFactsExpander.IsExpanded = true;
+                CarFactsRedlineBox?.BringIntoView();
+                CarFactsRedlineBox?.Focus();
             }
             catch { }
         }
 
-        private void RedlineGuessShare_Click(object sender, RoutedEventArgs e)
-        {
-            // Same share path the per-car save uses. Gated on
-            // CommunityEnabled + AuthIsSignedIn inside MaybePromptToSubmitRedlineData,
-            // which also handles the "no live carId" case.
-            if (_plugin == null) return;
-            string carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(carId)) return;
-            MaybePromptToSubmitRedlineData(carId);
-        }
         private void RevLimiterWaveform_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -10102,19 +9641,6 @@ namespace TrueforceForAll.Plugin
             RevLimiterOffsetText.Text = FormatRedlineOffset(v);
             _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
             _plugin.ActiveRevLimiter.RedlineOffsetRpm = v;
-            Apply(EffectKind.RevLimiter);
-        }
-        private void RevLimiterEngageMode_Changed(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.RevLimiter);
-            // Manual = 1 -> legacy "Redline" enum value (kept for
-            // backwards-compatible serialization; the effect handles
-            // it as Manual). Auto = 0 (default).
-            _plugin.ActiveRevLimiter.EngageMode =
-                RevLimiterEngageModeCombo.SelectedIndex == 1
-                    ? RevLimiterEngageMode.Redline
-                    : RevLimiterEngageMode.Auto;
             Apply(EffectKind.RevLimiter);
         }
 
@@ -10623,7 +10149,7 @@ namespace TrueforceForAll.Plugin
             "UDP            Toggle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> off.\n" +
             "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
-            "REV            Rev limiter buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
+            "REV            Redline buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
             "WELCOME        Reset the networked-welcome modal AND the Mode B intro seen state and re-trigger them now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro all cleared).\n" +
             "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +
@@ -11837,6 +11363,10 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Throttle for the engine readout block in the meter tick (see the
+        // EngineLayoutAutoText block): readout + combo re-sync run at 4 Hz.
+        private DateTime _engineReadoutNextTick = DateTime.MinValue;
+
         // ---------- Per-effect Save popover ----------
 
         private void EffectSave_Click(object sender, RoutedEventArgs e)
@@ -11848,17 +11378,9 @@ namespace TrueforceForAll.Plugin
             // so the car override is the one valid save target. Save this section
             // straight to the car instead of offering the game-scope popover.
             if (_plugin.IsOfflineEditingCar) { ApplyEffectSaveForCar(which); return; }
-            // Engine-section save where the ONLY change is the layout (car
-            // fact). Skip the car-vs-game-default popover: game-default is
-            // meaningless for "what's actually in this car". The user can
-            // still use the popover when they touch preference fields too.
-            if (which == EffectKind.Engine
-                && !string.IsNullOrEmpty(_plugin.ActiveCarId)
-                && _plugin.IsEngineSectionOnlyLayoutDirty())
-            {
-                ApplyEffectSaveForCar(which);
-                return;
-            }
+            // (The engine-layout-only fast path was removed with the 2026-07
+            // centralization: the engine type lives in Car facts and can no
+            // longer dirty the Engine section.)
             ShowEffectSavePopover(which);
         }
 
@@ -12253,13 +11775,12 @@ namespace TrueforceForAll.Plugin
             // rows reflect the new / updated car preset without the user
             // having to hit Refresh library by hand.
             _presetManager?.OnLocalLibraryChanged();
-            // Prompt only on the sections whose values carry a per-car
-            // fact (Engine -> layout, RevLimiter -> implied redline from
-            // Threshold). Saves on other sections (Bumps, Traction, etc.)
-            // shouldn't trigger a form-submission ask; their data is
-            // personal preference.
-            if (which == EffectKind.Engine) MaybePromptToSubmitEngineData(carId);
-            else if (which == EffectKind.RevLimiter) MaybePromptToSubmitRedlineData(carId);
+            // Prompt only where the saved values still carry a per-car fact
+            // (RevLimiter -> redline). The Engine hook was removed with the
+            // 2026-07 centralization: the engine pick lives in Car facts and
+            // submits from CommitEnginePin, so an Engine-section save is feel
+            // only and must not re-submit the pin.
+            if (which == EffectKind.RevLimiter) MaybePromptToSubmitRedlineData(carId);
         }
 
         /// <summary>Save current full state as a new named preset (same flow
@@ -12400,6 +11921,7 @@ namespace TrueforceForAll.Plugin
                 && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
             ClearDirty();
             RefreshFromPlugin();
+            _presetManager?.OnLocalLibraryChanged();
             FlashSaveStatus(HeaderGameSaveStatus, isDefault ? "Saved as game default ✓" : "Saved ✓");
         }
 
@@ -12487,7 +12009,8 @@ namespace TrueforceForAll.Plugin
             }
             if (ok)
             {
-                MaybePromptToSubmitEngineData(carId);
+                // (Engine submit removed 2026-07: the pick submits from
+                // CommitEnginePin, not from car-preset saves.)
                 MaybePromptToSubmitRedlineData(carId);
             }
             return ok;
@@ -12536,6 +12059,9 @@ namespace TrueforceForAll.Plugin
                 _plugin.SetDefaultPresetForActiveGame(newName);
             ClearDirty();
             RefreshFromPlugin();
+            // Tell the Preset Manager the local library changed so the fork
+            // shows up in its list without a manual refresh.
+            _presetManager?.OnLocalLibraryChanged();
             FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{newName}' ✓");
         }
 
@@ -12564,6 +12090,7 @@ namespace TrueforceForAll.Plugin
             }
             ClearDirty();
             RefreshFromPlugin();
+            _presetManager?.OnLocalLibraryChanged();
         }
 
         // Car-side "Save as new…": save the active car's current tuning under a
@@ -12603,7 +12130,8 @@ namespace TrueforceForAll.Plugin
             }
             ClearDirty();
             RefreshFromPlugin();
-            MaybePromptToSubmitEngineData(carId);
+            // (Engine submit removed 2026-07: the pick submits from
+            // CommitEnginePin, not from car-preset saves.)
             MaybePromptToSubmitRedlineData(carId);
         }
 
@@ -12618,41 +12146,6 @@ namespace TrueforceForAll.Plugin
             string name = SelectedPresetName;
             if (_plugin == null || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(_plugin.ActiveGame)) return;
             _plugin.SetDefaultPresetForActiveGame(name);
-            RefreshFromPlugin();
-        }
-
-        // Header "Set name" affordance. Opens the styled name input, then runs
-        // the shared official-name flow (local write + a confirm/correct
-        // community share for the user's language, no auto-submit). Identical
-        // path to the Preset Manager button so the two can't drift.
-        private void HeaderCarRename_Click(object sender, RoutedEventArgs e)
-        {
-            if (_plugin == null) return;
-            string game  = _plugin.ActiveGame;
-            string carId = _plugin.ActiveCarId;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
-
-            // Pre-fill with whatever's currently displayed (community name,
-            // a prior rename, or empty). The display name resolves through the
-            // same cascade the header reads, so it matches what the user sees
-            // right above the button.
-            string currentName = _plugin.ActiveCarDisplayName ?? "";
-            // If the current display name is just the carId (the fallback for
-            // unnamed cars), start the field empty. Editing "Car_242" into a
-            // real name is unnecessary friction.
-            if (string.Equals(currentName, carId, StringComparison.Ordinal))
-                currentName = "";
-
-            var dialog = new CarNameInputWindow(carId, currentName)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            if (dialog.ShowDialog() != true) return;
-            string newName = dialog.EnteredName;
-            if (string.IsNullOrEmpty(newName)) return;
-
-            CarNameShareFlow.SetNameAndMaybeShare(_plugin, game, carId, newName,
-                Window.GetWindow(this));
             RefreshFromPlugin();
         }
 

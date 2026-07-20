@@ -48,7 +48,8 @@ namespace TrueforceForAll.Plugin
             "PluginEnabled", "MairaFfbPassthrough", "RpmLedsEnabled", "ShowFeedbackBox",
             "ShowAchievementCelebrations",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
-            "AutoSubmitCarFacts", "MotdLevel", "ShowEffectsTabShareButtons",
+            "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
+            "MotdLevel", "ShowEffectsTabShareButtons",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
@@ -125,8 +126,8 @@ namespace TrueforceForAll.Plugin
             "CarFactsMigratedV1", "FeedbackBoxDefaultedOn", "ManualOverrideClearedV0_1_22",
             "PresetsMigratedV2", "CarsMigratedV2", "LegacyBuiltinsCleanedV1",
             "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
-            "RevLimiterThresholdDefaultMigrated",
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
+            "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1", "EngineOnlyOverridesPrunedV1",
             // Backend config (release bakes constants; a dev override must not travel).
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).

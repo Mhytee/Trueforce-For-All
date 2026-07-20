@@ -75,12 +75,8 @@ preserves via FFB pass-through. It mixes:
   - **ABS click**: configurable haptic when ABS engages.
   - **Pit limiter**: configurable pulsing buzz while the limiter is
     engaged.
-  - **Rev limiter**: a hard buzz at the shift point and on the limiter,
-    independent of the engine pulse. Fires at the car's real redline:
-    the game's reported one where it exists, or the community-confirmed
-    one for that exact car and engine (see
-    [Community features](#community-features)), otherwise an engagement
-    RPM you set directly. On by default.
+  - **Redline buzz**: a hard buzz when you enter the redline. On by
+    default.
   - **DRS**: short chirp on the rising edge when the wing opens, plus an
     optional sustained flutter while DRS stays active. Silent on games
     that don't expose the flag.
