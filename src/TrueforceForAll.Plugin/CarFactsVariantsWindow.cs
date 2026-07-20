@@ -161,11 +161,14 @@ namespace TrueforceForAll.Plugin
                 VerticalAlignment   = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed,
             };
-            DockPanel.SetDock(_emptyHint, Dock.Bottom);
-            root.Children.Add(_emptyHint);
-
             _grid = BuildGrid();
-            root.Children.Add(_grid);
+            // Host both in the one fill slot so the empty-state hint centers
+            // in the grid's area instead of docking as a strip above the
+            // footer (Reload's visibility toggles decide which one shows).
+            var contentHost = new Grid();
+            contentHost.Children.Add(_emptyHint);
+            contentHost.Children.Add(_grid);
+            root.Children.Add(contentHost);
 
             Reload();
 

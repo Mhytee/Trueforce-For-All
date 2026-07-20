@@ -5475,12 +5475,14 @@ namespace TrueforceForAll.Plugin
             _engineRedlineCache   = cached?.Redline;
             RenderEngineCommunityRow();
 
-            // NETWORK refresh only when the networking master is on, the user is
-            // signed in (consensus reads are authenticated-only, so a signed-out
-            // fetch is doomed - skip it and just ride the cache), AND the cache is
-            // stale (past the TTL) or a manual refresh forced it. Otherwise we ride
-            // the cache - that's the server-load saving + the offline path.
-            bool networkOn = _plugin.Settings?.CommunityEnabled == true && _plugin.AuthIsSignedIn;
+            // NETWORK refresh only when the networking master is on AND the
+            // cache is stale (past the TTL) or a manual refresh forced it.
+            // Sign-in is NOT required: consensus reads are anon-readable
+            // (migration 0100) and the fetch primitives fall back to the anon
+            // key, so account-free users receive community car facts too. The
+            // old sign-in gate here silently starved signed-out users of
+            // engine/name/redline facts while 0.2.4 promises them account-free.
+            bool networkOn = _plugin.Settings?.CommunityEnabled == true;
             bool stale = !_plugin.IsCommunityCacheFresh(game, carId, capturedSignature);
             if (!networkOn || (!force && !stale)) return;
 
@@ -6863,16 +6865,22 @@ namespace TrueforceForAll.Plugin
 
             // Measure chips and anchor them along a vertically squashed Archimedean spiral
             // in rank order, so the biggest names sit in the middle of a wide cloud.
+            // The spiral is CLAMPED horizontally to the canvas: once a ring hits the
+            // walls, growth continues downward (the Support tab scrolls) instead of
+            // past them, where the anchor spring and the wall bounce would fight
+            // forever and keep the sim awake.
             var bodies = new System.Collections.Generic.List<CloudBody>();
             var placed = new System.Collections.Generic.List<System.Windows.Rect>();
             var inf = new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity);
+            double halfW = Math.Max(80, (width - 16) / 2);
             for (int i = 0; i < rows.Count; i++)
             {
                 var el = (System.Windows.FrameworkElement)BuildSupporterChip(rows[i], i);
                 el.Measure(inf);
                 double w = el.DesiredSize.Width, h = el.DesiredSize.Height;
+                bool Fits(System.Windows.Rect r) => w >= halfW * 2 || (r.X >= -halfW && r.Right <= halfW);
                 var rect = new System.Windows.Rect(-w / 2, -h / 2, w, h);
-                for (double t = 0.35; t < 400 && CloudOverlaps(rect, placed); t += 0.35)
+                for (double t = 0.35; t < 2000 && (CloudOverlaps(rect, placed) || !Fits(rect)); t += 0.35)
                 {
                     double r = 4 + 5.5 * t;
                     rect.X = r * Math.Cos(t) - w / 2;
@@ -7056,7 +7064,10 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                border.ToolTip = "One-time supporter";
+                // A Patreon row can arrive with no entitled tier (legacy or
+                // custom pledges): still a patron, so never label them
+                // one-time.
+                border.ToolTip = patreon ? "Patreon supporter" : "One-time supporter";
             }
             var text = new System.Windows.Controls.TextBlock
             {

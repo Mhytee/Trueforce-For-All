@@ -54,6 +54,10 @@ namespace TrueforceForAll.Plugin
             try
             {
                 NameTextBox.Text = _target.Name ?? "";
+                // Legacy electric def: warn that saving converts it (the
+                // editor always authors firing-pattern engines now).
+                ElectricConvertNote.Visibility = _target.IsElectric
+                    ? Visibility.Visible : Visibility.Collapsed;
 
                 // Seed combustion fields. Pattern defaults to even-fire 4-cyl
                 // for new entries so the user has something concrete to edit

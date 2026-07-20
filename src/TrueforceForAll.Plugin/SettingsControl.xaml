@@ -1665,7 +1665,7 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Electric cars:" Style="{StaticResource LabelText}"
-                                       ToolTip="What Engine pulse does for cars detected as pure electric. Most users prefer the muted hum since real EVs aren't silent (many pump synthetic engine sound). Pick Silent if you want true silence on EVs."/>
+                                       ToolTip="What Engine pulse does for electric cars (detected as electric, or set to Electric in Car facts). Most users prefer the muted hum since real EVs aren't silent (many pump synthetic engine sound). Pick Silent if you want true silence on EVs."/>
                             <ComboBox  Grid.Column="1" x:Name="EngineElectricModeCombo" SelectionChanged="EngineElectricMode_Changed">
                                 <ComboBoxItem Content="Muted hum (50%)"/>
                                 <ComboBoxItem Content="Silent (off)"/>
