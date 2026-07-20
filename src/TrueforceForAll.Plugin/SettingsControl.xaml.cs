@@ -1363,7 +1363,7 @@ namespace TrueforceForAll.Plugin
                     // The user's engine choice is the Car facts variant pin
                     // (the preset Layout field is legacy since the 2026-07
                     // centralization).
-                    var (pinnedLayout, _) = _plugin.GetActiveVariantUserEngine();
+                    var (pinnedLayout, pinnedCustomId) = _plugin.GetActiveVariantUserEngine();
                     bool userIsAuto = pinnedLayout == null;
                     // Rev ceiling readout: rides the END of this same line
                     // (the separate Car facts meta line was removed).
@@ -1374,30 +1374,7 @@ namespace TrueforceForAll.Plugin
                     if (ep != null && userIsAuto && ep.AutoLayout is Effects.EngineLayout autoL)
                     {
                         string detectSrc = ep.AutoLayoutSource;
-                        string srcSuffix;
-                        if (string.Equals(detectSrc, "telemetry", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (from telemetry)";
-                        else if (string.Equals(detectSrc, "baked", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (from built-in car list)";
-                        else if (string.Equals(detectSrc, "cache", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (cached from earlier session)";
-                        else if (string.Equals(detectSrc, "community", StringComparison.OrdinalIgnoreCase))
-                            srcSuffix = " (community-confirmed)";
-                        else if (string.Equals(detectSrc, "user-set", StringComparison.OrdinalIgnoreCase))
-                            // User-source variants are no longer in the
-                            // resolver cascade (Share writes to community
-                            // only). This branch is only reachable from
-                            // stale settings written by older versions;
-                            // hide the suffix entirely so the line reads
-                            // as plain Auto-detected output. Existing
-                            // User-source variants in CarFacts are filtered
-                            // by PickStoredVariant; this label path will
-                            // disappear once those settings are migrated.
-                            srcSuffix = "";
-                        else if (!string.IsNullOrEmpty(detectSrc))
-                            srcSuffix = $" (heuristic: {detectSrc})";
-                        else
-                            srcSuffix = "";
+                        string srcSuffix = FriendlyDetectSourceSuffix(detectSrc);
                         string autoLine = $"Auto-detected: {Effects.FiringPatternDb.LayoutDisplayName(autoL)}{srcSuffix}";
                         // When community is the source AND the resolver could
                         // also reach a concrete non-community value, surface
@@ -1441,12 +1418,10 @@ namespace TrueforceForAll.Plugin
                              && autoOverridden != pinnedL)
                     {
                         // User pin that disagrees with the resolver.
-                        string srcSuffix = string.IsNullOrEmpty(ep.AutoLayoutSource)
-                            ? ""
-                            : $" ({ep.AutoLayoutSource})";
                         EngineLayoutAutoText.Text =
-                            $"Your pick: {Effects.FiringPatternDb.LayoutDisplayName(pinnedL)}. "
-                            + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}{srcSuffix}. "
+                            $"Your pick: {DescribePinnedEngine(pinnedL, pinnedCustomId)}. "
+                            + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}"
+                            + $"{FriendlyDetectSourceSuffix(ep.AutoLayoutSource)}. "
                             + "Pick Auto to use detection.";
                     }
                     else if (pinnedLayout is Effects.EngineLayout pinnedPick)
@@ -1454,7 +1429,7 @@ namespace TrueforceForAll.Plugin
                         // Pin agrees with auto-detect (or no auto value yet):
                         // still mark the type as the user's own pick.
                         EngineLayoutAutoText.Text =
-                            $"Your pick: {Effects.FiringPatternDb.LayoutDisplayName(pinnedPick)}";
+                            $"Your pick: {DescribePinnedEngine(pinnedPick, pinnedCustomId)}";
                     }
                     else
                     {
@@ -1464,6 +1439,29 @@ namespace TrueforceForAll.Plugin
                         EngineLayoutAutoText.Text = string.IsNullOrEmpty(EngineLayoutAutoText.Text)
                             ? maxPart
                             : EngineLayoutAutoText.Text + "  ·  " + maxPart;
+
+                    // Keep the combo honest (#2): its selection only synced on
+                    // rebuild events, which on a car change run BEFORE telemetry
+                    // has produced the variant signature - so a pin resolving
+                    // seconds later left the combo saying Auto while this line
+                    // said "Your pick". The pin is already in hand here; re-sync
+                    // the index whenever reality changed, but never while the
+                    // user is interacting or a browse-commit is pending.
+                    if (CarFactsEngineCombo != null && CarFactsEngineCombo.ItemsSource != null
+                        && !CarFactsEngineCombo.IsDropDownOpen
+                        && !CarFactsEngineCombo.IsKeyboardFocusWithin
+                        && !_enginePinCommitPending)
+                    {
+                        int want = FindEngineDropdownIndex(
+                            pinnedLayout ?? Effects.EngineLayout.Auto, pinnedCustomId ?? "");
+                        if (CarFactsEngineCombo.SelectedIndex != want)
+                        {
+                            bool oldSup = _suppressEvents;
+                            _suppressEvents = true;
+                            try { CarFactsEngineCombo.SelectedIndex = want; }
+                            finally { _suppressEvents = oldSup; }
+                        }
+                    }
 
                     // Engine-data submission fires directly from the Car
                     // facts engine pick (CommitEnginePin ->
@@ -5692,6 +5690,26 @@ namespace TrueforceForAll.Plugin
             // (footer link) since 2026-07-19, so the dropdown lists only
             // real engine values and carries no action links here.
 
+            // A dangling custom pin (engine deleted elsewhere / restored onto
+            // a machine without it) gets its own entry so the combo shows the
+            // stored truth instead of silently displaying Auto while the pin
+            // still exists (mirrors the variants-modal fix).
+            if (pinLayout == Effects.EngineLayout.Custom && !string.IsNullOrEmpty(targetCustomId))
+            {
+                bool inLibrary = false;
+                foreach (var it in _engineItems)
+                    if (it.Kind == EngineDropdownKind.Custom
+                        && string.Equals(it.Custom?.Id, targetCustomId, StringComparison.Ordinal))
+                    { inLibrary = true; break; }
+                if (!inLibrary)
+                    _engineItems.Add(new EngineDropdownItem
+                    {
+                        Kind    = EngineDropdownKind.Custom,
+                        Custom  = new CustomEngineDef { Id = targetCustomId, Name = "(missing custom engine)" },
+                        Display = "(missing custom engine)",
+                    });
+            }
+
             int idx = FindEngineDropdownIndex(targetLayout, targetCustomId);
             bool old = _suppressEvents;
             _suppressEvents = true;
@@ -5762,6 +5780,35 @@ namespace TrueforceForAll.Plugin
             if (!_enginePinCommitPending || _suppressEvents || _plugin == null) return;
             _enginePinCommitPending = false;
             ApplyEngineDropdownSelection(CarFactsEngineCombo?.SelectedItem as EngineDropdownItem);
+        }
+
+        // Friendly wording for EnginePulse.AutoLayoutSource tokens, shared by
+        // the auto-detected and your-pick readout branches so raw tokens like
+        // "(baked)" never reach the user. "user-set" hides the suffix: those
+        // variants are stale pre-community-share data, no longer in the
+        // resolver cascade, and the line should read as plain auto output.
+        private static string FriendlyDetectSourceSuffix(string src)
+        {
+            if (string.Equals(src, "telemetry", StringComparison.OrdinalIgnoreCase)) return " (from telemetry)";
+            if (string.Equals(src, "baked",     StringComparison.OrdinalIgnoreCase)) return " (from built-in car list)";
+            if (string.Equals(src, "cache",     StringComparison.OrdinalIgnoreCase)) return " (cached from earlier session)";
+            if (string.Equals(src, "community", StringComparison.OrdinalIgnoreCase)) return " (community-confirmed)";
+            if (string.Equals(src, "user-set",  StringComparison.OrdinalIgnoreCase)) return "";
+            return string.IsNullOrEmpty(src) ? "" : $" (heuristic: {src})";
+        }
+
+        // "Your pick" wording: a pinned custom engine reads by its NAME, not
+        // the generic "Custom (advanced)" enum label.
+        private string DescribePinnedEngine(Effects.EngineLayout layout, string customId)
+        {
+            if (layout != Effects.EngineLayout.Custom)
+                return Effects.FiringPatternDb.LayoutDisplayName(layout);
+            var customs = _plugin?.Settings?.CustomEngines;
+            if (customs != null && !string.IsNullOrEmpty(customId))
+                foreach (var c in customs)
+                    if (c != null && string.Equals(c.Id, customId, StringComparison.Ordinal))
+                        return string.IsNullOrWhiteSpace(c.Name) ? "a custom engine" : c.Name + " (custom)";
+            return "a missing custom engine";
         }
 
         private void ApplyEngineDropdownSelection(EngineDropdownItem item)

@@ -10589,10 +10589,10 @@ namespace TrueforceForAll.Plugin
                     ? (int?)_activeCarCommunityRedlineConsensus.Rpm : null;
                 var commGears = communityKeyMatches ? _activeCarCommunityRedlineConsensus.Gears : null;
                 RevLimiter.CommunityGearRedlines = (commGears != null && commGears.Count > 0) ? commGears : null;
-                // EV awareness: the limiter stays silent on EVs unless the user
-                // explicitly opted in (any user gear redline, a Manual value, or
-                // a live slider draft).
-                RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
+                // (RevLimiter.IsElectric is set at the END of this method:
+                // the pin block and layout resolution below are what decide
+                // the effect's electric state, so gating here read stale
+                // pre-pin data and lagged a resolve behind a pin change.)
             }
 
             // User engine pin (Car facts): the engine analogue of the redline
@@ -10667,6 +10667,11 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info(
                         $"[TF4ALL] Car '{carId}' resolved to community custom "
                         + $"'{def.Name}' (electric={def.IsElectric})");
+                // EV awareness for the limiter: computed from the electric
+                // state THIS branch just wrote (early return skips the shared
+                // assignment at the end of the method).
+                if (RevLimiter != null)
+                    RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
                 return;
             }
 
@@ -10764,6 +10769,13 @@ namespace TrueforceForAll.Plugin
             // re-enters this method on the next frame.
             _lastAppliedVariantSignature =
                 ComputeActiveCarVariantSignature(_activeGame, _activeCarId);
+
+            // EV awareness: the limiter stays silent on EVs unless the user
+            // explicitly opted in. Set LAST so it reflects the pin block and
+            // the layout resolution above (setting it earlier gated on the
+            // previous resolve's electric state).
+            if (RevLimiter != null)
+                RevLimiter.IsElectric = EnginePulse != null && EnginePulse.IsElectricEffective;
         }
 
         /// <summary>Auto-create or upgrade the stored EngineVariant for the
