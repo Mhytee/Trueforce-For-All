@@ -1652,9 +1652,10 @@
                              the Car facts panel on the active card (2026-07
                              centralization): the engine is car truth, not preset
                              feel. This section keeps feel knobs only. The line
-                             below is the visible pointer for returning users. -->
+                             below is evergreen guidance (not a migration note)
+                             so it reads right for new users too. -->
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                                   Text="Looking for the engine type? It moved to Car facts on the active car card, with the rest of the car's data."/>
+                                   Text="For the most accurate engine pulse, make sure the engine type is correct in Car facts on the active car card."/>
                         <!-- High-RPM perceptibility helpers. On by default;
                              keep the engine feel present where the wheel
                              motor naturally rolls off the firing pulse. -->
