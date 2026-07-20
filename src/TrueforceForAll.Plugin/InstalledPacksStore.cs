@@ -160,8 +160,12 @@ namespace TrueforceForAll.Plugin
         public int  CarPresetCount  { get; set; }
         public bool GlobalDefault   { get; set; }
         public bool ActiveConfig    { get; set; }
+        // Car facts variants pinned to the engine (UserEngineLayout == Custom):
+        // the LIVE reference class since the 2026-07 engine centralization.
+        public int  VariantPinCount { get; set; }
         public int  TotalPresetRefs => GamePresetCount + CarPresetCount + (GlobalDefault ? 1 : 0);
-        public bool AnyReference    => TotalPresetRefs > 0 || ActiveConfig;
+        public int  TotalRefs       => TotalPresetRefs + VariantPinCount;
+        public bool AnyReference    => TotalRefs > 0 || ActiveConfig;
     }
 
     /// <summary>Top-level shape of installed-packs.json.</summary>

@@ -16988,9 +16988,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Count where a custom engine is referenced: the global
         /// default, every game preset (incl. inline car overrides), every car
-        /// preset, and the active config. Optional exclusions skip a pack's own
-        /// presets so pack-removal math counts only references that would
-        /// survive the removal. Public for the Customs-tab delete warning.</summary>
+        /// preset, the active config, and (since the 2026-07 centralization the
+        /// LIVE reference class) every Car facts variant pinned to it. Optional
+        /// exclusions skip a pack's own presets so pack-removal math counts only
+        /// references that would survive the removal. Public for the Customs-tab
+        /// delete warning.</summary>
         public EngineUsage GetEngineUsage(string engineId) => AnalyzeEngineUsage(engineId, null, null);
 
         private EngineUsage AnalyzeEngineUsage(string engineId,
@@ -17030,6 +17032,23 @@ namespace TrueforceForAll.Plugin
 
             var activeEp = GetActiveCarOverride()?.EnginePulse ?? Settings.EnginePulse;
             if (EnginePulseRefsEngine(activeEp, engineId)) u.ActiveConfig = true;
+
+            // Car facts variant pins: the live way an engine is referenced since
+            // the 2026-07 centralization (the preset fields above are legacy).
+            // No exclusions apply - pins are car truth, not pack entries, so
+            // they always survive a pack removal.
+            lock (_carFactsLock)
+            {
+                if (Settings.CarFacts != null)
+                    foreach (var fb in Settings.CarFacts.Values)
+                    {
+                        if (fb?.EngineVariants == null) continue;
+                        foreach (var v in fb.EngineVariants)
+                            if (v != null && v.UserEngineLayout == Effects.EngineLayout.Custom
+                                && string.Equals(v.UserCustomEngineId, engineId, StringComparison.Ordinal))
+                                u.VariantPinCount++;
+                    }
+            }
 
             return u;
         }
@@ -17076,7 +17095,7 @@ namespace TrueforceForAll.Plugin
         {
             if (CountOtherPacksWithEngine(engineId, pack) > 0) return true;
             var (xg, xc) = PackEntryExclusions(pack);
-            return AnalyzeEngineUsage(engineId, xg, xc).TotalPresetRefs > 0;
+            return AnalyzeEngineUsage(engineId, xg, xc).TotalRefs > 0;
         }
 
         // An engine pack entry counts as "edited" only when its install-time
@@ -17120,7 +17139,7 @@ namespace TrueforceForAll.Plugin
                     if (EngineEntryEdited(e)) impact.EditedEntryCount++;
                     int otherPacks  = CountOtherPacksWithEngine(e.EngineId, pack);
                     var (xg, xc)    = PackEntryExclusions(pack);
-                    int outsideRefs = AnalyzeEngineUsage(e.EngineId, xg, xc).TotalPresetRefs;
+                    int outsideRefs = AnalyzeEngineUsage(e.EngineId, xg, xc).TotalRefs;
                     if (otherPacks > 0 || outsideRefs > 0)
                         impact.SharedEngines.Add(new SharedEngineRef
                         {
@@ -17255,6 +17274,11 @@ namespace TrueforceForAll.Plugin
             PersistSettings();
             if (!string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
             ApplyActiveCarOverride();
+            // The pin heal above edits Settings.CarFacts, and since the 2026-07
+            // centralization ApplyEngineSettings applies FEEL only: without a
+            // re-resolve the live effect keeps playing the deleted engine's
+            // pattern until the next car change.
+            ReresolveActiveCarFacts();
             return removed;
         }
 
@@ -17359,7 +17383,14 @@ namespace TrueforceForAll.Plugin
             }
 
             if (carTouched && !string.IsNullOrEmpty(_activeCarId)) ReloadActiveCarOverrideFromStore();
-            if (deletedEngineIds.Count > 0) ApplyActiveCarOverride();
+            if (deletedEngineIds.Count > 0)
+            {
+                ApplyActiveCarOverride();
+                // Same as DeleteCustomEngines: the pin heal edits CarFacts and
+                // ApplyEngineSettings is feel-only now, so re-resolve or the
+                // deleted engine keeps playing until the next car change.
+                ReresolveActiveCarFacts();
+            }
 
             return summary;
         }

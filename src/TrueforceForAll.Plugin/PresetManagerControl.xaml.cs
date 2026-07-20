@@ -863,7 +863,7 @@ namespace TrueforceForAll.Plugin
                 int packs   = 0, presets = 0;
                 foreach (var se in impact.SharedEngines) { packs += se.OtherPackCount; presets += se.OutsidePresetRefs; }
                 var who = new List<string>();
-                if (presets > 0) who.Add($"{presets} preset(s) outside this pack");
+                if (presets > 0) who.Add($"{presets} preset(s) or pinned car(s) outside this pack");
                 if (packs   > 0) who.Add($"{packs} other installed pack(s)");
                 string n = impact.SharedEngines.Count == 1 ? "1 custom engine" : $"{impact.SharedEngines.Count} custom engines";
 
@@ -3655,17 +3655,25 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             foreach (var r in targets) if (r?.Def?.Id != null) ids.Add(r.Def.Id);
             if (ids.Count == 0) return;
 
-            int usageTotal = 0;
-            foreach (var id in ids) usageTotal += _plugin.GetEngineUsage(id).TotalPresetRefs;
+            int presetTotal = 0, pinTotal = 0;
+            foreach (var id in ids)
+            {
+                var u = _plugin.GetEngineUsage(id);
+                presetTotal += u.TotalPresetRefs;
+                pinTotal    += u.VariantPinCount;
+            }
 
             bool one = targets.Count == 1;
             string title = one ? "Delete custom engine" : "Delete custom engines";
             string head  = one
                 ? $"Delete custom engine '{targets[0].Def.Name}'?"
                 : $"Delete {targets.Count} custom engine(s)?";
-            string usageClause = usageTotal > 0
-                ? $"\n\n{usageTotal} preset(s) use {(one ? "it" : "them")}. "
-                  + $"Those presets will switch to Auto engine mode until you pick another."
+            var usedBy = new List<string>();
+            if (presetTotal > 0) usedBy.Add($"{presetTotal} preset(s)");
+            if (pinTotal    > 0) usedBy.Add($"{pinTotal} car variant(s)");
+            string usageClause = usedBy.Count > 0
+                ? $"\n\n{string.Join(" and ", usedBy)} use {(one ? "it" : "them")}. "
+                  + $"Those switch to Auto engine detection until you pick another."
                 : "";
 
             if (TrueforceDialog.Show(Window.GetWindow(this),
