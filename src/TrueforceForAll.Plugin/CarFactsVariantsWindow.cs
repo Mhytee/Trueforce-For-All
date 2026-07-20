@@ -319,6 +319,29 @@ namespace TrueforceForAll.Plugin
                     });
                 }
             }
+            // A dangling custom pin (engine deleted elsewhere / settings
+            // restored on a machine without it) gets its own entry so the
+            // displayed selection EQUALS the stored state. Without this the
+            // combo fell back to Auto and the change handler "fixed" the
+            // mismatch by writing Auto - merely opening this window silently
+            // erased the pin. This way the breakage is visible, and only a
+            // deliberate pick overwrites it.
+            if (v != null && v.UserEngineLayout == Effects.EngineLayout.Custom
+                && !string.IsNullOrEmpty(v.UserCustomEngineId))
+            {
+                bool inLibrary = false;
+                foreach (var o in options)
+                    if (o.Layout == Effects.EngineLayout.Custom
+                        && string.Equals(o.CustomId, v.UserCustomEngineId, StringComparison.Ordinal))
+                    { inLibrary = true; break; }
+                if (!inLibrary)
+                    options.Add(new EngineOption
+                    {
+                        Display  = "(missing custom engine)",
+                        Layout   = Effects.EngineLayout.Custom,
+                        CustomId = v.UserCustomEngineId,
+                    });
+            }
             return options;
         }
 
@@ -425,6 +448,11 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             if (!(sender is ComboBox cb) || !(cb.DataContext is Row row)) return;
+            // Only user-driven changes may write: initial bindings, container
+            // recycling and programmatic resets arrive with the dropdown
+            // closed and no keyboard focus. Belt-and-braces on top of the
+            // stored-pin compare below.
+            if (!cb.IsDropDownOpen && !cb.IsKeyboardFocusWithin) return;
             if (!(cb.SelectedItem is EngineOption opt)) return;
             var (curLayout, curCustomId) = _plugin.GetActiveCarVariantUserEngineById(row.Id);
             string newCustomId = opt.Layout == Effects.EngineLayout.Custom ? (opt.CustomId ?? "") : "";

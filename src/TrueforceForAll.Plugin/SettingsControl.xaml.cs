@@ -5700,6 +5700,9 @@ namespace TrueforceForAll.Plugin
                 CarFactsEngineCombo.ItemsSource = null;
                 CarFactsEngineCombo.ItemsSource = _engineItems;
                 CarFactsEngineCombo.SelectedIndex = idx;
+                // The rebuild snapped the selection back to the stored pin, so
+                // any deferred browse-commit is now moot.
+                _enginePinCommitPending = false;
             }
             finally { _suppressEvents = old; }
         }
@@ -5727,9 +5730,37 @@ namespace TrueforceForAll.Plugin
 
         // The Car facts engine picker: the single engine-type entry point
         // since the 2026-07 centralization.
+        //
+        // Commit discipline: a closed, focused ComboBox raises SelectionChanged
+        // on every arrow key / wheel notch, and committing per change persisted
+        // a pin (plus, with consent granted, a SILENT community engine
+        // submission) per keystroke. So only a dropdown-open change commits
+        // immediately; closed-combo browsing sets a pending flag that commits
+        // ONCE when the user is done (focus leaves / dropdown closes).
+        private bool _enginePinCommitPending;
+
         private void CarFactsEngine_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
+            if (CarFactsEngineCombo != null && !CarFactsEngineCombo.IsDropDownOpen)
+            {
+                _enginePinCommitPending = true;   // keyboard/wheel browsing: defer
+                return;
+            }
+            _enginePinCommitPending = false;
+            ApplyEngineDropdownSelection(CarFactsEngineCombo?.SelectedItem as EngineDropdownItem);
+        }
+
+        private void CarFactsEngine_DropDownClosed(object sender, EventArgs e)
+            => CommitPendingEnginePin();
+
+        private void CarFactsEngine_LostKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+            => CommitPendingEnginePin();
+
+        private void CommitPendingEnginePin()
+        {
+            if (!_enginePinCommitPending || _suppressEvents || _plugin == null) return;
+            _enginePinCommitPending = false;
             ApplyEngineDropdownSelection(CarFactsEngineCombo?.SelectedItem as EngineDropdownItem);
         }
 
@@ -11658,13 +11689,12 @@ namespace TrueforceForAll.Plugin
             // rows reflect the new / updated car preset without the user
             // having to hit Refresh library by hand.
             _presetManager?.OnLocalLibraryChanged();
-            // Prompt only on the sections whose values carry a per-car
-            // fact (Engine -> layout, RevLimiter -> implied redline from
-            // Threshold). Saves on other sections (Bumps, Traction, etc.)
-            // shouldn't trigger a form-submission ask; their data is
-            // personal preference.
-            if (which == EffectKind.Engine) MaybePromptToSubmitEngineData(carId);
-            else if (which == EffectKind.RevLimiter) MaybePromptToSubmitRedlineData(carId);
+            // Prompt only where the saved values still carry a per-car fact
+            // (RevLimiter -> redline). The Engine hook was removed with the
+            // 2026-07 centralization: the engine pick lives in Car facts and
+            // submits from CommitEnginePin, so an Engine-section save is feel
+            // only and must not re-submit the pin.
+            if (which == EffectKind.RevLimiter) MaybePromptToSubmitRedlineData(carId);
         }
 
         /// <summary>Save current full state as a new named preset (same flow
@@ -11892,7 +11922,8 @@ namespace TrueforceForAll.Plugin
             }
             if (ok)
             {
-                MaybePromptToSubmitEngineData(carId);
+                // (Engine submit removed 2026-07: the pick submits from
+                // CommitEnginePin, not from car-preset saves.)
                 MaybePromptToSubmitRedlineData(carId);
             }
             return ok;
@@ -12008,7 +12039,8 @@ namespace TrueforceForAll.Plugin
             }
             ClearDirty();
             RefreshFromPlugin();
-            MaybePromptToSubmitEngineData(carId);
+            // (Engine submit removed 2026-07: the pick submits from
+            // CommitEnginePin, not from car-preset saves.)
             MaybePromptToSubmitRedlineData(carId);
         }
 

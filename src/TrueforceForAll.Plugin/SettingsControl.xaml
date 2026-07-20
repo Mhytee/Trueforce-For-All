@@ -1119,6 +1119,8 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Engine" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <ComboBox  Grid.Column="1" x:Name="CarFactsEngineCombo" SelectionChanged="CarFactsEngine_Changed"
+                                           DropDownClosed="CarFactsEngine_DropDownClosed"
+                                           LostKeyboardFocus="CarFactsEngine_LostKeyboardFocus"
                                            VerticalAlignment="Center" Margin="0,0,8,0"
                                            ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong."/>
                                 <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" VerticalAlignment="Center">
