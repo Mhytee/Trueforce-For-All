@@ -1611,6 +1611,20 @@ namespace TrueforceForAll.Plugin
         /// <see cref="CustomFiringPattern"/>; migrated with it.</summary>
         public string CustomFiringPatternName { get; set; } = "";
 
+        // ---- Serialization gates (2026-07 centralization) ----
+        // The legacy engine-type fields DESERIALIZE (old files and the
+        // one-time migration need them) but are never written again: new
+        // saves, uploads, backups and healed files all drop the keys, so a
+        // recipient on any plugin version falls back to auto-detection
+        // instead of inheriting a stale preset engine.
+        public bool ShouldSerializeLayout()                  => false;
+        public bool ShouldSerializeCustomEngineId()          => false;
+        public bool ShouldSerializeCustomFiringPattern()     => false;
+        public bool ShouldSerializeCustomFiringPatternName() => false;
+        public bool ShouldSerializeCylinders()               => false;
+        public bool ShouldSerializeEngineConfig()            => false;
+        public bool ShouldSerializeFiringOrderEnabled()      => false;
+
         // ---- High-RPM perceptibility helpers ----
         //
         // Wheel motors mechanically lowpass at high firing frequencies, so
