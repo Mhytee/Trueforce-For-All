@@ -30,6 +30,12 @@ namespace TrueforceForAll.Plugin
         private string _engineCommunityFetchedKey;
         private bool   _engineCommunityFetchInFlight;
         private EngineLayoutConsensus _engineCommunityCache;
+        // True while the auto-detect line above already reads
+        // "Auto-detected: X (community)": a "Community: X" row underneath
+        // would state the same fact twice, so the renderer collapses it.
+        // Recomputed in the 4 Hz readout tick (which has the pin + detect
+        // source in hand) right before RenderEngineCommunityRow runs.
+        private bool _engineCommunityRowRedundant;
         // Sibling redline cache, populated by the same per-car fetch loop.
         // Drives the engine-pulse panel's "Car's redline" line.
         private RedlineConsensus _engineRedlineCache;
@@ -1479,6 +1485,15 @@ namespace TrueforceForAll.Plugin
                     // each tick - Confirm button shows up as soon as an
                     // auto-detected layout is available, even before the
                     // community fetch returns.
+                    // The community row is context, not a second readout: when
+                    // the user is on Auto and the resolver's pick came FROM the
+                    // community (the line above already says "(community)"),
+                    // repeating the value underneath is noise. Keep the row for
+                    // the cases where it adds information: a user pin overriding
+                    // it, or detection that used a different source.
+                    _engineCommunityRowRedundant = userIsAuto && ep != null
+                        && string.Equals(ep.AutoLayoutSource, "community",
+                            StringComparison.OrdinalIgnoreCase);
                     MaybeRefreshEngineCommunityContext(_plugin.ActiveGame, activeCar);
                     RenderEngineCommunityRow();
                 }
@@ -5548,7 +5563,7 @@ namespace TrueforceForAll.Plugin
         {
             if (EngineCommunityText == null) return;
 
-            if (_engineCommunityCache == null)
+            if (_engineCommunityCache == null || _engineCommunityRowRedundant)
             {
                 EngineCommunityText.Visibility = System.Windows.Visibility.Collapsed;
                 return;
