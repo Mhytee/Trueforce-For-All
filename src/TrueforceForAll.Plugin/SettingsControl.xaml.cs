@@ -6762,6 +6762,9 @@ namespace TrueforceForAll.Plugin
             StopCloudSim();   // every path below rebuilds or clears the wall
             if (_plugin.Settings?.CommunityEnabled != true)
             {
+                // Bump the generation so an in-flight fetch from a previous
+                // refresh can't complete and paint the cloud over this notice.
+                unchecked { ++_supportersWallGen; }
                 SupportersWallPanel.Children.Clear();
                 if (SupportersWallStatus != null)
                 {

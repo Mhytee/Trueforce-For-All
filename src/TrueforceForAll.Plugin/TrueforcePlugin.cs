@@ -1956,13 +1956,21 @@ namespace TrueforceForAll.Plugin
             // flag-gated.
             if (!Settings.EngineChoiceMovedToCarFactsV1)
             {
-                try { MigrateEngineChoicesToCarFacts(); }
+                try
+                {
+                    MigrateEngineChoicesToCarFacts();
+                    // Latch only on SUCCESS: the migration is idempotent
+                    // (existing pins are never overwritten), so a throw
+                    // simply retries on the next start instead of silently
+                    // abandoning unmigrated picks.
+                    Settings.EngineChoiceMovedToCarFactsV1 = true;
+                    try { PersistSettingsCore(); } catch { }
+                }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Warn($"[TF4ALL] Engine-choice migration failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] Engine-choice migration failed (will retry next start): {ex.Message}");
                 }
-                Settings.EngineChoiceMovedToCarFactsV1 = true;
-                try { PersistSettingsCore(); } catch { }
             }
 
             // Anon car facts (0100): whenever sharing is on (the default, or
@@ -10489,6 +10497,16 @@ namespace TrueforceForAll.Plugin
             // time a community fetch returns, briefly emptying it until
             // the next telemetry frame.
             EnginePulse.CatalogCyl = null;
+            // Pin state must not outlive its car: since the 2026-07
+            // centralization this method is the ONLY writer of the effect's
+            // user slot, so clear it up front (the pin block below re-sets it
+            // when a pin resolves for the current car). Without this, a
+            // no-car resolve (back to menu) kept playing the previous car's
+            // pinned engine.
+            EnginePulse.Layout = Effects.EngineLayout.Auto;
+            EnginePulse.CustomPattern = null;
+            EnginePulse.ActiveCustomIsElectric = false;
+            _activePinnedCustomEngine = null;
             _activeCarDisplayName = null;
             _activeCarCommunityDisplayName = null;
 
@@ -11128,9 +11146,12 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return (null, "");
             if (string.IsNullOrEmpty(variantId) || Settings?.CarFacts == null) return (null, "");
             string key = _activeGame + "/" + _activeCarId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return (null, "");
+            // Dictionary lookup INSIDE the lock: the telemetry thread's variant
+            // auto-create adds CarFacts keys under it, and an unlocked
+            // TryGetValue can misread mid-rehash.
             lock (_carFactsLock)
             {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return (null, "");
                 foreach (var v in bundle.EngineVariants)
                     if (v != null && v.Id == variantId)
                         return (v.UserEngineLayout, v.UserCustomEngineId ?? "");
@@ -11149,10 +11170,11 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(variantId) || Settings?.CarFacts == null) return false;
             if (layout == Effects.EngineLayout.Auto) layout = null;   // Auto = no pin
             string key = _activeGame + "/" + _activeCarId;
-            if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
             bool saved = false;
+            // Dictionary lookup INSIDE the lock (see GetActiveCarVariantUserEngineById).
             lock (_carFactsLock)
             {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
                 foreach (var v in bundle.EngineVariants)
                 {
                     if (v == null || v.Id != variantId) continue;

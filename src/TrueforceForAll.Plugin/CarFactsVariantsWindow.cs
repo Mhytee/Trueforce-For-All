@@ -76,7 +76,9 @@ namespace TrueforceForAll.Plugin
             _carId  = carId;
 
             Title         = "Manage engine variants";
-            Width         = 720;
+            // Column minimums sum to ~710px; anything under ~770 shows a
+            // horizontal scrollbar with the Delete column cut off.
+            Width         = 780;
             // Grow to fit the variants, but cap the height and let the grid
             // scroll past that so many variants don't stretch the window off-screen.
             SizeToContent = SizeToContent.Height;
