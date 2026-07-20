@@ -274,6 +274,22 @@ namespace TrueforceForAll.Plugin
         private ForzaUdpTelemetrySource _forzaUdp;
         public  ForzaUdpTelemetrySource ForzaUdpSource => _forzaUdp;
 
+        // Serializes every create/dispose of _forzaUdp (and source swaps in
+        // general). SwapTelemetrySource normally runs on the SimHub data
+        // thread, but ApplyForzaSettings is a UI hook that tears the listener
+        // down and rebuilds it; without this lock the data thread's 1/sec
+        // enhanced-source retry can race through the "_forzaUdp == null"
+        // create window and bind a SECOND listener to the same port. Both
+        // binds succeed (ReuseAddress), only one of them receives datagrams,
+        // and if the orphaned one wins, the active source starves forever
+        // (observed as sign-out killing car-change detection).
+        private readonly object _sourceSwapLock = new object();
+
+        // Config fingerprint of the live _forzaUdp (set at create time) so
+        // ApplyForzaSettings(onlyIfChanged: true) can keep a healthy listener
+        // in place when the effective port/bind/forward config is identical.
+        private string _forzaUdpConfigKey = "";
+
         // True when a Forza title is active and our Forza UDP listener is bound
         // but silent (Forza's Data Out is pointed at SimHub, not us), while
         // SimHub IS receiving the telemetry, so we run on the SimHub fallback.
@@ -5825,12 +5841,20 @@ namespace TrueforceForAll.Plugin
         /// (AC's MMF reader for "AssettoCorsa", Forza UDP listener for any
         /// Forza title, SimHub fallback otherwise) and hand-off OnFrame so
         /// exactly one source dispatches at a time. Called from DataUpdate on
-        /// the SimHub data thread; the new source's polling thread is fully
-        /// started before the old source is detached, so the briefest
-        /// possible window of "no dispatch" covers the swap.
+        /// the SimHub data thread AND from ApplyForzaSettings on the UI
+        /// thread; _sourceSwapLock serializes the two so the Forza create
+        /// block can never run twice concurrently (a double bind leaks a
+        /// listener that steals the port's datagrams). The new source's
+        /// polling thread is fully started before the old source is detached,
+        /// so the briefest possible window of "no dispatch" covers the swap.
         /// Pass <paramref name="silent"/>=true on retry attempts so we don't
         /// log a "fell back" message every second while AC is loading.</summary>
         private void SwapTelemetrySource(string game, bool silent = false)
+        {
+            lock (_sourceSwapLock) SwapTelemetrySourceLocked(game, silent);
+        }
+
+        private void SwapTelemetrySourceLocked(string game, bool silent)
         {
             bool gameIsForza = IsForzaGameName(game);
             ITelemetrySource newSource = null;
@@ -5878,6 +5902,7 @@ namespace TrueforceForAll.Plugin
                         fz.GapBridge.Enabled = Settings.Forza.ForwardGapBridge;
                         fz.Start();
                         _forzaUdp = fz;
+                        _forzaUdpConfigKey = CurrentForzaConfigKey();
                     }
                     catch (Exception ex)
                     {
@@ -6156,37 +6181,70 @@ namespace TrueforceForAll.Plugin
         /// rebuilt whenever either (a) a Forza source is currently running
         /// (so port/bind/forward changes take effect, or a disable tears it
         /// down) or (b) a Forza title is the active game (so a port/bind
-        /// change applies without waiting for a game change).</summary>
-        public void ApplyForzaSettings()
+        /// change applies without waiting for a game change).
+        /// <paramref name="onlyIfChanged"/>=true (bulk re-apply paths: slot
+        /// mount, backup restore) skips the rebuild when the live listener was
+        /// built from an identical config, so those paths never disturb a
+        /// healthy stream.</summary>
+        public void ApplyForzaSettings(bool onlyIfChanged = false)
         {
             if (Settings?.Forza == null) return;
             PersistSettingsCore();
 
-            // Test against the keep-alive listener, not the active source: while
-            // on the SimHub fallback _telemetrySource is SimHub even though a
-            // Forza listener is still bound and needs rebuilding.
-            bool currentlyForza = _forzaUdp != null;
-            bool shouldListen   = !string.IsNullOrEmpty(_activeGame) && IsForzaGameName(_activeGame);
-            if (!currentlyForza && !shouldListen) return;
-
-            // Tear the Forza listener down so SwapTelemetrySource rebuilds it
-            // with the new port/bind/forward settings. Route the active source
-            // back to the SimHub fallback first (if it was the enhanced one) so
-            // the dispose runs cleanly; SwapTelemetrySource re-attaches and
-            // EvaluateForzaTelemetryFallback re-evaluates from there.
-            if (_forzaUdp != null)
+            lock (_sourceSwapLock)
             {
-                if (_telemetrySource == _forzaUdp)
+                // Test against the keep-alive listener, not the active source: while
+                // on the SimHub fallback _telemetrySource is SimHub even though a
+                // Forza listener is still bound and needs rebuilding.
+                bool currentlyForza = _forzaUdp != null;
+                bool shouldListen   = !string.IsNullOrEmpty(_activeGame) && IsForzaGameName(_activeGame);
+                if (!currentlyForza && !shouldListen) return;
+
+                // Bulk re-apply paths (slot mount, backup restore) usually leave the
+                // Forza config untouched; keep the healthy listener in place then
+                // rather than blipping telemetry mid-drive with a dispose/rebind.
+                // Explicit UI edits keep the unconditional rebuild (a re-typed port
+                // stays a usable "kick the listener" gesture).
+                if (onlyIfChanged && _forzaUdp != null
+                    && string.Equals(CurrentForzaConfigKey(), _forzaUdpConfigKey, StringComparison.Ordinal))
+                    return;
+
+                // Tear the Forza listener down so SwapTelemetrySource rebuilds it
+                // with the new port/bind/forward settings. Route the active source
+                // back to the SimHub fallback first (if it was the enhanced one) so
+                // the dispose runs cleanly; SwapTelemetrySource re-attaches and
+                // EvaluateForzaTelemetryFallback re-evaluates from there.
+                if (_forzaUdp != null)
                 {
-                    _forzaUdp.OnFrame = null;
-                    _simHubSource.OnFrame = DispatchFrame;
-                    _telemetrySource = _simHubSource;
+                    if (_telemetrySource == _forzaUdp)
+                    {
+                        _forzaUdp.OnFrame = null;
+                        _simHubSource.OnFrame = DispatchFrame;
+                        _telemetrySource = _simHubSource;
+                    }
+                    try { _forzaUdp.Dispose(); } catch { }
+                    _forzaUdp = null;
+                    _forzaOnSimHubFallback = false;
                 }
-                try { _forzaUdp.Dispose(); } catch { }
-                _forzaUdp = null;
-                _forzaOnSimHubFallback = false;
+                SwapTelemetrySourceLocked(_activeGame, silent: false);
             }
-            SwapTelemetrySource(_activeGame);
+        }
+
+        // Fingerprint of the settings ForzaUdpTelemetrySource is constructed
+        // from (port, bind, forward endpoint, gap bridge). Matches the live
+        // listener's stamp (_forzaUdpConfigKey) when a rebuild would produce
+        // an identical source.
+        private string CurrentForzaConfigKey()
+        {
+            var f = Settings?.Forza;
+            if (f == null) return "";
+            try
+            {
+                var fwd = BuildForzaForwardEndpoint(f);
+                return f.Port + "|" + ParseIpOrAny(f.BindAddress) + "|"
+                     + (fwd == null ? "" : fwd.ToString()) + "|" + f.ForwardGapBridge;
+            }
+            catch { return ""; }
         }
 
         public Control GetWPFSettingsControl(PluginManager pluginManager) => new SettingsControl(this);
@@ -13410,7 +13468,7 @@ namespace TrueforceForAll.Plugin
                 SyncDeviceToPluginEnabled("Account switch");
                 try { ApplyActiveCarOverride(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Effect re-apply on slot mount failed: " + ex.GetType().Name); }
-                try { ApplyForzaSettings(); }
+                try { ApplyForzaSettings(onlyIfChanged: true); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Telemetry re-apply on slot mount failed: " + ex.GetType().Name); }
                 try { LibraryReloaded?.Invoke(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
@@ -19095,7 +19153,7 @@ namespace TrueforceForAll.Plugin
             // pipeline re-init isn't safe (InitPipeline is once-only: helper process + threads + mixer).
             try { ApplyActiveCarOverride(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: effect re-apply failed: " + ex.Message); }
-            try { ApplyForzaSettings(); }
+            try { ApplyForzaSettings(onlyIfChanged: true); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: telemetry re-apply failed: " + ex.Message); }
             // Tell any open preset browser to redraw from the rebuilt caches (no manual Refresh).
             try { LibraryReloaded?.Invoke(); }
