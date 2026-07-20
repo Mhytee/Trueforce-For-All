@@ -1112,9 +1112,10 @@
                             </Grid>
                             <TextBlock x:Name="CarFactsCommunityNameText" FontSize="11" Opacity="0.55"
                                        Margin="64,0,0,6" Visibility="Collapsed"/>
-                            <!-- Engine type (inline editable, same picker as the
-                                 Engine Pulse section's Layout dropdown) + a meta
-                                 line for the rev ceiling and the fact's source. -->
+                            <!-- Engine type: THE engine picker since the 2026-07
+                                 centralization (pins the active variant; the gray
+                                 readout below carries the auto-detect context and
+                                 rev ceiling). -->
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Engine" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>

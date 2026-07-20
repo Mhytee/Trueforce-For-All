@@ -1354,10 +1354,14 @@ namespace TrueforceForAll.Plugin
                 // This is the user's primary "is my Data Out
                 // wiring working" feedback so make it specific.
                 // Engine auto-detect indicator: shows the layout the resolver
-                // chose for the active car when Layout=Auto, or surfaces the
-                // resolver's pick when the user has manually overridden it.
-                if (EngineLayoutAutoText != null)
+                // chose for the active car when no pin is set, or surfaces
+                // what Auto would be when the user has pinned a type in Car
+                // facts. Throttled: the pin + summary reads take the car-facts
+                // lock, and 4 Hz is plenty for a readout (the 16 ms tick was
+                // hitting that lock ~5 times per frame).
+                if (EngineLayoutAutoText != null && DateTime.UtcNow >= _engineReadoutNextTick)
                 {
+                    _engineReadoutNextTick = DateTime.UtcNow.AddMilliseconds(250);
                     var ep = _plugin.EnginePulse;
                     string activeCar = _plugin.ActiveCarId;
                     // The user's engine choice is the Car facts variant pin
@@ -1380,10 +1384,9 @@ namespace TrueforceForAll.Plugin
                         // also reach a concrete non-community value, surface
                         // it as passive context. Lets the user see what
                         // they'd get from the built-in path and decide
-                        // whether to pick that value in the Layout dropdown
-                        // (which then triggers the existing save -> share
-                        // flow). No inline action - corrections come through
-                        // save, not a "switch source" click.
+                        // whether to pin that value in the Car facts engine
+                        // dropdown (which commits + submits through the usual
+                        // pin path). No inline action.
                         if (string.Equals(detectSrc, "community", StringComparison.OrdinalIgnoreCase)
                             && ep.NonCommunityAutoLayout is Effects.EngineLayout altLayout
                             && altLayout != autoL)
@@ -1411,7 +1414,7 @@ namespace TrueforceForAll.Plugin
                     {
                         EngineLayoutAutoText.Text =
                             $"Could not auto-detect engine type for '{activeCar}'. "
-                            + "Pick the closest match from the list, or use Test to A/B.";
+                            + "Pick the closest match in the Engine dropdown above; the Engine pulse Test button can help you A/B.";
                     }
                     else if (ep != null && pinnedLayout is Effects.EngineLayout pinnedL
                              && ep.AutoLayout is Effects.EngineLayout autoOverridden
@@ -5438,7 +5441,7 @@ namespace TrueforceForAll.Plugin
             finally { _suppressEvents = prev; }
         }
 
-        // ---------- Community context row on the Engine pulse panel ----------
+        // ---------- Community context row (Car facts panel) ----------
 
         // Fetch the current community consensus for (game, carId) at most
         // once per car change, then render the community-context row with
@@ -5636,13 +5639,12 @@ namespace TrueforceForAll.Plugin
             Apply(EffectKind.Engine);
         }
 
-        // ---------- Engine layout dropdown (dynamic: built-ins + customs + actions) ----------
+        // ---------- Car facts engine dropdown (dynamic: built-ins + customs) ----------
 
         // Each combobox entry is a DropdownItem so the SelectionChanged handler
         // can branch on kind. Built-ins map to an EngineLayout enum value;
-        // Custom entries carry the CustomEngineDef they reference; Action
-        // entries open dialogs without committing a layout change.
-        private enum EngineDropdownKind { BuiltIn, Custom, ActionNew, ActionManage }
+        // Custom entries carry the CustomEngineDef they reference.
+        private enum EngineDropdownKind { BuiltIn, Custom }
         private sealed class EngineDropdownItem
         {
             public EngineDropdownKind   Kind;
@@ -5653,15 +5655,6 @@ namespace TrueforceForAll.Plugin
         }
         private readonly List<EngineDropdownItem> _engineItems = new List<EngineDropdownItem>();
 
-        /// <summary>(Re)populate the engine-layout dropdown from the built-in
-        /// EngineLayout enum + the user's saved customs in
-        /// TrueforceSettings.CustomEngines, plus the "Custom..." and
-        /// <summary>Refresh the inline variant picker for the active car.
-        /// Hidden when the bundle has fewer than 2 stored variants -
-        /// the single-variant fast-path in PickStoredVariant means there's
-        /// nothing for the user to pick between, and showing an empty
-        /// combo would add visual noise to every non-Forza car. The
-        /// "Manage variants..." link is collapsed in lockstep.</summary>
         // (Removed with the 2026-07 engine centralization: the Engine pulse
         // panel's variant readout row + its Manage link. The Car facts panel's
         // "Manage variants…" link is the one entry point; the manage window
@@ -5682,7 +5675,7 @@ namespace TrueforceForAll.Plugin
             _engineItems.Clear();
             foreach (Effects.EngineLayout l in Enum.GetValues(typeof(Effects.EngineLayout)))
             {
-                if (l == Effects.EngineLayout.Custom) continue;   // Custom is reached via the library / action
+                if (l == Effects.EngineLayout.Custom) continue;   // customs are listed by name below
                 _engineItems.Add(new EngineDropdownItem
                 {
                     Kind    = EngineDropdownKind.BuiltIn,
@@ -5843,14 +5836,6 @@ namespace TrueforceForAll.Plugin
                 case EngineDropdownKind.Custom:
                     CommitEnginePin(Effects.EngineLayout.Custom, item.Custom?.Id ?? "");
                     break;
-
-                case EngineDropdownKind.ActionNew:
-                    OpenCustomEngineEditorForNew();
-                    break;
-
-                case EngineDropdownKind.ActionManage:
-                    OpenManageCustomEnginesDialog();
-                    break;
             }
         }
 
@@ -5881,54 +5866,9 @@ namespace TrueforceForAll.Plugin
         }
 
         // (The main-panel "Create custom engine…" / "Manage customs…" links were
-        // retired 2026-07-19: authoring lives in the Manage variants modal, and
-        // the Customs tab of the Preset library manages the collection.)
-
-        // Open the editor with a fresh entry. On Save, append to the library,
-        // activate it on the current preset, and rebuild the dropdown. On
-        // Cancel, just rebuild so the dropdown snaps back to the previous
-        // selection (the user clicked an action item, not a real layout).
-        private void OpenCustomEngineEditorForNew()
-        {
-            if (_plugin?.Settings == null)
-            {
-                SimHub.Logging.Current.Info("[TF4ALL] Custom engine editor skipped: plugin/settings not ready");
-                return;
-            }
-            var def = new CustomEngineDef { Id = Guid.NewGuid().ToString("N") };
-            var dlg = new CustomEngineEditor { Owner = Window.GetWindow(this) };
-            dlg.Init(def, "Create custom engine");
-            SimHub.Logging.Current.Info("[TF4ALL] Custom engine editor opening");
-            bool saved = dlg.ShowDialog() == true && dlg.Saved;
-            SimHub.Logging.Current.Info($"[TF4ALL] Custom engine editor closed (saved={saved})");
-            if (saved)
-            {
-                if (_plugin.Settings.CustomEngines == null)
-                    _plugin.Settings.CustomEngines = new List<CustomEngineDef>();
-                _plugin.Settings.CustomEngines.Add(def);
-                // Persist the new engine definition. Apply() marks the
-                // current preset dirty (saves on user Save) but does not
-                // persist the CustomEngines list - without this call the
-                // newly-created engine vanishes on plugin restart.
-                try { _plugin.PersistSettings(); }
-                catch (Exception ex)
-                {
-                    SimHub.Logging.Current.Info(
-                        "[TF4ALL] Persist new custom engine failed: " + ex.Message);
-                }
-
-                // Pin the new custom on the active variant (Car facts), the
-                // same commit path as picking it from the dropdown.
-                CommitEnginePin(Effects.EngineLayout.Custom, def.Id);
-                return;
-            }
-            RebuildEngineLayoutDropdown();
-        }
-
-        private void OpenManageCustomEnginesDialog()
-        {
-            ShowPresetManager(PresetManagerControl.InitialTab.CustomEngines);
-        }
+        // retired 2026-07-19: authoring lives in the Manage variants modal
+        // (CarFactsVariantsWindow.CreateCustom_Click), and the Customs tab of
+        // the Preset library manages the collection.)
 
         /// <summary>Bring the inline preset library (Presets tab) forward,
         /// optionally selecting one of its inner tabs. Mutations made there
@@ -11358,6 +11298,10 @@ namespace TrueforceForAll.Plugin
                     : "";
             }
         }
+
+        // Throttle for the engine readout block in the meter tick (see the
+        // EngineLayoutAutoText block): readout + combo re-sync run at 4 Hz.
+        private DateTime _engineReadoutNextTick = DateTime.MinValue;
 
         // ---------- Per-effect Save popover ----------
 

@@ -1633,11 +1633,11 @@ namespace TrueforceForAll.Plugin
         // ---- Legacy migration fields (pre-2026-05-11) ----
         //
         // Pre-flat-enum settings stored Cylinders (int) + EngineConfig (enum)
-        // + FiringOrderEnabled (bool) as the engine-shape definition. New
-        // code reads/writes Layout only. These fields are kept on the type
-        // so Newtonsoft can still deserialize old JSON (and serialize them
-        // back at minimal cost), one-time migration in ApplyEngineSettings
-        // folds them into Layout on first load.
+        // + FiringOrderEnabled (bool) as the engine-shape definition. These
+        // fields are kept on the type so Newtonsoft can still deserialize old
+        // JSON; the one-time EngineChoiceMovedToCarFactsV1 migration folds
+        // them when relocating per-car engine picks into variant pins.
+        // Runtime never reads them (2026-07 centralization).
 
         /// <summary>LEGACY (pre-flat-enum). Old per-cylinder count. Read on
         /// load and folded into <see cref="Layout"/> via
