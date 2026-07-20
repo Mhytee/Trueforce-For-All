@@ -6897,6 +6897,10 @@ namespace TrueforceForAll.Plugin
                         continue;
                     if (!Settings.Presets.ContainsKey(kv.Value)) continue;
                     Settings.GameDefaults[kv.Key] = kv.Value;
+                    // A per-user override covers this game, so a device-wide
+                    // binding dropped as stale above never reaches the user:
+                    // no notice needed.
+                    _droppedGameDefaultNotices.Remove(kv.Key);
                 }
             }
         }
