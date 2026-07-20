@@ -1287,6 +1287,26 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Dropped-default notice: a game's default preset pointed at
+                         a name that no longer exists, so the built-in default took
+                         over. Previously log-only, which let a user unknowingly
+                         edit the built-in (2026-07-19). Dismiss clears the notice. -->
+                    <Border x:Name="DefaultDroppedBanner" Visibility="Collapsed"
+                            Background="#1565C0" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="ⓘ" FontSize="14" Foreground="White"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" x:Name="DefaultDroppedText" Foreground="White"
+                                       FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Text=""/>
+                            <Button Grid.Column="2" Content="Dismiss" Padding="10,3" Margin="10,0,0,0"
+                                    VerticalAlignment="Center" Click="DefaultDroppedDismiss_Click"/>
+                        </Grid>
+                    </Border>
+
                     <!-- "+N more" reveal. Shown only when more than one issue is
                          active; the collapsed view shows just the top-severity
                          banner. Clicking expands to the full stack (and back). -->

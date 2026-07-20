@@ -6740,6 +6740,14 @@ namespace TrueforceForAll.Plugin
         private void InstallBuiltinPresetsIfMissing()
             => RebuildPresetCacheFromFolders();
 
+        // Games whose USER default binding was dropped as stale on a library
+        // rebuild (target renamed or removed). The Settings UI surfaces these
+        // once as a card banner so the silent fall-back to the built-in
+        // default is no longer silent; cleared when the user dismisses it.
+        private readonly List<string> _droppedGameDefaultNotices = new List<string>();
+        public IReadOnlyList<string> DroppedGameDefaultNotices => _droppedGameDefaultNotices;
+        public void ClearDroppedGameDefaultNotices() => _droppedGameDefaultNotices.Clear();
+
         /// <summary>Rebuild the runtime Settings.Presets / GameDefaults cache
         /// from the file folders: user library first (mark as user), then
         /// built-ins overwrite same-named entries (mark as built-in, factory
@@ -6822,6 +6830,32 @@ namespace TrueforceForAll.Plugin
                 {
                     SimHub.Logging.Current.Warn($"[TF4ALL] Game default for '{k}' dropped: target '{Settings.GameDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.GameDefaults.Remove(k);
+                    if (!_droppedGameDefaultNotices.Contains(k)) _droppedGameDefaultNotices.Add(k);
+                }
+                // Heal the STORE, not just the in-memory view: without this a
+                // stale entry re-imports from the device-wide game-defaults
+                // file on every reload (warning forever) while the factory
+                // seed below silently takes the game over - the trap that had
+                // a user editing the built-in believing it was their own
+                // preset (2026-07-19). Only entries that actually came from
+                // the file are written back.
+                if (rekey.Count > 0 || stale.Count > 0)
+                {
+                    try
+                    {
+                        bool wrote = false;
+                        foreach (var p in rekey)
+                            if (UserPresets.GameDefaults.ContainsKey(p.Key))
+                            { BuiltinPresetWriter.SetGameDefault(UserPresets.CurrentFolder, p.Key, p.Value); wrote = true; }
+                        foreach (var k in stale)
+                            if (UserPresets.GameDefaults.ContainsKey(k))
+                            { BuiltinPresetWriter.RemoveGameDefault(UserPresets.CurrentFolder, k); wrote = true; }
+                        if (wrote) UserPresets.Reload();
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Healing the game-defaults file failed: {ex.Message}");
+                    }
                 }
             }
 
@@ -8609,6 +8643,29 @@ namespace TrueforceForAll.Plugin
                 {
                     SimHub.Logging.Current.Warn($"[TF4ALL] Car default for '{k}' dropped: target '{Settings.CarDefaults[k]}' no longer exists (its preset was renamed or removed).");
                     Settings.CarDefaults.Remove(k);
+                }
+                // Heal the device-wide car-defaults file the same way the
+                // game-defaults reconciler does, so a stale binding warns
+                // once instead of re-importing forever. Only entries that
+                // actually came from the file are written back (in-memory
+                // seeds from ResolveActiveCarPresetName never are).
+                if (rekey.Count > 0 || stale.Count > 0)
+                {
+                    try
+                    {
+                        bool wrote = false;
+                        foreach (var p in rekey)
+                            if (UserPresets.CarDefaults.ContainsKey(p.Key))
+                            { BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, p.Key, p.Value); wrote = true; }
+                        foreach (var k in stale)
+                            if (UserPresets.CarDefaults.ContainsKey(k))
+                            { BuiltinPresetWriter.RemoveCarDefault(UserPresets.CurrentFolder, k); wrote = true; }
+                        if (wrote) UserPresets.Reload();
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Healing the car-defaults file failed: {ex.Message}");
+                    }
                 }
             }
 

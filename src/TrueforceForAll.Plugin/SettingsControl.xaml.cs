@@ -1879,9 +1879,26 @@ namespace TrueforceForAll.Plugin
             if (wantUnverified && UnverifiedWheelText != null && UnverifiedWheelText.Text != notice)
                 UnverifiedWheelText.Text = notice;
 
+            // Dropped-default notice: a game's default binding pointed at a
+            // preset name that no longer exists, so the built-in took over.
+            var droppedDefaults = _plugin?.DroppedGameDefaultNotices;
+            bool wantDropped = droppedDefaults != null && droppedDefaults.Count > 0;
+            if (wantDropped && DefaultDroppedText != null)
+            {
+                string games = string.Join(", ", droppedDefaults);
+                string txt = $"The default preset for {games} couldn't be found (it was renamed or removed), so the built-in default took over. Pick a preset and use Set as default to rebind.";
+                if (DefaultDroppedText.Text != txt) DefaultDroppedText.Text = txt;
+            }
+
             CoalesceCardIssues(
-                new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner },
-                new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified });
+                new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
+                new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
+        }
+
+        private void DefaultDroppedDismiss_Click(object sender, RoutedEventArgs e)
+        {
+            _plugin?.ClearDroppedGameDefaultNotices();
+            RefreshCardIssues();
         }
 
         // Render the coalesced card-issue banners. Shows the highest-severity
@@ -11885,6 +11902,7 @@ namespace TrueforceForAll.Plugin
                 && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
             ClearDirty();
             RefreshFromPlugin();
+            _presetManager?.OnLocalLibraryChanged();
             FlashSaveStatus(HeaderGameSaveStatus, isDefault ? "Saved as game default ✓" : "Saved ✓");
         }
 
@@ -12022,6 +12040,9 @@ namespace TrueforceForAll.Plugin
                 _plugin.SetDefaultPresetForActiveGame(newName);
             ClearDirty();
             RefreshFromPlugin();
+            // Tell the Preset Manager the local library changed so the fork
+            // shows up in its list without a manual refresh.
+            _presetManager?.OnLocalLibraryChanged();
             FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{newName}' ✓");
         }
 
@@ -12050,6 +12071,7 @@ namespace TrueforceForAll.Plugin
             }
             ClearDirty();
             RefreshFromPlugin();
+            _presetManager?.OnLocalLibraryChanged();
         }
 
         // Car-side "Save as new…": save the active car's current tuning under a
