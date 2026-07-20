@@ -9758,6 +9758,60 @@ namespace TrueforceForAll.Plugin
             ApplyActiveCarOverride();
         }
 
+        /// <summary>WYSIWYG for whole-preset saves: live effect edits made
+        /// while a car is loaded sit in the car's in-memory draft override
+        /// (EnsureSectionDraft), so SnapshotCurrentAsPreset's read of the
+        /// GLOBAL sections would silently save pre-edit values and leave the
+        /// edited sections dirty. Folds every PURE draft (a section present
+        /// on the live override but absent from the persisted car baseline,
+        /// i.e. never committed to the car preset) into its global and drops
+        /// the draft - like PromoteSectionToGlobal, but WITHOUT touching the
+        /// car preset file: drafts were never on disk, and persisting here
+        /// would silently commit sibling drafts to the car file. Sections
+        /// present in the SAVED car preset are intentional per-car tuning:
+        /// they stay overridden and belong to the car Save button. No-op
+        /// during offline CAR editing, where every draft is destined for the
+        /// car preset instead.</summary>
+        private void FoldDraftSectionsIntoGlobals()
+        {
+            if (IsOfflineEditingCar) return;
+            if (Settings?.CarOverrides == null || string.IsNullOrEmpty(_activeCarId)) return;
+            if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var live) || live == null) return;
+            _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var saved);
+
+            bool folded = false;
+            foreach (SectionKind kind in Enum.GetValues(typeof(SectionKind)))
+            {
+                if (!SectionHasCarScope(kind)) continue;
+                if (!OverrideHasSection(live, kind)) continue;
+                if (saved != null && OverrideHasSection(saved, kind)) continue;   // saved car tuning, not a draft
+                switch (kind)
+                {
+                    case SectionKind.Engine:     Settings.EnginePulse  = Clone(live.EnginePulse);        live.EnginePulse  = null; break;
+                    case SectionKind.Bumps:      Settings.RoadBumps    = Clone(live.RoadBumps);          live.RoadBumps    = null; break;
+                    case SectionKind.Traction:   Settings.TractionLoss = Clone(live.TractionLoss);       live.TractionLoss = null; break;
+                    case SectionKind.AxleSlip:   Settings.AxleSlip     = Clone(live.AxleSlip);           live.AxleSlip     = null; break;
+                    case SectionKind.KerbThump:  Settings.KerbThump    = Clone(live.KerbThump);          live.KerbThump    = null; break;
+                    case SectionKind.LockupJudder: Settings.LockupJudder = Clone(live.LockupJudder);     live.LockupJudder = null; break;
+                    case SectionKind.Shift:      Settings.GearShift    = Clone(live.GearShift);          live.GearShift    = null; break;
+                    case SectionKind.Abs:        Settings.AbsClick     = Clone(live.AbsClick);           live.AbsClick     = null; break;
+                    case SectionKind.PitLimiter: Settings.PitLimiter   = Clone(live.PitLimiter);         live.PitLimiter   = null; break;
+                    case SectionKind.Drs:        Settings.Drs          = Clone(live.Drs);                live.Drs          = null; break;
+                    case SectionKind.Collision:  Settings.Collision    = Clone(live.Collision);          live.Collision    = null; break;
+                    case SectionKind.RevLimiter: Settings.RevLimiter   = Clone(live.RevLimiter);         live.RevLimiter   = null; break;
+                    case SectionKind.Audio:      Settings.AudioCapture = CloneOrNull(live.AudioCapture); live.AudioCapture = null; break;
+                    case SectionKind.Airborne:   Settings.Airborne     = Clone(live.Airborne);           live.Airborne     = null; break;
+                    default: continue;
+                }
+                folded = true;
+            }
+            if (!folded) return;
+            if (live.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
+            // Effective values are unchanged (they moved from the draft to
+            // the global); re-derive so the pipeline reads the new location.
+            ApplyActiveCarOverride();
+        }
+
         /// <summary>True if the named preset is a built-in / read-only one.
         /// Built-ins refuse delete and refuse in-place overwrite, the UI
         /// forks to a user-named preset instead.</summary>
@@ -14354,29 +14408,26 @@ namespace TrueforceForAll.Plugin
                 && Settings.DuckFrequencyAware == snap.DuckFrequencyAware;
         }
 
-        // Airborne ducking is a global (non-per-car) section. A preset saved
-        // before this effect existed has no Airborne block (snap.Airborne ==
-        // null); treat that as "no opinion" -> not dirty. ApplyGamePreset leaves
-        // the live Airborne value untouched in that case, so comparing it against
-        // the shipped default (the old behavior) wrongly lit the section dirty
-        // whenever the carried-over value wasn't exactly the default.
+        // Airborne ducking: same scope-aware shape as EffectEquals (live car
+        // override compares against the saved car baseline, falling back to
+        // the preset when the car preset never saved this section; otherwise
+        // global vs preset). A preset saved before this effect existed has no
+        // Airborne block (snap.Airborne == null); treat that as "no opinion"
+        // -> not dirty. ApplyGamePreset leaves the live Airborne value
+        // untouched in that case, so comparing it against the shipped default
+        // (the old behavior) wrongly lit the section dirty whenever the
+        // carried-over value wasn't exactly the default.
         private bool AirborneEquals(GameSettingsSnapshot snap)
         {
             if (snap.Airborne == null) return true;
-            var a = ActiveAirborne ?? new AirborneSettings();
-            var b = snap.Airborne;
-            return a.Enabled          == b.Enabled
-                && EqF2(a.Reduction, b.Reduction)
-                && a.DuckEngine       == b.DuckEngine
-                && a.DuckAudio        == b.DuckAudio
-                && a.DuckRoadBumps    == b.DuckRoadBumps
-                && a.DuckTractionLoss == b.DuckTractionLoss
-                && a.DuckRevLimiter   == b.DuckRevLimiter
-                && a.DuckGearShift    == b.DuckGearShift
-                && a.DuckAbs          == b.DuckAbs
-                && a.DuckPitLimiter   == b.DuckPitLimiter
-                && a.DuckDrs          == b.DuckDrs
-                && a.DuckCollision    == b.DuckCollision;
+            if (_activeCarId != null && Settings.CarOverrides != null
+                && Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo)
+                && liveCo?.Airborne != null)
+            {
+                _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var savedCo);
+                return Eq(liveCo.Airborne, savedCo?.Airborne ?? snap.Airborne);
+            }
+            return Eq(Settings.Airborne, snap.Airborne);
         }
 
         // Tolerances match the UI's display precision so that two values
@@ -14965,6 +15016,13 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to overwrite built-in preset '{presetName}'.");
                 return false;
             }
+            // Fold in-car draft edits into the globals first so the snapshot
+            // below captures what the user is actually hearing. Without this,
+            // the header Save / fork / save-as paths silently wrote the
+            // pre-edit globals and the edited sections stayed dirty (the
+            // per-effect save popover got this right via PromoteSectionToGlobal;
+            // the whole-preset paths never did).
+            FoldDraftSectionsIntoGlobals();
             // Skip the active-preset rename + log on disk failure so the
             // UI's "Saved as X" status doesn't drift from the on-disk
             // truth. The PersistGamePresetToFolder warn-log records the
