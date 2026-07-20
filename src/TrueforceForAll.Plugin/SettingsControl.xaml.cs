@@ -7778,16 +7778,36 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Signed in but the server profile has no username: any local
+            // SharingAuthor is a leftover (signed-out freeform alias, or a
+            // previous account's name - plain sign-out doesn't clear it),
+            // and the account row would present it as a username the upload
+            // RPCs reject. Clear it so local state agrees with the server
+            // before we offer the picker; keep the value only as a picker
+            // seed fallback. Safe to set the boxes directly:
+            // AccountAuthor_Changed is LostFocus-wired, so programmatic
+            // Text assignment doesn't fire a rename RPC.
+            string staleAlias = _plugin.Settings.SharingAuthor ?? "";
+            if (!string.IsNullOrWhiteSpace(staleAlias))
+            {
+                _plugin.Settings.SharingAuthor = "";
+                try { _plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
+                if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
+                RefreshAccountRow();
+            }
+
             // No username yet - open the picker with an already-available
             // default so the user can just hit Save. Prefer the email
-            // prefix; fall back to the existing freeform SharingAuthor.
+            // prefix; fall back to the freeform alias we just cleared.
             // If the bare prefix is taken, try +2, +3, ... up to +99
             // before giving up and seeding the picker with the bare
             // prefix (user types something else manually).
             string emailLocal = _plugin.AuthSignedInEmail ?? "";
             int atIdx = emailLocal.IndexOf('@');
             string preferred = atIdx > 0 ? emailLocal.Substring(0, atIdx) : emailLocal;
-            if (string.IsNullOrWhiteSpace(preferred)) preferred = _plugin.Settings.SharingAuthor ?? "";
+            if (string.IsNullOrWhiteSpace(preferred)) preferred = staleAlias;
             string seed = await ResolveAvailableUsernameSeedAsync(preferred);
 
             // Owner re-fetch after the await: SimHub caches the control,

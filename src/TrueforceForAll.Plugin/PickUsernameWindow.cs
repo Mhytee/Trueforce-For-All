@@ -258,29 +258,36 @@ namespace TrueforceForAll.Plugin
             return clean;
         }
 
-        /// <summary>Pre-modal gate for share flows. When the user is
-        /// signed in but has no SharingAuthor yet, prompts the picker
-        /// before letting the share dialog open, so the upload doesn't
-        /// later surface a raw "set a username first" backend error.
-        /// Returns false only when the user cancels the picker; the
-        /// caller should abort with a friendly status in that case.
-        /// Not-signed-in returns true so the share dialog can run its
-        /// own inline sign-in (which already calls EnsureUsernameAsync
-        /// on success).</summary>
+        /// <summary>Pre-modal gate for share flows. Verifies the
+        /// signed-in user's server profile has a username and prompts
+        /// the picker when it doesn't, so the upload doesn't later
+        /// surface a raw "set a username first" backend error. The
+        /// local SharingAuthor alone can't be trusted here: a freeform
+        /// alias typed while signed out (or a name left behind by
+        /// sign-out) passes a non-empty check while the upload RPCs
+        /// still reject the account. Returns false when the user ends
+        /// up without a username (cancelled picker); the caller should
+        /// abort with a friendly status in that case. Not-signed-in
+        /// returns true so the share dialog can run its own inline
+        /// sign-in (which already calls EnsureUsernameAsync on
+        /// success). Server-unreachable leaves local state alone, so
+        /// the share proceeds and fails on its own error, not this
+        /// gate.</summary>
         public static async Task<bool> EnsureUsernameBeforeShareAsync(
             TrueforcePlugin plugin, Window owner)
         {
             if (plugin?.Settings == null) return false;
             if (!plugin.AuthIsSignedIn) return true;
-            if (!string.IsNullOrWhiteSpace(plugin.Settings.SharingAuthor)) return true;
             // Owner-null guard: if the calling control unloaded during
             // the await chain (or the caller never had a window), an
             // un-owned picker would float free without modal focus.
-            // Bail and let the caller surface a friendly message
-            // rather than orphan a dialog.
-            if (owner == null) return false;
+            // Fall back to the local check rather than orphan a dialog.
+            if (owner == null) return !string.IsNullOrWhiteSpace(plugin.Settings.SharingAuthor);
             try { await EnsureUsernameAsync(plugin, owner); }
             catch { return false; }
+            // EnsureUsernameAsync syncs SharingAuthor to the server
+            // profile (including clearing a stale alias when the profile
+            // has no username), so this check now reflects server truth.
             return !string.IsNullOrWhiteSpace(plugin.Settings.SharingAuthor);
         }
 
@@ -296,7 +303,7 @@ namespace TrueforceForAll.Plugin
             if (plugin?.Settings == null || !plugin.AuthIsSignedIn) return;
             bool signedIn = false; string username = null;
             try { (signedIn, _, username) = await plugin.AuthGetMyProfileAsync(); }
-            catch { /* fall through to prompt */ }
+            catch { /* server unreachable: signedIn stays false, bail below with local state untouched */ }
             if (!signedIn) return;
             if (!string.IsNullOrWhiteSpace(username))
             {
@@ -304,6 +311,19 @@ namespace TrueforceForAll.Plugin
                 try { plugin.PersistSettings(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 return;
+            }
+
+            // The server is authoritative while signed in: the profile has
+            // no username, so a non-empty local SharingAuthor is a leftover
+            // (signed-out freeform alias, or a previous account's name -
+            // plain sign-out doesn't clear it). Wipe it so callers'
+            // "has a username?" checks can't pass on a value the upload
+            // RPCs would reject with "set a username first".
+            if (!string.IsNullOrWhiteSpace(plugin.Settings.SharingAuthor))
+            {
+                plugin.Settings.SharingAuthor = "";
+                try { plugin.PersistSettings(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
             }
 
             // No username yet - seed the picker with the email prefix.
