@@ -5705,8 +5705,8 @@ namespace TrueforceForAll.Plugin
                     _engineItems.Add(new EngineDropdownItem
                     {
                         Kind    = EngineDropdownKind.Custom,
-                        Custom  = new CustomEngineDef { Id = targetCustomId, Name = "(missing custom engine)" },
-                        Display = "(missing custom engine)",
+                        Custom  = new CustomEngineDef { Id = targetCustomId, Name = "(missing custom engine, falling back to Auto)" },
+                        Display = "(missing custom engine, falling back to Auto)",
                     });
             }
 
@@ -5808,7 +5808,7 @@ namespace TrueforceForAll.Plugin
                 foreach (var c in customs)
                     if (c != null && string.Equals(c.Id, customId, StringComparison.Ordinal))
                         return string.IsNullOrWhiteSpace(c.Name) ? "a custom engine" : c.Name + " (custom)";
-            return "a missing custom engine";
+            return "a missing custom engine (falling back to Auto)";
         }
 
         private void ApplyEngineDropdownSelection(EngineDropdownItem item)

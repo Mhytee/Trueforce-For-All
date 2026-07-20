@@ -337,7 +337,7 @@ namespace TrueforceForAll.Plugin
                 if (!inLibrary)
                     options.Add(new EngineOption
                     {
-                        Display  = "(missing custom engine)",
+                        Display  = "(missing custom engine, falling back to Auto)",
                         Layout   = Effects.EngineLayout.Custom,
                         CustomId = v.UserCustomEngineId,
                     });
