@@ -69,6 +69,9 @@ namespace TrueforceForAll.Plugin
         // Forza a generic SimHub rev bar keys off the limiter, not the
         // redline start.
         private volatile float _dashLiveRpm;
+        // Redline hysteresis latch for Dash.RevFlash, mirroring the wheel
+        // LED latch's 1% dead band. Only touched by the property getter.
+        private bool _dashRevFlashLatch;
 
         // Transient feedback line ("toast") for actions that cannot run right
         // now (no game / no car / desktop edit open). The dash shows a bar on
@@ -287,17 +290,25 @@ namespace TrueforceForAll.Plugin
                 float pct = rpm / redline * 100f;
                 return pct > 120f ? 120f : pct;
             });
-            // Flash gate for the rev strip: steady true below the redline, a
-            // ~7 Hz square wave at/above it so every lit segment flashes in
-            // unison as the shift cue. Derived from TickCount in the getter,
-            // no timer needed; the dash polls at display rate.
+            // Flash gate for the rev strip: steady true below the redline,
+            // blinking at/above it. Cadence AND phase deliberately match the
+            // wheel's own rev lights (RpmLedController.OnFrame): the same
+            // UTC-ms clock and the same 185 ms half-period (~2.7 Hz, the
+            // iRacing-style shift blink), so a wheel-mounted remote flashes
+            // in step with the rim LEDs. The on-condition mirrors the
+            // wheel's redline latch too (on AT the line, released below 99%
+            // of it) so both start and stop flashing at the same moments.
             this.AttachDelegate("Dash.RevFlash", () =>
             {
-                if (_telemetryStalled) return true;
+                if (_telemetryStalled) { _dashRevFlashLatch = false; return true; }
                 float rpm = _dashLiveRpm;
                 int redline = RevLimiter?.EffectiveRedlineRpm ?? 0;
-                if (redline < 500 || rpm < redline) return true;
-                return (Environment.TickCount / 70) % 2 == 0;
+                if (redline < 500) { _dashRevFlashLatch = false; return true; }
+                if (_dashRevFlashLatch) { if (rpm < redline * 0.99f) _dashRevFlashLatch = false; }
+                else if (rpm >= redline) _dashRevFlashLatch = true;
+                if (!_dashRevFlashLatch) return true;
+                long nowMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+                return ((nowMs / 185L) & 1L) == 0L;
             });
             this.AttachDelegate("Dash.Toast", () =>
             {
