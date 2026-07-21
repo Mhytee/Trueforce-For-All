@@ -54,9 +54,14 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashOverlay = "";        // "" | "layout" | "keypad" | "presets"
         private volatile string _dashKeypadEntry = "";    // digits being typed
         // What the keypad edits when SET is pressed: "master" | "audio" |
-        // "redline" | "fx:<Key>" (a _dashFx table key).
+        // "redline" | "fx:<Key>" (a _dashFx table key). The title doubles as
+        // the validation-feedback line: SET with a bad value swaps it for a
+        // specific error (with the field's range), and the next keypress
+        // restores the base title.
         private volatile string _dashKeypadTarget = "";
         private volatile string _dashKeypadTitle = "";
+        private volatile string _dashKeypadBaseTitle = "";
+        private float _dashKeypadMin, _dashKeypadMax;   // valid range for the open session
 
         // Preset picker state. The name list is built ONCE at open (car
         // presets come off disk via GetCarPresets; slot getters must never
@@ -262,7 +267,7 @@ namespace TrueforceForAll.Plugin
                     DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false))));
                 this.AddAction("DashFx" + f.Key + "GainOpen", (a, b) =>
                     DashOpenKeypad("fx:" + f.Key, f.Key.ToUpperInvariant() + " GAIN (now "
-                        + (Settings == null ? 0f : f.GetGain()).ToString("0.###") + ")"));
+                        + (Settings == null ? 0f : f.GetGain()).ToString("0.###") + ", max 10)", 0f, 10f));
             }
 
             // Audio capture is a peer voice, not a TelemetryEffect: it goes
@@ -313,20 +318,24 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashRedlineOpen", (a, b) =>
             {
                 int cur = GetActiveVariantUserRedline() ?? (RevLimiter?.EffectiveRedlineRpm ?? 0);
-                DashOpenKeypad("redline", "REDLINE RPM" + (cur >= 500 ? " (now " + cur + ")" : ""));
+                DashOpenKeypad("redline",
+                    "REDLINE RPM (" + (cur >= 500 ? "now " + cur + ", " : "") + "500-25000)",
+                    500f, 25000f);
             });
             this.AddAction("DashMasterGainOpen", (a, b) =>
-                DashOpenKeypad("master", "MASTER GAIN (now " + MasterGain.ToString("0.00") + ")"));
+                DashOpenKeypad("master", "MASTER GAIN (now " + MasterGain.ToString("0.00") + ", max 2)", 0f, 2f));
             this.AddAction("DashAudioGainOpen", (a, b) =>
-                DashOpenKeypad("audio", "AUDIO GAIN (now " + ActiveAudioGain.ToString("0.00") + ")"));
+                DashOpenKeypad("audio", "AUDIO GAIN (now " + ActiveAudioGain.ToString("0.00") + ", max 3)", 0f, DashAudioGainMax));
             this.AddAction("DashKeypadCancel", (a, b) => { _dashOverlay = ""; _dashKeypadEntry = ""; _dashKeypadTarget = ""; });
             this.AddAction("DashKeypadBack", (a, b) =>
             {
+                _dashKeypadTitle = _dashKeypadBaseTitle;   // typing clears any error
                 var e = _dashKeypadEntry;
                 if (e.Length > 0) _dashKeypadEntry = e.Substring(0, e.Length - 1);
             });
             this.AddAction("DashKeypadDot", (a, b) =>
             {
+                _dashKeypadTitle = _dashKeypadBaseTitle;
                 // Redline is integer-only; gains take one decimal point.
                 if (_dashKeypadTarget == "redline") return;
                 var e = _dashKeypadEntry;
@@ -337,6 +346,7 @@ namespace TrueforceForAll.Plugin
                 var digit = d;
                 this.AddAction("DashKeypadDigit" + digit, (a, b) =>
                 {
+                    _dashKeypadTitle = _dashKeypadBaseTitle;
                     var e = _dashKeypadEntry;
                     if (e.Length < 6) _dashKeypadEntry = e + digit;
                 });
@@ -426,33 +436,55 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private void DashOpenKeypad(string target, string title)
+        private void DashOpenKeypad(string target, string title, float min, float max)
         {
-            _dashKeypadTarget = target;
-            _dashKeypadTitle  = title;
-            _dashKeypadEntry  = "";
-            _dashOverlay      = "keypad";
+            _dashKeypadTarget    = target;
+            _dashKeypadTitle     = title;
+            _dashKeypadBaseTitle = title;
+            _dashKeypadMin       = min;
+            _dashKeypadMax       = max;
+            _dashKeypadEntry     = "";
+            _dashOverlay         = "keypad";
+        }
+
+        // Validation feedback: swap the title for the error; the digits stay
+        // so the user can see and fix what they typed. Any keypress restores
+        // the base title.
+        private void DashKeypadError(string message)
+        {
+            _dashKeypadTitle = message;
         }
 
         // SET on the shared keypad. Invalid / out-of-range entries leave the
-        // keypad open with the digits kept so the user sees the value did not
-        // take and can fix it.
+        // keypad open with the digits kept and put a specific error (with the
+        // field's range) in the title so the user sees WHY it did not take.
         private void DashCommitKeypadEntry()
         {
             if (Settings == null) return;
             string target = _dashKeypadTarget;
             string entry  = _dashKeypadEntry;
 
+            if (entry.Length == 0)
+            {
+                DashKeypadError("TYPE A VALUE, THEN SET");
+                return;
+            }
+
             if (target == "redline")
             {
-                if (!int.TryParse(entry, out int rpm)) return;
-                if (rpm < 500 || rpm > 25000) return;
+                if (!int.TryParse(entry, out int rpm))
+                {
+                    DashKeypadError("NOT A WHOLE NUMBER");
+                    return;
+                }
+                if (rpm < 500)   { DashKeypadError("TOO LOW, MINIMUM 500");    return; }
+                if (rpm > 25000) { DashKeypadError("TOO HIGH, MAXIMUM 25000"); return; }
                 if (!SaveActiveVariantUserRedline(rpm).HasValue)
                 {
                     // No variant signature yet (no telemetry observed for
                     // this car) or no active car. Surface it in the keypad
                     // instead of silently keeping the digits.
-                    _dashKeypadTitle = "NOT SAVED (drive the car a moment first)";
+                    DashKeypadError("NOT SAVED (drive the car a moment first)");
                     SimHub.Logging.Current.Info(
                         $"[TF4ALL] Dash redline set {rpm} rejected: no live variant signature (game='{_activeGame}', car='{_activeCarId}').");
                     return;
@@ -466,11 +498,24 @@ namespace TrueforceForAll.Plugin
             }
 
             if (!float.TryParse(entry, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out float v)) return;
+                    System.Globalization.CultureInfo.InvariantCulture, out float v))
+            {
+                DashKeypadError("NOT A NUMBER");
+                return;
+            }
+            if (v < _dashKeypadMin)
+            {
+                DashKeypadError("TOO LOW, MINIMUM " + _dashKeypadMin.ToString("0.##"));
+                return;
+            }
+            if (v > _dashKeypadMax)
+            {
+                DashKeypadError("TOO HIGH, MAXIMUM " + _dashKeypadMax.ToString("0.##"));
+                return;
+            }
 
             if (target == "master")
             {
-                if (v < 0f || v > 2f) return;
                 MasterGain = v;
                 PersistSettings();
                 try { MasterGainChangedExternally?.Invoke(); } catch { }
@@ -480,7 +525,6 @@ namespace TrueforceForAll.Plugin
             }
             if (target == "audio")
             {
-                if (v < 0f || v > DashAudioGainMax) return;
                 SetActiveAudioGainLive(v);
                 PersistSettings();
                 DashCloseKeypad();
@@ -489,7 +533,6 @@ namespace TrueforceForAll.Plugin
             }
             if (target.StartsWith("fx:", StringComparison.Ordinal))
             {
-                if (v < 0f || v > 10f) return;
                 string key = target.Substring(3);
                 foreach (var f in _dashFx)
                 {
