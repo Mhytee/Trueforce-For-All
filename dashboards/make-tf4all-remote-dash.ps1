@@ -131,6 +131,25 @@ function KeypadOverlay([string]$P) {
     $items
 }
 
+# Rev LED strip (topmost, every screen): 16 thin segments across the top,
+# lighting progressively from 50% to ~97% of the plugin's EFFECTIVE redline
+# (Dash.RpmPct: user pin > community > telemetry > estimate). Green,
+# amber, red zones; goes dark when telemetry stalls. Lets a wheel-mounted
+# remote double as rev lights in race.
+function RevStrip([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $items.Add((New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' $null 0))
+    for ($i = 0; $i -lt 16; $i++) {
+        $x = 2 + $i * 50
+        $thresh = [math]::Round(50 + $i * 3.125, 2)
+        $color = if ($i -lt 8) { $script:GREEN } elseif ($i -lt 12) { '#FFE8A33D' } else { $script:RED }
+        $seg = New-Rect "rev-seg$i" $x 1 46 10 $color $null 2
+        $seg.Bindings['Visible'] = BindJS 'Visible' ('return (1*$prop("' + $P + '.RpmPct"))>=' + $thresh)
+        $items.Add($seg)
+    }
+    $items
+}
+
 # Transient feedback bar (Dash.Toast): the plugin stamps a message when an
 # action cannot run (no game / no car / desktop edit open) and the property
 # self-expires after ~3.5 s. Rendered topmost on every screen.
@@ -257,6 +276,7 @@ $s1.Add((New-Button 'aud-btn' 408 388 376 72 'DashFxAudioToggle'))
 
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
+RevStrip $P | ForEach-Object { $s1.Add($_) }
 
 # =====================================================================
 # Screen 2: CAR FACTS (+ layout picker overlay + redline keypad overlay)
@@ -347,6 +367,7 @@ $s2.Add((OnOverlay (New-Button 'lp-cancel' 8 438 782 36 'DashEngineLayoutClose')
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
+RevStrip $P | ForEach-Object { $s2.Add($_) }
 
 # =====================================================================
 # Screen 3: EFFECTS (14 rows in 2 columns: toggle tile + gain readout + steppers)
@@ -408,6 +429,7 @@ $s3.Add((New-Text 'fx-hint' 420 8 370 30 13 'Tap name = on/off. Tap value = type
 
 KeypadOverlay $P | ForEach-Object { $s3.Add($_) }
 ToastBar $P | ForEach-Object { $s3.Add($_) }
+RevStrip $P | ForEach-Object { $s3.Add($_) }
 
 # =====================================================================
 # Screen 4: PRESETS (game preset + car preset, picker overlay)
@@ -440,6 +462,7 @@ $s4.Add((New-Text 'pr-note' 32 420 736 40 14 'Applying a preset replaces your cu
 
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
+RevStrip $P | ForEach-Object { $s4.Add($_) }
 
 # =====================================================================
 # Assemble document

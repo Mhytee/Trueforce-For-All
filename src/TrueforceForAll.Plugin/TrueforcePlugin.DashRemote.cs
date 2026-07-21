@@ -63,6 +63,13 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashKeypadBaseTitle = "";
         private float _dashKeypadMin, _dashKeypadMax;   // valid range for the open session
 
+        // Live RPM for the rev strip, stashed per frame in DispatchFrame.
+        // The strip's percent uses OUR effective redline (user pin >
+        // community > telemetry > estimate), which is the whole point: on
+        // Forza a generic SimHub rev bar keys off the limiter, not the
+        // redline start.
+        private volatile float _dashLiveRpm;
+
         // Transient feedback line ("toast") for actions that cannot run right
         // now (no game / no car / desktop edit open). The dash shows a bar on
         // every screen while Dash.Toast is non-empty; expiry is served by the
@@ -269,6 +276,17 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
+            // ---------- properties: rev strip (polled at display rate) ----------
+            this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);
+            this.AttachDelegate("Dash.RpmPct", () =>
+            {
+                if (_telemetryStalled) return 0f;
+                float rpm = _dashLiveRpm;
+                int redline = RevLimiter?.EffectiveRedlineRpm ?? 0;
+                if (redline < 500 || rpm <= 0f) return 0f;
+                float pct = rpm / redline * 100f;
+                return pct > 120f ? 120f : pct;
+            });
             this.AttachDelegate("Dash.Toast", () =>
             {
                 if (_dashToast.Length == 0) return "";

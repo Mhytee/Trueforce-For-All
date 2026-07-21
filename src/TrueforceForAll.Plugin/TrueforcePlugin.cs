@@ -4203,6 +4203,11 @@ namespace TrueforceForAll.Plugin
                 },
                 suppressRedlineOverlay: IsForzaGameName(_activeGame));
 
+            // Live RPM for the remote dash's rev strip (Dash.Rpm / Dash.RpmPct
+            // in TrueforcePlugin.DashRemote.cs). Stashed post-enrichment so the
+            // strip sees the same RPM the effects do.
+            _dashLiveRpm = (float)frame.Rpms;
+
             // Latch motion for the stationary-spring FFB floor. Speed is
             // universal; steering is stamped only when the active source
             // actually reports it (AC), so the spring stays disengaged on
