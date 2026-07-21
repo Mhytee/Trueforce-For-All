@@ -145,6 +145,52 @@ namespace TrueforceForAll.Plugin
         private const float DashAudioGainMax  = 3.0f;
 
         // ------------------------------------------------------------------
+        // Unsaved-tuning tracking for the dash's Save/Revert bar. Effect and
+        // audio edits are DRAFTS under the desktop's draft model: a car
+        // change discards them and a restart re-resolves the car's preset
+        // from disk, so without an explicit save a dash tune silently
+        // evaporates. The dash tracks the sections IT edited since the last
+        // save/revert; the bar shows while the set is non-empty AND the
+        // recorded car still matches (a car swap already discarded the
+        // draft, so stale dirtiness must not outlive it).
+        // ------------------------------------------------------------------
+        private readonly HashSet<SectionKind> _dashDirty = new HashSet<SectionKind>();
+        private readonly object _dashDirtyLock = new object();
+        private string _dashDirtyCarId = "";
+
+        private void DashRecordDirty(SectionKind kind)
+        {
+            lock (_dashDirtyLock)
+            {
+                string car = _activeCarId ?? "";
+                if (_dashDirtyCarId != car) { _dashDirty.Clear(); _dashDirtyCarId = car; }
+                _dashDirty.Add(kind);
+            }
+        }
+
+        private void DashClearDirty()
+        {
+            lock (_dashDirtyLock) { _dashDirty.Clear(); }
+        }
+
+        private bool DashHasDirty()
+        {
+            lock (_dashDirtyLock)
+                return _dashDirty.Count > 0 && _dashDirtyCarId == (_activeCarId ?? "");
+        }
+
+        private SectionKind[] DashDirtySections()
+        {
+            lock (_dashDirtyLock)
+            {
+                if (_dashDirtyCarId != (_activeCarId ?? "")) { _dashDirty.Clear(); return new SectionKind[0]; }
+                var arr = new SectionKind[_dashDirty.Count];
+                _dashDirty.CopyTo(arr);
+                return arr;
+            }
+        }
+
+        // ------------------------------------------------------------------
         // Signal scope (the dash's Scope screen): two stacked scrolling
         // traces sampled on the producer thread. Texture = peak abs of each
         // rendered 1 kHz batch (the actual ep3 haptic stream, 0..1); FFB =
@@ -360,6 +406,16 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
+            // ---------- properties: tuning save / revert ----------
+            this.AttachDelegate("Dash.TuningDirty", () => DashHasDirty());
+            this.AttachDelegate("Dash.SaveContext", () =>
+            {
+                var s = DashSnap();
+                string c = s.CarName != "" ? s.CarName : "(no car)";
+                string p = s.PresetName != "" ? s.PresetName : "(manual tune)";
+                return "CAR  " + c + "      GAME PRESET  " + p;
+            });
+
             // ---------- properties: signal scope (polled at display rate) ----------
             // Index 0 = oldest column (left edge), ScopeCols-1 = newest.
             for (int c = 0; c < ScopeCols; c++)
@@ -462,6 +518,7 @@ namespace TrueforceForAll.Plugin
                 DashNoteActivity();
                 SetActiveAudioEnabledLive(!ActiveAudioEnabled);
                 PersistSettings();
+                DashRecordDirty(SectionKind.Audio);
                 RaiseDashRemoteChanged();
             });
             this.AddAction("DashAudioGainUp",   (a, b) => DashNudgeAudioGain(+DashAudioGainStep));
@@ -557,6 +614,39 @@ namespace TrueforceForAll.Plugin
                 this.AddAction("DashPresetSelect" + slot, (a, b) => DashPresetSelect(idx));
             }
 
+            // ---------- actions: tuning save / revert ----------
+            // SAVE opens the scope chooser (a one-overlay miniature of the
+            // desktop save popover); with no car active there is nothing
+            // car-scoped to choose, so it saves straight to the game preset.
+            this.AddAction("DashTuneSaveOpen", (a, b) =>
+            {
+                DashNoteActivity();
+                if (!DashHasDirty()) { DashToast("NO UNSAVED TUNING"); return; }
+                if (string.IsNullOrEmpty(_activeCarId)) { DashSaveTuningToGame(); return; }
+                _dashOverlay = "savescope";
+            });
+            this.AddAction("DashTuneSaveCancel", (a, b) =>
+            {
+                if (_dashOverlay == "savescope") _dashOverlay = "";
+            });
+            this.AddAction("DashTuneSaveCar",  (a, b) => { _dashOverlay = ""; DashSaveTuningToCar(); });
+            this.AddAction("DashTuneSaveGame", (a, b) => { _dashOverlay = ""; DashSaveTuningToGame(); });
+            this.AddAction("DashTuneSaveBoth", (a, b) => { _dashOverlay = ""; DashSaveTuningToBoth(); });
+            this.AddAction("DashTuneRevert", (a, b) =>
+            {
+                DashNoteActivity();
+                var dirty = DashDirtySections();
+                if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+                foreach (var k in dirty)
+                {
+                    try { RevertSectionDraft(k); } catch { }
+                }
+                DashClearDirty();
+                PersistSettings();
+                DashToast("REVERTED TO SAVED");
+                RaiseDashRemoteChanged();
+            });
+
             SimHub.Logging.Current.Info("[TF4ALL] Dash remote bridge registered (properties + actions for the TF4ALL Remote dashboard).");
         }
 
@@ -574,6 +664,7 @@ namespace TrueforceForAll.Plugin
                 mutate();
                 ApplyActiveCarOverride();
                 PersistSettings();
+                DashRecordDirty(f.Kind);
                 RaiseDashRemoteChanged();
             }
             catch (Exception ex)
@@ -591,6 +682,7 @@ namespace TrueforceForAll.Plugin
             if (next > DashAudioGainMax) next = DashAudioGainMax;
             SetActiveAudioGainLive(next);
             PersistSettings();   // SetActiveAudioGainLive leaves persisting to the caller
+            DashRecordDirty(SectionKind.Audio);
             RaiseDashRemoteChanged();
         }
 
@@ -731,6 +823,7 @@ namespace TrueforceForAll.Plugin
             {
                 SetActiveAudioGainLive(v);
                 PersistSettings();
+                DashRecordDirty(SectionKind.Audio);
                 DashCloseKeypad();
                 RaiseDashRemoteChanged();
                 return;
@@ -753,6 +846,150 @@ namespace TrueforceForAll.Plugin
             _dashOverlay = "";
             _dashKeypadEntry = "";
             _dashKeypadTarget = "";
+        }
+
+        // ==================================================================
+        // Tuning save implementations. Each mirrors a desktop save-popover
+        // scope using the same headless plugin paths; toasts carry the
+        // outcome since the dash has no dialogs.
+        // ==================================================================
+
+        // THIS CAR ONLY: patch the dirty sections into the car's saved
+        // preset file. A built-in car preset (or a car with none) cannot be
+        // edited in place; mirror the desktop's silent fork instead:
+        // SaveActiveCarPresetAs saves the whole live override as a new user
+        // car preset and binds it as this car's default.
+        private void DashSaveTuningToCar()
+        {
+            DashNoteActivity();
+            var dirty = DashDirtySections();
+            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+            if (string.IsNullOrEmpty(_activeCarId)) { DashToast("NO CAR DETECTED"); return; }
+            try
+            {
+                bool allOk = true;
+                foreach (var k in dirty)
+                {
+                    if (!SaveSectionToActiveCarOverride(k)) { allOk = false; break; }
+                }
+                if (!allOk)
+                {
+                    string name = DashUniqueCarPresetName();
+                    if (!SaveActiveCarPresetAs(name))
+                    {
+                        DashToast("SAVE FAILED (see the SimHub log)");
+                        return;
+                    }
+                    DashClearDirty();
+                    _dashSnapValid = false;
+                    DashToast("SAVED AS NEW CAR PRESET: " + name.ToUpperInvariant());
+                    RaiseDashRemoteChanged();
+                    return;
+                }
+                DashClearDirty();
+                DashToast("SAVED TO THIS CAR");
+                RaiseDashRemoteChanged();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Dash car save failed: " + ex.Message);
+                DashToast("SAVE FAILED (see the SimHub log)");
+            }
+        }
+
+        // GAME PRESET: the dirty sections become the game default (promoted
+        // to the global sections and written into the active preset); the
+        // car follows it. Guards run BEFORE promoting so a doomed save
+        // cannot half-move state out of the car override.
+        private void DashSaveTuningToGame()
+        {
+            DashNoteActivity();
+            var dirty = DashDirtySections();
+            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+            string preset = _activePresetName;
+            if (string.IsNullOrEmpty(preset)) { DashToast("NO ACTIVE GAME PRESET - APPLY ONE FIRST"); return; }
+            if (IsBuiltinPreset(preset) && !DevMode) { DashToast("BUILT-IN PRESET - SAVE A COPY ON DESKTOP FIRST"); return; }
+            try
+            {
+                foreach (var k in dirty)
+                {
+                    PromoteSectionToGlobal(k);
+                    SaveSectionToActivePreset(k);
+                }
+                ApplyActiveCarOverride();
+                PersistSettings();
+                DashClearDirty();
+                _dashSnapValid = false;
+                DashToast("SAVED TO PRESET: " + preset.ToUpperInvariant());
+                RaiseDashRemoteChanged();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Dash game-preset save failed: " + ex.Message);
+                DashToast("SAVE FAILED (see the SimHub log)");
+            }
+        }
+
+        // BOTH: game default + this car keeps its own pinned copy
+        // (SaveSectionToBoth = promote, re-pin, save preset, save car).
+        // If the car half fails (built-in / missing car preset) the game
+        // half already landed, so finish the car half with the silent fork.
+        private void DashSaveTuningToBoth()
+        {
+            DashNoteActivity();
+            var dirty = DashDirtySections();
+            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+            if (string.IsNullOrEmpty(_activeCarId)) { DashSaveTuningToGame(); return; }
+            string preset = _activePresetName;
+            if (string.IsNullOrEmpty(preset)) { DashToast("NO ACTIVE GAME PRESET - APPLY ONE FIRST"); return; }
+            if (IsBuiltinPreset(preset) && !DevMode) { DashToast("BUILT-IN PRESET - SAVE A COPY ON DESKTOP FIRST"); return; }
+            try
+            {
+                bool carOk = true;
+                foreach (var k in dirty)
+                {
+                    if (!SaveSectionToBoth(k)) carOk = false;
+                }
+                if (!carOk)
+                {
+                    string name = DashUniqueCarPresetName();
+                    if (SaveActiveCarPresetAs(name))
+                    {
+                        DashClearDirty();
+                        _dashSnapValid = false;
+                        DashToast("SAVED TO PRESET + NEW CAR PRESET: " + name.ToUpperInvariant());
+                        RaiseDashRemoteChanged();
+                        return;
+                    }
+                    DashClearDirty();
+                    DashToast("SAVED TO PRESET; CAR COPY FAILED (see log)");
+                    RaiseDashRemoteChanged();
+                    return;
+                }
+                DashClearDirty();
+                _dashSnapValid = false;
+                DashToast("SAVED TO PRESET + THIS CAR");
+                RaiseDashRemoteChanged();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Dash save-to-both failed: " + ex.Message);
+                DashToast("SAVE FAILED (see the SimHub log)");
+            }
+        }
+
+        // Fork name for the silent car-preset fork: the car's display name
+        // plus "tune", made unique against the car's existing presets.
+        private string DashUniqueCarPresetName()
+        {
+            string baseName = string.IsNullOrEmpty(_activeCarDisplayName)
+                ? "Dash tune" : _activeCarDisplayName + " tune";
+            IReadOnlyDictionary<string, CarPresetEntry> existing = null;
+            try { existing = GetCarPresets(_activeCarId); } catch { }
+            string name = baseName;
+            int n = 2;
+            while (existing != null && existing.ContainsKey(name)) name = baseName + " " + n++;
+            return name;
         }
 
         // Build the picker list ONCE at open. Ordering mirrors the desktop
@@ -856,6 +1093,9 @@ namespace TrueforceForAll.Plugin
                     if (!ApplyPreset(name)) return;
                 }
                 _dashPresetCurrent = name;
+                // Applying a preset replaces the live tuning wholesale; any
+                // dash draft it overwrote is no longer revertable/saveable.
+                DashClearDirty();
                 _dashOverlay = "";
                 _dashPresetScope = "";
                 _dashSnapValid = false;

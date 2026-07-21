@@ -451,9 +451,42 @@ for ($i = 0; $i -lt $effects.Count; $i++) {
     $s3.Add((New-Text  "fx-$key-up-t"  ($x + 316) $y 50 56 26 '+' $WHITE 1 $null 'Bold'))
     $s3.Add((New-Button "fx-$key-up"   ($x + 316) $y 50 56 $up))
 }
-$s3.Add((New-Text 'fx-hint' 420 8 370 30 13 'Tap name = on/off. Tap value = type exact.' $GRAY 2))
+# Save/Revert bar, top right, visible only while unsaved dash tuning
+# exists (effect/audio edits are drafts; a car change or restart drops
+# them, so the bar is the "keep this" affordance).
+$dirtyVis = 'return $prop("' + $P + '.TuningDirty")'
+$bar = @(
+    (New-Text 'fx-dirty-t' 380 8 144 30 14 'UNSAVED' '#FFE8A33D' 2 $null 'Bold'),
+    (New-Rect 'fx-revert-bg' 536 6 110 32 $TILE),
+    (New-Text 'fx-revert-t' 536 6 110 32 14 'REVERT' $RED 1 $null 'Bold'),
+    (New-Button 'fx-revert' 536 6 110 32 'DashTuneRevert'),
+    (New-Rect 'fx-save-bg' 652 6 132 32 $TILEON),
+    (New-Text 'fx-save-t' 652 6 132 32 14 'SAVE' $WHITE 1 $null 'Bold'),
+    (New-Button 'fx-save' 652 6 132 32 'DashTuneSaveOpen')
+)
+foreach ($b in $bar) { $b.Bindings['Visible'] = BindJS 'Visible' $dirtyVis; $s3.Add($b) }
 
 KeypadOverlay $P | ForEach-Object { $s3.Add($_) }
+
+# ---- overlay: save scope chooser (Dash.Overlay == "savescope") ----
+$s3.Add((OnOverlay (New-Rect 'ss-backdrop' 0 0 800 480 $BACKDROP $null 0) 'savescope'))
+$s3.Add((OnOverlay (New-Text 'ss-title' 0 20 800 32 22 'SAVE TUNING TO' $WHITE 1 $null 'Bold') 'savescope'))
+$s3.Add((OnOverlay (New-Text 'ss-context' 0 56 800 26 14 '' $MUTED 1 @{
+    Text = BindJS 'Text' ('return ""+$prop("' + $P + '.SaveContext")')
+}) 'savescope'))
+$s3.Add((OnOverlay (New-Rect 'ss-car-bg' 220 100 360 64 $TILE) 'savescope'))
+$s3.Add((OnOverlay (New-Text 'ss-car-t' 220 100 360 64 19 'THIS CAR ONLY' $WHITE 1 $null 'Bold') 'savescope'))
+$s3.Add((OnOverlay (New-Button 'ss-car' 220 100 360 64 'DashTuneSaveCar') 'savescope'))
+$s3.Add((OnOverlay (New-Rect 'ss-game-bg' 220 174 360 64 $TILE) 'savescope'))
+$s3.Add((OnOverlay (New-Text 'ss-game-t' 220 174 360 64 19 'GAME PRESET' $WHITE 1 $null 'Bold') 'savescope'))
+$s3.Add((OnOverlay (New-Button 'ss-game' 220 174 360 64 'DashTuneSaveGame') 'savescope'))
+$s3.Add((OnOverlay (New-Rect 'ss-both-bg' 220 248 360 64 $TILEON) 'savescope'))
+$s3.Add((OnOverlay (New-Text 'ss-both-t' 220 248 360 64 19 'BOTH' $WHITE 1 $null 'Bold') 'savescope'))
+$s3.Add((OnOverlay (New-Button 'ss-both' 220 248 360 64 'DashTuneSaveBoth') 'savescope'))
+$s3.Add((OnOverlay (New-Text 'ss-note' 100 322 600 40 12 'Car only changes this car. Game preset makes it the default and this car follows it. Both saves the default and pins this car.' $GRAY 1) 'savescope'))
+$s3.Add((OnOverlay (New-Rect 'ss-cancel-bg' 220 372 360 44 $TILE) 'savescope'))
+$s3.Add((OnOverlay (New-Text 'ss-cancel-t' 220 372 360 44 15 'CANCEL' $RED 1 $null 'Bold') 'savescope'))
+$s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 'savescope'))
 ToastBar $P | ForEach-Object { $s3.Add($_) }
 RevStrip $P | ForEach-Object { $s3.Add($_) }
 

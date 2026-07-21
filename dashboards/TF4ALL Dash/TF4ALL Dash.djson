@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "a0d9b96e-a254-4c5b-a85f-1ae894bec025",
+    "Id":  "e4a7b26a-0f62-4bae-8440-a0ef3101c978",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "28c8b871-c0ac-4af2-8320-37e4dce3383a",
+                        "ScreenId":  "08ca5acb-35fa-4de6-b333-14b502d8a8f1",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -4272,7 +4272,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "aea0f958-9afa-4802-bd52-8369e9830d36",
+                        "ScreenId":  "c96c3ff8-ded9-42cd-abf1-926eda51ff0f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -11727,7 +11727,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "5305b02b-e1c1-44ca-a487-67d5a6b76b5b",
+                        "ScreenId":  "4c14c358-ba24-407f-8b32-901591eec9b5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -16879,27 +16879,258 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
+                                          "FontWeight":  "Bold",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  13,
-                                          "Text":  "Tap name = on/off. Tap value = type exact.",
-                                          "TextColor":  "#FF6B7280",
+                                          "FontSize":  14,
+                                          "Text":  "UNSAVED",
+                                          "TextColor":  "#FFE8A33D",
                                           "HorizontalAlignment":  2,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  30,
-                                          "Left":  420,
+                                          "Left":  380,
                                           "Opacity":  100,
                                           "Top":  8,
                                           "Visible":  true,
-                                          "Width":  370,
+                                          "Width":  144,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "fx-hint",
+                                          "Name":  "fx-dirty-t",
                                           "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "6,6,6,6",
+                                                              "RadiusTopLeft":  6,
+                                                              "RadiusTopRight":  6,
+                                                              "RadiusBottomLeft":  6,
+                                                              "RadiusBottomRight":  6,
+                                                              "Bindings":  {
 
+                                                                           }
+                                                          },
+                                          "Height":  32,
+                                          "Left":  536,
+                                          "Opacity":  100,
+                                          "Top":  6,
+                                          "Visible":  true,
+                                          "Width":  110,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "fx-revert-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "REVERT",
+                                          "TextColor":  "#FFE5484D",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  32,
+                                          "Left":  536,
+                                          "Opacity":  100,
+                                          "Top":  6,
+                                          "Visible":  true,
+                                          "Width":  110,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "fx-revert-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashTuneRevert",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  32,
+                                          "Left":  536,
+                                          "Top":  6,
+                                          "Visible":  true,
+                                          "Width":  110,
+                                          "Name":  "fx-revert",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF23503A",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "6,6,6,6",
+                                                              "RadiusTopLeft":  6,
+                                                              "RadiusTopRight":  6,
+                                                              "RadiusBottomLeft":  6,
+                                                              "RadiusBottomRight":  6,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  32,
+                                          "Left":  652,
+                                          "Opacity":  100,
+                                          "Top":  6,
+                                          "Visible":  true,
+                                          "Width":  132,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "fx-save-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "SAVE",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  32,
+                                          "Left":  652,
+                                          "Opacity":  100,
+                                          "Top":  6,
+                                          "Visible":  true,
+                                          "Width":  132,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "fx-save-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashTuneSaveOpen",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  32,
+                                          "Left":  652,
+                                          "Top":  6,
+                                          "Visible":  true,
+                                          "Width":  132,
+                                          "Name":  "fx-save",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
                                                        }
                                       },
                                       {
@@ -18640,6 +18871,602 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#F60D0F13",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "0,0,0,0",
+                                                              "RadiusTopLeft":  0,
+                                                              "RadiusTopRight":  0,
+                                                              "RadiusBottomLeft":  0,
+                                                              "RadiusBottomRight":  0,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  480,
+                                          "Left":  0,
+                                          "Opacity":  100,
+                                          "Top":  0,
+                                          "Visible":  true,
+                                          "Width":  800,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-backdrop",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  22,
+                                          "Text":  "SAVE TUNING TO",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  32,
+                                          "Left":  0,
+                                          "Opacity":  100,
+                                          "Top":  20,
+                                          "Visible":  true,
+                                          "Width":  800,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-title",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  26,
+                                          "Left":  0,
+                                          "Opacity":  100,
+                                          "Top":  56,
+                                          "Visible":  true,
+                                          "Width":  800,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-context",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.SaveContext\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "6,6,6,6",
+                                                              "RadiusTopLeft":  6,
+                                                              "RadiusTopRight":  6,
+                                                              "RadiusBottomLeft":  6,
+                                                              "RadiusBottomRight":  6,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  100,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-car-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  19,
+                                          "Text":  "THIS CAR ONLY",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  100,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-car-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashTuneSaveCar",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Top":  100,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Name":  "ss-car",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "6,6,6,6",
+                                                              "RadiusTopLeft":  6,
+                                                              "RadiusTopRight":  6,
+                                                              "RadiusBottomLeft":  6,
+                                                              "RadiusBottomRight":  6,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  174,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-game-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  19,
+                                          "Text":  "GAME PRESET",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  174,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-game-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashTuneSaveGame",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Top":  174,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Name":  "ss-game",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF23503A",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "6,6,6,6",
+                                                              "RadiusTopLeft":  6,
+                                                              "RadiusTopRight":  6,
+                                                              "RadiusBottomLeft":  6,
+                                                              "RadiusBottomRight":  6,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  248,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-both-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  19,
+                                          "Text":  "BOTH",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  248,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-both-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashTuneSaveBoth",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  64,
+                                          "Left":  220,
+                                          "Top":  248,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Name":  "ss-both",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  12,
+                                          "Text":  "Car only changes this car. Game preset makes it the default and this car follows it. Both saves the default and pins this car.",
+                                          "TextColor":  "#FF6B7280",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  100,
+                                          "Opacity":  100,
+                                          "Top":  322,
+                                          "Visible":  true,
+                                          "Width":  600,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-note",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "6,6,6,6",
+                                                              "RadiusTopLeft":  6,
+                                                              "RadiusTopRight":  6,
+                                                              "RadiusBottomLeft":  6,
+                                                              "RadiusBottomRight":  6,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  44,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  372,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-cancel-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "CANCEL",
+                                          "TextColor":  "#FFE5484D",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  44,
+                                          "Left":  220,
+                                          "Opacity":  100,
+                                          "Top":  372,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "ss-cancel-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashTuneSaveCancel",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  44,
+                                          "Left":  220,
+                                          "Top":  372,
+                                          "Visible":  true,
+                                          "Width":  360,
+                                          "Name":  "ss-cancel",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#F25A2626",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -20190,7 +21017,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "ad33ad3b-4974-4b7f-9edc-60105cf67d71",
+                        "ScreenId":  "d18bb749-59e3-4b02-bef5-e6099f09d1f0",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -23693,7 +24520,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a9df37a6-a280-4c7f-8ff3-14d277014911",
+                        "ScreenId":  "1fb8e32b-e01b-4415-8dcd-b88677dde44b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
