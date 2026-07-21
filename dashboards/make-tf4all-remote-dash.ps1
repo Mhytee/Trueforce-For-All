@@ -131,6 +131,20 @@ function KeypadOverlay([string]$P) {
     $items
 }
 
+# Transient feedback bar (Dash.Toast): the plugin stamps a message when an
+# action cannot run (no game / no car / desktop edit open) and the property
+# self-expires after ~3.5 s. Rendered topmost on every screen.
+function ToastBar([string]$P) {
+    $visExpr = 'return (""+$prop("' + $P + '.Toast"))!=""'
+    $bg = New-Rect 'toast-bg' 100 204 600 72 '#F25A2626' $null 10
+    $bg.Bindings['Visible'] = BindJS 'Visible' $visExpr
+    $t = New-Text 'toast-t' 116 204 568 72 19 '' $script:WHITE 1 @{
+        Text = BindJS 'Text' ('return ""+$prop("' + $P + '.Toast")')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $visExpr
+    @($bg, $t)
+}
+
 # Preset picker overlay (Dash.Overlay == "presets"): 8 name slots + paging.
 # Slots with an empty name hide themselves; the active preset highlights.
 function PresetOverlay([string]$P) {
@@ -242,6 +256,7 @@ $s1.Add((New-Text 'aud-t' 408 388 376 72 22 '' $WHITE 1 @{
 $s1.Add((New-Button 'aud-btn' 408 388 376 72 'DashFxAudioToggle'))
 
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
+ToastBar $P | ForEach-Object { $s1.Add($_) }
 
 # =====================================================================
 # Screen 2: CAR FACTS (+ layout picker overlay + redline keypad overlay)
@@ -331,6 +346,7 @@ $s2.Add((OnOverlay (New-Button 'lp-cancel' 8 438 782 36 'DashEngineLayoutClose')
 
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
+ToastBar $P | ForEach-Object { $s2.Add($_) }
 
 # =====================================================================
 # Screen 3: EFFECTS (14 rows in 2 columns: toggle tile + gain readout + steppers)
@@ -391,6 +407,7 @@ for ($i = 0; $i -lt $effects.Count; $i++) {
 $s3.Add((New-Text 'fx-hint' 420 8 370 30 13 'Tap name = on/off. Tap value = type exact.' $GRAY 2))
 
 KeypadOverlay $P | ForEach-Object { $s3.Add($_) }
+ToastBar $P | ForEach-Object { $s3.Add($_) }
 
 # =====================================================================
 # Screen 4: PRESETS (game preset + car preset, picker overlay)
@@ -422,6 +439,7 @@ $s4.Add((New-Button 'pr-carp-btn' 16 228 768 150 'DashPresetOpenCar'))
 $s4.Add((New-Text 'pr-note' 32 420 736 40 14 'Applying a preset replaces your current unsaved tuning, same as applying it in the desktop UI.' $GRAY 0))
 
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
+ToastBar $P | ForEach-Object { $s4.Add($_) }
 
 # =====================================================================
 # Assemble document

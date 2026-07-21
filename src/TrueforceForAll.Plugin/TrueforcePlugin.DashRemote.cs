@@ -63,6 +63,37 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashKeypadBaseTitle = "";
         private float _dashKeypadMin, _dashKeypadMax;   // valid range for the open session
 
+        // Transient feedback line ("toast") for actions that cannot run right
+        // now (no game / no car / desktop edit open). The dash shows a bar on
+        // every screen while Dash.Toast is non-empty; expiry is served by the
+        // getter so no timer is needed.
+        private volatile string _dashToast = "";
+        private int _dashToastAtTick;
+        private const int DashToastMs = 3500;
+
+        private void DashToast(string message)
+        {
+            _dashToastAtTick = Environment.TickCount;
+            _dashToast = message;
+        }
+
+        // Gate for the per-car surfaces (car facts, car presets). Explains
+        // WHY the tap did nothing instead of silently no-opping.
+        private bool DashRequireCar()
+        {
+            if (string.IsNullOrEmpty(_activeGame))
+            {
+                DashToast("NO GAME RUNNING - START DRIVING FIRST");
+                return false;
+            }
+            if (string.IsNullOrEmpty(_activeCarId))
+            {
+                DashToast("NO CAR DETECTED - GET IN A CAR FIRST");
+                return false;
+            }
+            return true;
+        }
+
         // Preset picker state. The name list is built ONCE at open (car
         // presets come off disk via GetCarPresets; slot getters must never
         // touch the store per poll) and paged 8 rows at a time.
@@ -228,6 +259,12 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
+            this.AttachDelegate("Dash.Toast", () =>
+            {
+                if (_dashToast.Length == 0) return "";
+                int age = unchecked(Environment.TickCount - _dashToastAtTick);
+                return age < 0 || age > DashToastMs ? "" : _dashToast;
+            });
 
             // ---------- properties: preset picker ----------
             this.AttachDelegate("Dash.CarPresetName",    () => DashSnap().CarPresetName);
@@ -297,7 +334,11 @@ namespace TrueforceForAll.Plugin
             });
 
             // ---------- actions: engine layout picker ----------
-            this.AddAction("DashEngineLayoutOpen",  (a, b) => { _dashOverlay = "layout"; });
+            this.AddAction("DashEngineLayoutOpen",  (a, b) =>
+            {
+                if (!DashRequireCar()) return;
+                _dashOverlay = "layout";
+            });
             this.AddAction("DashEngineLayoutClose", (a, b) => { _dashOverlay = ""; });
             foreach (Effects.EngineLayout layout in Enum.GetValues(typeof(Effects.EngineLayout)))
             {
@@ -317,6 +358,7 @@ namespace TrueforceForAll.Plugin
             // stamps the target + a title that shows the current value.
             this.AddAction("DashRedlineOpen", (a, b) =>
             {
+                if (!DashRequireCar()) return;
                 int cur = GetActiveVariantUserRedline() ?? (RevLimiter?.EffectiveRedlineRpm ?? 0);
                 DashOpenKeypad("redline",
                     "REDLINE RPM (" + (cur >= 500 ? "now " + cur + ", " : "") + "500-25000)",
@@ -408,10 +450,15 @@ namespace TrueforceForAll.Plugin
         {
             _dashOverlay = "";
             if (Settings == null) return;
+            if (!DashRequireCar()) return;
             // Auto clears the pin (SaveActiveVariantUserEngine treats Auto as
             // null); returns false when no variant signature exists yet, i.e.
             // no telemetry has been observed for this car.
-            if (!SaveActiveVariantUserEngine(layout, null)) return;
+            if (!SaveActiveVariantUserEngine(layout, null))
+            {
+                DashToast("NOT SAVED - DRIVE THE CAR A MOMENT FIRST");
+                return;
+            }
             _dashSnapValid = false;   // show the new pin immediately
             DashTrySilentEngineSubmit(layout);
             RaiseDashRemoteChanged();
@@ -420,11 +467,16 @@ namespace TrueforceForAll.Plugin
         private void DashNudgeRedline(int delta)
         {
             if (Settings == null) return;
+            if (!DashRequireCar()) return;
             // Step from the user's pin when present, else from the resolved
-            // effective value; with nothing resolved yet there is no sane
-            // base, so do nothing (the keypad still allows an absolute entry).
+            // effective value; with nothing resolved yet there is no base to
+            // step from - point at the keypad instead.
             int baseRpm = GetActiveVariantUserRedline() ?? (RevLimiter?.EffectiveRedlineRpm ?? 0);
-            if (baseRpm < 500) return;
+            if (baseRpm < 500)
+            {
+                DashToast("NO REDLINE KNOWN YET - TAP THE VALUE TO TYPE ONE");
+                return;
+            }
             int next = baseRpm + delta;
             if (next < 500) next = 500;
             if (next > 25000) next = 25000;
@@ -565,23 +617,18 @@ namespace TrueforceForAll.Plugin
                 string title;
                 if (scope == "car")
                 {
+                    // Toast instead of an empty picker: matches the other
+                    // per-car surfaces (car facts).
+                    if (!DashRequireCar()) return;
                     string carId = _activeCarId;
-                    if (string.IsNullOrEmpty(carId))
-                    {
-                        list = new string[0]; current = "";
-                        title = "CAR PRESETS  (no car detected)";
-                    }
-                    else
-                    {
-                        var entries = GetCarPresets(carId);
-                        list = entries
-                            .OrderBy(kv => kv.Value != null && kv.Value.IsBuiltin ? 0 : 1)
-                            .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
-                            .Select(kv => kv.Key)
-                            .ToArray();
-                        current = GetActiveCarPresetName(carId) ?? "";
-                        title = list.Length > 0 ? "CAR PRESETS" : "CAR PRESETS  (none for this car)";
-                    }
+                    var entries = GetCarPresets(carId);
+                    list = entries
+                        .OrderBy(kv => kv.Value != null && kv.Value.IsBuiltin ? 0 : 1)
+                        .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(kv => kv.Key)
+                        .ToArray();
+                    current = GetActiveCarPresetName(carId) ?? "";
+                    title = list.Length > 0 ? "CAR PRESETS" : "CAR PRESETS  (none for this car)";
                 }
                 else
                 {
@@ -630,6 +677,7 @@ namespace TrueforceForAll.Plugin
             // the plugin apply methods do NOT guard this themselves.
             if (IsOfflineEditing || IsOfflineEditingCar)
             {
+                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
                 SimHub.Logging.Current.Info("[TF4ALL] Dash preset apply skipped: an offline preset edit is in progress.");
                 return;
             }
