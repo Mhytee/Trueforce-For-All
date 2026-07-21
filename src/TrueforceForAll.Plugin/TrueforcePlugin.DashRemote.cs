@@ -287,6 +287,18 @@ namespace TrueforceForAll.Plugin
                 float pct = rpm / redline * 100f;
                 return pct > 120f ? 120f : pct;
             });
+            // Flash gate for the rev strip: steady true below the redline, a
+            // ~7 Hz square wave at/above it so every lit segment flashes in
+            // unison as the shift cue. Derived from TickCount in the getter,
+            // no timer needed; the dash polls at display rate.
+            this.AttachDelegate("Dash.RevFlash", () =>
+            {
+                if (_telemetryStalled) return true;
+                float rpm = _dashLiveRpm;
+                int redline = RevLimiter?.EffectiveRedlineRpm ?? 0;
+                if (redline < 500 || rpm < redline) return true;
+                return (Environment.TickCount / 70) % 2 == 0;
+            });
             this.AttachDelegate("Dash.Toast", () =>
             {
                 if (_dashToast.Length == 0) return "";

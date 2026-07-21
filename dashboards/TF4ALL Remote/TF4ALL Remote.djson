@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "b57902d0-eb88-44a5-a8eb-ec5c124ba7e4",
+    "Id":  "e90fe8cb-3895-4560-86fd-80da09e4defc",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a6dab434-87e6-4a23-af55-bbf6a31673e9",
+                        "ScreenId":  "5ff68010-0233-4d9e-9084-cd63fdf24cf9",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -2878,7 +2878,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -2922,7 +2922,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -2966,7 +2966,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3010,7 +3010,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3054,7 +3054,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3098,7 +3098,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3142,7 +3142,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3186,7 +3186,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3230,7 +3230,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3274,7 +3274,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3318,7 +3318,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3362,7 +3362,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3406,7 +3406,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3450,7 +3450,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3494,7 +3494,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3538,7 +3538,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -3552,7 +3552,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f7173bbf-bf07-4c86-9dfd-755e913aeed1",
+                        "ScreenId":  "fa7695a4-bb45-43ec-855e-1220bf70bfc3",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -9613,7 +9613,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9657,7 +9657,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9701,7 +9701,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9745,7 +9745,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9789,7 +9789,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9833,7 +9833,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9877,7 +9877,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9921,7 +9921,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -9965,7 +9965,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10009,7 +10009,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10053,7 +10053,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10097,7 +10097,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10141,7 +10141,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10185,7 +10185,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10229,7 +10229,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10273,7 +10273,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -10287,7 +10287,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "029ec7da-0332-471c-9bfb-4891926045c7",
+                        "ScreenId":  "c6029279-1ae6-49fe-96f7-afe025dd0fce",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -17356,7 +17356,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17400,7 +17400,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17444,7 +17444,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17488,7 +17488,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17532,7 +17532,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17576,7 +17576,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17620,7 +17620,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17664,7 +17664,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17708,7 +17708,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17752,7 +17752,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17796,7 +17796,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17840,7 +17840,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17884,7 +17884,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17928,7 +17928,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -17972,7 +17972,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -18016,7 +18016,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -18030,7 +18030,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7409e69c-e594-4720-9666-c007a0fd839b",
+                        "ScreenId":  "1cefb446-b12b-4716-b7b7-aae67b55ffcc",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -20139,7 +20139,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=50 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20183,7 +20183,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=53.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20227,7 +20227,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=56.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20271,7 +20271,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=59.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20315,7 +20315,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=62.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20359,7 +20359,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=65.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20403,7 +20403,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=68.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20447,7 +20447,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=71.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20491,7 +20491,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20535,7 +20535,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=78.12 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20579,7 +20579,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=81.25 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20623,7 +20623,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=84.38 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20667,7 +20667,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=87.5 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20711,7 +20711,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=90.62 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20755,7 +20755,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=93.75 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -20799,7 +20799,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88"
+                                                                                           "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.RpmPct\"))\u003e=96.88 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.RevFlash\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"

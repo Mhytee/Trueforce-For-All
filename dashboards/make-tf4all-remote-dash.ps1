@@ -144,7 +144,9 @@ function RevStrip([string]$P) {
         $thresh = [math]::Round(50 + $i * 3.125, 2)
         $color = if ($i -lt 8) { $script:GREEN } elseif ($i -lt 12) { '#FFE8A33D' } else { $script:RED }
         $seg = New-Rect "rev-seg$i" $x 1 46 10 $color $null 2
-        $seg.Bindings['Visible'] = BindJS 'Visible' ('return (1*$prop("' + $P + '.RpmPct"))>=' + $thresh)
+        # RevFlash: steady true below redline, ~7 Hz square at/above it, so
+        # the whole lit strip flashes in unison as the shift cue.
+        $seg.Bindings['Visible'] = BindJS 'Visible' ('return (1*$prop("' + $P + '.RpmPct"))>=' + $thresh + ' && $prop("' + $P + '.RevFlash")')
         $items.Add($seg)
     }
     $items
