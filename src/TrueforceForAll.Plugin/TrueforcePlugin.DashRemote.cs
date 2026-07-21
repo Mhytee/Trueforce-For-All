@@ -120,7 +120,12 @@ namespace TrueforceForAll.Plugin
                 s.CarName       = sum.CarName ?? "";
                 s.EngineLayout  = sum.EngineTypeDisplay ?? "Auto";
                 s.EngineSource  = sum.EngineTypeProvenance ?? "";
-                s.Redline       = sum.EffectiveRedline ?? 0;
+                // Prefer the user's pin over the resolved value: resolution
+                // only re-runs on telemetry frames, so right after a keypad
+                // set (or while paused) the resolved number can lag and make
+                // a successful save look ignored. Same choice the desktop
+                // makes (CarFactsSummary.UserRedline doc).
+                s.Redline       = sum.UserRedline ?? sum.EffectiveRedline ?? 0;
                 s.MaxRpm        = sum.MaxRpm ?? 0;
                 s.RedlineSource = sum.RedlineSource ?? "";
                 var (pin, _) = GetActiveVariantUserEngine();
@@ -442,7 +447,17 @@ namespace TrueforceForAll.Plugin
             {
                 if (!int.TryParse(entry, out int rpm)) return;
                 if (rpm < 500 || rpm > 25000) return;
-                if (!SaveActiveVariantUserRedline(rpm).HasValue) return;
+                if (!SaveActiveVariantUserRedline(rpm).HasValue)
+                {
+                    // No variant signature yet (no telemetry observed for
+                    // this car) or no active car. Surface it in the keypad
+                    // instead of silently keeping the digits.
+                    _dashKeypadTitle = "NOT SAVED (drive the car a moment first)";
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Dash redline set {rpm} rejected: no live variant signature (game='{_activeGame}', car='{_activeCarId}').");
+                    return;
+                }
+                SimHub.Logging.Current.Info($"[TF4ALL] Dash redline set {rpm} saved for '{_activeCarId}'.");
                 DashCloseKeypad();
                 _dashSnapValid = false;
                 DashTrySilentRedlineSubmit(rpm);

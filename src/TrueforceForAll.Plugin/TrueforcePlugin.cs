@@ -3938,9 +3938,10 @@ namespace TrueforceForAll.Plugin
                 // detector fire on the next frame, which flushes this car's
                 // outgoing variant and loads the new one.
                 // Drop the prior car's community consensus so the resolver
-                // doesn't briefly attribute it to the new car. The
-                // SettingsControl will re-fetch and re-notify for the new
-                // (game, carId) momentarily.
+                // doesn't briefly attribute it to the new car. Repopulated by
+                // MaybeRefreshCommunityFactsHeadless below (cache replay +
+                // TTL fetch); an open SettingsControl re-fetches too for its
+                // community-context row.
                 _activeCarCommunityKey = null;
                 _activeCarCommunityConsensus = null;
                 _activeCarCommunityNameKey = null;
@@ -3980,6 +3981,13 @@ namespace TrueforceForAll.Plugin
                 // the next resolver hit (or first telemetry frame) populates
                 // fresh. Then re-run the CarFacts cascade for the new carId.
                 ResolveAndApplyCarFactsForActiveCar(carId, logResolution: true);
+                // Community facts must apply with the settings panel CLOSED
+                // too (SimHub on another view / remote-dash-only sessions):
+                // replay the offline cache + TTL-fetch for the new car. The
+                // signature is still partial here; the variant-change
+                // detector in DispatchFrame re-runs this when telemetry
+                // fills the signature in.
+                MaybeRefreshCommunityFactsHeadless();
                 // Re-resolve the new car's preset from disk so the applied
                 // tuning always MATCHES the car you just switched to, and so a
                 // car you cleared to "None" earlier in the session re-resolves
@@ -4400,6 +4408,11 @@ namespace TrueforceForAll.Plugin
                         // variant's learned peak, loads this one (or starts
                         // fresh). Same thread as the learner Tick above.
                         LoadGripCal(_activeGame, _activeCarId, liveSig);
+                        // The community cache + consensus are keyed by this
+                        // signature; now that it changed (car-change warm-up
+                        // or a Forza engine swap), replay/fetch for the new
+                        // key so community facts apply panel-closed too.
+                        MaybeRefreshCommunityFactsHeadless();
                     }
                 }
             }
@@ -10614,6 +10627,79 @@ namespace TrueforceForAll.Plugin
             NotifyCommunityConsensus(game, carId, sig, e.Layout);
             NotifyRedlineConsensus(game, carId, sig, e.Redline);
             return e;
+        }
+
+        // ===================================================================
+        // Headless community-facts refresh. Until 2026-07 the panel's meter
+        // timer (MaybeRefreshEngineCommunityContext) was the ONLY driver of
+        // the community fetch AND the offline-cache replay, so with SimHub on
+        // any other view a car change never applied community facts: the
+        // car-change handler clears the in-memory consensus and nothing
+        // refilled it, leaving the rev limiter on the 0.85*MaxRpm estimate
+        // until the panel opened (found via the remote dash, which makes
+        // panel-closed sessions normal). This mirrors the panel's block:
+        // local-first cache replay, then a TTL-gated background fetch ->
+        // cache write -> Notify* apply. Runs on the telemetry thread; the
+        // fetch itself is offloaded (sync primitives, 10 s timeout). The
+        // panel keeps its own copy for the community-context UI row; each
+        // side's fetched-key dedupe bounds the overlap to at most one
+        // redundant fetch per car, and the Notify gates make a late apply
+        // for a departed car a no-op.
+        // ===================================================================
+        private string _headlessCommunityFetchedKey;
+        private volatile bool _headlessCommunityFetchInFlight;
+
+        internal void MaybeRefreshCommunityFactsHeadless()
+        {
+            string game = _activeGame, carId = _activeCarId;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            if (Settings?.UseCommunityCarFacts != true) return;
+
+            string sig = ComputeActiveCarVariantSignatureForActive() ?? "";
+            string key = game + "/" + carId + "/" + sig;
+            if (_headlessCommunityFetchedKey == key) return;
+            _headlessCommunityFetchedKey = key;
+
+            // LOCAL-FIRST: cached facts apply instantly and offline.
+            ReplayCommunityCache(game, carId, sig);
+
+            // Network refresh only when the master is on and the cache is
+            // stale. Sign-in is NOT required (anon-readable consensus).
+            if (Settings?.CommunityEnabled != true) return;
+            if (IsCommunityCacheFresh(game, carId, sig)) return;
+            if (_headlessCommunityFetchInFlight) return;
+            _headlessCommunityFetchInFlight = true;
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                EngineLayoutConsensus layoutResult  = null;
+                CarNameConsensus      nameResult    = null;
+                RedlineConsensus      redlineResult = null;
+                try { layoutResult  = FetchEngineLayoutConsensus(game, carId); } catch { }
+                try { nameResult    = FetchCarNameConsensus(game, carId); } catch { }
+                try { redlineResult = FetchRedlineConsensus(game, carId); } catch { }
+                _headlessCommunityFetchInFlight = false;
+                try
+                {
+                    // Car / tune moved on mid-fetch: drop it, the new key's
+                    // own pass handles the current state.
+                    if (_headlessCommunityFetchedKey != key) return;
+                    // All-null is almost always a network failure and the
+                    // primitives can't tell that from "no data": never
+                    // overwrite a good cache or clear applied values on it.
+                    if (layoutResult == null && nameResult == null && redlineResult == null) return;
+                    WriteCommunityFactCache(game, carId, sig, nameResult, layoutResult, redlineResult);
+                    NotifyCarNameConsensus(game, carId, nameResult);
+                    NotifyRedlineConsensus(game, carId, sig, redlineResult);
+                    NotifyCommunityConsensus(game, carId, sig, layoutResult);
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Headless community facts applied for {game}/{carId} (sig '{sig}').");
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info($"[TF4ALL] Headless community refresh failed: {ex.Message}");
+                }
+            });
         }
 
         /// <summary>Mint the car-fact fallback submitter id on first consent:
