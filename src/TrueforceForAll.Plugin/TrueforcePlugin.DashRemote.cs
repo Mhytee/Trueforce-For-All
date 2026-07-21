@@ -166,28 +166,72 @@ namespace TrueforceForAll.Plugin
                 if (_dashDirtyCarId != car) { _dashDirty.Clear(); _dashDirtyCarId = car; }
                 _dashDirty.Add(kind);
             }
+            _dashSnapValid = false;   // bar reflects the edit on the next poll
         }
 
         private void DashClearDirty()
         {
             lock (_dashDirtyLock) { _dashDirty.Clear(); }
+            _dashSnapValid = false;
         }
 
-        private bool DashHasDirty()
-        {
-            lock (_dashDirtyLock)
-                return _dashDirty.Count > 0 && _dashDirtyCarId == (_activeCarId ?? "");
-        }
-
+        // Truthful cross-surface dirtiness (owner decision 2026-07-21: dash
+        // and desktop indicators cross-track). A section counts as dirty
+        // when live state differs from its saved anchor, via the SAME
+        // IsSectionDirty the desktop's Save buttons use, so a desktop
+        // slider edit lights the dash bar and vice versa (the desktop side
+        // already recomputes from IsSectionDirty on DashRemoteChanged ->
+        // RefreshFromPlugin). The dash-local set supplements the
+        // anchor-less case (no active preset = nothing to compare
+        // against), where the desktop keeps a sticky bit for the same
+        // reason.
         private SectionKind[] DashDirtySections()
         {
+            var list = new List<SectionKind>();
+            try
+            {
+                foreach (SectionKind k in Enum.GetValues(typeof(SectionKind)))
+                    if (SectionHasAnchor(k) && IsSectionDirty(k)) list.Add(k);
+            }
+            catch { /* comparison trouble reads as clean; the local set below still contributes */ }
             lock (_dashDirtyLock)
             {
-                if (_dashDirtyCarId != (_activeCarId ?? "")) { _dashDirty.Clear(); return new SectionKind[0]; }
-                var arr = new SectionKind[_dashDirty.Count];
-                _dashDirty.CopyTo(arr);
-                return arr;
+                if (_dashDirtyCarId == (_activeCarId ?? ""))
+                {
+                    foreach (var k in _dashDirty)
+                        if (!list.Contains(k)) list.Add(k);
+                }
+                else
+                {
+                    _dashDirty.Clear();   // car changed; that draft is gone
+                }
             }
+            return list.ToArray();
+        }
+
+        // Car-level drift the per-section compare can miss (car-preset-only
+        // edits anchor to the car file, not the game preset).
+        private bool DashCarDrift()
+        {
+            try
+            {
+                return !string.IsNullOrEmpty(_activeCarId) && IsActiveCarPresetDirty();
+            }
+            catch { return false; }
+        }
+
+        private bool DashHasDirty() => DashDirtySections().Length > 0 || DashCarDrift();
+
+        // All car-scoped sections, used when only car-level drift is
+        // detected: patching every car-scope section from live IS a
+        // whole-override save/revert, and it reuses the per-section paths
+        // (including the built-in fork fallback).
+        private SectionKind[] DashAllCarScopeSections()
+        {
+            var list = new List<SectionKind>();
+            foreach (SectionKind k in Enum.GetValues(typeof(SectionKind)))
+                if (SectionHasCarScope(k)) list.Add(k);
+            return list.ToArray();
         }
 
         // ------------------------------------------------------------------
@@ -260,6 +304,7 @@ namespace TrueforceForAll.Plugin
             public string EngineLayout = "", EngineSource = "", EnginePin = "Auto";
             public int Redline, MaxRpm;
             public string RedlineSource = "";
+            public bool TuningDirty;
         }
         private DashSnapshot _dashSnap = new DashSnapshot();
         // Freshness is an explicit flag + tick pair, NOT an int.MinValue
@@ -299,6 +344,9 @@ namespace TrueforceForAll.Plugin
                 s.RedlineSource = sum.RedlineSource ?? "";
                 var (pin, _) = GetActiveVariantUserEngine();
                 s.EnginePin = (pin ?? Effects.EngineLayout.Auto).ToString();
+                // Dirty compare (18 IsSectionDirty calls) rides the 500 ms
+                // snapshot cadence rather than the per-frame property poll.
+                s.TuningDirty = DashHasDirty();
                 _dashSnap = s;
             }
             catch { /* keep serving the previous snapshot */ }
@@ -407,7 +455,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
             // ---------- properties: tuning save / revert ----------
-            this.AttachDelegate("Dash.TuningDirty", () => DashHasDirty());
+            this.AttachDelegate("Dash.TuningDirty", () => DashSnap().TuningDirty);
             this.AttachDelegate("Dash.SaveContext", () =>
             {
                 var s = DashSnap();
@@ -636,6 +684,7 @@ namespace TrueforceForAll.Plugin
             {
                 DashNoteActivity();
                 var dirty = DashDirtySections();
+                if (dirty.Length == 0 && DashCarDrift()) dirty = DashAllCarScopeSections();
                 if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
                 foreach (var k in dirty)
                 {
@@ -862,9 +911,12 @@ namespace TrueforceForAll.Plugin
         private void DashSaveTuningToCar()
         {
             DashNoteActivity();
-            var dirty = DashDirtySections();
-            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
             if (string.IsNullOrEmpty(_activeCarId)) { DashToast("NO CAR DETECTED"); return; }
+            var dirty = DashDirtySections();
+            // Car-level drift with no per-section hit: patch every car-scope
+            // section, which is a whole-override save through the same path.
+            if (dirty.Length == 0 && DashCarDrift()) dirty = DashAllCarScopeSections();
+            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
             try
             {
                 bool allOk = true;
