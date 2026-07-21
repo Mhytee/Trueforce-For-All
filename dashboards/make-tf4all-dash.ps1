@@ -239,7 +239,7 @@ $P = 'TrueforcePlugin.Dash'
 # =====================================================================
 $s1 = [System.Collections.Generic.List[object]]::new()
 
-$s1.Add((New-Text 'title' 16 8 240 36 24 'TF4ALL REMOTE' $WHITE 0 $null 'Bold'))
+$s1.Add((New-Text 'title' 16 8 240 36 24 'TF4ALL DASH' $WHITE 0 $null 'Bold'))
 $s1.Add((New-Text 'wheel' 520 8 264 36 18 'WHEEL' $MUTED 2 @{
     Text      = BindJS 'Text'      ('return $prop("' + $P + '.WheelOk")?"WHEEL OK":"WHEEL OFFLINE"')
     TextColor = BindJS 'TextColor' ('return $prop("' + $P + '.WheelOk")?"' + $GREEN + '":"' + $RED + '"')
