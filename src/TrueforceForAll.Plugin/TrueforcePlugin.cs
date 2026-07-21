@@ -3535,6 +3535,13 @@ namespace TrueforceForAll.Plugin
             try { _sessionHeartbeatTimer?.Dispose(); } catch { }
             _sessionHeartbeatTimer = null;
 
+            // Flush a pending dash redline share (see DashScheduleRedlineShare)
+            // so quitting inside the quiet window doesn't drop it, then stop
+            // the timer.
+            try { DashFlushRedlineShare(); } catch { }
+            try { _dashRedlineShareTimer?.Dispose(); } catch { }
+            _dashRedlineShareTimer = null;
+
             // Tear down the home Feedback tile (best-effort; dispatches to the UI
             // thread, which may already be shutting down).
             try { _feedbackInjector?.Stop(); } catch { }

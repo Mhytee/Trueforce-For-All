@@ -29,7 +29,9 @@
 //    (AutoSubmitCarFacts + CommunityEnabled). Any case the desktop would
 //    resolve with a dialog (consent ask, limiter-suspect redline) saves
 //    locally and skips the submit; the desktop flows remain the place
-//    where dialogs happen.
+//    where dialogs happen. Redline shares ride a quiet-window debounce
+//    (DashScheduleRedlineShare) so a burst of stepper taps submits only
+//    the value the user settled on.
 
 using System;
 using System.Collections.Generic;
@@ -119,6 +121,22 @@ namespace TrueforceForAll.Plugin
         // re-saved = no re-submit; a different value re-engages).
         private readonly HashSet<string> _dashFactSubmitted = new HashSet<string>();
         private readonly object _dashFactSubmittedLock = new object();
+
+        // Debounce for the silent redline share. Every 50 RPM stepper tap
+        // saves locally, but sharing each intermediate step would spray the
+        // community with values the user was only passing through. Each
+        // save (re)arms a short countdown and only the value still on the
+        // table when it runs out is submitted: a quick burst of taps shares
+        // once, taps spaced past the window still share individually (the
+        // per-value dedupe above applies as ever). Game/car are captured at
+        // arm time so a car swap mid-countdown drops the pending share
+        // instead of attributing it to the new car.
+        private const int DashRedlineShareQuietMs = 3000;
+        private System.Threading.Timer _dashRedlineShareTimer;
+        private readonly object _dashRedlineShareLock = new object();
+        private bool _dashRedlineSharePending;
+        private int _dashRedlineShareValue;
+        private string _dashRedlineShareGame, _dashRedlineShareCar;
 
         // Audio gain mirrors the home Feedback tile: 0.05 steps, 0..3 range
         // (FeedbackBoxInjector.AudioMax).
@@ -541,7 +559,7 @@ namespace TrueforceForAll.Plugin
             if (SaveActiveVariantUserRedline(next).HasValue)
             {
                 _dashSnapValid = false;
-                DashTrySilentRedlineSubmit(next);
+                DashScheduleRedlineShare(next);
                 RaiseDashRemoteChanged();
             }
         }
@@ -604,7 +622,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info($"[TF4ALL] Dash redline set {rpm} saved for '{_activeCarId}'.");
                 DashCloseKeypad();
                 _dashSnapValid = false;
-                DashTrySilentRedlineSubmit(rpm);
+                DashScheduleRedlineShare(rpm);
                 RaiseDashRemoteChanged();
                 return;
             }
@@ -798,6 +816,49 @@ namespace TrueforceForAll.Plugin
                 if (!_dashFactSubmitted.Add(carId + "|engine|" + layout)) return;
             }
             SubmitEngineLayoutToCommunity(game, carId, layout);
+        }
+
+        // (Re)arm the share countdown with the latest saved value. Called in
+        // place of a direct DashTrySilentRedlineSubmit by both the steppers
+        // and the keypad, so "type it, then fine-tune with taps" also
+        // collapses into one submission. The local save has already happened
+        // by the time this runs; only the community share waits.
+        private void DashScheduleRedlineShare(int claimed)
+        {
+            lock (_dashRedlineShareLock)
+            {
+                _dashRedlineSharePending = true;
+                _dashRedlineShareValue   = claimed;
+                _dashRedlineShareGame    = _activeGame;
+                _dashRedlineShareCar     = _activeCarId;
+                if (_dashRedlineShareTimer == null)
+                    _dashRedlineShareTimer = new System.Threading.Timer(
+                        _ => DashFlushRedlineShare(), null,
+                        DashRedlineShareQuietMs, System.Threading.Timeout.Infinite);
+                else
+                    _dashRedlineShareTimer.Change(
+                        DashRedlineShareQuietMs, System.Threading.Timeout.Infinite);
+            }
+        }
+
+        // Timer body; End also calls it so quitting SimHub inside the quiet
+        // window doesn't drop the last share. No-op when nothing is pending.
+        private void DashFlushRedlineShare()
+        {
+            int claimed; string game, carId;
+            lock (_dashRedlineShareLock)
+            {
+                if (!_dashRedlineSharePending) return;
+                _dashRedlineSharePending = false;
+                claimed = _dashRedlineShareValue;
+                game    = _dashRedlineShareGame;
+                carId   = _dashRedlineShareCar;
+            }
+            // The submit path below reads the ACTIVE car's state (observed
+            // ceiling, per-gear pins), so a value armed for a different car
+            // can only be dropped, never re-targeted.
+            if (game != _activeGame || carId != _activeCarId) return;
+            try { DashTrySilentRedlineSubmit(claimed); } catch { }
         }
 
         // Silent community submit for a dash redline pin. Desktop parity
