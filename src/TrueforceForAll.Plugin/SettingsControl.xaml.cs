@@ -309,6 +309,9 @@ namespace TrueforceForAll.Plugin
                     try { _plugin.NoteUserActivity(); } catch { }
                     _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally += OnMasterGainChangedExternally;
+                    // Dash remote edits mutate the same ActiveXxx POCOs the
+                    // sliders bind; re-pull so an open panel tracks them.
+                    _plugin.DashRemoteChanged += OnDashRemoteChanged;
                     // Auth identity change (sign-in, sign-out, refresh
                     // that flipped to a different email) must reset
                     // the per-session latches so the next user's
@@ -341,6 +344,7 @@ namespace TrueforceForAll.Plugin
                     _plugin.CommunityEnabledChanged -= OnCommunityEnabledChanged;
                     _plugin.AutoRatchetBumped -= OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally -= OnMasterGainChangedExternally;
+                    _plugin.DashRemoteChanged -= OnDashRemoteChanged;
                     _plugin.LibraryReloaded -= OnLibraryReloadedRefreshUi;
                 }
             };
@@ -423,6 +427,16 @@ namespace TrueforceForAll.Plugin
                 finally { _suppressEvents = false; }
                 MarkEffectDirty(EffectKind.Master);
             }));
+        }
+
+        // A dash-remote action changed effect / audio / car-fact state; re-pull
+        // everything (dash edits are already persisted plugin-side, so unlike
+        // the master-gain path there is no per-control dirty bookkeeping to do;
+        // RefreshFromPlugin suppresses change events while it loads values).
+        private void OnDashRemoteChanged()
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnDashRemoteChanged)); return; }
+            try { RefreshFromPlugin(); } catch { }
         }
 
         /// <summary>Pull all visible UI values from the plugin's effective settings.</summary>

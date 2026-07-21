@@ -39,7 +39,9 @@ namespace TrueforceForAll.Plugin
     [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO, RS50 and G923 wheels.")]
     [PluginAuthor("Mhytee")]
     [PluginName("Trueforce For All")]
-    public sealed class TrueforcePlugin : IDataPlugin, IWPFSettingsV2
+    // partial: the dash remote bridge (properties + dash-triggerable actions)
+    // lives in TrueforcePlugin.DashRemote.cs.
+    public sealed partial class TrueforcePlugin : IDataPlugin, IWPFSettingsV2
     {
         private const int BatchSamples = TrueforceDevice.NewPerPacket; // one packet's worth
 
@@ -2351,6 +2353,15 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info($"[TF4ALL] AddInputMapping (master gain) failed: {ex.Message}");
+            }
+
+            // Dash remote bridge (TrueforcePlugin.DashRemote.cs): properties +
+            // actions for the TF4ALL Remote dashboard. Wrapped so a SimHub
+            // registration hiccup can't abort Init.
+            try { InitDashRemote(pluginManager); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[TF4ALL] Dash remote bridge init failed: {ex.Message}");
             }
         }
 
