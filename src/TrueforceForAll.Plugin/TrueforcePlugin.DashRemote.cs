@@ -340,7 +340,11 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.WheelStatus",  () => StreamStatus);
             this.AttachDelegate("Dash.Game",         () => DashSnap().Game);
             this.AttachDelegate("Dash.CarName",      () => DashSnap().CarName);
-            this.AttachDelegate("Dash.PresetName",   () => DashSnap().PresetName);
+            // Built-ins are stored " (default)" but display " (built-in)"
+            // everywhere (desktop dropdowns do the same relabel). Applied at
+            // the display delegates only; _dashPresetList and the snapshot
+            // stay raw because select/apply needs the stored names.
+            this.AttachDelegate("Dash.PresetName",   () => BuiltinPresets.ToDisplayName(DashSnap().PresetName));
             this.AttachDelegate("Dash.PluginOn",     () => PluginEnabled);
             this.AttachDelegate("Dash.MasterGain",   () => MasterGain);
             this.AttachDelegate("Dash.AudioGain",    () => ActiveAudioGain);
@@ -405,9 +409,11 @@ namespace TrueforceForAll.Plugin
             });
 
             // ---------- properties: preset picker ----------
-            this.AttachDelegate("Dash.CarPresetName",    () => DashSnap().CarPresetName);
+            this.AttachDelegate("Dash.CarPresetName",    () => BuiltinPresets.ToDisplayName(DashSnap().CarPresetName));
             this.AttachDelegate("Dash.Preset.Title",     () => _dashPresetTitle);
-            this.AttachDelegate("Dash.Preset.Current",   () => _dashPresetCurrent);
+            // Current + slots relabel identically, so the djson's
+            // slot-equals-current highlight match still holds.
+            this.AttachDelegate("Dash.Preset.Current",   () => BuiltinPresets.ToDisplayName(_dashPresetCurrent));
             this.AttachDelegate("Dash.Preset.PageLabel", () =>
             {
                 var list = _dashPresetList;
@@ -421,7 +427,7 @@ namespace TrueforceForAll.Plugin
                 {
                     var list = _dashPresetList;
                     int i = _dashPresetPage * DashPresetRows + idx;
-                    return i >= 0 && i < list.Length ? list[i] : "";
+                    return i >= 0 && i < list.Length ? BuiltinPresets.ToDisplayName(list[i]) : "";
                 });
             }
 

@@ -4755,21 +4755,11 @@ namespace TrueforceForAll.Plugin
                 : name;
         }
 
-        // Built-in presets are stored with a trailing " (default)" suffix.
-        // That's the structural marker the rest of the plugin keys off
-        // (IsBuiltinPreset, refresh-on-load, export stripping, name
-        // validator). For UI display we relabel to " (built-in)" so the
-        // word "default" only ever means the per-game auto-load binding
-        // (Set as default / "default for this game").
+        // Built-in presets are stored with a trailing " (default)" suffix;
+        // UI surfaces relabel it " (built-in)". Shared with the dash remote
+        // via BuiltinPresets.ToDisplayName (rationale documented there).
         private static string ToBuiltinDisplay(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return name;
-            const string oldSuffix = " (default)";
-            const string newSuffix = " (built-in)";
-            return name.EndsWith(oldSuffix, StringComparison.Ordinal)
-                ? name.Substring(0, name.Length - oldSuffix.Length) + newSuffix
-                : name;
-        }
+            => BuiltinPresets.ToDisplayName(name);
 
         /// <summary>Modal name-prompt for car preset save. Disallows empty
         /// names, the suffix "(default)" (built-in territory), and names
