@@ -280,6 +280,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
             // ---------- properties: rev strip (polled at display rate) ----------
+            this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
             this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);
             this.AttachDelegate("Dash.RpmPct", () =>
             {

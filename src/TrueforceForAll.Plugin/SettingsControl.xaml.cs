@@ -487,6 +487,12 @@ namespace TrueforceForAll.Plugin
                     BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
                     RefreshBetaUpdateNote();
                 }
+                if (RemoteRevLtrRadio != null && RemoteRevOutsideInRadio != null)
+                {
+                    bool outsideIn = _plugin.Settings?.DashRevStripOutsideIn == true;
+                    RemoteRevOutsideInRadio.IsChecked = outsideIn;
+                    RemoteRevLtrRadio.IsChecked = !outsideIn;
+                }
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
@@ -6144,6 +6150,21 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] Persist UpdateCheckIntervalHours failed: " + ex.Message);
+            }
+        }
+
+        // Remote dash rev-strip direction radios (Settings tab). Persists the
+        // flag; the dash reads it live via Dash.RevOutsideIn each poll, so
+        // the strip flips without reloading the dashboard.
+        private void RemoteRevDirection_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashRevStripOutsideIn = RemoteRevOutsideInRadio?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashRevStripOutsideIn failed: " + ex.Message);
             }
         }
 

@@ -391,6 +391,13 @@ namespace TrueforceForAll.Plugin
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
 
+        // TF4ALL Remote dash: rev-strip fill direction. false = left to right
+        // (default); true = outside-in, both ends lighting first and
+        // converging on the center like center-converge shift lights.
+        // Surfaced in the Settings tab's "Remote dashboard" section; the dash
+        // reads it live (Dash.RevOutsideIn) so a change applies instantly.
+        public bool DashRevStripOutsideIn { get; set; } = false;
+
         // FFB pass-through tuning. Scale lets users dial down the felt strength
         // when their wheel firmware applies a different gain to ep3 cur than
         // to ep0 PID FFB; invert flips sign in case AC's HID++ feature 0x0e

@@ -2898,6 +2898,25 @@
                 </StackPanel>
             </Expander>
 
+            <!-- Remote dashboard: preferences for the TF4ALL Remote dash
+                 served to phones/tablets by SimHub's web dash server. -->
+            <Expander x:Name="RemoteDashExpander" IsExpanded="False" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="Remote dashboard" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+                    <TextBlock Text="Shift light direction:" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
+                    <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="Left to right"
+                                 Checked="RemoteRevDirection_Changed"
+                                 ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>
+                    <RadioButton x:Name="RemoteRevOutsideInRadio" GroupName="RemoteRevDir" Content="Outside in"
+                                 Margin="0,4,0,0" Checked="RemoteRevDirection_Changed"
+                                 ToolTip="The rev strip lights from both ends toward the center as revs climb, like center-converge shift lights."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="Applies to the rev LED strip on the TF4ALL Remote dashboard. The strip scales to the current car's redline and flashes in step with the wheel's rev lights; direction changes apply instantly, no dashboard reload needed."/>
+                </StackPanel>
+            </Expander>
+
             <!-- UDP telemetry: Forza UDP setup as its own collapsible, so it
                  reads as a primary setting rather than trailing Diagnostics.
                  Forza is the only UDP-telemetry game, so the body is the Forza

@@ -51,6 +51,7 @@ namespace TrueforceForAll.Plugin
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
             "MotdLevel", "ShowEffectsTabShareButtons",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
+            "DashRevStripOutsideIn",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",

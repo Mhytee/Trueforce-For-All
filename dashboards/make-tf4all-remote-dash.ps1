@@ -141,12 +141,23 @@ function RevStrip([string]$P) {
     $items.Add((New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' $null 0))
     for ($i = 0; $i -lt 16; $i++) {
         $x = 2 + $i * 50
-        $thresh = [math]::Round(50 + $i * 3.125, 2)
-        $color = if ($i -lt 8) { $script:GREEN } elseif ($i -lt 12) { '#FFE8A33D' } else { $script:RED }
-        $seg = New-Rect "rev-seg$i" $x 1 46 10 $color $null 2
-        # RevFlash: steady true below redline, ~7 Hz square at/above it, so
-        # the whole lit strip flashes in unison as the shift cue.
-        $seg.Bindings['Visible'] = BindJS 'Visible' ('return (1*$prop("' + $P + '.RpmPct"))>=' + $thresh + ' && $prop("' + $P + '.RevFlash")')
+        # Two threshold schemes, chosen live by Dash.RevOutsideIn:
+        # left-to-right walks 50..96.9 across the strip; outside-in pairs
+        # mirror segments (0+15 first, converging on 7+8) over 50..93.75.
+        $tLtr = [math]::Round(50 + $i * 3.125, 2)
+        $pair = [math]::Min($i, 15 - $i)
+        $tOut = [math]::Round(50 + $pair * 6.25, 2)
+        # Colors follow the direction: left-to-right zones run green ->
+        # amber -> red across the strip; outside-in zones run green at the
+        # edges converging to red in the CENTER (pair index, not position).
+        $amber = '#FFE8A33D'
+        $cLtr = if ($i -lt 8) { $script:GREEN } elseif ($i -lt 12) { $amber } else { $script:RED }
+        $cOut = if ($pair -lt 4) { $script:GREEN } elseif ($pair -lt 6) { $amber } else { $script:RED }
+        $seg = New-Rect "rev-seg$i" $x 1 46 10 $cLtr @{
+            BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.RevOutsideIn")?"' + $cOut + '":"' + $cLtr + '"')
+        } 2
+        # RevFlash: steady true below redline, wheel-synced blink at/above.
+        $seg.Bindings['Visible'] = BindJS 'Visible' ('var t=$prop("' + $P + '.RevOutsideIn")?' + $tOut + ':' + $tLtr + ';return (1*$prop("' + $P + '.RpmPct"))>=t && $prop("' + $P + '.RevFlash")')
         $items.Add($seg)
     }
     $items
