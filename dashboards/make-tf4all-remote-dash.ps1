@@ -93,6 +93,86 @@ function OnOverlay($item, [string]$mode) {
     $item
 }
 
+# Shared numeric keypad overlay (Dash.Overlay == "keypad"). Serves master
+# gain, audio gain, every effect gain and the redline; the plugin stamps
+# the title with the target + current value on open.
+function KeypadOverlay([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $items.Add((OnOverlay (New-Rect 'kp-backdrop' 0 0 800 480 $script:BACKDROP $null 0) 'keypad'))
+    $items.Add((OnOverlay (New-Text 'kp-title' 0 10 800 30 20 '' $script:WHITE 1 @{
+        Text = BindJS 'Text' ('return ""+$prop("' + $P + '.KeypadTitle")')
+    } 'Bold') 'keypad'))
+    $items.Add((OnOverlay (New-Rect 'kp-entry-bg' 250 48 300 64 $script:PANEL) 'keypad'))
+    $items.Add((OnOverlay (New-Text 'kp-entry' 250 48 300 64 42 '' $script:WHITE 1 @{
+        Text = BindJS 'Text' ('var e=""+$prop("' + $P + '.KeypadEntry");return e==""?"----":e')
+    } 'Bold') 'keypad'))
+    $keys = @(
+        @('1','DashKeypadDigit1'), @('2','DashKeypadDigit2'), @('3','DashKeypadDigit3'),
+        @('4','DashKeypadDigit4'), @('5','DashKeypadDigit5'), @('6','DashKeypadDigit6'),
+        @('7','DashKeypadDigit7'), @('8','DashKeypadDigit8'), @('9','DashKeypadDigit9'),
+        @('DEL','DashKeypadBack'), @('0','DashKeypadDigit0'), @('.','DashKeypadDot')
+    )
+    for ($i = 0; $i -lt $keys.Count; $i++) {
+        $label = $keys[$i][0]; $action = $keys[$i][1]
+        $c = $i % 3; $r = [math]::Floor($i / 3)
+        $x = 235 + $c * 115; $y = 124 + $r * 74
+        $tcol = if ($label -eq 'DEL') { $script:MUTED } else { $script:WHITE }
+        $safe = if ($label -eq '.') { 'dot' } else { $label }
+        $items.Add((OnOverlay (New-Rect  "kp-$safe-bg" $x $y 105 64 $script:TILE) 'keypad'))
+        $items.Add((OnOverlay (New-Text  "kp-$safe-t"  $x $y 105 64 24 $label $tcol 1 $null 'Bold') 'keypad'))
+        $items.Add((OnOverlay (New-Button "kp-$safe"   $x $y 105 64 $action) 'keypad'))
+    }
+    $items.Add((OnOverlay (New-Rect 'kp-set-bg' 605 124 160 138 $script:TILEON) 'keypad'))
+    $items.Add((OnOverlay (New-Text 'kp-set-t' 605 124 160 138 26 'SET' $script:WHITE 1 $null 'Bold') 'keypad'))
+    $items.Add((OnOverlay (New-Button 'kp-set' 605 124 160 138 'DashKeypadSet') 'keypad'))
+    $items.Add((OnOverlay (New-Rect 'kp-cancel-bg' 605 344 160 64 $script:TILE) 'keypad'))
+    $items.Add((OnOverlay (New-Text 'kp-cancel-t' 605 344 160 64 18 'CANCEL' $script:RED 1 $null 'Bold') 'keypad'))
+    $items.Add((OnOverlay (New-Button 'kp-cancel' 605 344 160 64 'DashKeypadCancel') 'keypad'))
+    $items
+}
+
+# Preset picker overlay (Dash.Overlay == "presets"): 8 name slots + paging.
+# Slots with an empty name hide themselves; the active preset highlights.
+function PresetOverlay([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $items.Add((OnOverlay (New-Rect 'pp-backdrop' 0 0 800 480 $script:BACKDROP $null 0) 'presets'))
+    $items.Add((OnOverlay (New-Text 'pp-title' 0 8 800 30 20 '' $script:WHITE 1 @{
+        Text = BindJS 'Text' ('return ""+$prop("' + $P + '.Preset.Title")')
+    } 'Bold') 'presets'))
+    for ($i = 1; $i -le 8; $i++) {
+        $y = 46 + ($i - 1) * 46
+        $slotProp = $P + '.Preset.Slot' + $i
+        $visExpr = 'return (""+$prop("TrueforcePlugin.Dash.Overlay"))=="presets" && (""+$prop("' + $slotProp + '"))!=""'
+        $bg = New-Rect "pp-slot$i-bg" 100 $y 520 42 $script:TILE @{
+            BackgroundColor = BindJS 'BackgroundColor' ('return (""+$prop("' + $slotProp + '"))==(""+$prop("' + $P + '.Preset.Current"))?"' + $script:TILEON + '":"' + $script:TILE + '"')
+        }
+        $bg.Bindings['Visible'] = BindJS 'Visible' $visExpr
+        $items.Add($bg)
+        $t = New-Text "pp-slot$i-t" 116 $y 488 42 17 '' $script:WHITE 0 @{
+            Text = BindJS 'Text' ('return ""+$prop("' + $slotProp + '")')
+        }
+        $t.Bindings['Visible'] = BindJS 'Visible' $visExpr
+        $items.Add($t)
+        $b = New-Button "pp-slot$i" 100 $y 520 42 "DashPresetSelect$i"
+        $b.Bindings['Visible'] = BindJS 'Visible' $visExpr
+        $items.Add($b)
+    }
+    # paging column on the right
+    $items.Add((OnOverlay (New-Rect 'pp-prev-bg' 648 92 120 84 $script:TILE) 'presets'))
+    $items.Add((OnOverlay (New-Text 'pp-prev-t' 648 92 120 84 26 'PREV' $script:WHITE 1 $null 'Bold') 'presets'))
+    $items.Add((OnOverlay (New-Button 'pp-prev' 648 92 120 84 'DashPresetPrev') 'presets'))
+    $items.Add((OnOverlay (New-Text 'pp-page' 648 186 120 32 17 '' $script:MUTED 1 @{
+        Text = BindJS 'Text' ('return ""+$prop("' + $P + '.Preset.PageLabel")')
+    }) 'presets'))
+    $items.Add((OnOverlay (New-Rect 'pp-next-bg' 648 228 120 84 $script:TILE) 'presets'))
+    $items.Add((OnOverlay (New-Text 'pp-next-t' 648 228 120 84 26 'NEXT' $script:WHITE 1 $null 'Bold') 'presets'))
+    $items.Add((OnOverlay (New-Button 'pp-next' 648 228 120 84 'DashPresetNext') 'presets'))
+    $items.Add((OnOverlay (New-Rect 'pp-cancel-bg' 100 428 520 42 $script:TILE) 'presets'))
+    $items.Add((OnOverlay (New-Text 'pp-cancel-t' 100 428 520 42 17 'CANCEL' $script:RED 1 $null 'Bold') 'presets'))
+    $items.Add((OnOverlay (New-Button 'pp-cancel' 100 428 520 42 'DashPresetClose') 'presets'))
+    $items
+}
+
 # Simple stepper block: label text + minus/plus tiles. Returns items.
 function StepperTiles([string]$prefix, $x, $y, $w, $h, [string]$downAction, [string]$upAction) {
     $half = [math]::Floor(($w - 10) / 2)
@@ -125,22 +205,24 @@ $s1.Add((New-Text 'preset' 16 78 768 26 15 '' $MUTED 0 @{
     Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.PresetName")||"");return p!=""?("PRESET  "+p):"PRESET  (manual tune)"')
 }))
 
-# Master gain (left column)
+# Master gain (left column); the big value is a tap zone for exact entry
 $s1.Add((New-Rect 'mg-panel' 16 116 376 240 $PANEL))
-$s1.Add((New-Text 'mg-label' 32 128 344 26 16 'MASTER GAIN' $MUTED 0))
+$s1.Add((New-Text 'mg-label' 32 128 344 26 16 'MASTER GAIN  (tap value to type)' $MUTED 0))
 $s1.Add((New-Text 'mg-value' 32 156 344 96 64 '' $WHITE 1 @{
     Text = BindJS 'Text' ('return (1*$prop("' + $P + '.MasterGain")).toFixed(2)')
 } 'Bold'))
+$s1.Add((New-Button 'mg-value-tap' 32 156 344 96 'DashMasterGainOpen'))
 StepperTiles 'mg' 32 264 344 76 'DashMasterGainDown' 'DashMasterGainUp' | ForEach-Object { $s1.Add($_) }
 
-# Audio gain (right column)
+# Audio gain (right column); same tap-to-type value
 $s1.Add((New-Rect 'ag-panel' 408 116 376 240 $PANEL))
 $s1.Add((New-Text 'ag-label' 424 128 344 26 16 '' $MUTED 0 @{
-    Text = BindJS 'Text' ('return "AUDIO GAIN  "+($prop("' + $P + '.Fx.Audio.On")?"(ON)":"(OFF)")')
+    Text = BindJS 'Text' ('return "AUDIO GAIN  "+($prop("' + $P + '.Fx.Audio.On")?"(ON)":"(OFF)")+"  (tap value to type)"')
 }))
 $s1.Add((New-Text 'ag-value' 424 156 344 96 64 '' $WHITE 1 @{
     Text = BindJS 'Text' ('return (1*$prop("' + $P + '.AudioGain")).toFixed(2)')
 } 'Bold'))
+$s1.Add((New-Button 'ag-value-tap' 424 156 344 96 'DashAudioGainOpen'))
 StepperTiles 'ag' 424 264 344 76 'DashAudioGainDown' 'DashAudioGainUp' | ForEach-Object { $s1.Add($_) }
 
 # Bottom toggles: plugin on/off + audio on/off
@@ -158,6 +240,8 @@ $s1.Add((New-Text 'aud-t' 408 388 376 72 22 '' $WHITE 1 @{
     Text = BindJS 'Text' ('return $prop("' + $P + '.Fx.Audio.On")?"AUDIO HAPTICS ON":"AUDIO HAPTICS OFF"')
 } 'Bold'))
 $s1.Add((New-Button 'aud-btn' 408 388 376 72 'DashFxAudioToggle'))
+
+KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
 
 # =====================================================================
 # Screen 2: CAR FACTS (+ layout picker overlay + redline keypad overlay)
@@ -245,33 +329,8 @@ $s2.Add((OnOverlay (New-Rect 'lp-cancel-bg' 8 438 782 36 $TILE) 'layout'))
 $s2.Add((OnOverlay (New-Text 'lp-cancel-t' 8 438 782 36 16 'CANCEL' $RED 1 $null 'Bold') 'layout'))
 $s2.Add((OnOverlay (New-Button 'lp-cancel' 8 438 782 36 'DashEngineLayoutClose') 'layout'))
 
-# ---- overlay: redline keypad ----
-$s2.Add((OnOverlay (New-Rect 'kp-backdrop' 0 0 800 480 $BACKDROP $null 0) 'redline'))
-$s2.Add((OnOverlay (New-Text 'kp-title' 0 10 800 30 20 'SET REDLINE (RPM)' $WHITE 1 $null 'Bold') 'redline'))
-$s2.Add((OnOverlay (New-Rect 'kp-entry-bg' 250 48 300 64 $PANEL) 'redline'))
-$s2.Add((OnOverlay (New-Text 'kp-entry' 250 48 300 64 42 '' $WHITE 1 @{
-    Text = BindJS 'Text' ('var e=""+$prop("' + $P + '.RedlineEntry");return e==""?"----":e')
-} 'Bold') 'redline'))
-$keys = @(
-    @('1','DashRedlineDigit1'), @('2','DashRedlineDigit2'), @('3','DashRedlineDigit3'),
-    @('4','DashRedlineDigit4'), @('5','DashRedlineDigit5'), @('6','DashRedlineDigit6'),
-    @('7','DashRedlineDigit7'), @('8','DashRedlineDigit8'), @('9','DashRedlineDigit9'),
-    @('DEL','DashRedlineBack'), @('0','DashRedlineDigit0'), @('SET','DashRedlineSet')
-)
-for ($i = 0; $i -lt $keys.Count; $i++) {
-    $label = $keys[$i][0]; $action = $keys[$i][1]
-    $c = $i % 3; $r = [math]::Floor($i / 3)
-    $x = 235 + $c * 115; $y = 124 + $r * 74
-    $fill = $TILE; $tcol = $WHITE
-    if ($label -eq 'SET') { $fill = $TILEON }
-    if ($label -eq 'DEL') { $tcol = $MUTED }
-    $s2.Add((OnOverlay (New-Rect  "kp-$label-bg" $x $y 105 64 $fill) 'redline'))
-    $s2.Add((OnOverlay (New-Text  "kp-$label-t"  $x $y 105 64 24 $label $tcol 1 $null 'Bold') 'redline'))
-    $s2.Add((OnOverlay (New-Button "kp-$label"   $x $y 105 64 $action) 'redline'))
-}
-$s2.Add((OnOverlay (New-Rect 'kp-cancel-bg' 620 344 150 64 $TILE) 'redline'))
-$s2.Add((OnOverlay (New-Text 'kp-cancel-t' 620 344 150 64 18 'CANCEL' $RED 1 $null 'Bold') 'redline'))
-$s2.Add((OnOverlay (New-Button 'kp-cancel' 620 344 150 64 'DashRedlineCancel') 'redline'))
+# ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
+KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
 
 # =====================================================================
 # Screen 3: EFFECTS (14 rows in 2 columns: toggle tile + gain readout + steppers)
@@ -295,33 +354,74 @@ $effects = @(
     @('Airborne',   'Airborne duck', $false),
     @('Audio',      'Audio haptics', $true)
 )
+# Row layout: name tile (tap = toggle), then a [-] value [+] cluster so the
+# steppers visually flank the value they change (a trailing -/+ pair read as
+# ambiguous between neighboring rows on a real screen). Tapping the value
+# opens the keypad for exact entry. Wide gutter between the two columns.
 for ($i = 0; $i -lt $effects.Count; $i++) {
     $key = $effects[$i][0]; $label = $effects[$i][1]; $hasGain = $effects[$i][2]
     $col = [math]::Floor($i / 7); $row = $i % 7
-    $x = 8 + $col * 396; $y = 44 + $row * 62
+    $x = 10 + $col * 404; $y = 44 + $row * 62
     # audio routes to its dedicated actions (peer voice, not a TelemetryEffect)
-    $tgl = if ($key -eq 'Audio') { 'DashFxAudioToggle' } else { "DashFx${key}Toggle" }
-    $up  = if ($key -eq 'Audio') { 'DashAudioGainUp' }   else { "DashFx${key}GainUp" }
-    $dn  = if ($key -eq 'Audio') { 'DashAudioGainDown' } else { "DashFx${key}GainDown" }
+    $tgl  = if ($key -eq 'Audio') { 'DashFxAudioToggle' } else { "DashFx${key}Toggle" }
+    $up   = if ($key -eq 'Audio') { 'DashAudioGainUp' }   else { "DashFx${key}GainUp" }
+    $dn   = if ($key -eq 'Audio') { 'DashAudioGainDown' } else { "DashFx${key}GainDown" }
+    $open = if ($key -eq 'Audio') { 'DashAudioGainOpen' } else { "DashFx${key}GainOpen" }
     $onProp = $P + '.Fx.' + $key + '.On'
-    $s3.Add((New-Rect "fx-$key-bg" $x $y 196 56 $TILE @{
+    $s3.Add((New-Rect "fx-$key-bg" $x $y 170 56 $TILE @{
         BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $onProp + '")?"' + $TILEON + '":"' + $TILE + '"')
     }))
-    $s3.Add((New-Text "fx-$key-t" ($x + 8) $y 180 56 16 $label $WHITE 0 @{
+    $s3.Add((New-Text "fx-$key-t" ($x + 8) $y 156 56 16 $label $WHITE 0 @{
         TextColor = BindJS 'TextColor' ('return $prop("' + $onProp + '")?"' + $WHITE + '":"' + $GRAY + '"')
     }))
-    $s3.Add((New-Button "fx-$key-tgl" $x $y 196 56 $tgl))
+    $s3.Add((New-Button "fx-$key-tgl" $x $y 170 56 $tgl))
     if (-not $hasGain) { continue }
-    $s3.Add((New-Text "fx-$key-gain" ($x + 200) $y 76 56 17 '' $MUTED 1 @{
+    $s3.Add((New-Rect  "fx-$key-dn-bg" ($x + 176) $y 50 56 $TILE))
+    $s3.Add((New-Text  "fx-$key-dn-t"  ($x + 176) $y 50 56 26 '-' $WHITE 1 $null 'Bold'))
+    $s3.Add((New-Button "fx-$key-dn"   ($x + 176) $y 50 56 $dn))
+    $s3.Add((New-Rect "fx-$key-gain-bg" ($x + 230) $y 82 56 $PANEL $null 0))
+    $s3.Add((New-Text "fx-$key-gain" ($x + 230) $y 82 56 17 '' $WHITE 1 @{
         Text = BindJS 'Text' ('return (1*$prop("' + $P + '.Fx.' + $key + '.Gain")).toFixed(3)')
     }))
-    $s3.Add((New-Rect  "fx-$key-dn-bg" ($x + 280) $y 54 56 $TILE))
-    $s3.Add((New-Text  "fx-$key-dn-t"  ($x + 280) $y 54 56 26 '-' $WHITE 1 $null 'Bold'))
-    $s3.Add((New-Button "fx-$key-dn"   ($x + 280) $y 54 56 $dn))
-    $s3.Add((New-Rect  "fx-$key-up-bg" ($x + 338) $y 54 56 $TILE))
-    $s3.Add((New-Text  "fx-$key-up-t"  ($x + 338) $y 54 56 26 '+' $WHITE 1 $null 'Bold'))
-    $s3.Add((New-Button "fx-$key-up"   ($x + 338) $y 54 56 $up))
+    $s3.Add((New-Button "fx-$key-gain-tap" ($x + 230) $y 82 56 $open))
+    $s3.Add((New-Rect  "fx-$key-up-bg" ($x + 316) $y 50 56 $TILE))
+    $s3.Add((New-Text  "fx-$key-up-t"  ($x + 316) $y 50 56 26 '+' $WHITE 1 $null 'Bold'))
+    $s3.Add((New-Button "fx-$key-up"   ($x + 316) $y 50 56 $up))
 }
+$s3.Add((New-Text 'fx-hint' 420 8 370 30 13 'Tap name = on/off. Tap value = type exact.' $GRAY 2))
+
+KeypadOverlay $P | ForEach-Object { $s3.Add($_) }
+
+# =====================================================================
+# Screen 4: PRESETS (game preset + car preset, picker overlay)
+# =====================================================================
+$s4 = [System.Collections.Generic.List[object]]::new()
+$s4.Add((New-Text 'pr-title' 16 8 300 36 24 'PRESETS' $WHITE 0 $null 'Bold'))
+$s4.Add((New-Text 'pr-car' 320 8 464 36 16 '' $MUTED 2 @{
+    Text = BindJS 'Text' ('var g=""+($prop("' + $P + '.Game")||"No game");var c=""+($prop("' + $P + '.CarName")||"");return c!=""?(g+"  -  "+c):g')
+}))
+
+$s4.Add((New-Rect 'pr-game-panel' 16 64 768 150 $PANEL))
+$s4.Add((New-Text 'pr-game-label' 32 76 500 24 15 'GAME PRESET  (applies to the whole game, tap to change)' $MUTED 0))
+$s4.Add((New-Text 'pr-game-value' 32 104 600 80 30 '' $WHITE 0 @{
+    Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.PresetName")||"");return p!=""?p:"(manual tune)"')
+} 'Bold'))
+$s4.Add((New-Rect 'pr-game-hint' 648 96 120 84 $TILE))
+$s4.Add((New-Text 'pr-game-hint-t' 648 96 120 84 17 'CHANGE' $WHITE 1))
+$s4.Add((New-Button 'pr-game-btn' 16 64 768 150 'DashPresetOpenGame'))
+
+$s4.Add((New-Rect 'pr-carp-panel' 16 228 768 150 $PANEL))
+$s4.Add((New-Text 'pr-carp-label' 32 240 500 24 15 'CAR PRESET  (this car only, tap to change)' $MUTED 0))
+$s4.Add((New-Text 'pr-carp-value' 32 268 600 80 30 '' $WHITE 0 @{
+    Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.CarPresetName")||"");return p!=""?p:"(none saved for this car)"')
+} 'Bold'))
+$s4.Add((New-Rect 'pr-carp-hint' 648 260 120 84 $TILE))
+$s4.Add((New-Text 'pr-carp-hint-t' 648 260 120 84 17 'CHANGE' $WHITE 1))
+$s4.Add((New-Button 'pr-carp-btn' 16 228 768 150 'DashPresetOpenCar'))
+
+$s4.Add((New-Text 'pr-note' 32 420 736 40 14 'Applying a preset replaces your current unsaved tuning, same as applying it in the desktop UI.' $GRAY 0))
+
+PresetOverlay $P | ForEach-Object { $s4.Add($_) }
 
 # =====================================================================
 # Assemble document
@@ -343,9 +443,9 @@ $meta = [ordered]@{
     Category = 'TF4ALL'; Title = 'TF4ALL Remote'
     Description = 'Remote control for Trueforce For All: gains, effect toggles and car facts from a phone or tablet'
     Author = 'Mhytee'
-    ScreenCount = 3.0
-    InGameScreensIndexs = @(0, 1, 2)
-    IdleScreensIndexs = @(0, 1, 2)
+    ScreenCount = 4.0
+    InGameScreensIndexs = @(0, 1, 2, 3)
+    IdleScreensIndexs = @(0, 1, 2, 3)
     MainPreviewIndex = 0
     IsOverlay = $false
     Width = 800.0; Height = 480.0
@@ -363,7 +463,8 @@ $doc = [ordered]@{
     Screens = @(
         (New-Screen 'Drive' $s1),
         (New-Screen 'Car facts' $s2),
-        (New-Screen 'Effects' $s3)
+        (New-Screen 'Effects' $s3),
+        (New-Screen 'Presets' $s4)
     )
     SnapToGrid = $false; HideLabels = $false
     ShowForeground = $true; ForegroundOpacity = 50.0
@@ -382,5 +483,5 @@ $json = $doc | ConvertTo-Json -Depth 60
 $metaJson = $meta | ConvertTo-Json -Depth 10
 [IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Remote.djson.metadata'), $metaJson, [Text.UTF8Encoding]::new($false))
 
-$itemCount = $s1.Count + $s2.Count + $s3.Count
-Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count))"
+$itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count
+Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count))"

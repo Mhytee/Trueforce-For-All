@@ -3,16 +3,18 @@
     "Title":  "TF4ALL Remote",
     "Description":  "Remote control for Trueforce For All: gains, effect toggles and car facts from a phone or tablet",
     "Author":  "Mhytee",
-    "ScreenCount":  3,
+    "ScreenCount":  4,
     "InGameScreensIndexs":  [
                                 0,
                                 1,
-                                2
+                                2,
+                                3
                             ],
     "IdleScreensIndexs":  [
                               0,
                               1,
-                              2
+                              2,
+                              3
                           ],
     "MainPreviewIndex":  0,
     "IsOverlay":  false,

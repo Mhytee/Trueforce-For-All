@@ -33,6 +33,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SimHub.Plugins;
 using TrueforceForAll.Plugin.Effects;
 
@@ -46,12 +47,26 @@ namespace TrueforceForAll.Plugin
         /// nothing: it polls on a 1 s timer.</summary>
         public event Action DashRemoteChanged;
 
-        // Keypad / overlay state for the dash's engine-layout picker and
-        // redline entry. Written on SimHub's action-trigger thread, read on
-        // the property-poll thread; strings are reference-atomic so torn
-        // reads are impossible and eventual consistency is fine here.
-        private volatile string _dashOverlay = "";        // "" | "layout" | "redline"
-        private volatile string _dashRedlineEntry = "";   // digits being typed
+        // Keypad / overlay state for the dash's engine-layout picker and the
+        // shared numeric keypad. Written on SimHub's action-trigger thread,
+        // read on the property-poll thread; strings are reference-atomic so
+        // torn reads are impossible and eventual consistency is fine here.
+        private volatile string _dashOverlay = "";        // "" | "layout" | "keypad" | "presets"
+        private volatile string _dashKeypadEntry = "";    // digits being typed
+        // What the keypad edits when SET is pressed: "master" | "audio" |
+        // "redline" | "fx:<Key>" (a _dashFx table key).
+        private volatile string _dashKeypadTarget = "";
+        private volatile string _dashKeypadTitle = "";
+
+        // Preset picker state. The name list is built ONCE at open (car
+        // presets come off disk via GetCarPresets; slot getters must never
+        // touch the store per poll) and paged 8 rows at a time.
+        private volatile string _dashPresetScope = "";              // "game" | "car"
+        private volatile string _dashPresetTitle = "";
+        private volatile string _dashPresetCurrent = "";            // highlight row
+        private volatile string[] _dashPresetList = new string[0];
+        private int _dashPresetPage;
+        private const int DashPresetRows = 8;
 
         // Per-session dedupe for silent car-fact submissions, mirroring the
         // desktop prompts' _enginePromptedThisSession semantics (same value
@@ -72,7 +87,7 @@ namespace TrueforceForAll.Plugin
         // ------------------------------------------------------------------
         private sealed class DashSnapshot
         {
-            public string Game = "", CarName = "", PresetName = "";
+            public string Game = "", CarName = "", PresetName = "", CarPresetName = "";
             public string EngineLayout = "", EngineSource = "", EnginePin = "Auto";
             public int Redline, MaxRpm;
             public string RedlineSource = "";
@@ -92,6 +107,8 @@ namespace TrueforceForAll.Plugin
                     Game       = _activeGame ?? "",
                     PresetName = _activePresetName ?? "",
                 };
+                if (!string.IsNullOrEmpty(_activeCarId))
+                    s.CarPresetName = GetActiveCarPresetName(_activeCarId) ?? "";
                 var sum = GetActiveCarFactsSummary();
                 s.CarName       = sum.CarName ?? "";
                 s.EngineLayout  = sum.EngineTypeDisplay ?? "Auto";
@@ -192,7 +209,29 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.RedlineSource",      () => DashSnap().RedlineSource);
             this.AttachDelegate("Dash.MaxRpm",             () => DashSnap().MaxRpm);
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
-            this.AttachDelegate("Dash.RedlineEntry",       () => _dashRedlineEntry);
+            this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
+            this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
+
+            // ---------- properties: preset picker ----------
+            this.AttachDelegate("Dash.CarPresetName",    () => DashSnap().CarPresetName);
+            this.AttachDelegate("Dash.Preset.Title",     () => _dashPresetTitle);
+            this.AttachDelegate("Dash.Preset.Current",   () => _dashPresetCurrent);
+            this.AttachDelegate("Dash.Preset.PageLabel", () =>
+            {
+                var list = _dashPresetList;
+                int pages = Math.Max(1, (list.Length + DashPresetRows - 1) / DashPresetRows);
+                return (Math.Min(_dashPresetPage, pages - 1) + 1) + "/" + pages;
+            });
+            for (int slot = 1; slot <= DashPresetRows; slot++)
+            {
+                int idx = slot - 1;
+                this.AttachDelegate("Dash.Preset.Slot" + slot, () =>
+                {
+                    var list = _dashPresetList;
+                    int i = _dashPresetPage * DashPresetRows + idx;
+                    return i >= 0 && i < list.Length ? list[i] : "";
+                });
+            }
 
             // ---------- properties + actions: per effect ----------
             foreach (var fx in _dashFx)
@@ -209,6 +248,9 @@ namespace TrueforceForAll.Plugin
                     DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: true))));
                 this.AddAction("DashFx" + f.Key + "GainDown", (a, b) =>
                     DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false))));
+                this.AddAction("DashFx" + f.Key + "GainOpen", (a, b) =>
+                    DashOpenKeypad("fx:" + f.Key, f.Key.ToUpperInvariant() + " GAIN (now "
+                        + (Settings == null ? 0f : f.GetGain()).ToString("0.###") + ")"));
             }
 
             // Audio capture is a peer voice, not a TelemetryEffect: it goes
@@ -249,26 +291,61 @@ namespace TrueforceForAll.Plugin
                 this.AddAction("DashEngineLayoutSet_" + l, (a, b) => DashSetEngineLayout(l));
             }
 
-            // ---------- actions: redline steppers + keypad ----------
-            this.AddAction("DashRedlineUp",     (a, b) => DashNudgeRedline(+50));
-            this.AddAction("DashRedlineDown",   (a, b) => DashNudgeRedline(-50));
-            this.AddAction("DashRedlineOpen",   (a, b) => { _dashRedlineEntry = ""; _dashOverlay = "redline"; });
-            this.AddAction("DashRedlineCancel", (a, b) => { _dashOverlay = ""; _dashRedlineEntry = ""; });
-            this.AddAction("DashRedlineBack",   (a, b) =>
+            // ---------- actions: redline steppers ----------
+            this.AddAction("DashRedlineUp",   (a, b) => DashNudgeRedline(+50));
+            this.AddAction("DashRedlineDown", (a, b) => DashNudgeRedline(-50));
+
+            // ---------- actions: shared numeric keypad ----------
+            // One keypad serves every tap-to-type value; the open action
+            // stamps the target + a title that shows the current value.
+            this.AddAction("DashRedlineOpen", (a, b) =>
             {
-                var e = _dashRedlineEntry;
-                if (e.Length > 0) _dashRedlineEntry = e.Substring(0, e.Length - 1);
+                int cur = GetActiveVariantUserRedline() ?? (RevLimiter?.EffectiveRedlineRpm ?? 0);
+                DashOpenKeypad("redline", "REDLINE RPM" + (cur >= 500 ? " (now " + cur + ")" : ""));
+            });
+            this.AddAction("DashMasterGainOpen", (a, b) =>
+                DashOpenKeypad("master", "MASTER GAIN (now " + MasterGain.ToString("0.00") + ")"));
+            this.AddAction("DashAudioGainOpen", (a, b) =>
+                DashOpenKeypad("audio", "AUDIO GAIN (now " + ActiveAudioGain.ToString("0.00") + ")"));
+            this.AddAction("DashKeypadCancel", (a, b) => { _dashOverlay = ""; _dashKeypadEntry = ""; _dashKeypadTarget = ""; });
+            this.AddAction("DashKeypadBack", (a, b) =>
+            {
+                var e = _dashKeypadEntry;
+                if (e.Length > 0) _dashKeypadEntry = e.Substring(0, e.Length - 1);
+            });
+            this.AddAction("DashKeypadDot", (a, b) =>
+            {
+                // Redline is integer-only; gains take one decimal point.
+                if (_dashKeypadTarget == "redline") return;
+                var e = _dashKeypadEntry;
+                if (e.Length < 6 && !e.Contains(".")) _dashKeypadEntry = (e.Length == 0 ? "0." : e + ".");
             });
             for (int d = 0; d <= 9; d++)
             {
                 var digit = d;
-                this.AddAction("DashRedlineDigit" + digit, (a, b) =>
+                this.AddAction("DashKeypadDigit" + digit, (a, b) =>
                 {
-                    var e = _dashRedlineEntry;
-                    if (e.Length < 5) _dashRedlineEntry = e + digit;
+                    var e = _dashKeypadEntry;
+                    if (e.Length < 6) _dashKeypadEntry = e + digit;
                 });
             }
-            this.AddAction("DashRedlineSet", (a, b) => DashCommitRedlineEntry());
+            this.AddAction("DashKeypadSet", (a, b) => DashCommitKeypadEntry());
+
+            // ---------- actions: preset picker ----------
+            this.AddAction("DashPresetOpenGame", (a, b) => DashOpenPresetPicker("game"));
+            this.AddAction("DashPresetOpenCar",  (a, b) => DashOpenPresetPicker("car"));
+            this.AddAction("DashPresetClose",    (a, b) =>
+            {
+                _dashOverlay = "";
+                _dashPresetScope = "";
+            });
+            this.AddAction("DashPresetPrev", (a, b) => DashPresetTurnPage(-1));
+            this.AddAction("DashPresetNext", (a, b) => DashPresetTurnPage(+1));
+            for (int slot = 1; slot <= DashPresetRows; slot++)
+            {
+                int idx = slot - 1;
+                this.AddAction("DashPresetSelect" + slot, (a, b) => DashPresetSelect(idx));
+            }
 
             SimHub.Logging.Current.Info("[TF4ALL] Dash remote bridge registered (properties + actions for the TF4ALL Remote dashboard).");
         }
@@ -337,19 +414,190 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private void DashCommitRedlineEntry()
+        private void DashOpenKeypad(string target, string title)
+        {
+            _dashKeypadTarget = target;
+            _dashKeypadTitle  = title;
+            _dashKeypadEntry  = "";
+            _dashOverlay      = "keypad";
+        }
+
+        // SET on the shared keypad. Invalid / out-of-range entries leave the
+        // keypad open with the digits kept so the user sees the value did not
+        // take and can fix it.
+        private void DashCommitKeypadEntry()
         {
             if (Settings == null) return;
-            if (!int.TryParse(_dashRedlineEntry, out int rpm)) return;
-            // Out-of-range entries stay in the keypad (overlay open, digits
-            // kept) so the user sees the value did not take and can fix it.
-            if (rpm < 500 || rpm > 25000) return;
-            if (!SaveActiveVariantUserRedline(rpm).HasValue) return;
+            string target = _dashKeypadTarget;
+            string entry  = _dashKeypadEntry;
+
+            if (target == "redline")
+            {
+                if (!int.TryParse(entry, out int rpm)) return;
+                if (rpm < 500 || rpm > 25000) return;
+                if (!SaveActiveVariantUserRedline(rpm).HasValue) return;
+                DashCloseKeypad();
+                _dashSnapTick = int.MinValue;
+                DashTrySilentRedlineSubmit(rpm);
+                RaiseDashRemoteChanged();
+                return;
+            }
+
+            if (!float.TryParse(entry, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float v)) return;
+
+            if (target == "master")
+            {
+                if (v < 0f || v > 2f) return;
+                MasterGain = v;
+                PersistSettings();
+                try { MasterGainChangedExternally?.Invoke(); } catch { }
+                DashCloseKeypad();
+                RaiseDashRemoteChanged();
+                return;
+            }
+            if (target == "audio")
+            {
+                if (v < 0f || v > DashAudioGainMax) return;
+                SetActiveAudioGainLive(v);
+                PersistSettings();
+                DashCloseKeypad();
+                RaiseDashRemoteChanged();
+                return;
+            }
+            if (target.StartsWith("fx:", StringComparison.Ordinal))
+            {
+                if (v < 0f || v > 10f) return;
+                string key = target.Substring(3);
+                foreach (var f in _dashFx)
+                {
+                    if (f.Key != key || f.SetGain == null) continue;
+                    DashMutateFx(f, () => f.SetGain(v));
+                    DashCloseKeypad();
+                    return;
+                }
+            }
+        }
+
+        private void DashCloseKeypad()
+        {
             _dashOverlay = "";
-            _dashRedlineEntry = "";
-            _dashSnapTick = int.MinValue;
-            DashTrySilentRedlineSubmit(rpm);
-            RaiseDashRemoteChanged();
+            _dashKeypadEntry = "";
+            _dashKeypadTarget = "";
+        }
+
+        // Build the picker list ONCE at open. Ordering mirrors the desktop
+        // pickers: built-ins first, then alphabetical. Car presets come off
+        // disk here (GetCarPresets -> store LoadAll), which is fine once per
+        // open but must never happen in a slot property getter.
+        private void DashOpenPresetPicker(string scope)
+        {
+            if (Settings == null) return;
+            try
+            {
+                string[] list;
+                string current;
+                string title;
+                if (scope == "car")
+                {
+                    string carId = _activeCarId;
+                    if (string.IsNullOrEmpty(carId))
+                    {
+                        list = new string[0]; current = "";
+                        title = "CAR PRESETS  (no car detected)";
+                    }
+                    else
+                    {
+                        var entries = GetCarPresets(carId);
+                        list = entries
+                            .OrderBy(kv => kv.Value != null && kv.Value.IsBuiltin ? 0 : 1)
+                            .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                            .Select(kv => kv.Key)
+                            .ToArray();
+                        current = GetActiveCarPresetName(carId) ?? "";
+                        title = list.Length > 0 ? "CAR PRESETS" : "CAR PRESETS  (none for this car)";
+                    }
+                }
+                else
+                {
+                    scope = "game";
+                    list = PresetNames
+                        .OrderBy(n => IsBuiltinPreset(n) ? 0 : 1)
+                        .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                    current = _activePresetName ?? "";
+                    title = list.Length > 0 ? "GAME PRESETS" : "GAME PRESETS  (library empty)";
+                }
+                _dashPresetList = list;
+                _dashPresetCurrent = current;
+                _dashPresetTitle = title;
+                // open on the page containing the current selection
+                int at = string.IsNullOrEmpty(current) ? -1 : Array.IndexOf(list, current);
+                _dashPresetPage = at >= 0 ? at / DashPresetRows : 0;
+                _dashPresetScope = scope;
+                _dashOverlay = "presets";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[TF4ALL] Dash preset picker open failed ({scope}): {ex.Message}");
+            }
+        }
+
+        private void DashPresetTurnPage(int delta)
+        {
+            var list = _dashPresetList;
+            int pages = Math.Max(1, (list.Length + DashPresetRows - 1) / DashPresetRows);
+            int next = _dashPresetPage + delta;
+            if (next < 0) next = 0;
+            if (next > pages - 1) next = pages - 1;
+            _dashPresetPage = next;
+        }
+
+        private void DashPresetSelect(int rowIdx)
+        {
+            if (Settings == null) return;
+            var list = _dashPresetList;
+            int i = _dashPresetPage * DashPresetRows + rowIdx;
+            if (i < 0 || i >= list.Length) return;
+            string name = list[i];
+            // The offline-edit banner means unsaved authoring is in flight;
+            // the auto-apply path suppresses itself for the same reason, and
+            // the plugin apply methods do NOT guard this themselves.
+            if (IsOfflineEditing || IsOfflineEditingCar)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Dash preset apply skipped: an offline preset edit is in progress.");
+                return;
+            }
+            try
+            {
+                if (_dashPresetScope == "car")
+                {
+                    string carId = _activeCarId;
+                    if (string.IsNullOrEmpty(carId)) return;
+                    // The UI only ever runs this on the WPF thread; from the
+                    // dash trigger thread the CarOverrides reload could race
+                    // the data thread's car-change draft handling, so take the
+                    // same lock that path uses (reentrant, so the PersistCore
+                    // inside is fine).
+                    lock (_carFactsLock)
+                    {
+                        if (!SelectCarForEditing(carId, name)) return;
+                    }
+                }
+                else
+                {
+                    if (!ApplyPreset(name)) return;
+                }
+                _dashPresetCurrent = name;
+                _dashOverlay = "";
+                _dashPresetScope = "";
+                _dashSnapTick = int.MinValue;
+                RaiseDashRemoteChanged();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[TF4ALL] Dash preset apply failed ({name}): {ex.Message}");
+            }
         }
 
         // Silent community submit for a dash engine-layout pin. Desktop
