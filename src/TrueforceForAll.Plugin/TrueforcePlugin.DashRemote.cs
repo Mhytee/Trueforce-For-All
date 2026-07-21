@@ -228,6 +228,16 @@ namespace TrueforceForAll.Plugin
             try { DashRemoteChanged?.Invoke(); } catch { }
         }
 
+        // Remote taps are user activity (owner decision 2026-07-20): they
+        // prove a human is at this rig, so they feed the same activity
+        // signal the desktop panel stamps, which gates the cloud auto-pull.
+        // Stamped in the shared action sinks rather than per registration;
+        // every dash flow passes through one of them.
+        private void DashNoteActivity()
+        {
+            try { NoteUserActivity(); } catch { }
+        }
+
         // ==================================================================
         // Registration. Called once from Init; wrapped there so a SimHub API
         // hiccup can't abort plugin startup.
@@ -315,6 +325,7 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashFxAudioToggle", (a, b) =>
             {
                 if (Settings == null) return;
+                DashNoteActivity();
                 SetActiveAudioEnabledLive(!ActiveAudioEnabled);
                 PersistSettings();
                 RaiseDashRemoteChanged();
@@ -325,10 +336,11 @@ namespace TrueforceForAll.Plugin
             // ---------- actions: global ----------
             // Master gain reuses NudgeMasterGain (applies + persists + raises
             // MasterGainChangedExternally) with the user's configured step.
-            this.AddAction("DashMasterGainUp",   (a, b) => NudgeMasterGain(+MasterGainStep));
-            this.AddAction("DashMasterGainDown", (a, b) => NudgeMasterGain(-MasterGainStep));
+            this.AddAction("DashMasterGainUp",   (a, b) => { DashNoteActivity(); NudgeMasterGain(+MasterGainStep); });
+            this.AddAction("DashMasterGainDown", (a, b) => { DashNoteActivity(); NudgeMasterGain(-MasterGainStep); });
             this.AddAction("DashPluginToggle",   (a, b) =>
             {
+                DashNoteActivity();
                 SetPluginEnabled(!PluginEnabled);
                 RaiseDashRemoteChanged();
             });
@@ -421,6 +433,7 @@ namespace TrueforceForAll.Plugin
         private void DashMutateFx(DashFx f, Action mutate)
         {
             if (Settings == null) return;
+            DashNoteActivity();
             try
             {
                 EnsureSectionDraft(f.Kind);
@@ -438,6 +451,7 @@ namespace TrueforceForAll.Plugin
         private void DashNudgeAudioGain(float delta)
         {
             if (Settings == null) return;
+            DashNoteActivity();
             float next = ActiveAudioGain + delta;
             if (next < 0f) next = 0f;
             if (next > DashAudioGainMax) next = DashAudioGainMax;
@@ -450,6 +464,7 @@ namespace TrueforceForAll.Plugin
         {
             _dashOverlay = "";
             if (Settings == null) return;
+            DashNoteActivity();
             if (!DashRequireCar()) return;
             // Auto clears the pin (SaveActiveVariantUserEngine treats Auto as
             // null); returns false when no variant signature exists yet, i.e.
@@ -467,6 +482,7 @@ namespace TrueforceForAll.Plugin
         private void DashNudgeRedline(int delta)
         {
             if (Settings == null) return;
+            DashNoteActivity();
             if (!DashRequireCar()) return;
             // Step from the user's pin when present, else from the resolved
             // effective value; with nothing resolved yet there is no base to
@@ -490,6 +506,7 @@ namespace TrueforceForAll.Plugin
 
         private void DashOpenKeypad(string target, string title, float min, float max)
         {
+            DashNoteActivity();
             _dashKeypadTarget    = target;
             _dashKeypadTitle     = title;
             _dashKeypadBaseTitle = title;
@@ -513,6 +530,7 @@ namespace TrueforceForAll.Plugin
         private void DashCommitKeypadEntry()
         {
             if (Settings == null) return;
+            DashNoteActivity();
             string target = _dashKeypadTarget;
             string entry  = _dashKeypadEntry;
 
@@ -610,6 +628,7 @@ namespace TrueforceForAll.Plugin
         private void DashOpenPresetPicker(string scope)
         {
             if (Settings == null) return;
+            DashNoteActivity();
             try
             {
                 string[] list;
@@ -668,6 +687,7 @@ namespace TrueforceForAll.Plugin
         private void DashPresetSelect(int rowIdx)
         {
             if (Settings == null) return;
+            DashNoteActivity();
             var list = _dashPresetList;
             int i = _dashPresetPage * DashPresetRows + rowIdx;
             if (i < 0 || i >= list.Length) return;

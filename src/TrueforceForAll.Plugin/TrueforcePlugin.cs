@@ -2252,6 +2252,12 @@ namespace TrueforceForAll.Plugin
                     // latest target so a prerelease can surface in the banner
                     // on the very first check. No-op for Stable on stable.
                     RefreshUpdateChannel();
+                    // Downloaded-preset auto-update rides the same startup
+                    // check. Short delay: the community/preset-sharing
+                    // clients finish constructing later in Init, and startup
+                    // has better things to do first.
+                    await System.Threading.Tasks.Task.Delay(15000);
+                    await MaybeAutoUpdateCommunityPresetsHeadless();
                 }
                 catch (Exception ex)
                 {
@@ -3029,6 +3035,9 @@ namespace TrueforceForAll.Plugin
                         // Beta auto-enroll + channel re-select (cheap no-op
                         // for Stable users on stable builds).
                         RefreshUpdateChannel();
+                        // Downloaded-preset auto-update shares the user's
+                        // re-check cadence (owner decision 2026-07-20).
+                        await MaybeAutoUpdateCommunityPresetsHeadless();
                     }
                     catch (Exception ex)
                     {
@@ -12880,6 +12889,42 @@ namespace TrueforceForAll.Plugin
         /// content_version is now higher than the local SeenContentVersion.
         /// Background-thread safe; the result is plain data the UI
         /// renders on the dispatcher.</summary>
+        // Headless auto-update sweep for downloaded community presets. Until
+        // 2026-07 the ONLY driver of the update check was the settings
+        // panel's Loaded handler (MaybeShowCommunityUpdates), so a user who
+        // enabled Auto-update but never opened the panel got no updates:
+        // same panel-gating shape as the community car-facts bug. Runs from
+        // the update-check cadence (startup check + the user-configured
+        // UpdateCheckIntervalHours re-poll) and only silent-applies; rows
+        // needing a user decision (edited local copy, packs, no baseline)
+        // stay in the tracker for the panel's modal on next open. No-op
+        // when Auto-update or community networking is off.
+        private volatile bool _presetSweepInFlight;
+        internal async Task MaybeAutoUpdateCommunityPresetsHeadless()
+        {
+            if (_shuttingDown) return;
+            if (Settings?.AutoUpdateDownloadedPresets != true) return;
+            if (Settings?.CommunityEnabled != true) return;
+            if (_presetSweepInFlight) return;
+            _presetSweepInFlight = true;
+            try
+            {
+                var updates = await FindCommunityPresetUpdatesAsync();
+                if (updates == null || updates.Count == 0) return;
+                var residual = await AutoApplyCommunityPresetUpdatesAsync(updates);
+                int applied = updates.Count - (residual?.Count ?? 0);
+                if (applied > 0)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Background preset auto-update: {applied} downloaded preset(s) refreshed"
+                        + ((residual?.Count ?? 0) > 0 ? $", {residual.Count} awaiting a decision in the Preset Manager." : "."));
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[TF4ALL] Background preset auto-update failed: {ex.Message}");
+            }
+            finally { _presetSweepInFlight = false; }
+        }
+
         internal async Task<List<(PresetSummary Server, DownloadedPresetRecord Local)>> FindCommunityPresetUpdatesAsync()
         {
             var found = new List<(PresetSummary, DownloadedPresetRecord)>();
