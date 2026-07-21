@@ -93,13 +93,20 @@ namespace TrueforceForAll.Plugin
             public string RedlineSource = "";
         }
         private DashSnapshot _dashSnap = new DashSnapshot();
-        private int _dashSnapTick = int.MinValue;
+        // Freshness is an explicit flag + tick pair, NOT an int.MinValue
+        // sentinel tick: TickCount - int.MinValue wraps negative, which reads
+        // as "fresh" and permanently serves the empty initial snapshot (the
+        // v2 on-wheel bug: dash showed "No game" with a car loaded).
+        private int _dashSnapTick;
+        private volatile bool _dashSnapValid;
 
         private DashSnapshot DashSnap()
         {
             int now = Environment.TickCount;
-            if (unchecked(now - _dashSnapTick) < 500) return _dashSnap;
-            _dashSnapTick = now;   // set first so a throwing rebuild doesn't re-run per poll
+            if (_dashSnapValid && unchecked(now - _dashSnapTick) < 500) return _dashSnap;
+            // set first so a throwing rebuild doesn't re-run per poll
+            _dashSnapTick = now;
+            _dashSnapValid = true;
             try
             {
                 var s = new DashSnapshot
@@ -390,7 +397,7 @@ namespace TrueforceForAll.Plugin
             // null); returns false when no variant signature exists yet, i.e.
             // no telemetry has been observed for this car.
             if (!SaveActiveVariantUserEngine(layout, null)) return;
-            _dashSnapTick = int.MinValue;   // show the new pin immediately
+            _dashSnapValid = false;   // show the new pin immediately
             DashTrySilentEngineSubmit(layout);
             RaiseDashRemoteChanged();
         }
@@ -408,7 +415,7 @@ namespace TrueforceForAll.Plugin
             if (next > 25000) next = 25000;
             if (SaveActiveVariantUserRedline(next).HasValue)
             {
-                _dashSnapTick = int.MinValue;
+                _dashSnapValid = false;
                 DashTrySilentRedlineSubmit(next);
                 RaiseDashRemoteChanged();
             }
@@ -437,7 +444,7 @@ namespace TrueforceForAll.Plugin
                 if (rpm < 500 || rpm > 25000) return;
                 if (!SaveActiveVariantUserRedline(rpm).HasValue) return;
                 DashCloseKeypad();
-                _dashSnapTick = int.MinValue;
+                _dashSnapValid = false;
                 DashTrySilentRedlineSubmit(rpm);
                 RaiseDashRemoteChanged();
                 return;
@@ -591,7 +598,7 @@ namespace TrueforceForAll.Plugin
                 _dashPresetCurrent = name;
                 _dashOverlay = "";
                 _dashPresetScope = "";
-                _dashSnapTick = int.MinValue;
+                _dashSnapValid = false;
                 RaiseDashRemoteChanged();
             }
             catch (Exception ex)
