@@ -1,7 +1,7 @@
 {
     "Category":  "TF4ALL",
-    "Title":  "TF4ALL Remote",
-    "Description":  "Remote control for Trueforce For All: gains, effect toggles and car facts from a phone or tablet",
+    "Title":  "TF4ALL Dash",
+    "Description":  "Control panel and rev lights for Trueforce For All: gains, effects, car facts and presets from a phone or tablet",
     "Author":  "Mhytee",
     "ScreenCount":  4,
     "InGameScreensIndexs":  [

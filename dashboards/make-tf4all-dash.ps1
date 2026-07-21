@@ -1,4 +1,4 @@
-# Generates the "TF4ALL Remote" DashStudio dashboard (.djson + .metadata).
+# Generates the "TF4ALL Dash" DashStudio dashboard (.djson + .metadata).
 # Item schemas mirror shipped dashes (RSC - Toggle Switch / MobileDash):
 # TextItem / RectangleItem for visuals, transparent ButtonItem tap zones with
 # TriggerAction = "TrueforcePlugin.<DashAction>". All formulas use the JS
@@ -6,7 +6,7 @@
 # quotes so these PS single-quoted strings stay readable.
 
 $ErrorActionPreference = 'Stop'
-$OutDir = Join-Path $PSScriptRoot 'TF4ALL Remote'
+$OutDir = Join-Path $PSScriptRoot 'TF4ALL Dash'
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 # ---- palette ----
@@ -494,8 +494,8 @@ function New-Screen([string]$name, $items) {
 }
 
 $meta = [ordered]@{
-    Category = 'TF4ALL'; Title = 'TF4ALL Remote'
-    Description = 'Remote control for Trueforce For All: gains, effect toggles and car facts from a phone or tablet'
+    Category = 'TF4ALL'; Title = 'TF4ALL Dash'
+    Description = 'Control panel and rev lights for Trueforce For All: gains, effects, car facts and presets from a phone or tablet'
     Author = 'Mhytee'
     ScreenCount = 4.0
     InGameScreensIndexs = @(0, 1, 2, 3)
@@ -533,9 +533,9 @@ $doc = [ordered]@{
 }
 
 $json = $doc | ConvertTo-Json -Depth 60
-[IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Remote.djson'), $json, [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Dash.djson'), $json, [Text.UTF8Encoding]::new($false))
 $metaJson = $meta | ConvertTo-Json -Depth 10
-[IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Remote.djson.metadata'), $metaJson, [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Dash.djson.metadata'), $metaJson, [Text.UTF8Encoding]::new($false))
 
 $itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count
 Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count))"
