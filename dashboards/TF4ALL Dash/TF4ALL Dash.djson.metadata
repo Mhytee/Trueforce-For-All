@@ -3,18 +3,20 @@
     "Title":  "TF4ALL Dash",
     "Description":  "Control panel and rev lights for Trueforce For All: gains, effects, car facts and presets from a phone or tablet",
     "Author":  "Mhytee",
-    "ScreenCount":  4,
+    "ScreenCount":  5,
     "InGameScreensIndexs":  [
                                 0,
                                 1,
                                 2,
-                                3
+                                3,
+                                4
                             ],
     "IdleScreensIndexs":  [
                               0,
                               1,
                               2,
-                              3
+                              3,
+                              4
                           ],
     "MainPreviewIndex":  0,
     "IsOverlay":  false,

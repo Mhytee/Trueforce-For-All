@@ -143,6 +143,13 @@ namespace TrueforceForAll.Core
         public Func<short?> FfbTargetProvider { get; set; }
         public int FfbTargetMaxAgeMs { get; set; } = 10000;
 
+        /// <summary>The FFB target the stream pump most recently pulled from
+        /// <see cref="FfbTargetProvider"/> (signed int16 tap scale), 0 when
+        /// none was fresh. Read-only observability surface for the TF4ALL
+        /// Dash signal scope; written once per packet on the pump thread.</summary>
+        public short LastFfbTarget => _lastFfbTarget;
+        private volatile short _lastFfbTarget;
+
         // FFB pass-through tuning. AC's HID++ feature 0x0e and the wheel's ep3
         // cur field use OPPOSITE sign conventions, empirically: turning right
         // and releasing produces a centering force in AC at negative LSBs, but
@@ -746,6 +753,7 @@ namespace TrueforceForAll.Core
             if (_paused && !forceActive) return;
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
+            _lastFfbTarget = ffbTargetMaybe ?? (short)0;
             bool sendActive = ffbTargetMaybe.HasValue || forceActive;
 
             if (sendActive)

@@ -20384,6 +20384,12 @@ namespace TrueforceForAll.Plugin
                     break;
                 }
 
+                // Signal-scope tap for the dash's Scope screen: buf still
+                // holds this tick's rendered samples after RunOneTick has
+                // pushed them. Own catch so a scope bug can never be
+                // mistaken for the dead-device shutdown signal above.
+                try { DashScopeTick(buf, BatchSamples); } catch { }
+
                 // Bank earned seat time for the one-and-done word-of-mouth
                 // prompt. Cheap: one Stopwatch read + a gate; only writes the
                 // settings file once every StreamFlushIntervalSeconds.

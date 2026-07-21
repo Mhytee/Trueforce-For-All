@@ -35,6 +35,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using SimHub.Plugins;
 using TrueforceForAll.Plugin.Effects;
@@ -142,6 +143,54 @@ namespace TrueforceForAll.Plugin
         // (FeedbackBoxInjector.AudioMax).
         private const float DashAudioGainStep = 0.05f;
         private const float DashAudioGainMax  = 3.0f;
+
+        // ------------------------------------------------------------------
+        // Signal scope (the dash's Scope screen): two stacked scrolling
+        // traces sampled on the producer thread. Texture = peak abs of each
+        // rendered 1 kHz batch (the actual ep3 haptic stream, 0..1); FFB =
+        // the signed force the device last pulled from its provider
+        // (int16 tap scale -> -1..1). One column advances every ScopeColMs,
+        // so ScopeCols columns = ~2.5 s of scrolling history. Rings are
+        // written by the producer thread and read by the property-poll
+        // thread; float element reads are atomic, a torn column is one
+        // frame of cosmetic noise at worst.
+        // ------------------------------------------------------------------
+        private const int ScopeCols  = 78;
+        private const int ScopeColMs = 32;
+        private readonly float[] _scopeTex = new float[ScopeCols];
+        private readonly float[] _scopeFfb = new float[ScopeCols];
+        private volatile int _scopeHead;
+        private float _scopeAccum;      // producer-thread only
+        private long _scopeNextColTicks;
+
+        /// <summary>Called once per producer tick with the batch RunOneTick
+        /// just rendered/pushed. Allocation-free; the hot-path cost is four
+        /// abs/max ops and a Stopwatch read.</summary>
+        internal void DashScopeTick(float[] buf, int count)
+        {
+            float peak = _scopeAccum;
+            for (int i = 0; i < count; i++)
+            {
+                float a = buf[i];
+                if (a < 0f) a = -a;
+                if (a > peak) peak = a;
+            }
+            _scopeAccum = peak;
+
+            long now = Stopwatch.GetTimestamp();
+            if (_scopeNextColTicks == 0)
+                _scopeNextColTicks = now + Stopwatch.Frequency * ScopeColMs / 1000;
+            if (now < _scopeNextColTicks) return;
+            _scopeNextColTicks = now + Stopwatch.Frequency * ScopeColMs / 1000;
+
+            int h = _scopeHead;
+            _scopeTex[h] = peak > 1f ? 1f : peak;
+            float ffb = (_device?.LastFfbTarget ?? (short)0) / 32768f;
+            if (ffb > 1f) ffb = 1f; else if (ffb < -1f) ffb = -1f;
+            _scopeFfb[h] = ffb;
+            _scopeHead = (h + 1) % ScopeCols;
+            _scopeAccum = 0f;
+        }
 
         // ------------------------------------------------------------------
         // Snapshot cache for the poll-heavy readouts. GetActiveCarFactsSummary
@@ -297,6 +346,15 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
+            // ---------- properties: signal scope (polled at display rate) ----------
+            // Index 0 = oldest column (left edge), ScopeCols-1 = newest.
+            for (int c = 0; c < ScopeCols; c++)
+            {
+                int idx = c;
+                this.AttachDelegate("Dash.Scope.Tex" + idx, () => _scopeTex[(_scopeHead + idx) % ScopeCols]);
+                this.AttachDelegate("Dash.Scope.Ffb" + idx, () => _scopeFfb[(_scopeHead + idx) % ScopeCols]);
+            }
+
             // ---------- properties: rev strip (polled at display rate) ----------
             this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
             this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);

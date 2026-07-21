@@ -478,6 +478,49 @@ ToastBar $P | ForEach-Object { $s4.Add($_) }
 RevStrip $P | ForEach-Object { $s4.Add($_) }
 
 # =====================================================================
+# Screen 5: SCOPE (scrolling signal waveforms, stacked lanes)
+# Column oscilloscope: 78 columns, one per 32 ms slice (plugin-side
+# ring), scrolling left. Top lane = the game's FFB steering force
+# (signed line trace, amber); bottom lane = the Trueforce haptic
+# signal actually streaming to the wheel (mirrored envelope, purple).
+# Palette mirrors the FFB-architecture doc (base amber / tf purple).
+# =====================================================================
+$SCOPE_AMBER  = '#FFE3A445'
+$SCOPE_PURPLE = '#FFA08CFF'
+$SCOPE_GRID   = '#FF262F3A'
+$s5 = [System.Collections.Generic.List[object]]::new()
+$s5.Add((New-Text 'sc-title' 16 8 300 34 22 'SIGNAL SCOPE' $WHITE 0 $null 'Bold'))
+$s5.Add((New-Rect 'sc-leg1-sw' 520 18 14 14 $SCOPE_AMBER $null 2))
+$s5.Add((New-Text 'sc-leg1-t' 540 8 106 34 13 'GAME FFB' $MUTED 0))
+$s5.Add((New-Rect 'sc-leg2-sw' 650 18 14 14 $SCOPE_PURPLE $null 2))
+$s5.Add((New-Text 'sc-leg2-t' 670 8 120 34 13 'TRUEFORCE' $MUTED 0))
+
+$s5.Add((New-Text 'sc-ffb-label' 16 42 400 20 13 'GAME FFB (steering force)' $MUTED 0))
+$s5.Add((New-Rect 'sc-ffb-panel' 10 62 780 168 $PANEL))
+$s5.Add((New-Rect 'sc-ffb-zero' 12 145 776 2 $SCOPE_GRID $null 0))
+for ($i = 0; $i -lt 78; $i++) {
+    $x = 11 + $i * 10
+    $col = New-Rect "sc-ffb$i" $x 143 8 6 $SCOPE_AMBER $null 1
+    $col.Bindings['Top'] = BindJS 'Top' ('var v=1*$prop("' + $P + '.Scope.Ffb' + $i + '");if(v>1)v=1;if(v<-1)v=-1;return 143-v*76')
+    $s5.Add($col)
+}
+
+$s5.Add((New-Text 'sc-tex-label' 16 236 400 20 13 'TRUEFORCE HAPTIC SIGNAL' $MUTED 0))
+$s5.Add((New-Rect 'sc-tex-panel' 10 256 780 184 $PANEL))
+$s5.Add((New-Rect 'sc-tex-zero' 12 347 776 2 $SCOPE_GRID $null 0))
+for ($i = 0; $i -lt 78; $i++) {
+    $x = 11 + $i * 10
+    $col = New-Rect "sc-tex$i" $x 347 8 2 $SCOPE_PURPLE $null 1
+    $col.Bindings['Height'] = BindJS 'Height' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;return 2+v*176')
+    $col.Bindings['Top'] = BindJS 'Top' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;var h=2+v*176;return 348-h/2')
+    $s5.Add($col)
+}
+$s5.Add((New-Text 'sc-hint' 16 448 768 24 12 'Scrolls left, about 2.5 seconds of history. FFB needs the FFB tap or Mode B active.' $GRAY 0))
+
+ToastBar $P | ForEach-Object { $s5.Add($_) }
+RevStrip $P | ForEach-Object { $s5.Add($_) }
+
+# =====================================================================
 # Assemble document
 # =====================================================================
 function New-Screen([string]$name, $items) {
@@ -497,9 +540,9 @@ $meta = [ordered]@{
     Category = 'TF4ALL'; Title = 'TF4ALL Dash'
     Description = 'Control panel and rev lights for Trueforce For All: gains, effects, car facts and presets from a phone or tablet'
     Author = 'Mhytee'
-    ScreenCount = 4.0
-    InGameScreensIndexs = @(0, 1, 2, 3)
-    IdleScreensIndexs = @(0, 1, 2, 3)
+    ScreenCount = 5.0
+    InGameScreensIndexs = @(0, 1, 2, 3, 4)
+    IdleScreensIndexs = @(0, 1, 2, 3, 4)
     MainPreviewIndex = 0
     IsOverlay = $false
     Width = 800.0; Height = 480.0
@@ -518,7 +561,8 @@ $doc = [ordered]@{
         (New-Screen 'Drive' $s1),
         (New-Screen 'Car facts' $s2),
         (New-Screen 'Effects' $s3),
-        (New-Screen 'Presets' $s4)
+        (New-Screen 'Presets' $s4),
+        (New-Screen 'Scope' $s5)
     )
     SnapToGrid = $false; HideLabels = $false
     ShowForeground = $true; ForegroundOpacity = 50.0
@@ -537,5 +581,5 @@ $json = $doc | ConvertTo-Json -Depth 60
 $metaJson = $meta | ConvertTo-Json -Depth 10
 [IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Dash.djson.metadata'), $metaJson, [Text.UTF8Encoding]::new($false))
 
-$itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count
-Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count))"
+$itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count + $s5.Count
+Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count) scope=$($s5.Count))"
