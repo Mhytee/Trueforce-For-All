@@ -10658,16 +10658,31 @@ namespace TrueforceForAll.Plugin
             string sig = ComputeActiveCarVariantSignatureForActive() ?? "";
             string key = game + "/" + carId + "/" + sig;
             if (_headlessCommunityFetchedKey == key) return;
-            _headlessCommunityFetchedKey = key;
 
-            // LOCAL-FIRST: cached facts apply instantly and offline.
+            // LOCAL-FIRST: cached facts apply instantly and offline. Runs on
+            // every key change, including while a fetch for an older key is
+            // still in flight.
             ReplayCommunityCache(game, carId, sig);
 
             // Network refresh only when the master is on and the cache is
             // stale. Sign-in is NOT required (anon-readable consensus).
-            if (Settings?.CommunityEnabled != true) return;
-            if (IsCommunityCacheFresh(game, carId, sig)) return;
+            if (Settings?.CommunityEnabled != true || IsCommunityCacheFresh(game, carId, sig))
+            {
+                _headlessCommunityFetchedKey = key;   // handled without a fetch
+                return;
+            }
+            // A fetch for an OLDER key is still in flight. Typical on car
+            // change: the signature fills in from the first telemetry frames
+            // well inside the fetch's lifetime, so the variant detector's
+            // call lands here. Deliberately do NOT record this key: the
+            // in-flight task's completion re-runs this method, and the
+            // current key then gets its own replay + fetch pass. Recording
+            // it here was the original bug - the new key read as handled,
+            // the old fetch's results were dropped as stale, and community
+            // facts never applied until the settings panel opened.
             if (_headlessCommunityFetchInFlight) return;
+
+            _headlessCommunityFetchedKey = key;
             _headlessCommunityFetchInFlight = true;
 
             System.Threading.Tasks.Task.Run(() =>
@@ -10681,24 +10696,32 @@ namespace TrueforceForAll.Plugin
                 _headlessCommunityFetchInFlight = false;
                 try
                 {
-                    // Car / tune moved on mid-fetch: drop it, the new key's
-                    // own pass handles the current state.
-                    if (_headlessCommunityFetchedKey != key) return;
-                    // All-null is almost always a network failure and the
-                    // primitives can't tell that from "no data": never
+                    // Apply only when the key is still current (the resolver
+                    // gates consensus on the LIVE signature, so stale-key
+                    // results could never apply anyway) and something came
+                    // back. All-null is almost always a network failure and
+                    // the primitives can't tell that from "no data": never
                     // overwrite a good cache or clear applied values on it.
-                    if (layoutResult == null && nameResult == null && redlineResult == null) return;
-                    WriteCommunityFactCache(game, carId, sig, nameResult, layoutResult, redlineResult);
-                    NotifyCarNameConsensus(game, carId, nameResult);
-                    NotifyRedlineConsensus(game, carId, sig, redlineResult);
-                    NotifyCommunityConsensus(game, carId, sig, layoutResult);
-                    SimHub.Logging.Current.Info(
-                        $"[TF4ALL] Headless community facts applied for {game}/{carId} (sig '{sig}').");
+                    if (_headlessCommunityFetchedKey == key
+                        && (layoutResult != null || nameResult != null || redlineResult != null))
+                    {
+                        WriteCommunityFactCache(game, carId, sig, nameResult, layoutResult, redlineResult);
+                        NotifyCarNameConsensus(game, carId, nameResult);
+                        NotifyRedlineConsensus(game, carId, sig, redlineResult);
+                        NotifyCommunityConsensus(game, carId, sig, layoutResult);
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] Headless community facts applied for {game}/{carId} (sig '{sig}').");
+                    }
                 }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Info($"[TF4ALL] Headless community refresh failed: {ex.Message}");
                 }
+                // The live key may have moved on while this fetch ran
+                // (signature warm-up, another car change): run one more pass
+                // for whatever is current. No-ops when already handled, so
+                // this converges instead of looping.
+                try { MaybeRefreshCommunityFactsHeadless(); } catch { }
             });
         }
 
