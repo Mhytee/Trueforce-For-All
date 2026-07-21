@@ -184,13 +184,23 @@ namespace TrueforceForAll.Plugin
             _scopeNextColTicks = now + Stopwatch.Frequency * ScopeColMs / 1000;
 
             int h = _scopeHead;
-            _scopeTex[h] = peak > 1f ? 1f : peak;
+            // Envelope decay blend: a column never drops below 55% of its
+            // predecessor, so single-slice transients read as a flowing
+            // waveform instead of isolated flicker (display only; the raw
+            // peak still tops the column when it is the larger value).
+            float tex = peak > 1f ? 1f : peak;
+            float prevTex = _scopeTex[(h + ScopeCols - 1) % ScopeCols] * 0.55f;
+            _scopeTex[h] = tex > prevTex ? tex : prevTex;
             float ffb = (_device?.LastFfbTarget ?? (short)0) / 32768f;
             if (ffb > 1f) ffb = 1f; else if (ffb < -1f) ffb = -1f;
-            _scopeFfb[h] = ffb;
+            // Light one-pole smoothing so the line trace bends instead of
+            // stepping between 32 ms samples.
+            _scopeFfbSmooth += (ffb - _scopeFfbSmooth) * 0.5f;
+            _scopeFfb[h] = _scopeFfbSmooth;
             _scopeHead = (h + 1) % ScopeCols;
             _scopeAccum = 0f;
         }
+        private float _scopeFfbSmooth;   // producer-thread only
 
         // ------------------------------------------------------------------
         // Snapshot cache for the poll-heavy readouts. GetActiveCarFactsSummary

@@ -498,19 +498,29 @@ $s5.Add((New-Text 'sc-leg2-t' 670 8 120 34 13 'TRUEFORCE' $MUTED 0))
 $s5.Add((New-Text 'sc-ffb-label' 16 42 400 20 13 'GAME FFB (steering force)' $MUTED 0))
 $s5.Add((New-Rect 'sc-ffb-panel' 10 62 780 168 $PANEL))
 $s5.Add((New-Rect 'sc-ffb-zero' 12 145 776 2 $SCOPE_GRID $null 0))
+# Connected line trace: each full-width column spans from its own value
+# to the NEXT column's value, so successive columns share an edge and the
+# trace reads as one continuous plotted line, not floating dashes.
 for ($i = 0; $i -lt 78; $i++) {
-    $x = 11 + $i * 10
-    $col = New-Rect "sc-ffb$i" $x 143 8 6 $SCOPE_AMBER $null 1
-    $col.Bindings['Top'] = BindJS 'Top' ('var v=1*$prop("' + $P + '.Scope.Ffb' + $i + '");if(v>1)v=1;if(v<-1)v=-1;return 143-v*76')
+    $x = 10 + $i * 10
+    $i2 = [math]::Min($i + 1, 77)
+    $pA = $P + '.Scope.Ffb' + $i
+    $pB = $P + '.Scope.Ffb' + $i2
+    $col = New-Rect "sc-ffb$i" $x 143 10 3 $SCOPE_AMBER $null 0
+    $expr = 'var a=1*$prop("' + $pA + '");var b=1*$prop("' + $pB + '");if(a>1)a=1;if(a<-1)a=-1;if(b>1)b=1;if(b<-1)b=-1;var hi=a>b?a:b;'
+    $col.Bindings['Top'] = BindJS 'Top' ($expr + 'return 145-hi*76')
+    $col.Bindings['Height'] = BindJS 'Height' ($expr + 'var lo=a<b?a:b;return 3+(hi-lo)*76')
     $s5.Add($col)
 }
 
 $s5.Add((New-Text 'sc-tex-label' 16 236 400 20 13 'TRUEFORCE HAPTIC SIGNAL' $MUTED 0))
 $s5.Add((New-Rect 'sc-tex-panel' 10 256 780 184 $PANEL))
 $s5.Add((New-Rect 'sc-tex-zero' 12 347 776 2 $SCOPE_GRID $null 0))
+# Full-width columns (no gaps) render the envelope as one solid filled
+# waveform silhouette rather than separated bars.
 for ($i = 0; $i -lt 78; $i++) {
-    $x = 11 + $i * 10
-    $col = New-Rect "sc-tex$i" $x 347 8 2 $SCOPE_PURPLE $null 1
+    $x = 10 + $i * 10
+    $col = New-Rect "sc-tex$i" $x 347 10 2 $SCOPE_PURPLE $null 0
     $col.Bindings['Height'] = BindJS 'Height' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;return 2+v*176')
     $col.Bindings['Top'] = BindJS 'Top' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;var h=2+v*176;return 348-h/2')
     $s5.Add($col)
