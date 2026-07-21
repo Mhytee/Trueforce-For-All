@@ -139,6 +139,19 @@ function KeypadOverlay([string]$P) {
 function RevStrip([string]$P) {
     $items = [System.Collections.Generic.List[object]]::new()
     $items.Add((New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' $null 0))
+    # Unlit sockets: a faint 1px outline per LED position, always visible,
+    # so the strip is discoverable before the first rev (an all-dark strip
+    # read as empty chrome). Lit segments draw over them.
+    for ($i = 0; $i -lt 16; $i++) {
+        $x = 2 + $i * 50
+        $sock = New-Rect "rev-sock$i" $x 1 46 10 $script:CLEAR $null 2
+        $sock.BorderStyle.BorderColor = '#FF39404C'
+        $sock.BorderStyle.BorderTop = 1; $sock.BorderStyle.BorderBottom = 1
+        $sock.BorderStyle.BorderLeft = 1; $sock.BorderStyle.BorderRight = 1
+        $sock.BorderColor = '#FF39404C'
+        $sock.BorderTop = 1; $sock.BorderBottom = 1; $sock.BorderLeft = 1; $sock.BorderRight = 1
+        $items.Add($sock)
+    }
     for ($i = 0; $i -lt 16; $i++) {
         $x = 2 + $i * 50
         # Two threshold schemes, chosen live by Dash.RevOutsideIn:
