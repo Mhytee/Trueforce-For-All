@@ -1182,8 +1182,19 @@ namespace TrueforceForAll.Plugin
                         : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
                     if (!SavePresetAs(newName))
                     {
-                        DashToast("SAVE FAILED (see the SimHub log)");
-                        return;
+                        // Duplicate-content refusal (owner rule: a new name
+                        // must not duplicate an existing preset's tuning):
+                        // the preset the user wants already exists with
+                        // exactly these values, so REUSE it instead of
+                        // dead-ending. Any other failure stays an error.
+                        string dup = LastLocalDuplicateName;
+                        if (string.IsNullOrEmpty(dup))
+                        {
+                            DashToast("SAVE FAILED (see the SimHub log)");
+                            return;
+                        }
+                        newName = dup;
+                        ApplyPreset(dup);   // SavePresetAs would have made it active
                     }
                     // Desktop fork parity (ForkAndSaveAsGamePreset): the fork
                     // is what's playing, so it becomes the game default too.
@@ -1228,6 +1239,12 @@ namespace TrueforceForAll.Plugin
         // game's), de-duped the same way the desktop fork does.
         private string DashUniqueGamePresetName(string baseName)
         {
+            // Built-ins are STORED with a structural " (default)" suffix; a
+            // fork named "Forza Horizon (default) (1)" reads like nonsense,
+            // so strip it from the base before de-duping.
+            const string defaultSuffix = " (default)";
+            if (baseName != null && baseName.EndsWith(defaultSuffix, StringComparison.Ordinal))
+                baseName = baseName.Substring(0, baseName.Length - defaultSuffix.Length);
             var existing = new HashSet<string>(PresetNames ?? Enumerable.Empty<string>());
             string name = baseName;
             int i = 1;
@@ -1274,8 +1291,16 @@ namespace TrueforceForAll.Plugin
                         : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
                     if (!SavePresetAs(forkName))
                     {
-                        DashToast("SAVE FAILED (see the SimHub log)");
-                        return;
+                        // Duplicate-content refusal: reuse the identical
+                        // existing preset (same rationale as the GAME path).
+                        string dup = LastLocalDuplicateName;
+                        if (string.IsNullOrEmpty(dup))
+                        {
+                            DashToast("SAVE FAILED (see the SimHub log)");
+                            return;
+                        }
+                        forkName = dup;
+                        ApplyPreset(dup);
                     }
                     // Fork parity with DashSaveTuningToGame: the fork is
                     // what's playing, so it becomes the game default too.
