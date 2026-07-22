@@ -166,6 +166,25 @@ instead of yanks while sustained cornering load and weight transfer
 pass through untouched. Useful on its own, even with all our other
 effects turned off.
 
+## TF4ALL Dash
+
+The plugin ships its own SimHub dashboard, made for a phone or tablet
+kept next to you or mounted on the rig, so changing something
+mid-session doesn't mean alt-tabbing out of the game.
+
+- Set the redline start or engine type for a car.
+- Turn individual effects on and off and set their gain.
+- Adjust master and audio capture gain.
+- Switch presets.
+- Rev lights across the top of every screen. Fill left to right or
+  outside in, your pick in Settings.
+- Visualizer: scrolling waveforms of the game's steering force and the
+  haptic layer, as sent to the wheel, with FFB clipping marked in red.
+
+![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
+
+Installs with the plugin and appears in SimHub's dashboard list.
+
 ## Community features
 
 Once one driver figures out a car's redline, fixes its name, or picks
