@@ -516,8 +516,14 @@ namespace TrueforceForAll.Plugin
 
             // ---------- properties: status ----------
             this.AttachDelegate("Dash.WheelOk", () =>
-                _device != null && !_device.StreamFaulted
-                && System.Threading.Volatile.Read(ref _recoveryInProgress) == 0);
+            {
+                // Snapshot _device: the recovery worker nulls it between a
+                // poll's null check and the dereference otherwise (teardown
+                // window NRE thrown into SimHub's property engine).
+                var d = _device;
+                return d != null && !d.StreamFaulted
+                    && System.Threading.Volatile.Read(ref _recoveryInProgress) == 0;
+            });
             this.AttachDelegate("Dash.WheelStatus",  () => StreamStatus);
             this.AttachDelegate("Dash.Game",         () => DashSnap().Game);
             this.AttachDelegate("Dash.CarName",      () => DashSnap().CarName);
@@ -810,6 +816,11 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashTuneSaveOpen", (a, b) =>
             {
                 DashNoteActivity();
+                if (IsOfflineEditing || IsOfflineEditingCar)
+                {
+                    DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                    return;
+                }
                 if (!DashHasDirty()) { DashToast("NO UNSAVED TUNING"); return; }
                 if (string.IsNullOrEmpty(_activeCarId)) { DashSaveTuningToGame(); return; }
                 _dashOverlay = "savescope";
@@ -824,12 +835,28 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashTuneRevert", (a, b) =>
             {
                 DashNoteActivity();
+                if (IsOfflineEditing || IsOfflineEditingCar)
+                {
+                    DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                    return;
+                }
                 var dirty = DashDirtySections();
                 if (dirty.Length == 0 && DashCarDrift()) dirty = DashAllCarScopeSections();
                 if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
                 foreach (var k in dirty)
                 {
-                    try { RevertSectionDraft(k); } catch { }
+                    // Car-scoped sections revert their draft (falls back to
+                    // the preset with no car). Global-only sections (Master,
+                    // Ducking, Spike reduction, Stationary spring) have no
+                    // car draft; RevertSectionDraft dead-ended on them with
+                    // a car active, leaving the bar lit after a "REVERTED"
+                    // toast.
+                    try
+                    {
+                        if (SectionHasCarScope(k)) RevertSectionDraft(k);
+                        else RevertSection(k);
+                    }
+                    catch { }
                 }
                 DashClearDirty();
                 PersistSettings();
@@ -1052,23 +1079,53 @@ namespace TrueforceForAll.Plugin
         private void DashSaveTuningToCar()
         {
             DashNoteActivity();
+            if (IsOfflineEditing || IsOfflineEditingCar)
+            {
+                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                return;
+            }
             if (string.IsNullOrEmpty(_activeCarId)) { DashToast("NO CAR DETECTED"); return; }
             var dirty = DashDirtySections();
             // Car-level drift with no per-section hit: patch every car-scope
             // section, which is a whole-override save through the same path.
             if (dirty.Length == 0 && DashCarDrift()) dirty = DashAllCarScopeSections();
-            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+            // Global-only sections (Master, Ducking, Spike reduction,
+            // Stationary spring) cannot live in a car file, and
+            // SaveSectionToActiveCarOverride refuses them; unfiltered they
+            // tripped the fork fallback into minting a junk "<car> tune"
+            // preset on EVERY retry whenever cross-tracked desktop drift
+            // included one, silently rebinding the car each time.
+            var carScoped = new List<SectionKind>();
+            bool globalLeftover = false;
+            foreach (var k in dirty)
+            {
+                if (SectionHasCarScope(k)) carScoped.Add(k);
+                else globalLeftover = true;
+            }
+            if (carScoped.Count == 0)
+            {
+                DashToast(dirty.Length > 0
+                    ? "THOSE CHANGES ARE GAME-WIDE - USE GAME PRESET"
+                    : "NO UNSAVED TUNING");
+                return;
+            }
             try
             {
                 bool allOk = true;
-                foreach (var k in dirty)
+                foreach (var k in carScoped)
                 {
                     if (!SaveSectionToActiveCarOverride(k)) { allOk = false; break; }
                 }
                 if (!allOk)
                 {
                     string name = DashUniqueCarPresetName();
-                    if (!SaveActiveCarPresetAs(name))
+                    bool forked;
+                    // Same lock the preset picker's apply takes: the fork now
+                    // reloads CarOverrides via SwitchActiveCarPreset, which
+                    // can race the data thread's car-change draft handling
+                    // when triggered from the dash action thread.
+                    lock (_carFactsLock) { forked = SaveActiveCarPresetAs(name); }
+                    if (!forked)
                     {
                         DashToast("SAVE FAILED (see the SimHub log)");
                         return;
@@ -1080,7 +1137,10 @@ namespace TrueforceForAll.Plugin
                     return;
                 }
                 DashClearDirty();
-                DashToast("SAVED TO THIS CAR");
+                _dashSnapValid = false;
+                DashToast(globalLeftover
+                    ? "SAVED TO THIS CAR (GAME-WIDE CHANGES NEED GAME PRESET)"
+                    : "SAVED TO THIS CAR");
                 RaiseDashRemoteChanged();
             }
             catch (Exception ex)
@@ -1099,6 +1159,15 @@ namespace TrueforceForAll.Plugin
         private void DashSaveTuningToGame()
         {
             DashNoteActivity();
+            if (IsOfflineEditing || IsOfflineEditingCar)
+            {
+                // During a desktop offline edit _activePresetName is pinned
+                // to the preset UNDER EDIT; a dash save here would write the
+                // half-finished edit baseline into it behind the desktop
+                // session's back.
+                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                return;
+            }
             var dirty = DashDirtySections();
             if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
             string preset = _activePresetName;
@@ -1134,12 +1203,18 @@ namespace TrueforceForAll.Plugin
                     RaiseDashRemoteChanged();
                     return;
                 }
-                foreach (var k in dirty) SaveSectionToActivePreset(k);
+                bool allSectionsOk = true;
+                foreach (var k in dirty)
+                {
+                    if (!SaveSectionToActivePreset(k)) allSectionsOk = false;
+                }
                 ApplyActiveCarOverride();
                 PersistSettings();
                 DashClearDirty();
                 _dashSnapValid = false;
-                DashToast("SAVED TO PRESET: " + preset.ToUpperInvariant());
+                DashToast(allSectionsOk
+                    ? "SAVED TO PRESET: " + preset.ToUpperInvariant()
+                    : "PARTLY SAVED TO PRESET (see the SimHub log)");
                 RaiseDashRemoteChanged();
             }
             catch (Exception ex)
@@ -1160,88 +1235,111 @@ namespace TrueforceForAll.Plugin
             return name;
         }
 
-        // BOTH: game default + this car keeps its own pinned copy
-        // (SaveSectionToBoth = promote, re-pin, save preset, save car).
-        // If the car half fails (built-in / missing car preset) the game
-        // half already landed, so finish the car half with the silent fork.
+        // BOTH: game default + this car keeps its own pinned copy. The car
+        // half's writability is decided UP FRONT: SaveSectionToBoth returns
+        // okDefault OR okCar, so a refused car write (built-in car preset,
+        // no bound car preset) still read as success, the fork fallback
+        // never fired, and the toast claimed "+ THIS CAR" while the car
+        // file stayed factory and the tune reverted on restart. Global-only
+        // sections ride the preset half only.
         private void DashSaveTuningToBoth()
         {
             DashNoteActivity();
+            if (IsOfflineEditing || IsOfflineEditingCar)
+            {
+                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                return;
+            }
             var dirty = DashDirtySections();
             if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
             if (string.IsNullOrEmpty(_activeCarId)) { DashSaveTuningToGame(); return; }
             string preset = _activePresetName;
             bool forkPreset = string.IsNullOrEmpty(preset) || (IsBuiltinPreset(preset) && !DevMode);
+            string carPresetName = GetActiveCarPresetName(_activeCarId);
+            bool carWritable = !string.IsNullOrEmpty(carPresetName)
+                && !IsCarPresetBuiltin(_activeCarId, carPresetName);
+            var carScoped = new List<SectionKind>();
+            foreach (var k in dirty)
+                if (SectionHasCarScope(k)) carScoped.Add(k);
             try
             {
+                // ---- game-preset half (all dirty sections) ----
+                string forkName = null;
+                bool presetOk = true;
                 if (forkPreset)
                 {
-                    // Built-in (or no) game preset: fork it like the game
-                    // path does, but re-pin the car copy first so BOTH
-                    // semantics hold (promote drops the override section).
                     foreach (var k in dirty)
                     {
                         PromoteSectionToGlobal(k);
-                        SnapshotSectionToCarOverride(k);
+                        // re-pin so BOTH semantics hold (promote drops the
+                        // override section); only meaningful for car-scope
+                        if (SectionHasCarScope(k)) SnapshotSectionToCarOverride(k);
                     }
-                    string newName = DashUniqueGamePresetName(
+                    forkName = DashUniqueGamePresetName(
                         !string.IsNullOrEmpty(preset) ? preset
                         : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
-                    if (!SavePresetAs(newName))
+                    if (!SavePresetAs(forkName))
                     {
                         DashToast("SAVE FAILED (see the SimHub log)");
                         return;
                     }
-                    // Same fork parity as DashSaveTuningToGame: bind the
-                    // fork, but never while a desktop offline edit has
-                    // _activeGame pinned to the edited preset's game.
-                    if (!string.IsNullOrEmpty(_activeGame)
-                        && !IsOfflineEditing && !IsOfflineEditingCar)
-                        SetDefaultPresetForGame(_activeGame, newName);
-                    bool carHalfOk = true;
+                    // Fork parity with DashSaveTuningToGame: the fork is
+                    // what's playing, so it becomes the game default too.
+                    if (!string.IsNullOrEmpty(_activeGame))
+                        SetDefaultPresetForGame(_activeGame, forkName);
+                }
+                else
+                {
                     foreach (var k in dirty)
                     {
-                        if (!SaveSectionToActiveCarOverride(k)) { carHalfOk = false; break; }
+                        if (SectionHasCarScope(k))
+                        {
+                            PromoteSectionToGlobal(k);
+                            SnapshotSectionToCarOverride(k);
+                        }
+                        if (!SaveSectionToActivePreset(k)) presetOk = false;
+                    }
+                }
+
+                // ---- car half (car-scoped sections only) ----
+                bool carHalfOk = true;
+                bool carForked = false;
+                string carForkName = null;
+                if (carScoped.Count > 0)
+                {
+                    if (carWritable)
+                    {
+                        foreach (var k in carScoped)
+                        {
+                            if (!SaveSectionToActiveCarOverride(k)) { carHalfOk = false; break; }
+                        }
+                    }
+                    else
+                    {
+                        carHalfOk = false;   // built-in or unbound: fork below
                     }
                     if (!carHalfOk)
                     {
-                        string carName = DashUniqueCarPresetName();
-                        carHalfOk = SaveActiveCarPresetAs(carName);
+                        carForkName = DashUniqueCarPresetName();
+                        // Locked for the same reason as the THIS-CAR fork.
+                        lock (_carFactsLock) { carHalfOk = SaveActiveCarPresetAs(carForkName); }
+                        carForked = carHalfOk;
                     }
-                    ApplyActiveCarOverride();
-                    PersistSettings();
-                    DashClearDirty();
-                    _dashSnapValid = false;
-                    DashToast(carHalfOk
-                        ? "SAVED AS NEW PRESET: " + newName.ToUpperInvariant() + " + THIS CAR"
-                        : "SAVED AS NEW PRESET: " + newName.ToUpperInvariant() + "; CAR COPY FAILED");
-                    RaiseDashRemoteChanged();
-                    return;
                 }
-                bool carOk = true;
-                foreach (var k in dirty)
-                {
-                    if (!SaveSectionToBoth(k)) carOk = false;
-                }
-                if (!carOk)
-                {
-                    string name = DashUniqueCarPresetName();
-                    if (SaveActiveCarPresetAs(name))
-                    {
-                        DashClearDirty();
-                        _dashSnapValid = false;
-                        DashToast("SAVED TO PRESET + NEW CAR PRESET: " + name.ToUpperInvariant());
-                        RaiseDashRemoteChanged();
-                        return;
-                    }
-                    DashClearDirty();
-                    DashToast("SAVED TO PRESET; CAR COPY FAILED (see log)");
-                    RaiseDashRemoteChanged();
-                    return;
-                }
+
+                ApplyActiveCarOverride();
+                PersistSettings();
                 DashClearDirty();
                 _dashSnapValid = false;
-                DashToast("SAVED TO PRESET + THIS CAR");
+                string presetPart = forkName != null
+                    ? "SAVED AS NEW PRESET: " + forkName.ToUpperInvariant()
+                    : (presetOk ? "SAVED TO PRESET" : "PARTLY SAVED TO PRESET (see log)");
+                string carPart = carScoped.Count == 0
+                    ? ""
+                    : carForked ? " + NEW CAR PRESET: " + carForkName.ToUpperInvariant()
+                    : carHalfOk ? " + THIS CAR"
+                    : "; CAR COPY FAILED (see log)";
+                DashToast(presetPart + carPart);
                 RaiseDashRemoteChanged();
             }
             catch (Exception ex)
@@ -1259,9 +1357,17 @@ namespace TrueforceForAll.Plugin
                 ? "Dash tune" : _activeCarDisplayName + " tune";
             IReadOnlyDictionary<string, CarPresetEntry> existing = null;
             try { existing = GetCarPresets(_activeCarId); } catch { }
+            if (existing == null)
+            {
+                // Store unreadable: NEVER hand back the bare base name.
+                // SaveActiveCarPresetAs overwrites by name and earlier forks
+                // used exactly this base, so a bare fallback would silently
+                // clobber a previous tune. A tick suffix keeps it unique.
+                return baseName + " " + (Environment.TickCount & 0xFFFF);
+            }
             string name = baseName;
             int n = 2;
-            while (existing != null && existing.ContainsKey(name)) name = baseName + " " + n++;
+            while (existing.ContainsKey(name)) name = baseName + " " + n++;
             return name;
         }
 
@@ -1469,11 +1575,7 @@ namespace TrueforceForAll.Plugin
                 game    = _dashRedlineShareGame;
                 carId   = _dashRedlineShareCar;
             }
-            // The submit path below reads the ACTIVE car's state (observed
-            // ceiling, per-gear pins), so a value armed for a different car
-            // can only be dropped, never re-targeted.
-            if (game != _activeGame || carId != _activeCarId) return;
-            try { DashTrySilentRedlineSubmit(claimed); } catch { }
+            try { DashTrySilentRedlineSubmit(claimed, game, carId); } catch { }
         }
 
         // Silent community submit for a dash redline pin. Desktop parity
@@ -1482,12 +1584,18 @@ namespace TrueforceForAll.Plugin
         // limiter-suspect value (within 2% of the observed rev ceiling) is
         // saved locally but not shared, because the desktop would have asked
         // "are you sure this isn't the limiter?" first.
-        private void DashTrySilentRedlineSubmit(int claimed)
+        // Takes the CAPTURED game/car pair from arm time: re-reading the
+        // live fields here opened a window where a car swap landing between
+        // the flush's check and the submit attributed the old car's redline
+        // to the new car. The single mismatch gate below both drops stale
+        // values and keeps the active-car state reads (observed ceiling,
+        // per-gear pins) coherent with the pair being submitted.
+        private void DashTrySilentRedlineSubmit(int claimed, string game, string carId)
         {
             var s = Settings;
             if (s == null || !s.AutoSubmitCarFacts || !s.CommunityEnabled) return;
-            string game = _activeGame, carId = _activeCarId;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            if (game != _activeGame || carId != _activeCarId) return;   // armed for a departed car: drop
             var ep = EnginePulse;
             if (ep == null) return;
             // Games that report their own redline need no community value.

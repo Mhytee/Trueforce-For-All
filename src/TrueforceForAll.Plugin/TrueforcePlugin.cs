@@ -9084,12 +9084,28 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[TF4ALL] Save of car preset '{newDisk}' for '{_activeCarId}' failed: {ex.Message}");
                 return false;
             }
-            if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
-            Settings.CarDefaults[_activeCarId] = newDisk;
             if (ovr == null || ovr.IsEmpty)
                 _lastPersistedCarOverrides.Remove(_activeCarId);
             else
                 _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(ovr);
+            // Bind through the durable path. The old raw
+            // Settings.CarDefaults[carId] write only lived until the next
+            // library rebuild: post-migration CarDefaults is never
+            // serialized (ShouldSerializeCarDefaults) and
+            // LoadAndMigrateCarPresets reconstructs it from
+            // car-defaults.json + slot overrides, neither of which the raw
+            // write touched, so every fork's binding silently evaporated on
+            // restart (the CarDefaults analog of the GameDefaults raw-write
+            // bug fixed in the select-is-default rework).
+            // SwitchActiveCarPreset persists the binding properly and
+            // reloads the override from the file just saved (identical
+            // content, so no feel change).
+            if (!SwitchActiveCarPreset(_activeCarId, newDisk))
+            {
+                SimHub.Logging.Current.Warn(
+                    $"[TF4ALL] Car preset '{newDisk}' saved but binding it for '{_activeCarId}' failed.");
+                return false;
+            }
             return true;
         }
 
@@ -12980,9 +12996,16 @@ namespace TrueforceForAll.Plugin
                 || Settings.DownloadedCommunityPresets.Count == 0)
                 return found;
             // Snapshot the local map before any background work so a
-            // concurrent download mid-check doesn't confuse us.
-            var localById = new Dictionary<string, DownloadedPresetRecord>(
-                Settings.DownloadedCommunityPresets, StringComparer.Ordinal);
+            // concurrent download mid-check doesn't confuse us. Copied under
+            // the serialize lock: the headless sweep runs this method on a
+            // pool thread, where an unlocked copy could race a structural
+            // mutation from the UI or data thread.
+            Dictionary<string, DownloadedPresetRecord> localById;
+            lock (_carFactsLock)
+            {
+                localById = new Dictionary<string, DownloadedPresetRecord>(
+                    Settings.DownloadedCommunityPresets, StringComparer.Ordinal);
+            }
             // Split ids by kind so each one routes to its dedicated
             // get_*_by_ids RPC. Tables don't share id space, so each
             // bucket queries independently.
@@ -12999,47 +13022,74 @@ namespace TrueforceForAll.Plugin
                 else                                                                     carIds.Add(kv.Key);
             }
             List<PresetSummary> serverRows;
+            // Per-bucket fetch outcome. The fetch clients return null for
+            // network failure, timeout, non-2xx AND signed-out, so a null
+            // bucket is NO INFORMATION, never "these rows were deleted".
+            // Before this distinction one failed round classified every
+            // tracked id as orphaned and permanently wiped the tracker;
+            // survivable when it needed the panel open to fire, fatal once
+            // the headless sweep started running it unattended (SimHub
+            // autostarting before Wi-Fi was enough).
+            bool carBucketOk = true, gameBucketOk = true, engineBucketOk = true, packBucketOk = true;
             try
             {
-                serverRows = await Task.Run(() =>
+                var fetched = await Task.Run(() =>
                 {
                     var combined = new List<PresetSummary>();
+                    bool cOk = true, gOk = true, eOk = true, pOk = true;
                     if (carIds.Count > 0)
                     {
                         var carRows = _presetSharing?.FetchPresetsByIds(carIds);
-                        if (carRows != null) combined.AddRange(carRows);
+                        if (carRows != null) combined.AddRange(carRows); else cOk = false;
                     }
                     if (gameIds.Count > 0)
                     {
                         var gameRows = _presetSharing?.FetchGamePresetsByIds(gameIds);
-                        if (gameRows != null) combined.AddRange(gameRows);
+                        if (gameRows != null) combined.AddRange(gameRows); else gOk = false;
                     }
                     if (engineIds.Count > 0)
                     {
                         var engineRows = _presetSharing?.FetchCustomEnginesByIds(engineIds);
-                        if (engineRows != null) combined.AddRange(engineRows);
+                        if (engineRows != null) combined.AddRange(engineRows); else eOk = false;
                     }
                     if (packIds.Count > 0)
                     {
                         var packRows = _presetSharing?.FetchPacksByIds(packIds);
-                        if (packRows != null) combined.AddRange(packRows);
+                        if (packRows != null) combined.AddRange(packRows); else pOk = false;
                     }
-                    return combined;
+                    return (combined, cOk, gOk, eOk, pOk);
                 });
+                serverRows    = fetched.combined;
+                carBucketOk    = fetched.cOk;
+                gameBucketOk   = fetched.gOk;
+                engineBucketOk = fetched.eOk;
+                packBucketOk   = fetched.pOk;
             }
             catch { return found; }
             if (serverRows == null) return found;
 
             var serverById = serverRows.Where(r => !string.IsNullOrEmpty(r.Id))
                                        .ToDictionary(r => r.Id, r => r);
+
+            // True only when the id's OWN bucket got a real server response.
+            bool BucketAnswered(DownloadedPresetRecord rec)
+            {
+                string k = rec?.Kind;
+                if (string.Equals(k, "game",   StringComparison.OrdinalIgnoreCase)) return gameBucketOk;
+                if (string.Equals(k, "engine", StringComparison.OrdinalIgnoreCase)) return engineBucketOk;
+                if (string.Equals(k, "pack",   StringComparison.OrdinalIgnoreCase)) return packBucketOk;
+                return carBucketOk;
+            }
+
             // Author-deleted (suppressed) rows are filtered out of the
-            // response; drop the local record so we stop checking.
+            // response; drop the local record so we stop checking. Only an
+            // id whose bucket ACTUALLY ANSWERED can be orphaned.
             var orphaned = new List<string>();
             foreach (var kv in localById)
             {
                 if (!serverById.TryGetValue(kv.Key, out var server))
                 {
-                    orphaned.Add(kv.Key);
+                    if (BucketAnswered(kv.Value)) orphaned.Add(kv.Key);
                     continue;
                 }
                 if (server.ContentVersion > kv.Value.SeenContentVersion)
@@ -13055,8 +13105,13 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     $"[TF4ALL] {orphaned.Count} community update tracker(s) removed (server row deleted). " +
                     "Local presets preserved.");
-                foreach (var id in orphaned)
-                    Settings.DownloadedCommunityPresets.Remove(id);
+                // Structural mutation under the serialize lock (this can run
+                // on a pool thread in the headless sweep).
+                lock (_carFactsLock)
+                {
+                    foreach (var id in orphaned)
+                        Settings.DownloadedCommunityPresets.Remove(id);
+                }
                 try { PersistSettingsCore(); } catch { }
             }
             return found;
