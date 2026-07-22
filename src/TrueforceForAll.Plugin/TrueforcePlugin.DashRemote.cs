@@ -82,7 +82,7 @@ namespace TrueforceForAll.Plugin
         // getter so no timer is needed.
         private volatile string _dashToast = "";
         private int _dashToastAtTick;
-        private const int DashToastMs = 3500;
+        private const int DashToastMs = 2000;
 
         private void DashToast(string message)
         {
@@ -160,11 +160,22 @@ namespace TrueforceForAll.Plugin
 
         private void DashRecordDirty(SectionKind kind)
         {
-            lock (_dashDirtyLock)
+            // Anchored sections are governed ENTIRELY by the truthful
+            // IsSectionDirty compare: an edit-then-undo (toggle off, toggle
+            // back on) must read clean again, so nothing sticky may linger
+            // for them. The local sticky set exists only for anchor-less
+            // sections (no active preset = nothing to compare against),
+            // mirroring the desktop's sticky bit.
+            bool anchorless = false;
+            try { anchorless = !SectionHasAnchor(kind); } catch { }
+            if (anchorless)
             {
-                string car = _activeCarId ?? "";
-                if (_dashDirtyCarId != car) { _dashDirty.Clear(); _dashDirtyCarId = car; }
-                _dashDirty.Add(kind);
+                lock (_dashDirtyLock)
+                {
+                    string car = _activeCarId ?? "";
+                    if (_dashDirtyCarId != car) { _dashDirty.Clear(); _dashDirtyCarId = car; }
+                    _dashDirty.Add(kind);
+                }
             }
             _dashSnapValid = false;   // bar reflects the edit on the next poll
         }
@@ -194,17 +205,28 @@ namespace TrueforceForAll.Plugin
                     if (SectionHasAnchor(k) && IsSectionDirty(k)) list.Add(k);
             }
             catch { /* comparison trouble reads as clean; the local set below still contributes */ }
+            SectionKind[] sticky;
             lock (_dashDirtyLock)
             {
                 if (_dashDirtyCarId == (_activeCarId ?? ""))
                 {
-                    foreach (var k in _dashDirty)
-                        if (!list.Contains(k)) list.Add(k);
+                    sticky = new SectionKind[_dashDirty.Count];
+                    _dashDirty.CopyTo(sticky);
                 }
                 else
                 {
                     _dashDirty.Clear();   // car changed; that draft is gone
+                    sticky = new SectionKind[0];
                 }
+            }
+            foreach (var k in sticky)
+            {
+                // A section that has GAINED an anchor since it was recorded
+                // (a preset was applied) is governed by the compare now;
+                // its sticky entry must not keep the bar lit.
+                bool anchorless = false;
+                try { anchorless = !SectionHasAnchor(k); } catch { }
+                if (anchorless && !list.Contains(k)) list.Add(k);
             }
             return list.ToArray();
         }
