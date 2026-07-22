@@ -99,7 +99,7 @@ function OnOverlay($item, [string]$mode) {
 function KeypadOverlay([string]$P) {
     $items = [System.Collections.Generic.List[object]]::new()
     $items.Add((OnOverlay (New-Rect 'kp-backdrop' 0 0 800 480 $script:BACKDROP $null 0) 'keypad'))
-    $items.Add((OnOverlay (New-Text 'kp-title' 0 10 800 30 20 '' $script:WHITE 1 @{
+    $items.Add((OnOverlay (New-Text 'kp-title' 0 16 800 30 20 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('return ""+$prop("' + $P + '.KeypadTitle")')
     } 'Bold') 'keypad'))
     $items.Add((OnOverlay (New-Rect 'kp-entry-bg' 250 48 300 64 $script:PANEL) 'keypad'))
@@ -195,7 +195,7 @@ function ToastBar([string]$P) {
 function PresetOverlay([string]$P) {
     $items = [System.Collections.Generic.List[object]]::new()
     $items.Add((OnOverlay (New-Rect 'pp-backdrop' 0 0 800 480 $script:BACKDROP $null 0) 'presets'))
-    $items.Add((OnOverlay (New-Text 'pp-title' 0 8 800 30 20 '' $script:WHITE 1 @{
+    $items.Add((OnOverlay (New-Text 'pp-title' 0 14 800 30 20 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('return ""+$prop("' + $P + '.Preset.Title")')
     } 'Bold') 'presets'))
     for ($i = 1; $i -le 8; $i++) {
@@ -252,15 +252,15 @@ $P = 'TrueforcePlugin.Dash'
 # =====================================================================
 $s1 = [System.Collections.Generic.List[object]]::new()
 
-$s1.Add((New-Text 'title' 16 8 240 36 24 'TF4ALL DASH' $WHITE 0 $null 'Bold'))
-$s1.Add((New-Text 'wheel' 520 8 264 36 18 'WHEEL' $MUTED 2 @{
+$s1.Add((New-Text 'title' 16 16 240 36 24 'TF4ALL DASH' $WHITE 0 $null 'Bold'))
+$s1.Add((New-Text 'wheel' 520 16 264 36 18 'WHEEL' $MUTED 2 @{
     Text      = BindJS 'Text'      ('return $prop("' + $P + '.WheelOk")?"WHEEL OK":"WHEEL OFFLINE"')
     TextColor = BindJS 'TextColor' ('return $prop("' + $P + '.WheelOk")?"' + $GREEN + '":"' + $RED + '"')
 }))
-$s1.Add((New-Text 'gamecar' 16 48 768 28 17 '' $MUTED 0 @{
+$s1.Add((New-Text 'gamecar' 16 56 768 28 17 '' $MUTED 0 @{
     Text = BindJS 'Text' ('var g=""+($prop("' + $P + '.Game")||"No game");var c=""+($prop("' + $P + '.CarName")||"");return c!=""?(g+"  -  "+c):g')
 }))
-$s1.Add((New-Text 'preset' 16 78 768 26 15 '' $MUTED 0 @{
+$s1.Add((New-Text 'preset' 16 86 768 26 15 '' $MUTED 0 @{
     Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.PresetName")||"");return p!=""?("PRESET  "+p):"PRESET  (manual tune)"')
 }))
 
@@ -309,8 +309,8 @@ RevStrip $P | ForEach-Object { $s1.Add($_) }
 # =====================================================================
 $s2 = [System.Collections.Generic.List[object]]::new()
 
-$s2.Add((New-Text 'cf-title' 16 8 200 36 24 'CAR FACTS' $WHITE 0 $null 'Bold'))
-$s2.Add((New-Text 'cf-car' 224 8 560 36 18 '' $MUTED 2 @{
+$s2.Add((New-Text 'cf-title' 16 16 200 36 24 'CAR FACTS' $WHITE 0 $null 'Bold'))
+$s2.Add((New-Text 'cf-car' 224 16 560 36 18 '' $MUTED 2 @{
     Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car detected")')
 }))
 
@@ -375,7 +375,7 @@ $layouts = @(
     @('Rotary4',          'Rotary 4')
 )
 $s2.Add((OnOverlay (New-Rect 'lp-backdrop' 0 0 800 480 $BACKDROP $null 0) 'layout'))
-$s2.Add((OnOverlay (New-Text 'lp-title' 0 6 800 32 20 'ENGINE LAYOUT' $WHITE 1 $null 'Bold') 'layout'))
+$s2.Add((OnOverlay (New-Text 'lp-title' 0 12 800 32 20 'ENGINE LAYOUT' $WHITE 1 $null 'Bold') 'layout'))
 for ($i = 0; $i -lt $layouts.Count; $i++) {
     $enum = $layouts[$i][0]; $label = $layouts[$i][1]
     $c = $i % 4; $r = [math]::Floor($i / 4)
@@ -399,7 +399,7 @@ RevStrip $P | ForEach-Object { $s2.Add($_) }
 # Screen 3: EFFECTS (14 rows in 2 columns: toggle tile + gain readout + steppers)
 # =====================================================================
 $s3 = [System.Collections.Generic.List[object]]::new()
-$s3.Add((New-Text 'fx-title' 16 4 400 34 22 'EFFECTS' $WHITE 0 $null 'Bold'))
+$s3.Add((New-Text 'fx-title' 16 14 400 34 22 'EFFECTS' $WHITE 0 $null 'Bold'))
 
 $effects = @(
     @('Engine',     'Engine pulse',  $true),
@@ -424,7 +424,7 @@ $effects = @(
 for ($i = 0; $i -lt $effects.Count; $i++) {
     $key = $effects[$i][0]; $label = $effects[$i][1]; $hasGain = $effects[$i][2]
     $col = [math]::Floor($i / 7); $row = $i % 7
-    $x = 10 + $col * 404; $y = 44 + $row * 62
+    $x = 10 + $col * 404; $y = 50 + $row * 62
     # audio routes to its dedicated actions (peer voice, not a TelemetryEffect)
     $tgl  = if ($key -eq 'Audio') { 'DashFxAudioToggle' } else { "DashFx${key}Toggle" }
     $up   = if ($key -eq 'Audio') { 'DashAudioGainUp' }   else { "DashFx${key}GainUp" }
@@ -456,13 +456,13 @@ for ($i = 0; $i -lt $effects.Count; $i++) {
 # them, so the bar is the "keep this" affordance).
 $dirtyVis = 'return $prop("' + $P + '.TuningDirty")'
 $bar = @(
-    (New-Text 'fx-dirty-t' 380 8 144 30 14 'UNSAVED' '#FFE8A33D' 2 $null 'Bold'),
-    (New-Rect 'fx-revert-bg' 536 6 110 32 $TILE),
-    (New-Text 'fx-revert-t' 536 6 110 32 14 'REVERT' $RED 1 $null 'Bold'),
-    (New-Button 'fx-revert' 536 6 110 32 'DashTuneRevert'),
-    (New-Rect 'fx-save-bg' 652 6 132 32 $TILEON),
-    (New-Text 'fx-save-t' 652 6 132 32 14 'SAVE' $WHITE 1 $null 'Bold'),
-    (New-Button 'fx-save' 652 6 132 32 'DashTuneSaveOpen')
+    (New-Text 'fx-dirty-t' 380 16 144 30 14 'UNSAVED' '#FFE8A33D' 2 $null 'Bold'),
+    (New-Rect 'fx-revert-bg' 536 14 110 32 $TILE),
+    (New-Text 'fx-revert-t' 536 14 110 32 14 'REVERT' $RED 1 $null 'Bold'),
+    (New-Button 'fx-revert' 536 14 110 32 'DashTuneRevert'),
+    (New-Rect 'fx-save-bg' 652 14 132 32 $TILEON),
+    (New-Text 'fx-save-t' 652 14 132 32 14 'SAVE' $WHITE 1 $null 'Bold'),
+    (New-Button 'fx-save' 652 14 132 32 'DashTuneSaveOpen')
 )
 foreach ($b in $bar) { $b.Bindings['Visible'] = BindJS 'Visible' $dirtyVis; $s3.Add($b) }
 
@@ -494,8 +494,8 @@ RevStrip $P | ForEach-Object { $s3.Add($_) }
 # Screen 4: PRESETS (game preset + car preset, picker overlay)
 # =====================================================================
 $s4 = [System.Collections.Generic.List[object]]::new()
-$s4.Add((New-Text 'pr-title' 16 8 300 36 24 'PRESETS' $WHITE 0 $null 'Bold'))
-$s4.Add((New-Text 'pr-car' 320 8 464 36 16 '' $MUTED 2 @{
+$s4.Add((New-Text 'pr-title' 16 16 300 36 24 'PRESETS' $WHITE 0 $null 'Bold'))
+$s4.Add((New-Text 'pr-car' 320 16 464 36 16 '' $MUTED 2 @{
     Text = BindJS 'Text' ('var g=""+($prop("' + $P + '.Game")||"No game");var c=""+($prop("' + $P + '.CarName")||"");return c!=""?(g+"  -  "+c):g')
 }))
 
@@ -535,15 +535,15 @@ $SCOPE_AMBER  = '#FFE3A445'
 $SCOPE_PURPLE = '#FFA08CFF'
 $SCOPE_GRID   = '#FF262F3A'
 $s5 = [System.Collections.Generic.List[object]]::new()
-$s5.Add((New-Text 'sc-title' 16 8 300 34 22 'SIGNAL SCOPE' $WHITE 0 $null 'Bold'))
-$s5.Add((New-Rect 'sc-leg1-sw' 520 18 14 14 $SCOPE_AMBER $null 2))
-$s5.Add((New-Text 'sc-leg1-t' 540 8 106 34 13 'GAME FFB' $MUTED 0))
-$s5.Add((New-Rect 'sc-leg2-sw' 650 18 14 14 $SCOPE_PURPLE $null 2))
-$s5.Add((New-Text 'sc-leg2-t' 670 8 120 34 13 'TRUEFORCE' $MUTED 0))
+$s5.Add((New-Text 'sc-title' 16 18 300 34 22 'SIGNAL SCOPE' $WHITE 0 $null 'Bold'))
+$s5.Add((New-Rect 'sc-leg1-sw' 520 28 14 14 $SCOPE_AMBER $null 2))
+$s5.Add((New-Text 'sc-leg1-t' 540 18 106 34 13 'GAME FFB' $MUTED 0))
+$s5.Add((New-Rect 'sc-leg2-sw' 650 28 14 14 $SCOPE_PURPLE $null 2))
+$s5.Add((New-Text 'sc-leg2-t' 670 18 120 34 13 'TRUEFORCE' $MUTED 0))
 
-$s5.Add((New-Text 'sc-ffb-label' 16 42 400 20 13 'GAME FFB (steering force)' $MUTED 0))
-$s5.Add((New-Rect 'sc-ffb-panel' 10 62 780 168 $PANEL))
-$s5.Add((New-Rect 'sc-ffb-zero' 12 145 776 2 $SCOPE_GRID $null 0))
+$s5.Add((New-Text 'sc-ffb-label' 16 54 400 20 13 'GAME FFB (steering force)' $MUTED 0))
+$s5.Add((New-Rect 'sc-ffb-panel' 10 74 780 160 $PANEL))
+$s5.Add((New-Rect 'sc-ffb-zero' 12 153 776 2 $SCOPE_GRID $null 0))
 # Connected line trace: each full-width column spans from its own value
 # to the NEXT column's value, so successive columns share an edge and the
 # trace reads as one continuous plotted line, not floating dashes.
@@ -552,23 +552,23 @@ for ($i = 0; $i -lt 78; $i++) {
     $i2 = [math]::Min($i + 1, 77)
     $pA = $P + '.Scope.Ffb' + $i
     $pB = $P + '.Scope.Ffb' + $i2
-    $col = New-Rect "sc-ffb$i" $x 143 10 3 $SCOPE_AMBER $null 0
+    $col = New-Rect "sc-ffb$i" $x 151 10 3 $SCOPE_AMBER $null 0
     $expr = 'var a=1*$prop("' + $pA + '");var b=1*$prop("' + $pB + '");if(a>1)a=1;if(a<-1)a=-1;if(b>1)b=1;if(b<-1)b=-1;var hi=a>b?a:b;'
-    $col.Bindings['Top'] = BindJS 'Top' ($expr + 'return 145-hi*76')
+    $col.Bindings['Top'] = BindJS 'Top' ($expr + 'return 153-hi*76')
     $col.Bindings['Height'] = BindJS 'Height' ($expr + 'var lo=a<b?a:b;return 3+(hi-lo)*76')
     $s5.Add($col)
 }
 
-$s5.Add((New-Text 'sc-tex-label' 16 236 400 20 13 'TRUEFORCE HAPTIC SIGNAL' $MUTED 0))
-$s5.Add((New-Rect 'sc-tex-panel' 10 256 780 184 $PANEL))
-$s5.Add((New-Rect 'sc-tex-zero' 12 347 776 2 $SCOPE_GRID $null 0))
+$s5.Add((New-Text 'sc-tex-label' 16 240 400 20 13 'TRUEFORCE HAPTIC SIGNAL' $MUTED 0))
+$s5.Add((New-Rect 'sc-tex-panel' 10 262 780 178 $PANEL))
+$s5.Add((New-Rect 'sc-tex-zero' 12 350 776 2 $SCOPE_GRID $null 0))
 # Full-width columns (no gaps) render the envelope as one solid filled
 # waveform silhouette rather than separated bars.
 for ($i = 0; $i -lt 78; $i++) {
     $x = 10 + $i * 10
-    $col = New-Rect "sc-tex$i" $x 347 10 2 $SCOPE_PURPLE $null 0
+    $col = New-Rect "sc-tex$i" $x 350 10 2 $SCOPE_PURPLE $null 0
     $col.Bindings['Height'] = BindJS 'Height' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;return 2+v*176')
-    $col.Bindings['Top'] = BindJS 'Top' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;var h=2+v*176;return 348-h/2')
+    $col.Bindings['Top'] = BindJS 'Top' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;var h=2+v*176;return 351-h/2')
     $s5.Add($col)
 }
 $s5.Add((New-Text 'sc-hint' 16 448 768 24 12 'Scrolls left, about 2.5 seconds of history. FFB needs the FFB tap or Mode B active.' $GRAY 0))

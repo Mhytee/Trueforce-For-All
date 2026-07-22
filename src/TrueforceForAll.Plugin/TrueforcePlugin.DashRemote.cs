@@ -973,23 +973,39 @@ namespace TrueforceForAll.Plugin
 
         // GAME PRESET: the dirty sections become the game default (promoted
         // to the global sections and written into the active preset); the
-        // car follows it. Guards run BEFORE promoting so a doomed save
-        // cannot half-move state out of the car override.
+        // car follows it. A built-in active preset forks to a user copy
+        // automatically (same SavePresetAs flow the desktop's fork uses,
+        // owner decision 2026-07-21: no desktop-detour errors), and no
+        // active preset at all auto-creates one named after the game.
         private void DashSaveTuningToGame()
         {
             DashNoteActivity();
             var dirty = DashDirtySections();
             if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
             string preset = _activePresetName;
-            if (string.IsNullOrEmpty(preset)) { DashToast("NO ACTIVE GAME PRESET - APPLY ONE FIRST"); return; }
-            if (IsBuiltinPreset(preset) && !DevMode) { DashToast("BUILT-IN PRESET - SAVE A COPY ON DESKTOP FIRST"); return; }
+            bool fork = string.IsNullOrEmpty(preset) || (IsBuiltinPreset(preset) && !DevMode);
             try
             {
-                foreach (var k in dirty)
+                foreach (var k in dirty) PromoteSectionToGlobal(k);
+                if (fork)
                 {
-                    PromoteSectionToGlobal(k);
-                    SaveSectionToActivePreset(k);
+                    string newName = DashUniqueGamePresetName(
+                        !string.IsNullOrEmpty(preset) ? preset
+                        : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
+                    if (!SavePresetAs(newName))
+                    {
+                        DashToast("SAVE FAILED (see the SimHub log)");
+                        return;
+                    }
+                    ApplyActiveCarOverride();
+                    PersistSettings();
+                    DashClearDirty();
+                    _dashSnapValid = false;
+                    DashToast("SAVED AS NEW PRESET: " + newName.ToUpperInvariant());
+                    RaiseDashRemoteChanged();
+                    return;
                 }
+                foreach (var k in dirty) SaveSectionToActivePreset(k);
                 ApplyActiveCarOverride();
                 PersistSettings();
                 DashClearDirty();
@@ -1004,6 +1020,17 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Fork/create name for game presets: the built-in's name (or the
+        // game's), de-duped the same way the desktop fork does.
+        private string DashUniqueGamePresetName(string baseName)
+        {
+            var existing = new HashSet<string>(PresetNames ?? Enumerable.Empty<string>());
+            string name = baseName;
+            int i = 1;
+            while (existing.Contains(name)) name = baseName + " (" + i++ + ")";
+            return name;
+        }
+
         // BOTH: game default + this car keeps its own pinned copy
         // (SaveSectionToBoth = promote, re-pin, save preset, save car).
         // If the car half fails (built-in / missing car preset) the game
@@ -1015,10 +1042,47 @@ namespace TrueforceForAll.Plugin
             if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
             if (string.IsNullOrEmpty(_activeCarId)) { DashSaveTuningToGame(); return; }
             string preset = _activePresetName;
-            if (string.IsNullOrEmpty(preset)) { DashToast("NO ACTIVE GAME PRESET - APPLY ONE FIRST"); return; }
-            if (IsBuiltinPreset(preset) && !DevMode) { DashToast("BUILT-IN PRESET - SAVE A COPY ON DESKTOP FIRST"); return; }
+            bool forkPreset = string.IsNullOrEmpty(preset) || (IsBuiltinPreset(preset) && !DevMode);
             try
             {
+                if (forkPreset)
+                {
+                    // Built-in (or no) game preset: fork it like the game
+                    // path does, but re-pin the car copy first so BOTH
+                    // semantics hold (promote drops the override section).
+                    foreach (var k in dirty)
+                    {
+                        PromoteSectionToGlobal(k);
+                        SnapshotSectionToCarOverride(k);
+                    }
+                    string newName = DashUniqueGamePresetName(
+                        !string.IsNullOrEmpty(preset) ? preset
+                        : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
+                    if (!SavePresetAs(newName))
+                    {
+                        DashToast("SAVE FAILED (see the SimHub log)");
+                        return;
+                    }
+                    bool carHalfOk = true;
+                    foreach (var k in dirty)
+                    {
+                        if (!SaveSectionToActiveCarOverride(k)) { carHalfOk = false; break; }
+                    }
+                    if (!carHalfOk)
+                    {
+                        string carName = DashUniqueCarPresetName();
+                        carHalfOk = SaveActiveCarPresetAs(carName);
+                    }
+                    ApplyActiveCarOverride();
+                    PersistSettings();
+                    DashClearDirty();
+                    _dashSnapValid = false;
+                    DashToast(carHalfOk
+                        ? "SAVED AS NEW PRESET: " + newName.ToUpperInvariant() + " + THIS CAR"
+                        : "SAVED AS NEW PRESET: " + newName.ToUpperInvariant() + "; CAR COPY FAILED");
+                    RaiseDashRemoteChanged();
+                    return;
+                }
                 bool carOk = true;
                 foreach (var k in dirty)
                 {
