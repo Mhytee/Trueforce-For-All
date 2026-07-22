@@ -2497,6 +2497,22 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 carShareMatchesUpload = string.Equals(
                     carShareCurrentHash, carShareOvr.CommunityUploadedBodyHash, StringComparison.Ordinal);
             }
+            // Clear-default: the inverse of Set-as-default, acting on CARS
+            // rather than rows. Enabled when the checked set (or the single
+            // selection) contains a row that IS its car's current default;
+            // the count labels how many distinct cars would be cleared.
+            // Computed BEFORE the pack-mode early return below so the button
+            // never carries a stale enabled state into pack mode.
+            int clearableCars = checkedCount > 0
+                ? _carRows.Where(r => r.IsChecked && r.Active)
+                          .Select(r => r.CarId)
+                          .Distinct(StringComparer.Ordinal)
+                          .Count()
+                : (anySelected && sel.Active ? 1 : 0);
+            CarClearDefaultBtn.IsEnabled = clearableCars > 0;
+            CarClearDefaultBtn.Content   = clearableCars > 1
+                ? $"Clear default ({clearableCars})"
+                : "Clear default";
             // Multi-checked + all eligible (not built-in) repurposes
             // Share into "Share pack" - the button feels like the
             // natural surface for "do something with this multi-select"
@@ -2916,7 +2932,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             var picked = PickMultipleFromList(
                 $"Set default games for '{sel.Name}'",
-                "Check every game this preset should auto-load for. Unchecking a game clears its current binding.",
+                "Check every game this preset should auto-load for. Unchecking a game reverts it to its usual default (a game always has one: its built-in preset, or the one created when the game was first seen).",
                 known, before);
             if (picked == null) return;
 
@@ -3476,6 +3492,63 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 string suffix = alreadyActive > 0 ? $" ({alreadyActive} already the default)" : "";
                 SetLib(CarLibStatus, $"Set {applied} preset(s) as their car's default{suffix}.");
             }
+        }
+
+        // Inverse of Set as default: the car goes back to no per-car preset
+        // (game preset only). Acts on the CAR of each relevant row; the
+        // preset files stay in the library, so no confirm dialog. Bulk mode
+        // clears each checked row's car once (only rows that ARE their
+        // car's default count; checked non-default rows are ignored).
+        private void CarClearDefault_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            // Bulk convention (matches CarDelete_Click / CarSetActive_Click):
+            // when ANY row is checked, act on the checked set only and never
+            // fall through to the highlighted row, even if no checked row is
+            // clearable.
+            if (_carRows.Any(r => r.IsChecked))
+            {
+                var checkedActive = _carRows.Where(r => r.IsChecked && r.Active).ToList();
+                if (checkedActive.Count == 0) return;
+                var carIds = checkedActive
+                    .Select(r => r.CarId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                if (!ConfirmActiveCarDiscardForClear(carIds)) return;
+                foreach (var id in carIds) _plugin.ClearCarDefaultPreset(id);
+                ReloadCars();
+                var lastRow = checkedActive.Last();
+                SelectCarRow(lastRow.CarId, lastRow.PresetName);
+                SetLib(CarLibStatus, carIds.Count == 1
+                    ? $"Cleared the default for '{carIds[0]}'. It uses the game preset now."
+                    : $"Cleared the default for {carIds.Count} cars. They use the game preset now.");
+                return;
+            }
+
+            var sel = SelectedCar;
+            if (sel == null || !sel.Active) return;
+            if (!ConfirmActiveCarDiscardForClear(new[] { sel.CarId })) return;
+            _plugin.ClearCarDefaultPreset(sel.CarId);
+            ReloadCars();
+            SelectCarRow(sel.CarId, sel.PresetName);
+            SetLib(CarLibStatus, $"Cleared the default for '{sel.CarId}'. It uses the game preset now.");
+        }
+
+        // Clearing the ACTIVE car's default also discards its unsaved live
+        // tuning (ClearCarDefaultPreset routes the active car through
+        // ClearActiveCarPreset). The header picker's None row confirms that
+        // discard; mirror it here so the manager can't silently lose work.
+        // Non-active cars never touch live state, so no dialog for those.
+        private bool ConfirmActiveCarDiscardForClear(IEnumerable<string> carIds)
+        {
+            string active = _plugin?.ActiveCarId;
+            if (string.IsNullOrEmpty(active)) return true;
+            if (!carIds.Contains(active, StringComparer.Ordinal)) return true;
+            if (!_plugin.IsActiveCarPresetDirty()) return true;
+            return TrueforceDialog.Show(Window.GetWindow(this),
+                "Clear car preset?",
+                "Clearing the current car's default also discards its unsaved tuning.\n\nCancel to keep editing and save first.",
+                DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") == true;
         }
 
         private void CarEdit_Click(object sender, RoutedEventArgs e)

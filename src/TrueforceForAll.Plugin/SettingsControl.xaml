@@ -946,18 +946,10 @@
                             <ComboBox x:Name="HeaderPresetCombo" SelectionChanged="HeaderPresetCombo_Changed"
                                       MinWidth="220" MaxWidth="340" VerticalAlignment="Center"
                                       MaxDropDownHeight="420" IsTextSearchEnabled="True"
-                                      ToolTip="The active game preset. Start typing to jump to a name. Confirms first if you have unsaved tuning."/>
+                                      ToolTip="The active game preset."/>
                             <Button x:Name="HeaderGameSaveAllBtn" Content="★ Save"
                                     Style="{StaticResource HeaderSaveAllButton}" Click="HeaderGameSaveAll_Click"
                                     ToolTip="Save your current tuning to this game's preset."/>
-                            <!-- Conditional: only shown when the active preset is
-                                 not already this game's auto-load default (see
-                                 UpdateSetDefaultButton). Replaces the old bottom
-                                 'Set as default for this game' button. -->
-                            <Button x:Name="HeaderSetDefaultBtn" Content="Set as default" Visibility="Collapsed"
-                                    Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
-                                    Click="HeaderSetDefault_Click"
-                                    ToolTip="Auto-load this preset whenever this game launches. Shown only when the active preset isn't already this game's default."/>
                             <!-- Conditional: shown alongside ★ Save all (i.e.
                                  when there's unsaved tuning), see
                                  UpdateGlobalDirtyFromEffects. -->

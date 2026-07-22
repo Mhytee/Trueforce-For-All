@@ -3936,7 +3936,10 @@ namespace TrueforceForAll.Plugin
             };
         }
 
-        // GAME-preset picker. Applies a game-library preset.
+        // GAME-preset picker. Applies a game-library preset and, when a game
+        // is active, binds it as that game's default in the same step
+        // (select-is-default, matching the car picker's semantics). The old
+        // separate "Set as default" link is gone.
         private void HeaderPresetCombo_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -3967,6 +3970,17 @@ namespace TrueforceForAll.Plugin
                 TrueforceDialog.Show(null, "Trueforce For All", $"Could not apply '{pick.Name}' (preset missing).", DialogKind.Error);
                 return;
             }
+            // No active game (browsing presets from the menu / no game
+            // running): apply-only, there is nothing to bind against.
+            // Also apply-only during offline preset/car edits: there the
+            // pick is a temporary comparison baseline, not a choice of what
+            // this game should auto-load (during a car edit _activeGame is
+            // even pinned to the EDITED car's game). The removed
+            // Set-as-default button had the same car-edit suppression.
+            if (!string.IsNullOrEmpty(_plugin.ActiveGame)
+                && !_plugin.IsOfflineEditing
+                && !_plugin.IsOfflineEditingCar)
+                _plugin.SetDefaultPresetForActiveGame(pick.Name);
             ClearDirty();
             RefreshFromPlugin();
         }
@@ -11890,41 +11904,12 @@ namespace TrueforceForAll.Plugin
         private void RefreshPresetSection()
         {
             if (_plugin == null) return;
-
-            string game     = _plugin.ActiveGame;
-            string activeP  = _plugin.ActivePresetName;
-
+            // The active-preset dropdowns live in the header context card;
+            // rebuilt by RefreshGamePresetPicker / RefreshCarPresetPicker.
+            // The old conditional "Set as default" button is gone: picking a
+            // preset while a game is active now binds it in the same step.
             UpdateHeaderPresetDisplay();
-
-            // The active-preset dropdown + its inline buttons live in the header
-            // context card. The pickers are rebuilt by RefreshGamePresetPicker /
-            // RefreshCarPresetPicker (via UpdateHeaderPresetDisplay above); here
-            // we just refresh the conditional "Set as default" button.
-            UpdateSetDefaultButton();
         }
-
-        /// <summary>Show the inline "Set as default" button (next to the game
-        /// preset dropdown) only when a game is loaded AND the active preset is
-        /// not already that game's auto-load default. Picking a preset applies
-        /// it without binding it as the default, so this is the one remaining
-        /// affordance to make the binding; it self-hides once bound.</summary>
-        private void UpdateSetDefaultButton()
-        {
-            if (HeaderSetDefaultBtn == null || _plugin == null) return;
-            string activeP = _plugin.ActivePresetName;
-            bool gameDetected = !string.IsNullOrEmpty(_plugin.ActiveGame);
-            bool hasActive    = !string.IsNullOrEmpty(activeP);
-            bool isDefault    = hasActive
-                && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
-            // Hidden during car-edit: the loaded game preset is a temporary
-            // baseline for the car edit, not a preset the user chose to make the
-            // running game's default.
-            bool carEdit = _plugin.IsOfflineEditingCar;
-            HeaderSetDefaultBtn.Visibility = (gameDetected && hasActive && !isDefault && !carEdit)
-                ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private string SelectedPresetName => _plugin?.ActivePresetName;
 
         // The old global "Save preset" chooser (save to this car / game default
         // / both, in one modal) was removed: the two header Save buttons now
@@ -12203,17 +12188,8 @@ namespace TrueforceForAll.Plugin
 
         // Per-preset Delete and Clear-default live in the preset manager (Presets
         // tab) now; the inline buttons were removed in the unified-picker refactor.
-
-        // Inline "Set as default" next to the game preset dropdown. Binds the
-        // active preset as this game's auto-load default; the button then
-        // self-hides (active == default) via UpdateSetDefaultButton.
-        private void HeaderSetDefault_Click(object sender, RoutedEventArgs e)
-        {
-            string name = SelectedPresetName;
-            if (_plugin == null || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(_plugin.ActiveGame)) return;
-            _plugin.SetDefaultPresetForActiveGame(name);
-            RefreshFromPlugin();
-        }
+        // The header's inline "Set as default" went next (select-is-default:
+        // picking a preset in the header combo binds it to the active game).
 
         // ---------- Export / Import (Backup & sync) ----------
         //
@@ -13523,6 +13499,7 @@ namespace TrueforceForAll.Plugin
             // Normalize line endings: GitHub bodies usually arrive with \r\n.
             string[] lines = body.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
             bool prevWasBlank = false;
+            bool imageNoteShown = false;
             for (int i = 0; i < lines.Length; i++)
             {
                 string raw = lines[i] ?? "";
@@ -13539,6 +13516,28 @@ namespace TrueforceForAll.Plugin
                     continue;
                 }
                 prevWasBlank = false;
+
+                // Markdown images (![alt](url), or link-wrapped [![...]).
+                // This renderer is text-only (and WPF wouldn't animate a
+                // release GIF anyway), so image lines are dropped instead of
+                // showing as raw markdown. One dim pointer per body tells
+                // in-app readers where the visuals live.
+                if (trimmed.StartsWith("![", StringComparison.Ordinal)
+                    || trimmed.StartsWith("[![", StringComparison.Ordinal))
+                {
+                    if (!imageNoteShown)
+                    {
+                        imageNoteShown = true;
+                        panel.Children.Add(new TextBlock
+                        {
+                            Text = "(screenshots on the GitHub release page)",
+                            FontSize = 11,
+                            Opacity = 0.55,
+                            Margin = new Thickness(0, 0, 0, 2),
+                        });
+                    }
+                    continue;
+                }
 
                 // Blockquote ("> ..." lines), including GitHub alert callouts
                 // ("> [!WARNING]" etc.). Consecutive quote lines collapse into

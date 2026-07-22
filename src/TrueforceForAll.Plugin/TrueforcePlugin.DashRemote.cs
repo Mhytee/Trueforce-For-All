@@ -130,6 +130,14 @@ namespace TrueforceForAll.Plugin
         private volatile string[] _dashPresetList = new string[0];
         private int _dashPresetPage;
         private const int DashPresetRows = 8;
+        // Sentinel row at index 0 of the CAR picker list: clears the car's
+        // preset (desktop "None" row parity). Selection is intercepted BY
+        // INDEX (car scope, i == 0), never by comparing against this string
+        // (a user preset could share the name; worst case there is a
+        // cosmetic double-highlight, never a wrong action). Must be
+        // non-empty (empty slots hide their row + tap zone in the djson)
+        // and must not end in " (default)" (ToDisplayName rewrites that).
+        private const string DashCarPresetNoneRow = "NONE  (USE GAME PRESET)";
 
         // Per-session dedupe for silent car-fact submissions, mirroring the
         // desktop prompts' _enginePromptedThisSession semantics (same value
@@ -1108,6 +1116,16 @@ namespace TrueforceForAll.Plugin
                         DashToast("SAVE FAILED (see the SimHub log)");
                         return;
                     }
+                    // Desktop fork parity (ForkAndSaveAsGamePreset): the fork
+                    // is what's playing, so it becomes the game default too.
+                    // Without this the built-in re-loads next session and the
+                    // fork looks lost. NOT during offline edits: there
+                    // _activeGame is pinned to the EDITED preset's game, and
+                    // binding would rewrite that game's default behind the
+                    // desktop edit session's back.
+                    if (!string.IsNullOrEmpty(_activeGame)
+                        && !IsOfflineEditing && !IsOfflineEditingCar)
+                        SetDefaultPresetForGame(_activeGame, newName);
                     ApplyActiveCarOverride();
                     PersistSettings();
                     DashClearDirty();
@@ -1174,6 +1192,12 @@ namespace TrueforceForAll.Plugin
                         DashToast("SAVE FAILED (see the SimHub log)");
                         return;
                     }
+                    // Same fork parity as DashSaveTuningToGame: bind the
+                    // fork, but never while a desktop offline edit has
+                    // _activeGame pinned to the edited preset's game.
+                    if (!string.IsNullOrEmpty(_activeGame)
+                        && !IsOfflineEditing && !IsOfflineEditingCar)
+                        SetDefaultPresetForGame(_activeGame, newName);
                     bool carHalfOk = true;
                     foreach (var k in dirty)
                     {
@@ -1261,13 +1285,23 @@ namespace TrueforceForAll.Plugin
                     if (!DashRequireCar()) return;
                     string carId = _activeCarId;
                     var entries = GetCarPresets(carId);
-                    list = entries
+                    var names = entries
                         .OrderBy(kv => kv.Value != null && kv.Value.IsBuiltin ? 0 : 1)
                         .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
                         .Select(kv => kv.Key)
                         .ToArray();
+                    // NONE row first (desktop parity): row 1 always clears
+                    // back to the game preset. See DashCarPresetNoneRow.
+                    list = new string[names.Length + 1];
+                    list[0] = DashCarPresetNoneRow;
+                    Array.Copy(names, 0, list, 1, names.Length);
                     current = GetActiveCarPresetName(carId) ?? "";
-                    title = list.Length > 0 ? "CAR PRESETS" : "CAR PRESETS  (none for this car)";
+                    // No active car preset = the NONE row is the current one,
+                    // so the overlay highlights it (djson compares strings).
+                    if (current.Length == 0) current = DashCarPresetNoneRow;
+                    // Key the empty-library title off the REAL entries; the
+                    // sentinel row alone doesn't count as having presets.
+                    title = names.Length > 0 ? "CAR PRESETS" : "CAR PRESETS  (none for this car)";
                 }
                 else
                 {
@@ -1332,14 +1366,32 @@ namespace TrueforceForAll.Plugin
                     // the data thread's car-change draft handling, so take the
                     // same lock that path uses (reentrant, so the PersistCore
                     // inside is fine).
-                    lock (_carFactsLock)
+                    if (i == 0)
                     {
-                        if (!SelectCarForEditing(carId, name)) return;
+                        // NONE row (index-keyed, see DashCarPresetNoneRow):
+                        // clear the car's preset back to the game preset.
+                        lock (_carFactsLock)
+                        {
+                            if (!ClearActiveCarPreset(carId)) return;
+                        }
+                        name = DashCarPresetNoneRow;
+                    }
+                    else
+                    {
+                        lock (_carFactsLock)
+                        {
+                            if (!SelectCarForEditing(carId, name)) return;
+                        }
                     }
                 }
                 else
                 {
                     if (!ApplyPreset(name)) return;
+                    // Select-is-default (desktop header parity): picking a
+                    // game preset while a game is running binds it as that
+                    // game's auto-load default in the same step.
+                    if (!string.IsNullOrEmpty(_activeGame))
+                        SetDefaultPresetForGame(_activeGame, name);
                 }
                 _dashPresetCurrent = name;
                 // Applying a preset replaces the live tuning wholesale; any

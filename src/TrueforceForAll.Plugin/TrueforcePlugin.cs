@@ -4005,12 +4005,12 @@ namespace TrueforceForAll.Plugin
                 // fills the signature in.
                 MaybeRefreshCommunityFactsHeadless();
                 // Re-resolve the new car's preset from disk so the applied
-                // tuning always MATCHES the car you just switched to, and so a
-                // car you cleared to "None" earlier in the session re-resolves
-                // to its default (built-in, or the game preset) when you come
-                // back to it (None is transient, never sticky). When the car is
-                // gone (carId null, e.g. back to a menu) we can't resolve, so
-                // fall back to applying globals as before.
+                // tuning always MATCHES the car you just switched to. A car
+                // cleared to "None" stays cleared on re-entry: the explicit
+                // None is latched in SuppressedCarDefaults and wins over any
+                // factory binding until the user picks a preset again. When
+                // the car is gone (carId null, e.g. back to a menu) we can't
+                // resolve, so fall back to applying globals as before.
                 if (!string.IsNullOrEmpty(_activeCarId))
                     ReloadActiveCarOverrideFromStore();
                 else
@@ -9379,15 +9379,65 @@ namespace TrueforceForAll.Plugin
         /// a per-car override and falls back to the game preset's globals. Pins
         /// the car as active, drops its CarDefaults entry and live override, and
         /// re-applies (no override = game globals), then persists. The car
-        /// picker's "None" row calls this. The saved preset FILES are left on
-        /// disk (this is a deselect, not a delete); note that a car shipping a
-        /// built-in factory preset resolves back to that built-in the next time
-        /// it loads, while a car with only user presets clears to the game
-        /// preset.</summary>
+        /// picker's "None" row and the dash picker's NONE row call this. The
+        /// saved preset FILES are left on disk (this is a deselect, not a
+        /// delete). The explicit None sticks even for cars shipping a factory
+        /// built-in preset: the SuppressedCarDefaults marker below keeps the
+        /// rebuild from restoring the factory binding.</summary>
         public bool ClearActiveCarPreset(string carId)
         {
             if (string.IsNullOrEmpty(carId) || Settings == null) return false;
             _activeCarId = carId;   // pin so the apply targets this car
+            ClearCarPresetBindingCore(carId);
+            // Re-derive the full in-memory effective view. Fine HERE because
+            // the reload's override rewrite only clobbers the draft of the
+            // car being cleared, which is the point of a clear (desktop
+            // confirms the discard first). ClearCarDefaultPreset must NOT
+            // do this: see the note there.
+            try { LoadAndMigrateCarPresets(); } catch { }
+            ApplyActiveCarOverride();   // override or globals, whichever wins now
+            PersistSettings();
+            // If this car was only pinned by a manual UI pick (we're parked, not
+            // actually driving it), releasing its preset should also release the
+            // active car so the picker un-filters back to the full per-game list
+            // and Car Facts hides. While actually driving, the next telemetry
+            // frame re-asserts the real car, so we must NOT unpin then.
+            if (!IsLiveCarPresent && string.Equals(_activeCarId, carId, StringComparison.Ordinal))
+                _activeCarId = null;
+            return true;
+        }
+
+        /// <summary>Clear a car's default preset WITHOUT disturbing the live
+        /// state of whichever car is actually active. The Preset Manager's
+        /// "Clear default" action calls this for arbitrary cars: pinning the
+        /// target as active (what ClearActiveCarPreset does) would briefly
+        /// retarget the live wheel while the user is driving something else.
+        /// For the active car it delegates to ClearActiveCarPreset so the
+        /// cleared override also stops sounding immediately.</summary>
+        public bool ClearCarDefaultPreset(string carId)
+        {
+            if (string.IsNullOrEmpty(carId) || Settings == null) return false;
+            if (string.Equals(carId, _activeCarId, StringComparison.Ordinal))
+                return ClearActiveCarPreset(carId);
+            ClearCarPresetBindingCore(carId);
+            // Deliberately NO LoadAndMigrateCarPresets here: the full reload
+            // rewrites EVERY car's CarOverrides entry from disk, which would
+            // silently wipe the ACTIVE car's unsaved draft while the user is
+            // driving it. The core's targeted removals already leave this
+            // car's effective state correct (no binding, no override, None
+            // suppressed), and no other car's state changed.
+            PersistSettings();
+            return true;
+        }
+
+        // Shared deselect plumbing for the two clears above: drop the binding
+        // (per-user override first, else device-wide file), the cached
+        // CarDefaults/CarOverrides entries, and latch the explicit-None
+        // suppression. Callers own the active-car pinning, any full-view
+        // reload (NOT safe for non-active cars, see ClearCarDefaultPreset),
+        // live re-apply, and persist.
+        private void ClearCarPresetBindingCore(string carId)
+        {
             // Per-user defaults: if THIS user has an override binding
             // for the car, drop just the override (they fall back to
             // the install-wide binding). Otherwise drop from the
@@ -9426,20 +9476,6 @@ namespace TrueforceForAll.Plugin
                     slot.SuppressedCarDefaults = new HashSet<string>(StringComparer.Ordinal);
                 slot.SuppressedCarDefaults.Add(carId);
             }
-            // Re-derive the in-memory effective view so any inherited
-            // device-wide default reappears (when an override was
-            // cleared) or stays gone (when device-wide was cleared).
-            try { LoadAndMigrateCarPresets(); } catch { }
-            ApplyActiveCarOverride();   // override or globals, whichever wins now
-            PersistSettings();
-            // If this car was only pinned by a manual UI pick (we're parked, not
-            // actually driving it), releasing its preset should also release the
-            // active car so the picker un-filters back to the full per-game list
-            // and Car Facts hides. While actually driving, the next telemetry
-            // frame re-asserts the real car, so we must NOT unpin then.
-            if (!IsLiveCarPresent && string.Equals(_activeCarId, carId, StringComparison.Ordinal))
-                _activeCarId = null;
-            return true;
         }
 
         /// <summary>Returns the preset name currently active for a car
@@ -15757,13 +15793,11 @@ namespace TrueforceForAll.Plugin
             _preEditActivePresetName  = null;
 
             // Bind as the game default so future loads of this game pick it.
+            // Through SetDefaultPresetForGame, not a raw dict write: the raw
+            // write skipped the per-user slot routing and the device-wide
+            // file, so the next RebuildPresetCacheFromFolders dropped it.
             if (!string.IsNullOrEmpty(_activeGame))
-            {
-                if (Settings.GameDefaults == null)
-                    Settings.GameDefaults = new Dictionary<string, string>();
-                Settings.GameDefaults[_activeGame] = newName;
-                PersistSettingsCore();
-            }
+                SetDefaultPresetForGame(_activeGame, newName);
 
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] Silent-forked to '{newName}'"
