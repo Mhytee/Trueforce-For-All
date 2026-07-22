@@ -12,7 +12,7 @@
 
 While official support for Trueforce has been steadily growing, there are still many major titles which are yet to receive support or will never get support. This
 plugin fills those gaps: in games without native Trueforce, it builds
-haptics from telemetry or from game audio (anything at all).
+haptics from telemetry or from game audio.
 
 > **Status:** Actively in development. The plugin is functional today.
 > Feedback is welcome, on [GitHub issues][issues] or in the
