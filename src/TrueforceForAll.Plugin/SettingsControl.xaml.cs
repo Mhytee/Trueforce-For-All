@@ -493,6 +493,14 @@ namespace TrueforceForAll.Plugin
                     RemoteRevOutsideInRadio.IsChecked = outsideIn;
                     RemoteRevLtrRadio.IsChecked = !outsideIn;
                 }
+                if (RemoteDashRememberTabCheck != null)
+                    RemoteDashRememberTabCheck.IsChecked = _plugin.Settings?.DashRememberLastTab != false;
+                if (RemoteDashDefaultTabCombo != null)
+                {
+                    SelectComboByTag(RemoteDashDefaultTabCombo,
+                        (_plugin.Settings?.DashDefaultTab ?? 0).ToString());
+                    RemoteDashDefaultTabCombo.IsEnabled = _plugin.Settings?.DashRememberLastTab == false;
+                }
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
@@ -6155,6 +6163,39 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] Persist DashRevStripOutsideIn failed: " + ex.Message);
+            }
+        }
+
+        // Remote dash opening-tab prefs (Settings tab). Remember-last wins
+        // while on, so the default-tab dropdown greys out; both only steer
+        // which tab the dash STARTS on at the next SimHub launch (the dash
+        // keeps its current tab for this session).
+        private void RemoteDashRememberTab_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            bool remember = RemoteDashRememberTabCheck?.IsChecked == true;
+            _plugin.Settings.DashRememberLastTab = remember;
+            if (RemoteDashDefaultTabCombo != null)
+                RemoteDashDefaultTabCombo.IsEnabled = !remember;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashRememberLastTab failed: " + ex.Message);
+            }
+        }
+
+        private void RemoteDashDefaultTab_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (!(RemoteDashDefaultTabCombo?.SelectedItem is ComboBoxItem item)) return;
+            if (!int.TryParse(item.Tag as string, out int tab)) return;
+            _plugin.Settings.DashDefaultTab = tab;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashDefaultTab failed: " + ex.Message);
             }
         }
 

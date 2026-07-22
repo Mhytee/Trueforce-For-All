@@ -150,6 +150,14 @@ namespace TrueforceForAll.Core
         public short LastFfbTarget => _lastFfbTarget;
         private volatile short _lastFfbTarget;
 
+        /// <summary>The signed FFB actually written into the ep3 cur field
+        /// this packet: smoothing, scale and spike taming applied, clamped to
+        /// the int16 rails; motor sign convention (after FfbInvertSign). 0
+        /// while the stream emits silence. Read-only observability surface
+        /// for the TF4ALL Dash visualizer; written on the pump thread.</summary>
+        public short LastFfbOutput => _lastFfbOutput;
+        private volatile short _lastFfbOutput;
+
         // FFB pass-through tuning. AC's HID++ feature 0x0e and the wheel's ep3
         // cur field use OPPOSITE sign conventions, empirically: turning right
         // and releasing produces a centering force in AC at negative LSBs, but
@@ -942,6 +950,7 @@ namespace TrueforceForAll.Core
                     ffbCur = (ushort)(t + 0x8000);
                 }
                 _lastCurrent = ffbCur;
+                _lastFfbOutput = (short)(ffbCur - 0x8000);
                 BuildPacket(_packetBuf, _seq++, ffbCur, _window);
             }
             else
@@ -950,6 +959,7 @@ namespace TrueforceForAll.Core
                 // any native FFB through.
                 for (int i = 0; i < Window; i++) _window[i] = 0x8000;
                 _lastCurrent = 0x8000;
+                _lastFfbOutput = 0;
                 _smoothedFfb = 0f;
                 BuildSilentPacket(_packetBuf, _seq++);
             }

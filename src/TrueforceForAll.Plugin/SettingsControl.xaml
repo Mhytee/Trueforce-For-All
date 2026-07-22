@@ -2914,6 +2914,25 @@
                                  ToolTip="The rev strip lights from both ends toward the center as revs climb, like center-converge shift lights."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="Applies to the rev LED strip on the TF4ALL Dash dashboard. The strip scales to the current car's redline and flashes in step with the wheel's rev lights; direction changes apply instantly, no dashboard reload needed."/>
+
+                    <TextBlock Text="Opening tab:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                    <CheckBox x:Name="RemoteDashRememberTabCheck" Content="Remember last used tab"
+                              Checked="RemoteDashRememberTab_Changed" Unchecked="RemoteDashRememberTab_Changed"
+                              ToolTip="The dash comes back on whichever tab was open last, surviving SimHub restarts."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <TextBlock Text="Default tab:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="RemoteDashDefaultTabCombo" Width="140" Margin="8,0,0,0"
+                                  SelectionChanged="RemoteDashDefaultTab_Changed"
+                                  ToolTip="The tab the dash opens on when 'Remember last used tab' is off.">
+                            <ComboBoxItem Tag="0" Content="Drive"/>
+                            <ComboBoxItem Tag="1" Content="Car facts"/>
+                            <ComboBoxItem Tag="2" Content="Effects"/>
+                            <ComboBoxItem Tag="3" Content="Presets"/>
+                            <ComboBoxItem Tag="4" Content="Visualizer"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="With remember on, the dash reopens where you left it, even across SimHub restarts. Turn it off to always start on the default tab picked here (applies at the next SimHub start)."/>
                 </StackPanel>
             </Expander>
 

@@ -398,6 +398,17 @@ namespace TrueforceForAll.Plugin
         // reads it live (Dash.RevOutsideIn) so a change applies instantly.
         public bool DashRevStripOutsideIn { get; set; } = false;
 
+        // TF4ALL Remote dash: which tab the dash opens on when SimHub starts.
+        // Remember-last wins while on (the dash reopens where it was left,
+        // surviving restarts); with it off, DashDefaultTab is the fixed
+        // opening tab. DashLastTab is bookkeeping, not a user choice: written
+        // on every tab tap, read only when DashRememberLastTab is true.
+        // Indices match the dash tab bar: 0=Drive, 1=Car facts, 2=Effects,
+        // 3=Presets, 4=Visualizer (clamped at read for forward compat).
+        public bool DashRememberLastTab { get; set; } = true;
+        public int  DashDefaultTab      { get; set; } = 0;
+        public int  DashLastTab         { get; set; } = 0;
+
         // FFB pass-through tuning. Scale lets users dial down the felt strength
         // when their wheel firmware applies a different gain to ep3 cur than
         // to ep0 PID FFB; invert flips sign in case AC's HID++ feature 0x0e

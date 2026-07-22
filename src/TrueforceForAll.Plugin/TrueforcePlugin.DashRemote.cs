@@ -66,6 +66,20 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashKeypadBaseTitle = "";
         private float _dashKeypadMin, _dashKeypadMax;   // valid range for the open session
 
+        // Active tab for the dash's tab-bar navigation (0=Home, 1=Car
+        // facts, 2=Effects, 3=Presets, 4=Visualizer). Every dash screen gates
+        // its ScreenEnabledExpression on Dash.Tab, so the plugin owns
+        // which screen shows and the tab bar is the only navigation.
+        // Replaces screen swiping: the web viewer fires ButtonItems on
+        // touch-down and swallows the gesture, so on a button-dense
+        // screen starting a swipe kept triggering whatever the finger
+        // landed on without ever changing screen. With exactly one
+        // screen enabled, SimHub's swipe/NextScreen is inert.
+        // Seeded at Init from Settings (DashLastTab or DashDefaultTab per
+        // the remember-last-tab pref); tab taps write back DashLastTab.
+        private const int DashTabCount = 5;
+        private volatile int _dashTab;
+
         // Live RPM for the rev strip, stashed per frame in DispatchFrame.
         // The strip's percent uses OUR effective redline (user pin >
         // community > telemetry > estimate), which is the whole point: on
@@ -257,11 +271,12 @@ namespace TrueforceForAll.Plugin
         }
 
         // ------------------------------------------------------------------
-        // Signal scope (the dash's Scope screen): two stacked scrolling
+        // Signal scope (the dash's Visualizer screen): two stacked scrolling
         // traces sampled on the producer thread. Texture = peak abs of each
         // rendered 1 kHz batch (the actual ep3 haptic stream, 0..1); FFB =
-        // the signed force the device last pulled from its provider
-        // (int16 tap scale -> -1..1). One column advances every ScopeColMs,
+        // the signed force the device actually wrote to ep3 cur (post
+        // smoothing/scale/spike taming, re-oriented to game direction,
+        // -1..1). One column advances every ScopeColMs,
         // so ScopeCols columns = ~2.5 s of scrolling history. Rings are
         // written by the producer thread and read by the property-poll
         // thread; float element reads are atomic, a torn column is one
@@ -303,16 +318,49 @@ namespace TrueforceForAll.Plugin
             float tex = peak > 1f ? 1f : peak;
             float prevTex = _scopeTex[(h + ScopeCols - 1) % ScopeCols] * 0.55f;
             _scopeTex[h] = tex > prevTex ? tex : prevTex;
-            float ffb = (_device?.LastFfbTarget ?? (short)0) / 32768f;
+            // Post-processing output: the force actually written to ep3 cur
+            // (smoothing, scale and spike taming applied), re-oriented to the
+            // game's force direction so the trace reads like the game's FFB
+            // and clip marks land on the rail the line is pinned to.
+            var dev = _device;
+            float ffb = (dev?.LastFfbOutput ?? (short)0) / 32768f;
+            if (dev != null)
+            {
+                if (dev.FfbInvertSign) ffb = -ffb;
+                // Undo display attenuation: with FfbScale < 1 the output tops
+                // out at the scale value, which parked the clip point mid-lane
+                // on the dash. Normalizing puts the rail (= clipping) at the
+                // lane edge; scale >= 1 already rails at 1.0 via the clamp.
+                float sc = dev.FfbScale;
+                if (sc > 0.05f && sc < 1f) ffb /= sc;
+            }
             if (ffb > 1f) ffb = 1f; else if (ffb < -1f) ffb = -1f;
             // Light one-pole smoothing so the line trace bends instead of
             // stepping between 32 ms samples.
             _scopeFfbSmooth += (ffb - _scopeFfbSmooth) * 0.5f;
             _scopeFfb[h] = _scopeFfbSmooth;
+            // Clip detection on the SMOOTHED value, i.e. exactly what the
+            // dash line draws (the chart samples Ffb77 = this), so a clip
+            // can only register when the drawn line actually reaches the
+            // rail. 0.98 of full scale is within 2 px of the rail on the
+            // 800x480 dash.
+            if (_scopeFfbSmooth >= 0.98f || _scopeFfbSmooth <= -0.98f)
+            {
+                _dashClipSign = _scopeFfbSmooth > 0f ? 1 : -1;
+                // 150 ms hold: keeps the strips' display-rate sampling from
+                // missing a clip AND bridges micro-dips below the threshold
+                // so a hovering force reads as one continuous clip. The glow
+                // (badge + line red) stays SOLID until this expires, then
+                // crossfades out over 1.5 s.
+                System.Threading.Interlocked.Exchange(ref _dashClipUntilTicks,
+                    now + Stopwatch.Frequency * 150 / 1000);
+            }
             _scopeHead = (h + 1) % ScopeCols;
             _scopeAccum = 0f;
         }
         private float _scopeFfbSmooth;   // producer-thread only
+        private volatile int _dashClipSign;
+        private long _dashClipUntilTicks; // Interlocked; clip hold; glow decays from its expiry
 
         // ------------------------------------------------------------------
         // Snapshot cache for the poll-heavy readouts. GetActiveCarFactsSummary
@@ -449,6 +497,15 @@ namespace TrueforceForAll.Plugin
         {
             _dashFx = BuildDashFxTable();
 
+            // Opening tab: last used when the user opted into remembering it
+            // (default), else their chosen fixed default. Clamped so a
+            // settings file written by a future dash with more tabs can't
+            // strand this one on a screen that doesn't exist.
+            int startTab = Settings?.DashRememberLastTab != false
+                ? (Settings?.DashLastTab ?? 0)
+                : (Settings?.DashDefaultTab ?? 0);
+            _dashTab = Math.Max(0, Math.Min(DashTabCount - 1, startTab));
+
             // ---------- properties: status ----------
             this.AttachDelegate("Dash.WheelOk", () =>
                 _device != null && !_device.StreamFaulted
@@ -474,6 +531,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.RedlineSource",      () => DashSnap().RedlineSource);
             this.AttachDelegate("Dash.MaxRpm",             () => DashSnap().MaxRpm);
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
+            this.AttachDelegate("Dash.Tab",                () => _dashTab);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
             // ---------- properties: tuning save / revert ----------
@@ -494,6 +552,27 @@ namespace TrueforceForAll.Plugin
                 this.AttachDelegate("Dash.Scope.Tex" + idx, () => _scopeTex[(_scopeHead + idx) % ScopeCols]);
                 this.AttachDelegate("Dash.Scope.Ffb" + idx, () => _scopeFfb[(_scopeHead + idx) % ScopeCols]);
             }
+            // Live clip state (+1/-1/0, 150 ms hold): drives the rail
+            // marker strips on the visualizer.
+            this.AttachDelegate("Dash.Scope.FfbClip", () =>
+                Stopwatch.GetTimestamp() < System.Threading.Interlocked.Read(ref _dashClipUntilTicks)
+                    ? _dashClipSign : 0);
+            // Badge + whole-line glow: SOLID 1 while the clip hold is
+            // active (still clipping), then decaying linearly to 0 over
+            // 1.5 s from the moment clipping stops. The dash binds it to
+            // the red badge layer's Opacity and lerps the line color
+            // amber -> red by it (formulas have no clock, so the fade is
+            // computed here).
+            this.AttachDelegate("Dash.Scope.FfbClipGlow", () =>
+            {
+                long until = System.Threading.Interlocked.Read(ref _dashClipUntilTicks);
+                if (until == 0) return 0f;
+                long nowT = Stopwatch.GetTimestamp();
+                if (nowT < until) return 1f;
+                float sec = (float)(nowT - until) / Stopwatch.Frequency;
+                float g = 1f - sec / 1.5f;
+                return g > 0f ? g : 0f;
+            });
 
             // ---------- properties: rev strip (polled at display rate) ----------
             this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
@@ -605,6 +684,38 @@ namespace TrueforceForAll.Plugin
                 SetPluginEnabled(!PluginEnabled);
                 RaiseDashRemoteChanged();
             });
+
+            // ---------- actions: tab-bar navigation ----------
+            for (int t = 0; t < DashTabCount; t++)
+            {
+                int tab = t;
+                this.AddAction("DashTabSelect" + tab, (a, b) =>
+                {
+                    DashNoteActivity();
+                    _dashTab = tab;
+                    // The dash hides the bar while an overlay is up, so
+                    // overlay state seen here is stale; drop it rather
+                    // than strand an open overlay on the new tab.
+                    _dashOverlay = "";
+                    _dashPresetScope = "";
+                    // Record for remember-last-tab. Disk write only while the
+                    // pref is on (crash resilience); off, the field still
+                    // rides along with the next ordinary settings save.
+                    if (Settings != null && Settings.DashLastTab != tab)
+                    {
+                        Settings.DashLastTab = tab;
+                        if (Settings.DashRememberLastTab)
+                        {
+                            try { PersistSettings(); }
+                            catch (Exception ex)
+                            {
+                                SimHub.Logging.Current.Info(
+                                    "[TF4ALL] Persist DashLastTab failed: " + ex.Message);
+                            }
+                        }
+                    }
+                });
+            }
 
             // ---------- actions: engine layout picker ----------
             this.AddAction("DashEngineLayoutOpen",  (a, b) =>

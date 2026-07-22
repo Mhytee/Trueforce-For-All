@@ -51,7 +51,7 @@ namespace TrueforceForAll.Plugin
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
             "MotdLevel", "ShowEffectsTabShareButtons",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
-            "DashRevStripOutsideIn",
+            "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
@@ -148,6 +148,9 @@ namespace TrueforceForAll.Plugin
             // Preset-manager UI layout.
             "ManagerCommunityForCars", "ManageGamesSort", "ManageCarsSort", "ManageCustomsSort",
             "ManageGamesColumns", "ManageCarsColumns", "ManageCustomsColumns",
+            // Remote-dash last-open-tab bookkeeping (the remember/default PREFS travel;
+            // where the dash happened to sit on PC1 is transient UI state).
+            "DashLastTab",
             // Runtime caches of the on-disk library: back up the FILES, not these dicts.
             // They are rebuilt from user/games + user/cars on the next Init.
             "Presets", "GameDefaults", "CarDefaults", "CarOverrides", "GamePresets",
