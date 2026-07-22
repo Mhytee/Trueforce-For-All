@@ -1268,13 +1268,7 @@ namespace TrueforceForAll.Plugin
                 bool presetOk = true;
                 if (forkPreset)
                 {
-                    foreach (var k in dirty)
-                    {
-                        PromoteSectionToGlobal(k);
-                        // re-pin so BOTH semantics hold (promote drops the
-                        // override section); only meaningful for car-scope
-                        if (SectionHasCarScope(k)) SnapshotSectionToCarOverride(k);
-                    }
+                    foreach (var k in dirty) PromoteSectionToGlobal(k);
                     forkName = DashUniqueGamePresetName(
                         !string.IsNullOrEmpty(preset) ? preset
                         : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
@@ -1287,6 +1281,15 @@ namespace TrueforceForAll.Plugin
                     // what's playing, so it becomes the game default too.
                     if (!string.IsNullOrEmpty(_activeGame))
                         SetDefaultPresetForGame(_activeGame, forkName);
+                    // Re-pin the car copy AFTER SavePresetAs: its
+                    // FoldDraftSectionsIntoGlobals strips draft sections out
+                    // of the override, so a re-pin done before it was undone
+                    // and the car fork below saved an EMPTY override, which
+                    // CarPresetStore.Save silently skips (the on-wheel
+                    // repro: toast named a car preset that never hit disk,
+                    // restart fell back to the built-in). Snapshot copies
+                    // from the globals, which now hold the folded values.
+                    foreach (var k in carScoped) SnapshotSectionToCarOverride(k);
                 }
                 else
                 {

@@ -9074,6 +9074,19 @@ namespace TrueforceForAll.Plugin
             // strip so the on-disk filename and CarDefaults binding are clean.
             string newDisk = ToDiskName(newPresetName);
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
+            if (ovr == null || (ovr.IsEmpty && !ovr.HasCommunityTracking))
+            {
+                // CarPresetStore.Save silently deletes-and-returns for an
+                // empty override, so proceeding would mint a binding to a
+                // file that was never written: the caller reports success,
+                // and the next restart drops the dangling binding back to
+                // the previous preset (the v0.2.5 SAVE-BOTH on-wheel repro,
+                // where SavePresetAs's draft fold had just emptied the
+                // override). No car-specific tuning is a failure here.
+                SimHub.Logging.Current.Warn(
+                    $"[TF4ALL] Fork '{newDisk}' for '{_activeCarId}' aborted: no car-specific tuning to save.");
+                return false;
+            }
             try
             {
                 _carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false,

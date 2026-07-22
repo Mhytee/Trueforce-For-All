@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "79f7bada-3fb8-4b48-9d19-7962e1fa0352",
+    "Id":  "92809bc9-1621-425f-ad02-829c5a86e999",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c18f894d-1f08-42fa-87e4-e1d75dcf9ebc",
+                        "ScreenId":  "19f097af-9361-459a-a031-094a6aad0e2c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -4854,7 +4854,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "da2b08ff-a4c5-42ec-83e7-56ca4c0a0463",
+                        "ScreenId":  "0dec6023-83f2-4c5b-9690-2a7f234eea6a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -12863,7 +12863,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8328481f-a274-427e-971e-ee77004405fb",
+                        "ScreenId":  "c9c09c50-66ca-4b75-8cff-d60c7922cc56",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -21243,38 +21243,6 @@
                                                        }
                                       },
                                       {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  12,
-                                          "Text":  "Car only changes this car. Game preset makes it the default and this car follows it. Both saves the default and pins this car.",
-                                          "TextColor":  "#FF6B7280",
-                                          "HorizontalAlignment":  1,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  40,
-                                          "Left":  100,
-                                          "Opacity":  100,
-                                          "Top":  322,
-                                          "Visible":  true,
-                                          "Width":  600,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "ss-note",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"savescope\""
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#FF232936",
                                           "BorderStyle":  {
@@ -22938,7 +22906,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "5f31c6be-ff9b-4786-8500-c3e3753e128a",
+                        "ScreenId":  "1d9a436e-da09-46fa-a6b3-94c590df6274",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -26956,7 +26924,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c2fab706-9068-4598-9098-aff53ebfdc12",
+                        "ScreenId":  "4fb463a9-78d7-4ceb-a9da-617e370031c8",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,

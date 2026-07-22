@@ -553,7 +553,6 @@ $s3.Add((OnOverlay (New-Button 'ss-game' 220 174 360 64 'DashTuneSaveGame') 'sav
 $s3.Add((OnOverlay (New-Rect 'ss-both-bg' 220 248 360 64 $TILEON) 'savescope'))
 $s3.Add((OnOverlay (New-Text 'ss-both-t' 220 248 360 64 19 'BOTH' $WHITE 1 $null 'Bold') 'savescope'))
 $s3.Add((OnOverlay (New-Button 'ss-both' 220 248 360 64 'DashTuneSaveBoth') 'savescope'))
-$s3.Add((OnOverlay (New-Text 'ss-note' 100 322 600 40 12 'Car only changes this car. Game preset makes it the default and this car follows it. Both saves the default and pins this car.' $GRAY 1) 'savescope'))
 $s3.Add((OnOverlay (New-Rect 'ss-cancel-bg' 220 372 360 44 $TILE) 'savescope'))
 $s3.Add((OnOverlay (New-Text 'ss-cancel-t' 220 372 360 44 15 'CANCEL' $RED 1 $null 'Bold') 'savescope'))
 $s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 'savescope'))
