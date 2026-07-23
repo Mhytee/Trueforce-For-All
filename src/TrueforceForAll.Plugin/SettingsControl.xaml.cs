@@ -11639,8 +11639,9 @@ namespace TrueforceForAll.Plugin
         /// a user preset; fork (with the naming prompt) when the active
         /// preset is built-in or absent. Shared by the save popover's Game
         /// preset / Both choices and by the no-car path that skips the
-        /// popover entirely. Returns false only on a failed in-place write
-        /// (callers keep the popover open and the dirty bit set).</summary>
+        /// popover entirely. Returns false on a failed in-place write or a
+        /// failed fork (callers keep the popover open and the dirty bit
+        /// set, and the Both flow skips the car half).</summary>
         private bool SaveEffectSectionToGamePreset(EffectKind which)
         {
             string activeP   = _plugin.ActivePresetName;
@@ -11659,8 +11660,7 @@ namespace TrueforceForAll.Plugin
             if (builtin)
             {
                 _plugin.PromoteSectionToGlobal(kind);
-                ForkAndSaveAsGamePreset();
-                return true;
+                return ForkAndSaveAsGamePreset();
             }
 
             // Per-section save: patch ONLY this section into the active
@@ -12014,9 +12014,12 @@ namespace TrueforceForAll.Plugin
         /// the game (or after the built-in being forked, minus the
         /// " (default)" suffix) and bind it as the game's default. If a
         /// preset with that name already exists, append " (1)", " (2)" until
-        /// unique. Falls back to the Save as… name prompt when there's no
-        /// game context to derive a name from.</summary>
-        private void ForkAndSaveAsGamePreset()
+        /// unique. When the current tuning is content-identical to an
+        /// existing preset, reuses that preset instead of dead-ending on
+        /// the duplicate rule. Falls back to the Save as… name prompt when
+        /// there's no game context to derive a name from. Returns false
+        /// only on a real save failure.</summary>
+        private bool ForkAndSaveAsGamePreset()
         {
             string activeP = _plugin.ActivePresetName;
             string game    = _plugin.ActiveGame;
@@ -12031,7 +12034,7 @@ namespace TrueforceForAll.Plugin
             {
                 // No game and no built-in to fork from. Fall back to name prompt.
                 SaveAsNewPresetFromUi();
-                return;
+                return true;
             }
 
             string newName = baseName;
@@ -12043,10 +12046,23 @@ namespace TrueforceForAll.Plugin
                 while (existing.Contains(newName)) newName = $"{baseName} ({i++})";
             }
 
+            bool reused = false;
             if (!_plugin.SavePresetAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                return;
+                // Content-identical to an existing preset: reuse that preset
+                // instead of dead-ending on the duplicate rule (the dash's
+                // BOTH got this treatment first; the desktop fork hit the
+                // same wall against a leftover earlier fork on 2026-07-22).
+                // LastLocalDuplicateName is only set by the duplicate-content
+                // refusal; anything else is a real failure.
+                string dup = _plugin.LastLocalDuplicateName;
+                if (string.IsNullOrEmpty(dup) || !_plugin.ApplyPreset(dup))
+                {
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    return false;
+                }
+                newName = dup;
+                reused  = true;
             }
             // Auto-bind as game's default if a game is loaded.
             if (!string.IsNullOrEmpty(game))
@@ -12056,7 +12072,10 @@ namespace TrueforceForAll.Plugin
             // Tell the Preset Manager the local library changed so the fork
             // shows up in its list without a manual refresh.
             _presetManager?.OnLocalLibraryChanged();
-            FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{newName}' ✓");
+            FlashSaveStatus(HeaderGameSaveStatus, reused
+                ? $"Same as '{newName}', now active ✓"
+                : $"Saved as '{newName}' ✓");
+            return true;
         }
 
         private void SaveAsPreset_Click(object sender, RoutedEventArgs e)
