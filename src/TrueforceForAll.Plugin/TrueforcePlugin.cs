@@ -9073,6 +9073,17 @@ namespace TrueforceForAll.Plugin
             // " (Built-In)" suffix (e.g. forked from a built-in's auto-suggest);
             // strip so the on-disk filename and CarDefaults binding are clean.
             string newDisk = ToDiskName(newPresetName);
+            if (IsCarPresetBuiltin(_activeCarId, newDisk))
+            {
+                // A user file saved under a factory DISK name is shadowed
+                // by the builtin merge: it never shows in the dropdown and
+                // the factory content wins after restart. Refuse instead
+                // of writing an invisible file (backstop behind the UI's
+                // suggestion diversion; also catches a hand-typed name).
+                SimHub.Logging.Current.Warn(
+                    $"[TF4ALL] Refusing to save car preset '{newDisk}' for '{_activeCarId}': that name belongs to a built-in. Pick a different name.");
+                return false;
+            }
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
             if (ovr == null || (ovr.IsEmpty && !ovr.HasCommunityTracking))
             {
@@ -9576,7 +9587,17 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName))
                 return false;
-            if (!HasBuiltinSuffix(presetName)) return false;
+            // Match against the factory set by DISK name, with or without
+            // the display suffix. Bindings reach here in both forms (the
+            // account car-defaults file stores the suffixed display name;
+            // the rebuilt in-memory CarDefaults can hold the bare name),
+            // and requiring the suffix let a bare factory name slip
+            // through as "user": saves then wrote a user-folder file the
+            // builtin merge SHADOWS, so the save was invisible in the
+            // dropdown and ineffective after restart (the 2026-07-22
+            // Both-on-factory repro). A user file deliberately named like
+            // a factory preset is shadowed by the merge anyway, so
+            // treating the name as built-in is truthful either way.
             string disk = ToDiskName(presetName);
             return BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + disk);
         }

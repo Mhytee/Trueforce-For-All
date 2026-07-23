@@ -11719,6 +11719,12 @@ namespace TrueforceForAll.Plugin
                 string fallbackName = !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName)
                     ? _plugin.ActiveCarDisplayName : carId;
                 string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : fallbackName;
+                // A factory default's stripped name ("Car_455 (default)")
+                // is still the factory DISK name: a user file saved under
+                // it is shadowed by the builtin merge (invisible in the
+                // dropdown, inert after restart). Suggest the car's
+                // display name instead.
+                if (_plugin.IsCarPresetBuiltin(carId, suggestion)) suggestion = fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
                 bool silentOk = !string.IsNullOrEmpty(suggestion)
                                 && (existing == null || !existing.ContainsKey(suggestion));
@@ -11933,6 +11939,12 @@ namespace TrueforceForAll.Plugin
                 string fallbackName = !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName)
                     ? _plugin.ActiveCarDisplayName : carId;
                 string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : fallbackName;
+                // A factory default's stripped name ("Car_455 (default)")
+                // is still the factory DISK name: a user file saved under
+                // it is shadowed by the builtin merge (invisible in the
+                // dropdown, inert after restart). Suggest the car's
+                // display name instead.
+                if (_plugin.IsCarPresetBuiltin(carId, suggestion)) suggestion = fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
                 // Silent fork: suggest the stripped builtin name (or the
                 // carId when forking fresh). When that name is free, save
