@@ -15448,6 +15448,26 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        /// <summary>Apply a preset but keep the user's current personal FFB
+        /// scale. For the duplicate-reuse save paths: two presets count as
+        /// "identical" with FfbScale excluded from the content hash, so a
+        /// save that reuses an existing preset must not adopt that preset's
+        /// stored FFB and yank live wheel strength (the user tuned it since).
+        /// MasterGain is never applied from a preset, so FfbScale is the only
+        /// personal field to protect.</summary>
+        public bool ApplyPresetKeepingPersonalFfb(string presetName)
+        {
+            if (Settings == null) return false;
+            float keepFfb = Settings.FfbScale;
+            if (!ApplyPreset(presetName)) return false;
+            if (Math.Abs(Settings.FfbScale - keepFfb) > 1e-6f)
+            {
+                Settings.FfbScale = keepFfb;
+                if (_device != null) _device.FfbScale = keepFfb;
+            }
+            return true;
+        }
+
         /// <summary>Snapshot the current settings into the library under the
         /// given name. Overwrites any existing preset with that name. Sets it
         /// as the active preset. Refuses to overwrite built-in presets, the

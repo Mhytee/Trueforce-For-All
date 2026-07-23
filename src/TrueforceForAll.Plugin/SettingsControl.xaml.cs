@@ -11832,10 +11832,20 @@ namespace TrueforceForAll.Plugin
                     $"A preset called '{name}' already exists. Overwrite?",
                     DialogKind.Confirm) != true)
                 return false;
+            bool reused = false;
             if (!_plugin.SavePresetAs(name))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                return false;
+                // Duplicate-content refusal reuses the identical preset
+                // instead of dead-ending (parity with ForkAndSaveAsGamePreset
+                // and the dash). Any other failure is a real error.
+                string dup = ReuseDuplicateOrNull();
+                if (dup == null)
+                {
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    return false;
+                }
+                name   = dup;
+                reused = true;
             }
             // Bind it as this game's default so the save actually sticks across
             // sessions (a "save to game defaults" that didn't bind would leave
@@ -11848,8 +11858,23 @@ namespace TrueforceForAll.Plugin
             // Tell the Preset Manager the local library just changed so the
             // newly-saved game preset shows up in its list automatically.
             _presetManager?.OnLocalLibraryChanged();
-            FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{name}' ✓");
+            FlashSaveStatus(HeaderGameSaveStatus, reused
+                ? $"Same as '{name}', now active ✓"
+                : $"Saved as '{name}' ✓");
             return true;
+        }
+
+        // When SavePresetAs refused because the current tuning is content-
+        // identical to an existing preset (LastLocalDuplicateName set), switch
+        // to that preset - preserving the user's personal FFB scale, which is
+        // excluded from the identity hash and must not be yanked by a save -
+        // instead of dead-ending. Returns the reused preset's name, or null
+        // when the refusal was not a duplicate one (caller shows the error).
+        private string ReuseDuplicateOrNull()
+        {
+            string dup = _plugin.LastLocalDuplicateName;
+            if (string.IsNullOrEmpty(dup)) return null;
+            return _plugin.ApplyPresetKeepingPersonalFfb(dup) ? dup : null;
         }
 
         // ---------- Preset library ----------
@@ -12079,8 +12104,8 @@ namespace TrueforceForAll.Plugin
                 // same wall against a leftover earlier fork on 2026-07-22).
                 // LastLocalDuplicateName is only set by the duplicate-content
                 // refusal; anything else is a real failure.
-                string dup = _plugin.LastLocalDuplicateName;
-                if (string.IsNullOrEmpty(dup) || !_plugin.ApplyPreset(dup))
+                string dup = ReuseDuplicateOrNull();
+                if (dup == null)
                 {
                     TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                     return false;
@@ -12120,14 +12145,28 @@ namespace TrueforceForAll.Plugin
                     DialogKind.Confirm) != true)
                 return;
 
+            bool reused = false;
             if (!_plugin.SavePresetAs(name))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                return;
+                // Duplicate-content refusal: reuse the identical preset rather
+                // than dead-end. SavePresetAs already folded the active car's
+                // draft edits into the globals, so a bare error would leave
+                // that promotion stranded; reusing the identical preset makes
+                // the folded state the live+saved state consistently.
+                string dup = ReuseDuplicateOrNull();
+                if (dup == null)
+                {
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    return;
+                }
+                name   = dup;
+                reused = true;
             }
             ClearDirty();
             RefreshFromPlugin();
             _presetManager?.OnLocalLibraryChanged();
+            if (reused)
+                FlashSaveStatus(HeaderGameSaveStatus, $"Same as '{name}', now active ✓");
         }
 
         // Car-side "Save as new…": save the active car's current tuning under a
