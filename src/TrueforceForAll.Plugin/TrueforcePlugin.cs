@@ -8850,7 +8850,17 @@ namespace TrueforceForAll.Plugin
             if (slot?.SuppressedCarDefaults != null && slot.SuppressedCarDefaults.Count > 0)
             {
                 foreach (var carId in slot.SuppressedCarDefaults)
+                {
                     Settings.CarDefaults.Remove(carId);
+                    // The resolve loop above seeded CarOverrides with the
+                    // factory tune for any car that has a built-in default,
+                    // including one the user cleared to None. Strip that too,
+                    // or the wheel plays the suppressed factory preset from
+                    // startup until the first car change (the audit's
+                    // "None-clear leaves the factory override applied" bug).
+                    Settings.CarOverrides?.Remove(carId);
+                    _lastPersistedCarOverrides?.Remove(carId);
+                }
             }
 
             if (migrated > 0)
@@ -9445,10 +9455,19 @@ namespace TrueforceForAll.Plugin
             // The user just picked a binding for this car explicitly, so
             // any prior "None" suppression for it is no longer their
             // intent. Drop the slot's suppression marker if present.
-            var switchSlot = GetActiveUserSlot();
-            switchSlot?.SuppressedCarDefaults?.Remove(carId);
+            ClearCarSuppression(carId);
             if (carId == _activeCarId) ReloadActiveCarOverrideFromStore();
             return true;
+        }
+
+        /// <summary>Drop a car's "None" suppression marker on the active slot.
+        /// A fresh explicit binding (dropdown pick, import, set-pack-as-
+        /// defaults) overrides a prior None choice, so the startup rebuild's
+        /// suppression pass must not strip the new binding back out.</summary>
+        private void ClearCarSuppression(string carId)
+        {
+            if (string.IsNullOrEmpty(carId)) return;
+            GetActiveUserSlot()?.SuppressedCarDefaults?.Remove(carId);
         }
 
         /// <summary>Set a car's default preset (the Presets-tab "Set as default"
@@ -16688,6 +16707,10 @@ namespace TrueforceForAll.Plugin
 
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             Settings.CarDefaults[file.CarId] = presetName;
+            // A fresh import binding overrides any prior None: drop the
+            // suppression marker so the startup rebuild doesn't strip this
+            // binding back out (mirrors SwitchActiveCarPreset).
+            ClearCarSuppression(file.CarId);
             // Persist through to the user library's car-defaults.json so the
             // binding survives Init's rebuild (Settings.CarDefaults is a
             // runtime cache post-V2 migration; ShouldSerializeCarDefaults
@@ -17525,6 +17548,7 @@ namespace TrueforceForAll.Plugin
                         if (setCarDefaultFor.Contains(packKey))
                         {
                             Settings.CarDefaults[cf.CarId] = presetName;
+                            ClearCarSuppression(cf.CarId);
                             BuiltinPresetWriter.SetCarDefault(UserPresets.CurrentFolder, cf.CarId, presetName);
                             carDefaultsSet++;
                         }
@@ -17642,6 +17666,7 @@ namespace TrueforceForAll.Plugin
                     if (carExists && !string.Equals(prev, e.PresetName, StringComparison.Ordinal))
                         summary.CarDefaultsOverwritten++;
                     Settings.CarDefaults[e.CarId] = e.PresetName;
+                    ClearCarSuppression(e.CarId);
                     BuiltinPresetWriter.SetCarDefault(folder, e.CarId, e.PresetName);
                     summary.CarDefaultsSet++;
                     if (string.Equals(_activeCarId, e.CarId, StringComparison.Ordinal))
