@@ -11726,8 +11726,18 @@ namespace TrueforceForAll.Plugin
                 // display name instead.
                 if (_plugin.IsCarPresetBuiltin(carId, suggestion)) suggestion = fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
-                bool silentOk = !string.IsNullOrEmpty(suggestion)
-                                && (existing == null || !existing.ContainsKey(suggestion));
+                // Taken name: append (n) instead of falling back to the
+                // type-a-name prompt (owner call 2026-07-22). The prompt
+                // only remains for the no-suggestion edge.
+                if (!string.IsNullOrEmpty(suggestion))
+                {
+                    string baseSuggestion = suggestion;
+                    int n = 2;
+                    while ((existing != null && existing.ContainsKey(suggestion))
+                           || _plugin.IsCarPresetBuiltin(carId, suggestion))
+                        suggestion = $"{baseSuggestion} ({n++})";
+                }
+                bool silentOk = !string.IsNullOrEmpty(suggestion);
                 if (silentOk)
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
@@ -11947,12 +11957,20 @@ namespace TrueforceForAll.Plugin
                 if (_plugin.IsCarPresetBuiltin(carId, suggestion)) suggestion = fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
                 // Silent fork: suggest the stripped builtin name (or the
-                // carId when forking fresh). When that name is free, save
-                // without a dialog. The user clicked Save with intent to
-                // save THIS car's tuning - asking them to type a name they
-                // can't really disagree with is friction.
-                bool silentOk = !string.IsNullOrEmpty(suggestion)
-                                && (existing == null || !existing.ContainsKey(suggestion));
+                // carId when forking fresh). The user clicked Save with
+                // intent to save THIS car's tuning - asking them to type
+                // a name they can't really disagree with is friction, so
+                // a taken name gets (n) appended instead of a prompt
+                // (owner call 2026-07-22).
+                if (!string.IsNullOrEmpty(suggestion))
+                {
+                    string baseSuggestion = suggestion;
+                    int n = 2;
+                    while ((existing != null && existing.ContainsKey(suggestion))
+                           || _plugin.IsCarPresetBuiltin(carId, suggestion))
+                        suggestion = $"{baseSuggestion} ({n++})";
+                }
+                bool silentOk = !string.IsNullOrEmpty(suggestion);
                 if (silentOk)
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
