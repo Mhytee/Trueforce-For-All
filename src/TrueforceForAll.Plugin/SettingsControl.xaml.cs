@@ -2722,6 +2722,11 @@ namespace TrueforceForAll.Plugin
         private bool IsCarPresetBuiltin(string carId, string presetName)
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
+            // Agree with the core's suffix-agnostic classification: a user
+            // file named like a factory preset is treated as built-in by
+            // every save/delete path, so the Share gate must too, or one row
+            // gets contradictory built-in-vs-local treatment on one screen.
+            if (_plugin != null && _plugin.IsCarPresetBuiltin(carId, presetName)) return true;
             var perCar = _plugin?.GetCarPresets(carId);
             if (perCar == null) return false;
             return perCar.TryGetValue(presetName, out var entry)

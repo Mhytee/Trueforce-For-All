@@ -9177,14 +9177,25 @@ namespace TrueforceForAll.Plugin
         public bool DeleteCarPreset(string carId, string presetName)
         {
             if (_carStore == null || string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
-            bool wasBuiltin = IsCarPresetBuiltin(carId, presetName);
-            if (wasBuiltin && !DevMode) return false;   // DEV authoring may delete built-ins
             // presetName from UI carries the " (Built-In)" suffix for factory
             // entries; disk file names never do. Strip to the on-disk form for
             // any file/dict lookup.
             string diskName = ToDiskName(presetName);
+            // A user file shadowed under a factory disk name is a deletable
+            // leftover, not the factory preset (which lives in the built-in
+            // folder). Refuse only an ACTUAL factory preset - a factory name
+            // with no user file to remove - so the user can recover a frozen
+            // shadow file that the suffix-agnostic builtin check otherwise
+            // locked (the audit's "no UI path to remove their own file").
+            bool userFileExists = _carStore.Exists(carId, diskName);
+            bool wasBuiltin = IsCarPresetBuiltin(carId, presetName) && !userFileExists;
+            if (wasBuiltin && !DevMode) return false;   // DEV authoring may delete built-ins
             string game = GetCarPresetGame(carId, presetName);
-            _carStore.Delete(carId, diskName);
+            if (!_carStore.Delete(carId, diskName))
+            {
+                SimHub.Logging.Current.Warn($"[TF4ALL] Delete of car preset '{carId}/{diskName}' failed (see prior log line).");
+                return false;
+            }
             if (Settings?.CarDefaults != null
                 && Settings.CarDefaults.TryGetValue(carId, out var active)
                 && string.Equals(active, presetName, StringComparison.Ordinal))
@@ -9222,7 +9233,12 @@ namespace TrueforceForAll.Plugin
             if (_carStore == null || Settings == null) return false;
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) return false;
             if (string.Equals(oldName, newName, StringComparison.Ordinal)) return true;
-            bool wasBuiltin = IsCarPresetBuiltin(carId, oldName);
+            // A shadowed user file (factory disk name with a real file on
+            // disk) is renamable - renaming it away from the factory name is
+            // itself the way to un-freeze it. Refuse only an actual factory
+            // preset with no user file to move.
+            bool userFileExists = _carStore.Exists(carId, ToDiskName(oldName));
+            bool wasBuiltin = IsCarPresetBuiltin(carId, oldName) && !userFileExists;
             if (wasBuiltin && !DevMode)
             {
                 SimHub.Logging.Current.Warn($"[TF4ALL] Refusing to rename built-in car preset '{carId}/{oldName}'.");
@@ -16739,12 +16755,19 @@ namespace TrueforceForAll.Plugin
         {
             if (_carStore == null || string.IsNullOrEmpty(desired)) return desired;
             var loaded = _carStore.LoadAll();
-            if (!loaded.TryGetValue(carId, out var perCar)) return desired;
-            if (!perCar.ContainsKey(desired)) return desired;
+            loaded.TryGetValue(carId, out var perCar);
+            // A user file named like a FACTORY disk name gets frozen: the
+            // suffix-agnostic IsCarPresetBuiltin classifies it built-in, so
+            // in-place save / rename / delete all refuse. Treat a factory
+            // name as taken too, so duplicate / import / pack-install never
+            // mint one (the audit's factory-disk-name family).
+            bool Taken(string n) => (perCar != null && perCar.ContainsKey(n))
+                                    || IsCarPresetBuiltin(carId, n);
+            if (!Taken(desired)) return desired;
             for (int i = 2; i < 100; i++)
             {
                 string candidate = $"{desired} ({i})";
-                if (!perCar.ContainsKey(candidate)) return candidate;
+                if (!Taken(candidate)) return candidate;
             }
             return $"{desired} ({DateTime.Now:HHmmss})";
         }

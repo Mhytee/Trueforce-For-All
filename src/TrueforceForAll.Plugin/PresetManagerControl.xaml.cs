@@ -3430,9 +3430,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     "Delete car presets",
                     $"Delete {bulk.Count} car preset(s)?{detail}",
                     DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
-                foreach (var r in bulk) _plugin.DeleteCarPreset(r.CarId, r.PresetName);
+                int deletedCount = 0;
+                foreach (var r in bulk)
+                    if (_plugin.DeleteCarPreset(r.CarId, r.PresetName)) deletedCount++;
                 ReloadCars();
-                SetLib(CarLibStatus, $"Deleted {bulk.Count} car preset(s).");
+                SetLib(CarLibStatus, deletedCount == bulk.Count
+                    ? $"Deleted {deletedCount} car preset(s)."
+                    : $"Deleted {deletedCount} of {bulk.Count} car preset(s); the rest couldn't be removed (see the SimHub log).");
                 return;
             }
 
@@ -3444,9 +3448,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (TrueforceDialog.Show(Window.GetWindow(this), "Delete car preset", warning,
                 DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
             string deleted = sel.PresetName;
-            _plugin.DeleteCarPreset(sel.CarId, sel.PresetName);
+            bool ok = _plugin.DeleteCarPreset(sel.CarId, sel.PresetName);
             ReloadCars();
-            SetLib(CarLibStatus, $"Deleted '{deleted}'.");
+            SetLib(CarLibStatus, ok
+                ? $"Deleted '{deleted}'."
+                : $"Couldn't delete '{deleted}' (see the SimHub log).");
         }
 
         private void CarSetActive_Click(object sender, RoutedEventArgs e)
