@@ -11592,46 +11592,9 @@ namespace TrueforceForAll.Plugin
             };
             sp.Children.Add(bothBtn);
 
-            // Reset-to-default is a different verb than saving, so it rides
-            // as a quiet link instead of a fourth button (this modal is its
-            // only entrance; removing it would orphan the feature).
-            if (_plugin.IsSectionResetDraft(kind))
-            {
-                var followBtn = new Button
-                {
-                    Content = "Follow game default (remove this car's override)",
-                    Style = TryFindResource("LinkButton") as Style,
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    Margin = new Thickness(0, 0, 0, 8),
-                    ToolTip = "Commits the reset: this car drops its own override and follows the game default from now on.",
-                };
-                sp.Children.Add(followBtn);
-                followBtn.Click += (s, args) =>
-                {
-                    _plugin.CommitSectionFollowDefault(kind);
-                    ClearEffectDirty(which);
-                    RefreshFromPlugin();
-                    win.DialogResult = true;
-                };
-            }
-            else if (_plugin.IsSectionOverridden(kind))
-            {
-                var resetBtn = new Button
-                {
-                    Content = "Reset this car to the game default…",
-                    Style = TryFindResource("LinkButton") as Style,
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    Margin = new Thickness(0, 0, 0, 8),
-                    ToolTip = "Previews this car following the game default. Drive to try it, then Save to keep it (drops this car's override) or Revert to restore your override.",
-                };
-                sp.Children.Add(resetBtn);
-                resetBtn.Click += (s, args) =>
-                {
-                    _plugin.ResetSectionToDefaultDraft(kind);
-                    RefreshFromPlugin();
-                    win.DialogResult = true;
-                };
-            }
+            // No reset-to-default entry here (owner call 2026-07-22): setting
+            // the car's preset to None in the picker covers "follow the game
+            // default", so the per-section reset link only added noise.
 
             var btnRow = new StackPanel
             {
