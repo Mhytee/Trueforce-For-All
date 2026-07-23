@@ -843,6 +843,7 @@ namespace TrueforceForAll.Plugin
                 var dirty = DashDirtySections();
                 if (dirty.Length == 0 && DashCarDrift()) dirty = DashAllCarScopeSections();
                 if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+                bool anyReverted = false;
                 foreach (var k in dirty)
                 {
                     // Car-scoped sections revert their draft (falls back to
@@ -853,10 +854,19 @@ namespace TrueforceForAll.Plugin
                     // toast.
                     try
                     {
-                        if (SectionHasCarScope(k)) RevertSectionDraft(k);
-                        else RevertSection(k);
+                        bool r = SectionHasCarScope(k) ? RevertSectionDraft(k) : RevertSection(k);
+                        anyReverted |= r;
                     }
                     catch { }
+                }
+                if (!anyReverted)
+                {
+                    // Nothing had a saved baseline to revert to (e.g. an
+                    // anchor-less edit with no active preset). Don't clear the
+                    // bar or persist over an edit we never undid, and don't
+                    // claim success.
+                    DashToast("NOTHING TO REVERT");
+                    return;
                 }
                 DashClearDirty();
                 PersistSettings();
@@ -1109,6 +1119,9 @@ namespace TrueforceForAll.Plugin
                     : "NO UNSAVED TUNING");
                 return;
             }
+            string carPresetName = GetActiveCarPresetName(_activeCarId);
+            bool carBuiltinLocked = !string.IsNullOrEmpty(carPresetName)
+                && IsCarPresetBuiltin(_activeCarId, carPresetName) && !DevMode;
             try
             {
                 bool allOk = true;
@@ -1118,6 +1131,28 @@ namespace TrueforceForAll.Plugin
                 }
                 if (!allOk)
                 {
+                    Settings.CarOverrides.TryGetValue(_activeCarId, out var liveOvr);
+                    bool liveEmpty = liveOvr == null || liveOvr.IsEmpty;
+                    // Reset-to-default commit: the user cleared every section
+                    // (empty live override) on a car bound to a writable user
+                    // preset. That's "follow the game default", not a fork -
+                    // persist the empty override, which deletes the car file,
+                    // exactly as the desktop car Save does. The section-level
+                    // save can't express this (it refuses an absent override),
+                    // so it misrouted into the fork, which then refused the
+                    // empty override and dead-ended with SAVE FAILED.
+                    if (liveEmpty && !carBuiltinLocked && !string.IsNullOrEmpty(carPresetName))
+                    {
+                        bool committed;
+                        lock (_carFactsLock) { committed = PersistActiveCarOverride(); }
+                        if (!committed) { DashToast("SAVE FAILED (see the SimHub log)"); return; }
+                        ApplyActiveCarOverride();
+                        DashClearDirty();
+                        _dashSnapValid = false;
+                        DashToast("SAVED TO THIS CAR");
+                        RaiseDashRemoteChanged();
+                        return;
+                    }
                     string name = DashUniqueCarPresetName();
                     bool forked;
                     // Same lock the preset picker's apply takes: the fork now
@@ -1174,12 +1209,20 @@ namespace TrueforceForAll.Plugin
             bool fork = string.IsNullOrEmpty(preset) || (IsBuiltinPreset(preset) && !DevMode);
             try
             {
-                foreach (var k in dirty) PromoteSectionToGlobal(k);
+                // Two-phase promote, same as the desktop popover: copy the
+                // sections' live values up to the globals BEFORE the preset
+                // write (non-destructive), and only release the car layer -
+                // which patches the saved car file - AFTER the write is
+                // confirmed. The old code promoted (and stripped the car
+                // file) up front, so a failed SavePresetAs left the car file
+                // already rewritten under a SAVE FAILED toast.
+                foreach (var k in dirty) CopySectionToGlobals(k);
                 if (fork)
                 {
                     string newName = DashUniqueGamePresetName(
                         !string.IsNullOrEmpty(preset) ? preset
                         : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
+                    bool reused = false;
                     if (!SavePresetAs(newName))
                     {
                         // Duplicate-content refusal (owner rule: a new name
@@ -1194,8 +1237,13 @@ namespace TrueforceForAll.Plugin
                             return;
                         }
                         newName = dup;
-                        ApplyPreset(dup);   // SavePresetAs would have made it active
+                        // Keep the user's personal FFB: it's excluded from the
+                        // identity hash, so the reused preset's stored FFB
+                        // must not yank live wheel strength.
+                        ApplyPresetKeepingPersonalFfb(dup);
+                        reused = true;
                     }
+                    foreach (var k in dirty) ReleaseSectionFromCarLayer(k);
                     // Desktop fork parity (ForkAndSaveAsGamePreset): the fork
                     // is what's playing, so it becomes the game default too.
                     // Without this the built-in re-loads next session and the
@@ -1210,7 +1258,8 @@ namespace TrueforceForAll.Plugin
                     PersistSettings();
                     DashClearDirty();
                     _dashSnapValid = false;
-                    DashToast("SAVED AS NEW PRESET: " + newName.ToUpperInvariant());
+                    DashToast((reused ? "SAME AS EXISTING PRESET: " : "SAVED AS NEW PRESET: ")
+                        + newName.ToUpperInvariant());
                     RaiseDashRemoteChanged();
                     return;
                 }
@@ -1219,6 +1268,11 @@ namespace TrueforceForAll.Plugin
                 {
                     if (!SaveSectionToActivePreset(k)) allSectionsOk = false;
                 }
+                // Release only after the preset write succeeded for every
+                // section; a partial failure leaves the car layer (and the
+                // dirty bar) intact so the user can retry.
+                if (allSectionsOk)
+                    foreach (var k in dirty) ReleaseSectionFromCarLayer(k);
                 ApplyActiveCarOverride();
                 PersistSettings();
                 DashClearDirty();
@@ -1273,8 +1327,11 @@ namespace TrueforceForAll.Plugin
             string preset = _activePresetName;
             bool forkPreset = string.IsNullOrEmpty(preset) || (IsBuiltinPreset(preset) && !DevMode);
             string carPresetName = GetActiveCarPresetName(_activeCarId);
+            // DEV authoring writes through to a factory car preset (like
+            // the THIS-CAR path and desktop do), so a built-in is writable
+            // in DevMode; non-dev forks below.
             bool carWritable = !string.IsNullOrEmpty(carPresetName)
-                && !IsCarPresetBuiltin(_activeCarId, carPresetName);
+                && (!IsCarPresetBuiltin(_activeCarId, carPresetName) || DevMode);
             var carScoped = new List<SectionKind>();
             foreach (var k in dirty)
                 if (SectionHasCarScope(k)) carScoped.Add(k);
@@ -1282,17 +1339,23 @@ namespace TrueforceForAll.Plugin
             {
                 // ---- game-preset half (all dirty sections) ----
                 string forkName = null;
+                bool reusedPreset = false;
                 bool presetOk = true;
                 if (forkPreset)
                 {
-                    foreach (var k in dirty) PromoteSectionToGlobal(k);
+                    // Copy (not promote) up front: non-destructive, so a
+                    // failed SavePresetAs can't leave the car file stripped.
+                    // BOTH keeps the car pinned, so we re-pin the sections
+                    // afterward rather than releasing the car layer.
+                    foreach (var k in dirty) CopySectionToGlobals(k);
                     forkName = DashUniqueGamePresetName(
                         !string.IsNullOrEmpty(preset) ? preset
                         : (string.IsNullOrEmpty(_activeGame) ? "My preset" : _activeGame));
                     if (!SavePresetAs(forkName))
                     {
                         // Duplicate-content refusal: reuse the identical
-                        // existing preset (same rationale as the GAME path).
+                        // existing preset (same rationale as the GAME path),
+                        // preserving the user's personal FFB.
                         string dup = LastLocalDuplicateName;
                         if (string.IsNullOrEmpty(dup))
                         {
@@ -1300,20 +1363,15 @@ namespace TrueforceForAll.Plugin
                             return;
                         }
                         forkName = dup;
-                        ApplyPreset(dup);
+                        ApplyPresetKeepingPersonalFfb(dup);
+                        reusedPreset = true;
                     }
                     // Fork parity with DashSaveTuningToGame: the fork is
                     // what's playing, so it becomes the game default too.
                     if (!string.IsNullOrEmpty(_activeGame))
                         SetDefaultPresetForGame(_activeGame, forkName);
-                    // Re-pin the car copy AFTER SavePresetAs: its
-                    // FoldDraftSectionsIntoGlobals strips draft sections out
-                    // of the override, so a re-pin done before it was undone
-                    // and the car fork below saved an EMPTY override, which
-                    // CarPresetStore.Save silently skips (the on-wheel
-                    // repro: toast named a car preset that never hit disk,
-                    // restart fell back to the built-in). Snapshot copies
-                    // from the globals, which now hold the folded values.
+                    // Re-pin the car copy from the globals (which now hold
+                    // the saved values) so the car half writes them.
                     foreach (var k in carScoped) SnapshotSectionToCarOverride(k);
                 }
                 else
@@ -1322,7 +1380,7 @@ namespace TrueforceForAll.Plugin
                     {
                         if (SectionHasCarScope(k))
                         {
-                            PromoteSectionToGlobal(k);
+                            CopySectionToGlobals(k);
                             SnapshotSectionToCarOverride(k);
                         }
                         if (!SaveSectionToActivePreset(k)) presetOk = false;
@@ -1360,7 +1418,7 @@ namespace TrueforceForAll.Plugin
                 DashClearDirty();
                 _dashSnapValid = false;
                 string presetPart = forkName != null
-                    ? "SAVED AS NEW PRESET: " + forkName.ToUpperInvariant()
+                    ? (reusedPreset ? "SAME AS EXISTING PRESET: " : "SAVED AS NEW PRESET: ") + forkName.ToUpperInvariant()
                     : (presetOk ? "SAVED TO PRESET" : "PARTLY SAVED TO PRESET (see log)");
                 string carPart = carScoped.Count == 0
                     ? ""

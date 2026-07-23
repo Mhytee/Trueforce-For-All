@@ -6382,24 +6382,32 @@ namespace TrueforceForAll.Plugin
         // Revert THIS section's draft to the car's saved state (persisted
         // override, or the game default if none). No car loaded → revert the
         // global section to the active preset (existing behavior).
-        public void RevertSectionDraft(SectionKind kind)
+        /// <returns>true when there was actually a draft to revert; false
+        /// when nothing changed (e.g. a global-only section with no active
+        /// preset). The dash revert uses this so it doesn't toast "reverted"
+        /// and clear the bar over an edit it never undid.</returns>
+        public bool RevertSectionDraft(SectionKind kind)
         {
-            if (string.IsNullOrEmpty(_activeCarId)) { RevertSection(kind); return; }
-            if (Settings?.CarOverrides == null) return;
+            if (string.IsNullOrEmpty(_activeCarId)) return RevertSection(kind);
+            if (Settings?.CarOverrides == null) return false;
             CarOverride saved = null;
             _lastPersistedCarOverrides?.TryGetValue(_activeCarId, out saved);
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
+            bool reverted = false;
             if (OverrideHasSection(saved, kind))
             {
                 if (ovr == null) { ovr = new CarOverride(); Settings.CarOverrides[_activeCarId] = ovr; }
                 CopyOverrideSection(saved, ovr, kind);
+                reverted = true;
             }
-            else if (ovr != null)
+            else if (ovr != null && OverrideHasSection(ovr, kind))
             {
                 ClearOverrideSection(ovr, kind);
                 if (ovr.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
+                reverted = true;
             }
             ApplyActiveCarOverride();
+            return reverted;
         }
 
         // Save scope: the draft becomes the GAME DEFAULT and stays pinned to
