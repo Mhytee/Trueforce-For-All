@@ -11639,9 +11639,10 @@ namespace TrueforceForAll.Plugin
         /// a user preset; fork (with the naming prompt) when the active
         /// preset is built-in or absent. Shared by the save popover's Game
         /// preset / Both choices and by the no-car path that skips the
-        /// popover entirely. Returns false on a failed in-place write or a
-        /// failed fork (callers keep the popover open and the dirty bit
-        /// set, and the Both flow skips the car half).</summary>
+        /// popover entirely. Returns false on a failed in-place write, a
+        /// failed fork, or a cancelled name prompt (callers keep the popover
+        /// open and the dirty bit set, and the Both flow skips the car
+        /// half).</summary>
         private bool SaveEffectSectionToGamePreset(EffectKind which)
         {
             string activeP   = _plugin.ActivePresetName;
@@ -11649,29 +11650,40 @@ namespace TrueforceForAll.Plugin
             bool   builtin   = hasPreset && _plugin.IsBuiltinPreset(activeP);
             var    kind      = (TrueforcePlugin.SectionKind)(int)which;
 
+            // Two-phase promote around every branch: the copy half runs
+            // before the preset write (so the snapshot sees the section's
+            // live values), but the destructive half - releasing the car
+            // layer's claim, which patches the SAVED car preset file - only
+            // runs after the write is CONFIRMED. A cancel or failure used to
+            // leave the car file already stripped (2026-07 audit blocker).
+            //
             // Fork paths (no preset / built-in) always capture whole state --
             // a freshly-forked preset IS the snapshot.
             if (!hasPreset)
             {
-                _plugin.PromoteSectionToGlobal(kind);
-                SaveAsNewPresetFromUi();
+                _plugin.CopySectionToGlobals(kind);
+                if (!SaveAsNewPresetFromUi()) return false;
+                _plugin.ReleaseSectionFromCarLayer(kind);
                 return true;
             }
             if (builtin)
             {
-                _plugin.PromoteSectionToGlobal(kind);
-                return ForkAndSaveAsGamePreset();
+                _plugin.CopySectionToGlobals(kind);
+                if (!ForkAndSaveAsGamePreset()) return false;
+                _plugin.ReleaseSectionFromCarLayer(kind);
+                return true;
             }
 
             // Per-section save: patch ONLY this section into the active
             // preset; other sections keep their saved values and their dirty
             // bits remain (the ★ Save all button commits everything at once).
-            _plugin.PromoteSectionToGlobal(kind);
+            _plugin.CopySectionToGlobals(kind);
             if (!_plugin.SaveSectionToActivePreset(kind))
             {
                 TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return false;
             }
+            _plugin.ReleaseSectionFromCarLayer(kind);
             ClearEffectDirty(which);
             RefreshFromPlugin();
             return true;
@@ -11794,11 +11806,15 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Save current full state as a new named preset (same flow
         /// as the existing "Save as new" preset library button).</summary>
-        private void SaveAsNewPresetFromUi()
+        // Returns false when the user cancels the prompt / declines the
+        // overwrite, or the save fails - callers that stage destructive
+        // follow-ups (the popover's release of a car section) must not run
+        // them on a cancel that saved nothing.
+        private bool SaveAsNewPresetFromUi()
         {
             string suggested = _plugin.ActiveGame ?? "My preset";
             string name = PromptForName("Save as new preset", "Preset name:", suggested);
-            if (string.IsNullOrWhiteSpace(name)) return;
+            if (string.IsNullOrWhiteSpace(name)) return false;
             name = name.Trim();
             // Confirm overwrite if the name collides.
             bool exists = false;
@@ -11808,11 +11824,11 @@ namespace TrueforceForAll.Plugin
                     "Overwrite preset?",
                     $"A preset called '{name}' already exists. Overwrite?",
                     DialogKind.Confirm) != true)
-                return;
+                return false;
             if (!_plugin.SavePresetAs(name))
             {
                 TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                return;
+                return false;
             }
             // Bind it as this game's default so the save actually sticks across
             // sessions (a "save to game defaults" that didn't bind would leave
@@ -11826,6 +11842,7 @@ namespace TrueforceForAll.Plugin
             // newly-saved game preset shows up in its list automatically.
             _presetManager?.OnLocalLibraryChanged();
             FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{name}' ✓");
+            return true;
         }
 
         // ---------- Preset library ----------
@@ -12032,9 +12049,9 @@ namespace TrueforceForAll.Plugin
                 baseName = game;
             else
             {
-                // No game and no built-in to fork from. Fall back to name prompt.
-                SaveAsNewPresetFromUi();
-                return true;
+                // No game and no built-in to fork from. Fall back to name
+                // prompt; its outcome propagates so a cancel isn't success.
+                return SaveAsNewPresetFromUi();
             }
 
             string newName = baseName;

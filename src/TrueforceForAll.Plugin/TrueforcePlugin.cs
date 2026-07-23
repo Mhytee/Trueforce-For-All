@@ -6564,20 +6564,38 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // ----- per-section: is this section overridden for the active car? -----
-        public bool IsEngineOverridden     => GetActiveCarOverride()?.EnginePulse  != null;
-        public bool IsBumpsOverridden      => GetActiveCarOverride()?.RoadBumps    != null;
-        public bool IsTractionOverridden   => GetActiveCarOverride()?.TractionLoss != null;
-        public bool IsAxleSlipOverridden   => GetActiveCarOverride()?.AxleSlip     != null;
-        public bool IsKerbThumpOverridden  => GetActiveCarOverride()?.KerbThump    != null;
-        public bool IsLockupJudderOverridden => GetActiveCarOverride()?.LockupJudder != null;
-        public bool IsShiftOverridden      => GetActiveCarOverride()?.GearShift    != null;
-        public bool IsAbsOverridden        => GetActiveCarOverride()?.AbsClick     != null;
-        public bool IsPitLimiterOverridden => GetActiveCarOverride()?.PitLimiter   != null;
-        public bool IsDrsOverridden        => GetActiveCarOverride()?.Drs          != null;
-        public bool IsCollisionOverridden  => GetActiveCarOverride()?.Collision    != null;
-        public bool IsRevLimiterOverridden => GetActiveCarOverride()?.RevLimiter   != null;
-        public bool IsAudioOverridden      => GetActiveCarOverride()?.AudioCapture != null;
+        // ----- per-section: does the active car carry a REAL override here? -----
+        // True only when the car has its own copy of the section AND that copy
+        // differs from the game preset's value for the effect. A per-car section
+        // whose values are content-identical to the game preset (e.g. right after
+        // "Update game defaults" re-pins the override via SaveSectionToBoth, or a
+        // freshly forked car preset before any tuning) is NOT a real override, so
+        // it must not light the "★ car override" badge. The baseline is the active
+        // game preset's section, falling back to the live game-level global when
+        // the preset carries no value for the effect (Eq(present, null) is false,
+        // so a genuine override with no baseline still shows).
+        public bool IsEngineOverridden     { get { var o = GetActiveCarOverride()?.EnginePulse;  return o != null && !Eq(o, ActiveGamePresetSnapshot()?.EnginePulse  ?? Settings?.EnginePulse); } }
+        public bool IsBumpsOverridden      { get { var o = GetActiveCarOverride()?.RoadBumps;    return o != null && !Eq(o, ActiveGamePresetSnapshot()?.RoadBumps    ?? Settings?.RoadBumps); } }
+        public bool IsTractionOverridden   { get { var o = GetActiveCarOverride()?.TractionLoss; return o != null && !Eq(o, ActiveGamePresetSnapshot()?.TractionLoss ?? Settings?.TractionLoss); } }
+        public bool IsAxleSlipOverridden   { get { var o = GetActiveCarOverride()?.AxleSlip;     return o != null && !Eq(o, ActiveGamePresetSnapshot()?.AxleSlip     ?? Settings?.AxleSlip); } }
+        public bool IsKerbThumpOverridden  { get { var o = GetActiveCarOverride()?.KerbThump;    return o != null && !Eq(o, ActiveGamePresetSnapshot()?.KerbThump    ?? Settings?.KerbThump); } }
+        public bool IsLockupJudderOverridden { get { var o = GetActiveCarOverride()?.LockupJudder; return o != null && !Eq(o, ActiveGamePresetSnapshot()?.LockupJudder ?? Settings?.LockupJudder); } }
+        public bool IsShiftOverridden      { get { var o = GetActiveCarOverride()?.GearShift;    return o != null && !Eq(o, ActiveGamePresetSnapshot()?.GearShift    ?? Settings?.GearShift); } }
+        public bool IsAbsOverridden        { get { var o = GetActiveCarOverride()?.AbsClick;     return o != null && !Eq(o, ActiveGamePresetSnapshot()?.AbsClick     ?? Settings?.AbsClick); } }
+        public bool IsPitLimiterOverridden { get { var o = GetActiveCarOverride()?.PitLimiter;   return o != null && !Eq(o, ActiveGamePresetSnapshot()?.PitLimiter   ?? Settings?.PitLimiter); } }
+        public bool IsDrsOverridden        { get { var o = GetActiveCarOverride()?.Drs;          return o != null && !Eq(o, ActiveGamePresetSnapshot()?.Drs          ?? Settings?.Drs); } }
+        public bool IsCollisionOverridden  { get { var o = GetActiveCarOverride()?.Collision;    return o != null && !Eq(o, ActiveGamePresetSnapshot()?.Collision    ?? Settings?.Collision); } }
+        public bool IsRevLimiterOverridden { get { var o = GetActiveCarOverride()?.RevLimiter;   return o != null && !Eq(o, ActiveGamePresetSnapshot()?.RevLimiter   ?? Settings?.RevLimiter); } }
+        public bool IsAudioOverridden      { get { var o = GetActiveCarOverride()?.AudioCapture; return o != null && !Eq(o, ActiveGamePresetSnapshot()?.AudioCapture ?? Settings?.AudioCapture); } }
+
+        // The active game preset's stored snapshot (the "game default" a per-car
+        // override layers on top of), or null when no named preset is active.
+        private GameSettingsSnapshot ActiveGamePresetSnapshot()
+        {
+            if (string.IsNullOrEmpty(_activePresetName) || Settings?.Presets == null) return null;
+            Settings.Presets.TryGetValue(_activePresetName, out var snap);
+            return snap;
+        }
 
         // ----- write helpers used by the UI sliders -----
         // Each routes to the per-car section if it's overridden, else to the global section.
@@ -9301,6 +9319,15 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(_activeCarId) || Settings == null || _carStore == null) return;
             var loaded = _carStore.LoadAll();
+            // The store only walks the user library; factory presets must be
+            // merged in here just like the startup load and GetCarPresets do.
+            // Without the merge a builtin-bound car's suffixed name never
+            // resolves below, both fallthrough branches remove the override,
+            // and the factory tune goes silent on every car change or
+            // dropdown pick while the picker still shows it active (the
+            // 2026-07 save-matrix audit's "factory presets are inert"
+            // blocker).
+            MergeBuiltinCarPresetsInto(loaded);
             if (!loaded.TryGetValue(_activeCarId, out var perCar) || perCar.Count == 0)
             {
                 Settings.CarOverrides.Remove(_activeCarId);
@@ -9859,8 +9886,24 @@ namespace TrueforceForAll.Plugin
         /// car-overridden: lifts the override values up to the global
         /// section, then drops the override (so the new global takes
         /// effect for this car too). Caller should follow with
-        /// SavePresetAs to commit the new global into the active preset.</summary>
+        /// SavePresetAs to commit the new global into the active preset.
+        /// Prefer calling the two halves directly around the preset write
+        /// (CopySectionToGlobals before, ReleaseSectionFromCarLayer after
+        /// success) so a cancelled or failed save can't destroy the car
+        /// preset's saved section (2026-07 save-matrix audit).</summary>
         public void PromoteSectionToGlobal(SectionKind kind)
+        {
+            CopySectionToGlobals(kind);
+            ReleaseSectionFromCarLayer(kind);
+        }
+
+        /// <summary>First half of the game-side section save: copy the
+        /// section's live (audible) values into the global section WITHOUT
+        /// releasing the car layer's claim on it - no override mutation, no
+        /// car-file write. Safe to call before the game preset write is
+        /// confirmed: on cancel or failure the override still masks the
+        /// copied global, so nothing changes audibly or on disk.</summary>
+        public void CopySectionToGlobals(SectionKind kind)
         {
             if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
             if (Settings.CarOverrides == null
@@ -9868,24 +9911,59 @@ namespace TrueforceForAll.Plugin
                 || ovr == null) return;
             switch (kind)
             {
-                case SectionKind.Engine:   if (ovr.EnginePulse  != null) { Settings.EnginePulse  = Clone(ovr.EnginePulse);    ovr.EnginePulse  = null; } break;
-                case SectionKind.Bumps:    if (ovr.RoadBumps    != null) { Settings.RoadBumps    = Clone(ovr.RoadBumps);      ovr.RoadBumps    = null; } break;
-                case SectionKind.Traction: if (ovr.TractionLoss != null) { Settings.TractionLoss = Clone(ovr.TractionLoss);   ovr.TractionLoss = null; } break;
-                case SectionKind.AxleSlip:   if (ovr.AxleSlip     != null) { Settings.AxleSlip     = Clone(ovr.AxleSlip);       ovr.AxleSlip     = null; } break;
-                case SectionKind.KerbThump:  if (ovr.KerbThump    != null) { Settings.KerbThump    = Clone(ovr.KerbThump);      ovr.KerbThump    = null; } break;
-                case SectionKind.LockupJudder: if (ovr.LockupJudder != null) { Settings.LockupJudder = Clone(ovr.LockupJudder);  ovr.LockupJudder = null; } break;
-                case SectionKind.Shift:    if (ovr.GearShift    != null) { Settings.GearShift    = Clone(ovr.GearShift);      ovr.GearShift    = null; } break;
-                case SectionKind.Abs:        if (ovr.AbsClick     != null) { Settings.AbsClick     = Clone(ovr.AbsClick);       ovr.AbsClick     = null; } break;
-                case SectionKind.PitLimiter: if (ovr.PitLimiter   != null) { Settings.PitLimiter   = Clone(ovr.PitLimiter);     ovr.PitLimiter   = null; } break;
-                case SectionKind.Drs:        if (ovr.Drs          != null) { Settings.Drs          = Clone(ovr.Drs);            ovr.Drs          = null; } break;
-                case SectionKind.Collision:  if (ovr.Collision    != null) { Settings.Collision    = Clone(ovr.Collision);      ovr.Collision    = null; } break;
-                case SectionKind.RevLimiter: if (ovr.RevLimiter   != null) { Settings.RevLimiter   = Clone(ovr.RevLimiter);     ovr.RevLimiter   = null; } break;
-                case SectionKind.Audio:      if (ovr.AudioCapture != null) { Settings.AudioCapture = CloneOrNull(ovr.AudioCapture); ovr.AudioCapture = null; } break;
-                case SectionKind.Airborne:   if (ovr.Airborne     != null) { Settings.Airborne     = Clone(ovr.Airborne);       ovr.Airborne     = null; } break;
-                default: return;
+                case SectionKind.Engine:   if (ovr.EnginePulse  != null) Settings.EnginePulse  = Clone(ovr.EnginePulse);    break;
+                case SectionKind.Bumps:    if (ovr.RoadBumps    != null) Settings.RoadBumps    = Clone(ovr.RoadBumps);      break;
+                case SectionKind.Traction: if (ovr.TractionLoss != null) Settings.TractionLoss = Clone(ovr.TractionLoss);   break;
+                case SectionKind.AxleSlip:   if (ovr.AxleSlip     != null) Settings.AxleSlip     = Clone(ovr.AxleSlip);       break;
+                case SectionKind.KerbThump:  if (ovr.KerbThump    != null) Settings.KerbThump    = Clone(ovr.KerbThump);      break;
+                case SectionKind.LockupJudder: if (ovr.LockupJudder != null) Settings.LockupJudder = Clone(ovr.LockupJudder);  break;
+                case SectionKind.Shift:    if (ovr.GearShift    != null) Settings.GearShift    = Clone(ovr.GearShift);      break;
+                case SectionKind.Abs:        if (ovr.AbsClick     != null) Settings.AbsClick     = Clone(ovr.AbsClick);       break;
+                case SectionKind.PitLimiter: if (ovr.PitLimiter   != null) Settings.PitLimiter   = Clone(ovr.PitLimiter);     break;
+                case SectionKind.Drs:        if (ovr.Drs          != null) Settings.Drs          = Clone(ovr.Drs);            break;
+                case SectionKind.Collision:  if (ovr.Collision    != null) Settings.Collision    = Clone(ovr.Collision);      break;
+                case SectionKind.RevLimiter: if (ovr.RevLimiter   != null) Settings.RevLimiter   = Clone(ovr.RevLimiter);     break;
+                case SectionKind.Audio:      if (ovr.AudioCapture != null) Settings.AudioCapture = CloneOrNull(ovr.AudioCapture); break;
+                case SectionKind.Airborne:   if (ovr.Airborne     != null) Settings.Airborne     = Clone(ovr.Airborne);       break;
+                default: break;
             }
-            if (ovr.IsEmpty) Settings.CarOverrides.Remove(_activeCarId);
-            PersistActiveCarOverride();
+        }
+
+        /// <summary>Second half of the game-side section save, to be called
+        /// only AFTER the game preset write is confirmed: drop the car
+        /// layer's claim on the section so the just-saved global value is
+        /// what plays from now on. The live section is cleared in memory
+        /// and the SAVED car preset file is patched from the persisted
+        /// baseline - never from the live override, which would silently
+        /// commit sibling sections' unsaved drafts and break their Revert
+        /// (2026-07 audit). When dropping the section would empty the file,
+        /// the file and its baseline are left intact instead: a named car
+        /// preset is never deleted as a side effect of a game-side save;
+        /// its pin re-applies with values identical to the ones just
+        /// saved.</summary>
+        public void ReleaseSectionFromCarLayer(SectionKind kind)
+        {
+            if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
+            if (!SectionHasCarScope(kind)) return;
+            if (Settings.CarOverrides != null
+                && Settings.CarOverrides.TryGetValue(_activeCarId, out var live)
+                && live != null)
+            {
+                ClearOverrideSection(live, kind);
+                if (live.IsEmpty && !live.HasCommunityTracking)
+                    Settings.CarOverrides.Remove(_activeCarId);
+            }
+            if (_lastPersistedCarOverrides.TryGetValue(_activeCarId, out var saved)
+                && saved != null && OverrideHasSection(saved, kind))
+            {
+                var patched = CloneCarOverride(saved);
+                ClearOverrideSection(patched, kind);
+                if (patched.IsEmpty && !patched.HasCommunityTracking)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Kept car preset for '{_activeCarId}' intact: {kind} is its only section and game-side saves never delete a car preset.");
+                else
+                    RemoveSectionFromActiveCarOverrideFile(kind);
+            }
             ApplyActiveCarOverride();
         }
 
