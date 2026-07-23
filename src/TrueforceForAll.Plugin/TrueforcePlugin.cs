@@ -6448,7 +6448,11 @@ namespace TrueforceForAll.Plugin
             {
                 _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
                     defaultAuthor: CurrentAuthorForStamp());
-                if (patched.IsEmpty)
+                // The store KEEPS an empty-but-community-tracked file, so
+                // the baseline must keep the (empty, tracked) entry too:
+                // dropping it made the next section save rebuild from a
+                // bare CarOverride and strip the community lineage.
+                if (patched.IsEmpty && !patched.HasCommunityTracking)
                     _lastPersistedCarOverrides.Remove(_activeCarId);
                 else
                     _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
@@ -9335,6 +9339,26 @@ namespace TrueforceForAll.Plugin
                 ApplyActiveCarOverride();
                 return;
             }
+            // Explicit None stays None: with built-ins merged here, the
+            // resolver's no-binding fallback would otherwise re-pin the
+            // first factory entry for a car the user cleared (suppression
+            // latched by ClearCarPresetBindingCore). Honor it the way the
+            // startup rebuild's suppression pass does.
+            bool hasBinding = Settings.CarDefaults != null
+                && Settings.CarDefaults.TryGetValue(_activeCarId, out var boundTo)
+                && !string.IsNullOrEmpty(boundTo);
+            if (!hasBinding)
+            {
+                var slotNone = GetActiveUserSlot();
+                if (slotNone?.SuppressedCarDefaults != null
+                    && slotNone.SuppressedCarDefaults.Contains(_activeCarId))
+                {
+                    Settings.CarOverrides.Remove(_activeCarId);
+                    _lastPersistedCarOverrides.Remove(_activeCarId);
+                    ApplyActiveCarOverride();
+                    return;
+                }
+            }
             string activeName = ResolveActiveCarPresetName(_activeCarId, perCar);
             if (activeName != null && perCar.TryGetValue(activeName, out var entry))
             {
@@ -9900,9 +9924,10 @@ namespace TrueforceForAll.Plugin
         /// <summary>First half of the game-side section save: copy the
         /// section's live (audible) values into the global section WITHOUT
         /// releasing the car layer's claim on it - no override mutation, no
-        /// car-file write. Safe to call before the game preset write is
-        /// confirmed: on cancel or failure the override still masks the
-        /// copied global, so nothing changes audibly or on disk.</summary>
+        /// car-file write. On cancel or failure THIS car's override still
+        /// masks the copied global; the global itself stays modified until
+        /// the next preset apply (same as the old promote), which cars
+        /// without their own override can hear.</summary>
         public void CopySectionToGlobals(SectionKind kind)
         {
             if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
@@ -9936,15 +9961,43 @@ namespace TrueforceForAll.Plugin
         /// and the SAVED car preset file is patched from the persisted
         /// baseline - never from the live override, which would silently
         /// commit sibling sections' unsaved drafts and break their Revert
-        /// (2026-07 audit). When dropping the section would empty the file,
-        /// the file and its baseline are left intact instead: a named car
-        /// preset is never deleted as a side effect of a game-side save;
-        /// its pin re-applies with values identical to the ones just
-        /// saved.</summary>
+        /// (2026-07 audit). When dropping the section would empty a USER
+        /// preset's file, the release becomes a RE-PIN at the just-saved
+        /// values instead: a named car preset is never deleted or stranded
+        /// by a game-side save, and it must not keep the pre-save values
+        /// either - the save is only reachable while the section is dirty,
+        /// so a stale pin would silently revert the save on the next car
+        /// change, light a phantom car-dirty star, and invite a car Save
+        /// that persists the missing live entry as a file delete
+        /// (adversarial review of the first cut).</summary>
         public void ReleaseSectionFromCarLayer(SectionKind kind)
         {
             if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
             if (!SectionHasCarScope(kind)) return;
+
+            string boundName    = GetActiveCarPresetName(_activeCarId);
+            bool   boundBuiltin = !string.IsNullOrEmpty(boundName)
+                                  && IsCarPresetBuiltin(_activeCarId, boundName);
+            if (!boundBuiltin
+                && OverrideHasSection(GetActiveCarOverride(), kind)
+                && _lastPersistedCarOverrides.TryGetValue(_activeCarId, out var saved0)
+                && saved0 != null && OverrideHasSection(saved0, kind))
+            {
+                var wouldRemain = CloneCarOverride(saved0);
+                ClearOverrideSection(wouldRemain, kind);
+                if (wouldRemain.IsEmpty && !wouldRemain.HasCommunityTracking)
+                {
+                    // Keep-alive re-pin: live claim stays, file + baseline
+                    // move to the just-saved values (in place, lineage
+                    // preserved), so file == effective state everywhere.
+                    if (SaveSectionToActiveCarOverride(kind))
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] Car preset for '{_activeCarId}' kept alive: {kind} is its only section, re-pinned at the just-saved values.");
+                    ApplyActiveCarOverride();
+                    return;
+                }
+            }
+
             if (Settings.CarOverrides != null
                 && Settings.CarOverrides.TryGetValue(_activeCarId, out var live)
                 && live != null)
@@ -9956,13 +10009,7 @@ namespace TrueforceForAll.Plugin
             if (_lastPersistedCarOverrides.TryGetValue(_activeCarId, out var saved)
                 && saved != null && OverrideHasSection(saved, kind))
             {
-                var patched = CloneCarOverride(saved);
-                ClearOverrideSection(patched, kind);
-                if (patched.IsEmpty && !patched.HasCommunityTracking)
-                    SimHub.Logging.Current.Info(
-                        $"[TF4ALL] Kept car preset for '{_activeCarId}' intact: {kind} is its only section and game-side saves never delete a car preset.");
-                else
-                    RemoveSectionFromActiveCarOverrideFile(kind);
+                RemoveSectionFromActiveCarOverrideFile(kind);
             }
             ApplyActiveCarOverride();
         }

@@ -11664,6 +11664,11 @@ namespace TrueforceForAll.Plugin
                 _plugin.CopySectionToGlobals(kind);
                 if (!SaveAsNewPresetFromUi()) return false;
                 _plugin.ReleaseSectionFromCarLayer(kind);
+                // The fork's own refresh ran BEFORE the release and can
+                // re-light this effect against the pre-release baseline;
+                // recompute now that the baseline is settled.
+                ClearEffectDirty(which);
+                RefreshFromPlugin();
                 return true;
             }
             if (builtin)
@@ -11671,6 +11676,8 @@ namespace TrueforceForAll.Plugin
                 _plugin.CopySectionToGlobals(kind);
                 if (!ForkAndSaveAsGamePreset()) return false;
                 _plugin.ReleaseSectionFromCarLayer(kind);
+                ClearEffectDirty(which);
+                RefreshFromPlugin();
                 return true;
             }
 
