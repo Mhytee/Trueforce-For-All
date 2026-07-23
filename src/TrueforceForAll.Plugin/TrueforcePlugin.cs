@@ -9098,7 +9098,11 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[TF4ALL] Save of car preset '{presetName}' for '{_activeCarId}' failed (see prior log line).");
                 return false;
             }
-            if (ovr == null || ovr.IsEmpty)
+            // Match Save's keep-rule: an empty-but-community-tracked override
+            // is KEPT on disk, so its baseline must be kept too. Dropping it
+            // let the next section save rebuild from a bare CarOverride and
+            // strip the community lineage.
+            if (ovr == null || (ovr.IsEmpty && !ovr.HasCommunityTracking))
                 _lastPersistedCarOverrides.Remove(_activeCarId);
             else
                 _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(ovr);
@@ -9153,7 +9157,8 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn($"[TF4ALL] Fork of car preset '{newDisk}' for '{_activeCarId}' failed (see prior log line); not binding.");
                 return false;
             }
-            if (ovr == null || ovr.IsEmpty)
+            // Match Save's keep-rule (empty-but-tracked files are kept).
+            if (ovr == null || (ovr.IsEmpty && !ovr.HasCommunityTracking))
                 _lastPersistedCarOverrides.Remove(_activeCarId);
             else
                 _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(ovr);
@@ -15518,6 +15523,11 @@ namespace TrueforceForAll.Plugin
         public bool SavePresetAs(string presetName)
         {
             if (Settings == null || string.IsNullOrEmpty(presetName)) return false;
+            // Clear any stale duplicate name from a prior call up front, before
+            // any early return. A non-duplicate refusal below (built-in name,
+            // write failure) must not leave a caller's ReuseDuplicateOrNull
+            // acting on a duplicate name recorded by an earlier save.
+            LastLocalDuplicateName = null;
             // Non-dev: built-ins are read-only (caller forks). DEV authoring
             // mode may overwrite a built-in in place; user presets always save.
             if (IsBuiltinPreset(presetName) && !DevMode)
@@ -15726,7 +15736,8 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Warn($"[TF4ALL] Save of section {kind} into car preset '{presetName}' for '{_activeCarId}' failed (see prior log line).");
                     return false;
                 }
-                if (patched.IsEmpty)
+                // Match Save's keep-rule (empty-but-tracked files are kept).
+                if (patched.IsEmpty && !patched.HasCommunityTracking)
                     _lastPersistedCarOverrides.Remove(_activeCarId);
                 else
                     _lastPersistedCarOverrides[_activeCarId] = CloneCarOverride(patched);
