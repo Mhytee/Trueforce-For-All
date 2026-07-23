@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "92809bc9-1621-425f-ad02-829c5a86e999",
+    "Id":  "6ed9bf61-3e1c-46cb-962b-9a73be8167ee",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "19f097af-9361-459a-a031-094a6aad0e2c",
+                        "ScreenId":  "f1b6afc2-26eb-4b85-a1b4-ad6bcd5fd274",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -4854,7 +4854,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "0dec6023-83f2-4c5b-9690-2a7f234eea6a",
+                        "ScreenId":  "7ec30321-6b3e-4787-95d5-8e2195d4c435",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -12863,7 +12863,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c9c09c50-66ca-4b75-8cff-d60c7922cc56",
+                        "ScreenId":  "3cacf18a-5f3e-40f2-8333-a67c16d9e1e3",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -18308,118 +18308,6 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FF232936",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "6,6,6,6",
-                                                              "RadiusTopLeft":  6,
-                                                              "RadiusTopRight":  6,
-                                                              "RadiusBottomLeft":  6,
-                                                              "RadiusBottomRight":  6,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  32,
-                                          "Left":  536,
-                                          "Opacity":  100,
-                                          "Top":  14,
-                                          "Visible":  true,
-                                          "Width":  110,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "fx-revert-bg",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Bold",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  14,
-                                          "Text":  "REVERT",
-                                          "TextColor":  "#FFE5484D",
-                                          "HorizontalAlignment":  1,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  32,
-                                          "Left":  536,
-                                          "Opacity":  100,
-                                          "Top":  14,
-                                          "Visible":  true,
-                                          "Width":  110,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "fx-revert-t",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
-                                          "SimulatedKey":  0,
-                                          "SimulatedKeyV2":  {
-                                                                 "Win":  false,
-                                                                 "Ctrl":  false,
-                                                                 "Alt":  false,
-                                                                 "Shift":  false
-                                                             },
-                                          "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.DashTuneRevert",
-                                          "TriggerSimHubInputName":  "",
-                                          "IsEnabled":  true,
-                                          "PressedImage":  "None",
-                                          "DisabledOpacity":  50,
-                                          "PressedOpacity":  60,
-                                          "Image":  "None",
-                                          "AutoSize":  false,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  32,
-                                          "Left":  536,
-                                          "Top":  14,
-                                          "Visible":  true,
-                                          "Width":  110,
-                                          "Name":  "fx-revert",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.TuningDirty\"))"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#FF23503A",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -18524,6 +18412,118 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.TuningDirty\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "6,6,6,6",
+                                                              "RadiusTopLeft":  6,
+                                                              "RadiusTopRight":  6,
+                                                              "RadiusBottomLeft":  6,
+                                                              "RadiusBottomRight":  6,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  32,
+                                          "Left":  536,
+                                          "Opacity":  100,
+                                          "Top":  14,
+                                          "Visible":  true,
+                                          "Width":  110,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "fx-revert-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.CanRevert\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "REVERT",
+                                          "TextColor":  "#FFE5484D",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  32,
+                                          "Left":  536,
+                                          "Opacity":  100,
+                                          "Top":  14,
+                                          "Visible":  true,
+                                          "Width":  110,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "fx-revert-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.TuningDirty\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.CanRevert\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashTuneRevert",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  32,
+                                          "Left":  536,
+                                          "Top":  14,
+                                          "Visible":  true,
+                                          "Width":  110,
+                                          "Name":  "fx-revert",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.TuningDirty\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.CanRevert\"))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -22906,7 +22906,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "1d9a436e-da09-46fa-a6b3-94c590df6274",
+                        "ScreenId":  "d7d34c55-933f-4045-be92-5f99920d50c9",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -26924,7 +26924,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "4fb463a9-78d7-4ceb-a9da-617e370031c8",
+                        "ScreenId":  "43a4afb1-dcdb-4b8c-a3f5-0ec9c39aed0e",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,

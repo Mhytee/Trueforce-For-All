@@ -266,6 +266,24 @@ namespace TrueforceForAll.Plugin
 
         private bool DashHasDirty() => DashDirtySections().Length > 0 || DashCarDrift();
 
+        // Is there anything the REVERT button could actually undo? Revert
+        // needs a saved baseline to restore. Anchored dirty sections and
+        // car-preset drift have one; an anchor-less edit (no active preset,
+        // so nothing to compare against) does not - the bar still lights so
+        // SAVE can capture it into a new preset, but there is nothing to
+        // revert TO. The dash gates the revert button on this so the user
+        // never sees a revert affordance that can't do anything.
+        private bool DashCanRevert()
+        {
+            try
+            {
+                foreach (SectionKind k in Enum.GetValues(typeof(SectionKind)))
+                    if (SectionHasAnchor(k) && IsSectionDirty(k)) return true;
+            }
+            catch { /* comparison trouble reads as not-revertable */ }
+            return DashCarDrift();
+        }
+
         // All car-scoped sections, used when only car-level drift is
         // detected: patching every car-scope section from live IS a
         // whole-override save/revert, and it reuses the per-section paths
@@ -383,6 +401,7 @@ namespace TrueforceForAll.Plugin
             public int Redline, MaxRpm;
             public string RedlineSource = "";
             public bool TuningDirty;
+            public bool CanRevert;
         }
         private DashSnapshot _dashSnap = new DashSnapshot();
         // Freshness is an explicit flag + tick pair, NOT an int.MinValue
@@ -425,6 +444,7 @@ namespace TrueforceForAll.Plugin
                 // Dirty compare (18 IsSectionDirty calls) rides the 500 ms
                 // snapshot cadence rather than the per-frame property poll.
                 s.TuningDirty = DashHasDirty();
+                s.CanRevert   = DashCanRevert();
                 _dashSnap = s;
             }
             catch { /* keep serving the previous snapshot */ }
@@ -550,6 +570,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
             // ---------- properties: tuning save / revert ----------
             this.AttachDelegate("Dash.TuningDirty", () => DashSnap().TuningDirty);
+            this.AttachDelegate("Dash.CanRevert",   () => DashSnap().CanRevert);
             this.AttachDelegate("Dash.SaveContext", () =>
             {
                 var s = DashSnap();

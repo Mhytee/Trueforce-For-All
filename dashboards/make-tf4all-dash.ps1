@@ -522,18 +522,25 @@ for ($i = 0; $i -lt $effects.Count; $i++) {
 }
 # Save/Revert bar, top right, visible only while unsaved dash tuning
 # exists (effect/audio edits are drafts; a car change or restart drops
-# them, so the bar is the "keep this" affordance).
-$dirtyVis = 'return $prop("' + $P + '.TuningDirty")'
-$bar = @(
+# them, so the bar is the "keep this" affordance). REVERT additionally
+# gates on CanRevert: an anchor-less edit (no active preset) lights the
+# bar so SAVE can capture it into a new preset, but has no saved baseline
+# to revert to, so the revert control must not appear with nothing to do.
+$dirtyVis  = 'return $prop("' + $P + '.TuningDirty")'
+$revertVis = 'return $prop("' + $P + '.TuningDirty") && $prop("' + $P + '.CanRevert")'
+$saveBar = @(
     (New-Text 'fx-dirty-t' 380 16 144 30 14 'UNSAVED' '#FFE8A33D' 2 $null 'Bold'),
-    (New-Rect 'fx-revert-bg' 536 14 110 32 $TILE),
-    (New-Text 'fx-revert-t' 536 14 110 32 14 'REVERT' $RED 1 $null 'Bold'),
-    (New-Button 'fx-revert' 536 14 110 32 'DashTuneRevert'),
     (New-Rect 'fx-save-bg' 652 14 132 32 $TILEON),
     (New-Text 'fx-save-t' 652 14 132 32 14 'SAVE' $WHITE 1 $null 'Bold'),
     (New-Button 'fx-save' 652 14 132 32 'DashTuneSaveOpen')
 )
-foreach ($b in $bar) { $b.Bindings['Visible'] = BindJS 'Visible' $dirtyVis; $s3.Add($b) }
+$revertBar = @(
+    (New-Rect 'fx-revert-bg' 536 14 110 32 $TILE),
+    (New-Text 'fx-revert-t' 536 14 110 32 14 'REVERT' $RED 1 $null 'Bold'),
+    (New-Button 'fx-revert' 536 14 110 32 'DashTuneRevert')
+)
+foreach ($b in $saveBar)   { $b.Bindings['Visible'] = BindJS 'Visible' $dirtyVis;  $s3.Add($b) }
+foreach ($b in $revertBar) { $b.Bindings['Visible'] = BindJS 'Visible' $revertVis; $s3.Add($b) }
 
 TabBar $P 2 | ForEach-Object { $s3.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s3.Add($_) }
