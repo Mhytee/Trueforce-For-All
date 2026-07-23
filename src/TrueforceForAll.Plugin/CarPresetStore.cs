@@ -176,18 +176,24 @@ namespace TrueforceForAll.Plugin
         /// makes a user re-saving a pack-imported preset keep the pack
         /// attribution AND a user saving fresh stamp their own author, with
         /// no per-call-site lookup churn.</summary>
-        public void Save(string carId, string presetName, string gameName, CarOverride ovr, bool isBuiltin = false,
+        /// <returns>true when the intended on-disk state was achieved (the
+        /// file was written, or intentionally deleted for an empty override);
+        /// false on a real I/O failure. Callers that then bind to or mark
+        /// this preset saved MUST check the result: a swallowed failure used
+        /// to report success, clear the dirty baseline, and leave a binding
+        /// to a file that was never written (the "reported success but
+        /// nothing on disk" class from the 2026-07 audit).</returns>
+        public bool Save(string carId, string presetName, string gameName, CarOverride ovr, bool isBuiltin = false,
             string packName = null, string author = null, string description = null, string authorVersion = null,
             string defaultAuthor = null)
         {
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
             // Delete only when there is genuinely nothing to persist. An override
             // with no effect sections but live community lineage (HasCommunityTracking)
             // is kept so the Share gate doesn't lose download/upload tracking.
             if (ovr == null || (ovr.IsEmpty && !ovr.HasCommunityTracking))
             {
-                Delete(carId, presetName);
-                return;
+                return Delete(carId, presetName);
             }
             try
             {
@@ -233,18 +239,23 @@ namespace TrueforceForAll.Plugin
                     Override      = ovr,
                 };
                 AtomicWriteAllText(path, JsonConvert.SerializeObject(f, Formatting.Indented));
+                return true;
             }
             catch (Exception ex)
             {
                 _log?.Invoke($"[TF4ALL] Save car preset '{carId}/{presetName}' failed: {ex.Message}");
+                return false;
             }
         }
 
-        /// <summary>Deletes a car preset file. No-op if it doesn't exist.
-        /// Walks the tree to find the file when game isn't passed.</summary>
-        public void Delete(string carId, string presetName)
+        /// <summary>Deletes a car preset file. Walks the tree to find the
+        /// file when game isn't passed.</summary>
+        /// <returns>true when the file is gone (deleted now or already
+        /// absent - the intended state); false only on a real I/O failure
+        /// deleting an existing file.</returns>
+        public bool Delete(string carId, string presetName)
         {
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
             try
             {
                 string path = FindCarFile(carId, presetName);
@@ -261,10 +272,12 @@ namespace TrueforceForAll.Plugin
                     }
                     catch { /* leave the dir if it won't delete */ }
                 }
+                return true;   // deleted, or nothing to delete
             }
             catch (Exception ex)
             {
                 _log?.Invoke($"[TF4ALL] Delete car preset '{carId}/{presetName}' failed: {ex.Message}");
+                return false;
             }
         }
 

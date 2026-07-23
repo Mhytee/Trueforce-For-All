@@ -6446,8 +6446,12 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
-                    defaultAuthor: CurrentAuthorForStamp());
+                if (!_carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
+                        defaultAuthor: CurrentAuthorForStamp()))
+                {
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Clearing {kind} override for '{_activeCarId}' failed to write (see prior log line); baseline unchanged.");
+                    return false;
+                }
                 // The store KEEPS an empty-but-community-tracked file, so
                 // the baseline must keep the (empty, tracked) entry too:
                 // dropping it made the next section save rebuild from a
@@ -9066,15 +9070,15 @@ namespace TrueforceForAll.Plugin
             }
 
             Settings.CarOverrides.TryGetValue(_activeCarId, out var ovr);
-            try
+            // Save reports I/O failure via its return now (it catches
+            // internally, so a try/catch here would never fire). On failure
+            // leave the baseline untouched so a retry still sees the section
+            // dirty and the caller can surface "couldn't save".
+            if (!_carStore.Save(_activeCarId, presetName, _activeGame ?? "", ovr, isBuiltin: false,
+                    defaultAuthor: CurrentAuthorForStamp()))
             {
-                _carStore.Save(_activeCarId, presetName, _activeGame ?? "", ovr, isBuiltin: false,
-                    defaultAuthor: CurrentAuthorForStamp());
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Warn($"[TF4ALL] Save of car preset '{presetName}' for '{_activeCarId}' failed: {ex.Message}");
-                return false;   // real write failure -> logged, and the caller shows "couldn't save"
+                SimHub.Logging.Current.Warn($"[TF4ALL] Save of car preset '{presetName}' for '{_activeCarId}' failed (see prior log line).");
+                return false;
             }
             if (ovr == null || ovr.IsEmpty)
                 _lastPersistedCarOverrides.Remove(_activeCarId);
@@ -9120,14 +9124,15 @@ namespace TrueforceForAll.Plugin
                     $"[TF4ALL] Fork '{newDisk}' for '{_activeCarId}' aborted: no car-specific tuning to save.");
                 return false;
             }
-            try
+            // A failed write must abort the fork BEFORE binding: binding to a
+            // name whose file was never written leaves a dangling default
+            // that ReloadActiveCarOverrideFromStore then resolves to nothing,
+            // wiping the live tuning (the audit's fork gun). Save reports the
+            // failure via its return.
+            if (!_carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false,
+                    defaultAuthor: CurrentAuthorForStamp()))
             {
-                _carStore.Save(_activeCarId, newDisk, _activeGame ?? "", ovr, isBuiltin: false,
-                    defaultAuthor: CurrentAuthorForStamp());
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Warn($"[TF4ALL] Save of car preset '{newDisk}' for '{_activeCarId}' failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Fork of car preset '{newDisk}' for '{_activeCarId}' failed (see prior log line); not binding.");
                 return false;
             }
             if (ovr == null || ovr.IsEmpty)
@@ -9381,6 +9386,20 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
             if (Settings == null) return false;
+            // Don't bind to a preset that doesn't exist. A stale name (e.g.
+            // a fork whose file failed to write, or a deleted preset) would
+            // otherwise write a dangling default that the next reload
+            // resolves to nothing, wiping the live override. A real preset
+            // is either a user file on disk or a known factory entry.
+            string diskName = ToDiskName(presetName);
+            bool presetExists = (_carStore != null && _carStore.Exists(carId, diskName))
+                                || IsCarPresetBuiltin(carId, presetName);
+            if (!presetExists)
+            {
+                SimHub.Logging.Current.Warn(
+                    $"[TF4ALL] Refusing to bind car '{carId}' to '{presetName}': no such preset on disk or in the factory set.");
+                return false;
+            }
             if (Settings.CarDefaults == null) Settings.CarDefaults = new Dictionary<string, string>();
             // Effective view bumps either way - existing readers see the
             // new binding immediately, regardless of whether it goes to
@@ -15634,14 +15653,14 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                try
+                // Save reports I/O failure via its return. On failure leave
+                // the baseline as-is so the section stays dirty and the
+                // caller can retry, instead of marking it saved against a
+                // file that was never written.
+                if (!_carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
+                        defaultAuthor: CurrentAuthorForStamp()))
                 {
-                    _carStore.Save(_activeCarId, presetName, _activeGame ?? "", patched, isBuiltin: false,
-                        defaultAuthor: CurrentAuthorForStamp());
-                }
-                catch (Exception ex)
-                {
-                    SimHub.Logging.Current.Warn($"[TF4ALL] Save of section {kind} into car preset '{presetName}' for '{_activeCarId}' failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Save of section {kind} into car preset '{presetName}' for '{_activeCarId}' failed (see prior log line).");
                     return false;
                 }
                 if (patched.IsEmpty)
