@@ -11502,18 +11502,15 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Per-effect Save popover. Adaptive choices:
-        ///   • "For this car (id)": snapshots the section's current values into
-        ///     the per-car override (toggles the override on). Only when the
-        ///     section has a per-car concept AND a car is identified.
-        ///   • "Update preset 'X'" (suffixed "(game default)" when X is this
-        ///     game's bound auto-load default): overwrites the active user
-        ///     preset in place. It does NOT change the game-default binding;
-        ///     that's the header "Set as default" button's job.
-        ///   • "Save as game defaults": when there's no active preset or it's a
-        ///     built-in, forks to a new user preset and binds it as the default.
-        /// RevLimiter (the one draft-model section) additionally offers "Both"
-        /// and reset-to-default choices.</summary>
+        /// <summary>Per-effect Save popover, simplified 2026-07-22 (owner
+        /// call: the adaptive five-way stack read as a wall). Exactly three
+        /// choices, matching the dash's save chooser: This car only / Game
+        /// preset / Both, with detail in tooltips. Reset-to-default stays
+        /// reachable as a quiet link (this modal is its only entrance) since
+        /// it is a different verb than saving. With no car detected (or a
+        /// section with no per-car concept) there is no choice to make, so
+        /// the popover is skipped and the save goes straight to the game
+        /// preset.</summary>
         private void ShowEffectSavePopover(EffectKind which)
         {
             string carId       = _plugin.ActiveCarId;
@@ -11523,6 +11520,12 @@ namespace TrueforceForAll.Plugin
             bool   builtin     = hasPreset && _plugin.IsBuiltinPreset(activeP);
             string label       = EffectLabel(which);
             bool   carScope    = SectionHasCarScope(which);
+
+            if (!carScope || !carDetected)
+            {
+                SaveEffectSectionToGamePreset(which);
+                return;
+            }
 
             var win = new Window
             {
@@ -11550,60 +11553,56 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 10),
             });
 
-            // Choice 1: per-car override. Only when the section has a per-car
-            // concept AND a car is actually identified, there's nothing to save
-            // "for this car" with no car, so we hide the option rather than show
-            // it disabled.
-            Button carBtn = null;
-            if (carScope && carDetected)
-            {
-                carBtn = new Button
-                {
-                    Content = $"For this car ({carId})",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                    ToolTip = "Saves these settings just for this car. Won't affect global tuning or other cars.",
-                };
-                sp.Children.Add(carBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = $"Toggles 'Override for this car' on and snapshots the current {label} values into the per-car override.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                });
-            }
-
-            // Choice 1b: "Both" — set as the game default AND keep this car
-            // pinned with its own override in one action.
-            Button bothBtn = null;
-            if (SectionUsesDraftModel(which) && carDetected)
-            {
-                bothBtn = new Button
-                {
-                    Content = "Both (game default + keep for this car)",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                    ToolTip = "Saves these values as the game default for other cars AND pins them to this car as its own override, so this car won't follow future default changes.",
-                };
-                sp.Children.Add(bothBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = "Updates the game default and keeps this car's override.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                });
-            }
-
-            // Choice 1c: reset this car to the game default. A "reset" is itself
-            // a draft (preview the default, then Save to commit or Revert to
-            // restore the override), so this just enters the reset-draft and
-            // closes. When already in a reset draft, offer to COMMIT it (drop
-            // the car's saved override so it follows the default).
             var kind = (TrueforcePlugin.SectionKind)(int)which;
-            if (SectionUsesDraftModel(which) && carDetected && _plugin.IsSectionResetDraft(kind))
+            bool hasGame = !string.IsNullOrEmpty(_plugin.ActiveGame);
+
+            // Exactly three choices; tooltips carry the contextual detail
+            // the old per-option explainer paragraphs spelled out inline.
+            var carBtn = new Button
+            {
+                Content = "This car only",
+                Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                ToolTip = $"Saves the current {label} values into this car's preset ({carId}). "
+                    + "Other cars and the game preset are untouched. On a built-in car preset, saves a copy as a new user preset.",
+            };
+            sp.Children.Add(carBtn);
+
+            string presetTip = !hasPreset
+                ? (hasGame
+                    ? "No preset is active: saves your tuning as a new preset and makes it this game's default."
+                    : "No preset is active: saves your tuning as a new preset.")
+                : builtin
+                    ? $"'{activeP}' is built-in and can't be overwritten: saves a copy as a new user preset and makes it this game's default."
+                    : $"Overwrites '{activeP}' with the current {label} values. Cars follow it unless they have their own override.";
+            var presetBtn = new Button
+            {
+                Content = "Game preset",
+                Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                Style = TryFindResource("PopoverPrimaryButton") as Style,   // green accent: this is the recommended save
+                ToolTip = presetTip,
+            };
+            sp.Children.Add(presetBtn);
+
+            var bothBtn = new Button
+            {
+                Content = "Both",
+                Height = 32, Margin = new Thickness(0, 0, 0, 12),
+                ToolTip = "Saves to the game preset AND pins this car with its own copy, "
+                    + "so the car keeps these values even if the game preset changes later.",
+            };
+            sp.Children.Add(bothBtn);
+
+            // Reset-to-default is a different verb than saving, so it rides
+            // as a quiet link instead of a fourth button (this modal is its
+            // only entrance; removing it would orphan the feature).
+            if (_plugin.IsSectionResetDraft(kind))
             {
                 var followBtn = new Button
                 {
                     Content = "Follow game default (remove this car's override)",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                    Style = TryFindResource("LinkButton") as Style,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Margin = new Thickness(0, 0, 0, 8),
                     ToolTip = "Commits the reset: this car drops its own override and follows the game default from now on.",
                 };
                 sp.Children.Add(followBtn);
@@ -11615,21 +11614,17 @@ namespace TrueforceForAll.Plugin
                     win.DialogResult = true;
                 };
             }
-            else if (SectionUsesDraftModel(which) && carDetected && _plugin.IsSectionOverridden(kind))
+            else if (_plugin.IsSectionOverridden(kind))
             {
                 var resetBtn = new Button
                 {
-                    Content = "Reset to game default (preview)",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                    Content = "Reset this car to the game default…",
+                    Style = TryFindResource("LinkButton") as Style,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Margin = new Thickness(0, 0, 0, 8),
                     ToolTip = "Previews this car following the game default. Drive to try it, then Save to keep it (drops this car's override) or Revert to restore your override.",
                 };
                 sp.Children.Add(resetBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = "Previews the game default for this car. Nothing is removed until you Save; Revert restores your override.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                });
                 resetBtn.Click += (s, args) =>
                 {
                     _plugin.ResetSectionToDefaultDraft(kind);
@@ -11637,54 +11632,6 @@ namespace TrueforceForAll.Plugin
                     win.DialogResult = true;
                 };
             }
-
-            // Choice 2: update game defaults, fork from built-in, or save as new.
-            // With no game active (editing presets while no game is running) there's
-            // nothing to bind a default to, so drop the "game defaults" framing and
-            // talk plainly about the preset. The active preset also isn't always the
-            // game's bound default (you can apply a preset without binding it), so the
-            // "(game default)" annotation only shows when it genuinely is.
-            bool   hasGame = !string.IsNullOrEmpty(_plugin.ActiveGame);
-            string presetLabel;
-            string presetHint;
-            if (!hasPreset)
-            {
-                presetLabel = hasGame ? "Save as game defaults" : "Save as new preset";
-                presetHint  = hasGame
-                    ? "Saves your current tuning as a new preset and binds it as this game's default."
-                    : "Saves your current tuning as a new preset.";
-            }
-            else if (builtin)
-            {
-                presetLabel = hasGame ? "Save as game defaults" : "Save as new preset";
-                presetHint  = hasGame
-                    ? $"'{activeP}' is a built-in default that can't be overwritten. Saves your current tuning as a new user preset (named after the game) and binds it as this game's default. The built-in stays available as fallback."
-                    : $"'{activeP}' is a built-in that can't be overwritten. Saves your current tuning as a new user preset.";
-            }
-            else
-            {
-                bool isDefault = hasGame
-                    && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
-                presetLabel = isDefault
-                    ? $"Update preset '{activeP}' (game default)"
-                    : $"Update preset '{activeP}'";
-                presetHint  = isDefault
-                    ? $"Overwrites '{activeP}' (this game's default preset) with your current tuning. Per-car preset files are independent and not touched."
-                    : $"Overwrites '{activeP}' with your current tuning. Won't change which preset is this game's default. Per-car preset files are independent and not touched.";
-            }
-            var presetBtn = new Button
-            {
-                Content = presetLabel,
-                Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                Style = TryFindResource("PopoverPrimaryButton") as Style,   // green accent: this is the recommended save
-            };
-            sp.Children.Add(presetBtn);
-            sp.Children.Add(new TextBlock
-            {
-                Text = presetHint,
-                FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 12),
-            });
 
             var btnRow = new StackPanel
             {
@@ -11697,71 +11644,74 @@ namespace TrueforceForAll.Plugin
 
             win.Content = sp;
 
-            if (carBtn != null)
+            carBtn.Click += (s, args) =>
             {
-                carBtn.Click += (s, args) =>
-                {
-                    ApplyEffectSaveForCar(which);
-                    win.DialogResult = true;
-                };
-            }
-            if (bothBtn != null)
-            {
-                bothBtn.Click += (s, args) =>
-                {
-                    if (!_plugin.SaveSectionToBoth((TrueforcePlugin.SectionKind)(int)which))
-                    {
-                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                        return;   // leave the popover open + dirty bit set
-                    }
-                    ClearEffectDirty(which);
-                    RefreshFromPlugin();
-                    win.DialogResult = true;
-                };
-            }
+                ApplyEffectSaveForCar(which);
+                win.DialogResult = true;
+            };
             presetBtn.Click += (s, args) =>
             {
-                // Fork paths (no preset / built-in) always capture whole
-                // state -- a freshly-forked preset IS the snapshot. The
-                // scope modal only applies when overwriting an existing
-                // user preset, where "just this section" is a real choice.
-                if (!hasPreset)
-                {
-                    _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
-                    SaveAsNewPresetFromUi();
-                    win.DialogResult = true;
-                    return;
-                }
-                if (builtin)
-                {
-                    _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
-                    ForkAndSaveAsGamePreset();
-                    win.DialogResult = true;
-                    return;
-                }
-
-                // Per-section Save: save ONLY this section. The ★ Save all
-                // button up top is what commits every dirty section, so we
-                // don't prompt about other dirty sections here (that was
-                // redundant with Save all). Patch only the targeted section
-                // into the in-memory snapshot + write GeneralSettings; other
-                // sections keep their saved values and their dirty bits remain.
-                _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
-                if (!_plugin.SaveSectionToActivePreset((TrueforcePlugin.SectionKind)(int)which))
-                {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                    return;   // don't clear the dirty bit on a failed write
-                }
-                ClearEffectDirty(which);
-                // Overwrite the active preset only. Binding it as the game's
-                // auto-load default is a separate, explicit action (the header
-                // "Set as default" button), so saving an edit never silently
-                // changes which preset this game loads.
-                RefreshFromPlugin();
+                if (!SaveEffectSectionToGamePreset(which)) return;   // keep open + dirty on a failed write
+                win.DialogResult = true;
+            };
+            bothBtn.Click += (s, args) =>
+            {
+                // Game half first (may fork with a naming prompt), then re-pin
+                // the car copy and run the car half, which itself forks on a
+                // built-in car preset. The snapshot runs AFTER the preset save
+                // so SavePresetAs's draft fold can't empty the car copy (the
+                // dash's BOTH had exactly that bug); this also replaces the
+                // old SaveSectionToBoth call, whose either-half-OK return hid
+                // car-half failures on factory car presets.
+                if (!SaveEffectSectionToGamePreset(which)) return;
+                _plugin.SnapshotSectionToCarOverride(kind);
+                ApplyEffectSaveForCar(which);
                 win.DialogResult = true;
             };
 
             win.ShowDialog();
+        }
+
+        /// <summary>Save one section into the active game preset: in place on
+        /// a user preset; fork (with the naming prompt) when the active
+        /// preset is built-in or absent. Shared by the save popover's Game
+        /// preset / Both choices and by the no-car path that skips the
+        /// popover entirely. Returns false only on a failed in-place write
+        /// (callers keep the popover open and the dirty bit set).</summary>
+        private bool SaveEffectSectionToGamePreset(EffectKind which)
+        {
+            string activeP   = _plugin.ActivePresetName;
+            bool   hasPreset = !string.IsNullOrEmpty(activeP);
+            bool   builtin   = hasPreset && _plugin.IsBuiltinPreset(activeP);
+            var    kind      = (TrueforcePlugin.SectionKind)(int)which;
+
+            // Fork paths (no preset / built-in) always capture whole state --
+            // a freshly-forked preset IS the snapshot.
+            if (!hasPreset)
+            {
+                _plugin.PromoteSectionToGlobal(kind);
+                SaveAsNewPresetFromUi();
+                return true;
+            }
+            if (builtin)
+            {
+                _plugin.PromoteSectionToGlobal(kind);
+                ForkAndSaveAsGamePreset();
+                return true;
+            }
+
+            // Per-section save: patch ONLY this section into the active
+            // preset; other sections keep their saved values and their dirty
+            // bits remain (the ★ Save all button commits everything at once).
+            _plugin.PromoteSectionToGlobal(kind);
+            if (!_plugin.SaveSectionToActivePreset(kind))
+            {
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                return false;
+            }
+            ClearEffectDirty(which);
+            RefreshFromPlugin();
+            return true;
         }
 
         /// <summary>Per-car save for one effect: writes the section's
