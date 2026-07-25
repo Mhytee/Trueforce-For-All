@@ -85,6 +85,13 @@ namespace TrueforceForAll.Core
                             if (path.IndexOf("mi_02", StringComparison.OrdinalIgnoreCase) >= 0)
                                 continue;   // Trueforce audio interface, never the LED bar
                             _log($"[F8-LED] candidate: {model} maxOut={SafeOutLen(dev)} path={path}");
+                            // Never pick a write-incapable collection: on the G923
+                            // Xbox the joystick-usage collection is input-only
+                            // (maxOut=0), so selecting it made every F8-12 write fail
+                            // with "Can't write to this device." Require an output
+                            // report. (That wheel is routed to the HID++ path now,
+                            // but this keeps the F8 path honest for any variant.)
+                            if (SafeOutLen(dev) <= 0) continue;
                             if (firstNonAudio == null) firstNonAudio = dev;
                             if (chosen == null && IsJoystickCollection(dev)) chosen = dev;
                         }
