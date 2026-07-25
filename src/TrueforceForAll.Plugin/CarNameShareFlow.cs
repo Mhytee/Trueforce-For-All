@@ -1,23 +1,37 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 
 namespace TrueforceForAll.Plugin
 {
-    /// <summary>Shared "set the car's official name" flow used by BOTH rename
-    /// entry points (the Settings header button and the Preset Manager row
-    /// button) so they can't drift apart. Writes the name locally first (so the
-    /// user always sees it), then, once the car-data sharing consent is
-    /// granted (CarFactsConsentGate; no sign-in needed, no username shown),
-    /// offers a confirm/correct submission of the OFFICIAL name for the
-    /// user's language.
+    /// <summary>Shared "set the car's official name" flow behind the Car facts
+    /// panel's Save button (the single naming entry point). Writes the name
+    /// locally first (so the user always sees it), then submits it to the
+    /// community exactly like every other car fact: saving IS how a name reaches
+    /// the community, there is no separate Share step.
     ///
-    /// Names are NOT auto-submittable. Unlike measured facts (redline, engine
-    /// layout) a name is editorial, so every contribution goes through the
-    /// confirm/correct modal with no "Always share" button. That modal is the
-    /// quality gate. It shows the existing community name before the user adds
-    /// their own variant, which is the reconsider-before-you-pollute moment.</summary>
+    /// Behaviour mirrors the redline / engine save paths (owner decision
+    /// 2026-07-22: a name is a car fact like any other, and the per-language
+    /// consensus is the quality gate, so the old per-save confirm/correct
+    /// ceremony is gone):
+    ///   - sharing on (the default)     -> silent submit, no modal
+    ///   - consent never asked (residual upgrader) -> the one-time
+    ///     CarFactsConsentGate ask, then submit if granted
+    ///   - opted out / community off     -> local-only save, no submit, no modal
+    /// The submit is hard-gated again at the network layer (CommunityClient
+    /// FireAndForgetRpc checks AutoSubmitCarFacts), so an opted-out user never
+    /// sends even if a caller reaches this far.</summary>
     internal static class CarNameShareFlow
     {
+        // Per-session dedupe so repeat Save clicks on the same name don't re-hit
+        // the server; a different name re-engages. Mirrors the redline save
+        // path's _enginePromptedThisSession guard. Process-global is fine: a car
+        // name is a process-global concept and this only needs to survive the
+        // session (a SimHub restart clears it).
+        private static readonly HashSet<string> _submittedThisSession =
+            new HashSet<string>(StringComparer.Ordinal);
+        private static readonly object _submittedLock = new object();
+
         public static void SetNameAndMaybeShare(
             TrueforcePlugin plugin, string game, string carId,
             string newName, Window owner)
@@ -27,69 +41,23 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrWhiteSpace(newName)) return;
             newName = newName.Trim();
 
-            // Local first: the header / preset list re-renders to the new name
-            // regardless of community state. WriteCarNameFact validates length
-            // and returns false on invalid input.
+            // Local first: the header / Car facts panel re-renders to the new
+            // name regardless of community state. WriteCarNameFact validates
+            // length and returns false on invalid input.
             if (!plugin.WriteCarNameFact(game, carId, newName)) return;
 
-            // Community contribution gate: the one-time anonymous-sharing
-            // consent (which may itself enable community features on first
-            // ask). A name save is a fact-worthy moment, so an unasked user
-            // gets the consent modal here; a declined user skips silently.
-            // The confirm/correct modal below still runs regardless of
-            // auto-submit: a name is editorial, so it always needs eyes.
+            // Self-gating submit, same as the redline/engine save paths:
+            //   sharing on      -> returns true silently, we submit
+            //   consent unasked -> one-time consent ask (rare under default-on)
+            //   opted out       -> returns false silently, local-only save
             if (!CarFactsConsentGate.EnsureConsent(owner, plugin)) return;
 
-            // Per-language consensus: what does the community already call this
-            // car in the user's language? Frames the confirm/correct modal.
-            CarNameConsensus consensus = null;
-            try { consensus = plugin.FetchCarNameConsensus(game, carId); }
-            catch { /* best-effort; treat as "first" on any failure */ }
-
-            CarFactsShareWindow.ShareState state;
-            string consensusName = null;
-            int supporting = 0;
-            if (consensus == null || string.IsNullOrEmpty(consensus.Name))
+            string key = game + "/" + carId + "|name|" + newName.ToLowerInvariant();
+            lock (_submittedLock)
             {
-                state = CarFactsShareWindow.ShareState.First;
+                if (!_submittedThisSession.Add(key)) return;   // same name already sent this session
             }
-            else
-            {
-                supporting = consensus.SupportingSubmissions;
-                consensusName = consensus.Name;
-                state = string.Equals(consensus.Name, newName, StringComparison.OrdinalIgnoreCase)
-                    ? CarFactsShareWindow.ShareState.Confirming
-                    : CarFactsShareWindow.ShareState.Alternative;
-            }
-
-            // Identity line is just the carId (a clean anchor); the value chip
-            // shows the name being submitted. offerAlways:false => no auto-submit.
-            var dialog = new CarFactsShareWindow(
-                null, carId, newName, state, consensusName, supporting,
-                offerAlways: false, valueLabel: "You're naming this car")
-            {
-                Owner = owner,
-            };
-            if (dialog.ShowDialog() != true) return;
-
             plugin.SubmitCarNameToCommunity(game, carId, newName);
-            // Optimistic local injection of the new community consensus, but
-            // only when the user's name IS or BECOMES the consensus: First
-            // starts the record, Confirming strengthens it. For an Alternative
-            // we leave the real consensus in place. The user's own name already
-            // shows in the header (the local fact), and the "community" line
-            // honestly shows it differs from the community's until enough others
-            // agree. Self-guards to the active car inside NotifyCarNameConsensus
-            // (a no-op otherwise).
-            if (state != CarFactsShareWindow.ShareState.Alternative)
-            {
-                plugin.NotifyCarNameConsensus(game, carId, new CarNameConsensus
-                {
-                    Name = newName,
-                    SupportingSubmissions =
-                        state == CarFactsShareWindow.ShareState.Confirming ? supporting + 1 : 1,
-                });
-            }
         }
     }
 }

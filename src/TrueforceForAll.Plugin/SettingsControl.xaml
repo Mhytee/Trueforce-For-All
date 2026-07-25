@@ -1096,7 +1096,8 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Car name" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <TextBox  Grid.Column="1" x:Name="CarFactsNameBox" VerticalAlignment="Center" Margin="0,0,8,0"
-                                          TextChanged="CarFactsNameBox_TextChanged"/>
+                                          TextChanged="CarFactsNameBox_TextChanged"
+                                          KeyDown="CarFactsName_KeyDown"/>
                                 <Button   Grid.Column="2" x:Name="CarFactsNameSaveBtn" Content="Save"
                                           Style="{StaticResource EffectSaveButton}" Visibility="Collapsed"
                                           Click="CarFactsNameSave_Click"
@@ -2665,7 +2666,7 @@
                 <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBStrengthSlider" Minimum="0.05" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
                             TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2" x:Name="ModeBStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.77"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Peak steering torque at the grip limit."/>
 
@@ -2674,7 +2675,7 @@
                 <TextBlock Grid.Column="0" Text="Center feel:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBDirSoftSlider" Minimum="0" Maximum="0.5" SmallChange="0.02" LargeChange="0.05"
                             TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2" x:Name="ModeBDirSoftText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.12"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBDirSoftText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.04"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Size of the calm zone at dead center. Raise if the wheel buzzes or oscillates around straight-ahead; lower toward 0 for a rawer, more connected center (0 = fully raw)."/>
 
@@ -2683,9 +2684,18 @@
                 <TextBlock Grid.Column="0" Text="Damping:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBDamperSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
                             TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.15"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.03"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Lockup recovery (ms):" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBRecoverSlider" Minimum="20" Maximum="400" SmallChange="10" LargeChange="50"
+                            TickFrequency="50" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBRecoverText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="130"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How quickly steering weight returns as the tires regain grip after a lockup or slide. Lower snaps back fast, higher hands the weight back gently."/>
 
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -2783,16 +2793,87 @@
                         <TextBlock Grid.Column="0" Text="Road kick strength:" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="ModeBRoadKickGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                                     TickFrequency="0.25" ValueChanged="ModeBRoadKickGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="ModeBRoadKickGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBRoadKickGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.70"/>
                     </Grid>
                     <CheckBox x:Name="ModeBSlideGrowthCheck" Margin="0,0,0,2" Content="Countersteer growth"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Countersteer pull grows with how deep the slide is: a shallow drift asks politely, a big moment yanks toward opposite lock."/>
                     <CheckBox x:Name="ModeBGripCalCheck" Margin="0,0,0,2" Content="Per-car grip auto-calibration"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,0" Text="Learns where each car's grip actually tops out while you drive (about a lap of pushing) and normalizes the limit feel to it."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Learns where each car's grip actually tops out while you drive (about a lap of pushing) and normalizes the limit feel to it."/>
+                    <CheckBox x:Name="ModeBFrictionCircleCheck" Margin="0,0,0,2" Content="Friction circle braking (A/B test)"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Alternate braking-feel law: braking or wheelspin spends the tire's grip, and steering force smoothly fades to what is left (no lockup threshold). Off = the standard lockup fade. Toggle mid-drive and keep whichever feels better."/>
+                    <CheckBox x:Name="ModeBBrakeLearnCheck" Margin="0,0,0,2" Content="Auto braking grip per car (A/B test)"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,0" Text="Sets the braking-grip point from each car's learned grip limit (the grip auto-calibration above) instead of one fixed value, so the wheel lightens at each car's real limit. Needs grip auto-calibration on and about a lap of hard driving per car."/>
                 </StackPanel>
             </Expander>
+
+            <Expander IsExpanded="False" Margin="0,0,0,4">
+                <Expander.Header>
+                    <TextBlock Text="Experimental drift feel" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                               Text="Work-in-progress steering-feel tweaks aimed at drifting and big slides. All off by default and independent; turn one on at a time and A/B it. Rough edges expected, tune to taste."/>
+
+                    <CheckBox x:Name="ModeBTrailSpringCheck" Margin="0,0,0,2" Content="Trail spring"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Makes the wheel settle into a countersteer during a slide, the way real steering trail eases the wheel to a stable angle, instead of spinning to full lock and stopping dead. Only acts once the rear steps out, so normal cornering weight is unchanged. Turn this on if a drift feels like it won't hold a countersteer."/>
+                    <Grid Margin="20,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Trail range:" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBTrailRangeSlider" Minimum="2" Maximum="20" SmallChange="1" LargeChange="2"
+                                    TickFrequency="2" ValueChanged="ModeBTrailRangeSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBTrailRangeText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6"/>
+                    </Grid>
+
+                    <CheckBox x:Name="ModeBCenterDuckCheck" Margin="0,0,0,2" Content="Ease centering in slides"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Fades centering out when the rear steps out, so it stops pulling the wheel back to straight and fighting the countersteer in a drift, while staying full for normal cornering. Lets you keep centering for grip driving without it hurting drifts."/>
+                    <Grid Margin="20,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Ease amount:" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBCenterDuckSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                    TickFrequency="0.1" ValueChanged="ModeBCenterDuckSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBCenterDuckText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                    </Grid>
+
+                    <CheckBox x:Name="ModeBReversalDampCheck" Margin="0,0,0,2" Content="Reversal damping"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Softens the wheel as you catch a slide back through center, so the moment the force switches sides stops snapping and feeling unstable. Digging deeper into a drift keeps its full weight. Turn this on if drifting feels twitchy at the direction change."/>
+                    <Grid Margin="20,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Reversal strength:" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBReversalGainSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                    TickFrequency="0.1" ValueChanged="ModeBReversalGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBReversalGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.40"/>
+                    </Grid>
+
+                    <CheckBox x:Name="ModeBPhaseLeadCheck" Margin="0,0,0,2" Content="Anticipation"
+                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Leads the force slightly ahead of the wheel to cancel telemetry lag, so a released wheel settles instead of oscillating. Can add nervousness on fast transitions if pushed too far; raise the lead only until a released wheel stops ringing."/>
+                    <Grid Margin="20,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Lead (ms):" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBPhaseLeadSlider" Minimum="0" Maximum="120" SmallChange="5" LargeChange="10"
+                                    TickFrequency="20" ValueChanged="ModeBPhaseLeadSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBPhaseLeadText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="20"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <!-- Restore the whole recipe to the shipped baseline. Handler confirms
+                 first (discards custom tuning with no undo); leaves the per-game
+                 enable and each car's learned grip calibration alone. -->
+            <StackPanel Margin="0,14,0,0">
+                <Button x:Name="ModeBResetButton" Content="Reset tuning to defaults" Padding="10,3"
+                        HorizontalAlignment="Left" Click="ModeBReset_Click"
+                        ToolTip="Put every Telemetry Based FFB slider and feel toggle back to the shipped baseline."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="Restores the shipped baseline recipe for every slider and feel toggle. Your per-game on/off choices and each car's learned grip calibration are kept."/>
+            </StackPanel>
             </StackPanel><!-- ModeBSupportedPanel -->
 
                     </StackPanel>

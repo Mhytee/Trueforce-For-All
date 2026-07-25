@@ -609,8 +609,13 @@ namespace TrueforceForAll.Plugin
                     ModeBDirSoftText.Text       = mbs.ModeBDirSoft.ToString("F2");
                     ModeBDamperSlider.Value     = mbs.ModeBDamper;
                     ModeBDamperText.Text        = mbs.ModeBDamper.ToString("F2");
+                    ModeBRecoverSlider.Value    = mbs.ModeBLockupRecoverMs;
+                    ModeBRecoverText.Text       = mbs.ModeBLockupRecoverMs.ToString("F0");
                     ModeBCenterSlider.Value     = mbs.ModeBCenter;
                     ModeBCenterText.Text        = mbs.ModeBCenter.ToString("F2");
+                    ModeBCenterDuckCheck.IsChecked = mbs.ModeBCenterDuck;
+                    ModeBCenterDuckSlider.Value    = mbs.ModeBCenterDuckAmount;
+                    ModeBCenterDuckText.Text       = mbs.ModeBCenterDuckAmount.ToString("F2");
                     ModeBLatSlider.Value        = mbs.ModeBLatGain;
                     ModeBLatText.Text           = mbs.ModeBLatGain.ToString("F2");
                     ModeBCounterSlider.Value    = mbs.ModeBCounterGain;
@@ -630,7 +635,18 @@ namespace TrueforceForAll.Plugin
                     ModeBRoadKickGainSlider.Value   = mbs.ModeBRoadKickGain;
                     ModeBRoadKickGainText.Text      = mbs.ModeBRoadKickGain.ToString("F2");
                     ModeBSlideGrowthCheck.IsChecked = mbs.ModeBSlideCounterGrowth;
+                    ModeBReversalDampCheck.IsChecked = mbs.ModeBReversalDamp;
+                    ModeBReversalGainSlider.Value    = mbs.ModeBReversalDampGain;
+                    ModeBReversalGainText.Text       = mbs.ModeBReversalDampGain.ToString("F2");
+                    ModeBTrailSpringCheck.IsChecked  = mbs.ModeBTrailSpring;
+                    ModeBTrailRangeSlider.Value      = mbs.ModeBTrailRangeDeg;
+                    ModeBTrailRangeText.Text         = mbs.ModeBTrailRangeDeg.ToString("F0");
+                    ModeBPhaseLeadCheck.IsChecked    = mbs.ModeBPhaseLead;
+                    ModeBPhaseLeadSlider.Value       = mbs.ModeBPhaseLeadMs;
+                    ModeBPhaseLeadText.Text          = mbs.ModeBPhaseLeadMs.ToString("F0");
                     ModeBGripCalCheck.IsChecked     = mbs.ModeBGripAutoCal;
+                    ModeBFrictionCircleCheck.IsChecked = mbs.ModeBFrictionCircle;
+                    ModeBBrakeLearnCheck.IsChecked = mbs.ModeBLongitudinalGripLearn;
                 }
                 if (ModeBContentionWarning != null)
                     ModeBContentionWarning.Visibility = _plugin.ModeBContentionDetected
@@ -4328,6 +4344,7 @@ namespace TrueforceForAll.Plugin
             s.ModeBDropFloor   = (float)ModeBFloorSlider.Value;
             s.ModeBRiseGamma   = (float)ModeBRiseSlider.Value;
             s.ModeBEmaMs       = (float)ModeBSmoothSlider.Value;
+            s.ModeBLockupRecoverMs = (float)ModeBRecoverSlider.Value;
             ModeBStrengthText.Text = s.ModeBSatGain.ToString("F2");
             ModeBDirSoftText.Text  = s.ModeBDirSoft.ToString("F2");
             ModeBDamperText.Text   = s.ModeBDamper.ToString("F2");
@@ -4338,6 +4355,7 @@ namespace TrueforceForAll.Plugin
             ModeBFloorText.Text    = s.ModeBDropFloor.ToString("F2");
             ModeBRiseText.Text     = s.ModeBRiseGamma.ToString("F2");
             ModeBSmoothText.Text   = s.ModeBEmaMs.ToString("F0");
+            ModeBRecoverText.Text  = s.ModeBLockupRecoverMs.ToString("F0");
             _plugin.ApplyModeBFromSettings();
             SchedulePersistDebounced();
         }
@@ -4353,7 +4371,13 @@ namespace TrueforceForAll.Plugin
             s.ModeBEarlyTorquePeak    = ModeBEarlyPeakCheck.IsChecked == true;
             s.ModeBRoadKick           = ModeBRoadKickCheck.IsChecked == true;
             s.ModeBSlideCounterGrowth = ModeBSlideGrowthCheck.IsChecked == true;
+            s.ModeBReversalDamp       = ModeBReversalDampCheck.IsChecked == true;
+            s.ModeBTrailSpring        = ModeBTrailSpringCheck.IsChecked == true;
+            s.ModeBPhaseLead          = ModeBPhaseLeadCheck.IsChecked == true;
+            s.ModeBCenterDuck         = ModeBCenterDuckCheck.IsChecked == true;
             s.ModeBGripAutoCal        = ModeBGripCalCheck.IsChecked == true;
+            s.ModeBFrictionCircle     = ModeBFrictionCircleCheck.IsChecked == true;
+            s.ModeBLongitudinalGripLearn = ModeBBrakeLearnCheck.IsChecked == true;
             _plugin.ApplyModeBFeel();
             try { _plugin.PersistSettings(); } catch { }
         }
@@ -4366,6 +4390,63 @@ namespace TrueforceForAll.Plugin
             ModeBRoadKickGainText.Text = v.ToString("F2");
             _plugin.ApplyModeBFeel();
             SchedulePersistDebounced();
+        }
+
+        private void ModeBReversalGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBReversalGainSlider.Value;
+            _plugin.Settings.ModeBReversalDampGain = v;
+            ModeBReversalGainText.Text = v.ToString("F2");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        private void ModeBTrailRangeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBTrailRangeSlider.Value;
+            _plugin.Settings.ModeBTrailRangeDeg = v;
+            ModeBTrailRangeText.Text = v.ToString("F0");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        private void ModeBPhaseLeadSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBPhaseLeadSlider.Value;
+            _plugin.Settings.ModeBPhaseLeadMs = v;
+            ModeBPhaseLeadText.Text = v.ToString("F0");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        private void ModeBCenterDuckSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBCenterDuckSlider.Value;
+            _plugin.Settings.ModeBCenterDuckAmount = v;
+            ModeBCenterDuckText.Text = v.ToString("F2");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        // "Reset tuning to defaults": restore the whole Mode B recipe (every
+        // slider + feel toggle) to the shipped baseline. Confirms first because
+        // it discards custom tuning with no undo; leaves the per-game enable and
+        // each car's learned grip calibration alone. RefreshFromPlugin re-syncs
+        // the controls from the now-default settings.
+        private void ModeBReset_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
+                "Reset Telemetry Based FFB",
+                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to the shipped baseline. Your per-game on/off choices and each car's learned grip calibration are kept.",
+                DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
+            if (ok != true) return;
+            _plugin.ResetModeBTuningToDefaults();
+            RefreshFromPlugin();
         }
 
         private void StationarySpringStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -9450,12 +9531,25 @@ namespace TrueforceForAll.Plugin
                     "Enter a name of at least 2 characters.", DialogKind.Info);
                 return;
             }
-            // Same unified official-name flow as the header / Preset Manager
-            // buttons: local write + a gated confirm/correct community share
-            // (no auto-submit). Keeps every name-set entry point consistent.
+            // Unified official-name flow: local write + a self-gating silent
+            // community submit (sharing on = submit, opted out = local-only),
+            // exactly like the redline Set above. No confirm/correct modal.
             CarNameShareFlow.SetNameAndMaybeShare(_plugin, game, carId, name,
                 Window.GetWindow(this));
             RefreshFromPlugin();
+        }
+
+        // Enter in the name box saves it, same as clicking Save. Gated on the
+        // Save button being live (a valid, changed name), so a stray Enter on an
+        // empty or unchanged field is a silent no-op rather than popping the
+        // "min 2 characters" nag. Consuming the key stops the bell either way.
+        private void CarFactsName_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key != System.Windows.Input.Key.Enter) return;
+            e.Handled = true;
+            if (CarFactsNameSaveBtn != null
+                && CarFactsNameSaveBtn.Visibility == Visibility.Visible)
+                CarFactsNameSave_Click(sender, null);
         }
 
         // Enter in the redline box applies it, same as clicking Set.
@@ -10267,7 +10361,7 @@ namespace TrueforceForAll.Plugin
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -10334,7 +10428,9 @@ namespace TrueforceForAll.Plugin
                     if (pn == "MODEB" || pn == "BSIGN" || pn == "BSAT"
                         || pn == "BPEAK" || pn == "BFLOOR" || pn == "BFULL" || pn == "BSPD"
                         || pn == "BRISE" || pn == "BEMA" || pn == "BDAMP" || pn == "BCENTER"
-                        || pn == "BLAT" || pn == "BCS" || pn == "BDIRK")
+                        || pn == "BLAT" || pn == "BCS" || pn == "BDIRK"
+                        || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
+                        || pn == "BLEARN" || pn == "BGTRIM")
                     {
                         string st = _plugin.SetModeBParam(pn, mbVal);
                         if (pn == "MODEB")
