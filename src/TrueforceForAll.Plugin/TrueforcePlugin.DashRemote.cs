@@ -428,7 +428,16 @@ namespace TrueforceForAll.Plugin
                 if (!string.IsNullOrEmpty(_activeCarId))
                     s.CarPresetName = GetActiveCarPresetName(_activeCarId) ?? "";
                 var sum = GetActiveCarFactsSummary();
-                s.CarName       = sum.CarName ?? "";
+                // Mirror the desktop header ("headerCar" in SettingsControl): a
+                // detected car with no friendly name yet must still read as a
+                // car, never "No car detected". Games whose car ids don't match
+                // their names (e.g. Wreckfest 2's "car11:default") have an empty
+                // CarName until the community fills the car facts, so fall back
+                // to the raw carId the desktop already shows. A filled-in name
+                // takes over. Display-only: Dash.CarName never feeds a submit.
+                s.CarName = !string.IsNullOrWhiteSpace(sum.CarName)
+                    ? sum.CarName
+                    : (_activeCarId ?? "");
                 s.EngineLayout  = sum.EngineTypeDisplay ?? "Auto";
                 s.EngineSource  = sum.EngineTypeProvenance ?? "";
                 // Prefer the user's pin over the resolved value: resolution
