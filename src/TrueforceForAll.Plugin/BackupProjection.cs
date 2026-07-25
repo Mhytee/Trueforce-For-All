@@ -72,7 +72,13 @@ namespace TrueforceForAll.Plugin
             "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
             "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
-            "ModeBGripAutoCal", "CarGripCalibration",
+            "ModeBReversalDamp", "ModeBReversalDampGain",
+            "ModeBTrailSpring", "ModeBTrailRangeDeg",
+            "ModeBPhaseLead", "ModeBPhaseLeadMs",
+            "ModeBCenterDuck", "ModeBCenterDuckAmount",
+            "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
+            "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
+            "CarGripCalibration",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
@@ -191,7 +197,13 @@ namespace TrueforceForAll.Plugin
             "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
             "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
-            "ModeBGripAutoCal", "CarGripCalibration",
+            "ModeBReversalDamp", "ModeBReversalDampGain",
+            "ModeBTrailSpring", "ModeBTrailRangeDeg",
+            "ModeBPhaseLead", "ModeBPhaseLeadMs",
+            "ModeBCenterDuck", "ModeBCenterDuckAmount",
+            "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
+            "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
+            "CarGripCalibration",
         };
 
         /// <summary>True only when both wheel labels are known AND name a

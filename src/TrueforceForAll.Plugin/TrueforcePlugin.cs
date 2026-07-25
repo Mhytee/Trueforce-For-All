@@ -4241,6 +4241,16 @@ namespace TrueforceForAll.Plugin
                 _lastFrontCombined = (float)frame.FrontGrip01.Value;
                 _lastRearCombined  = (float)frame.RearGrip01.Value;
 
+                // Braking-lockup gate input (issue #38): the worst (most
+                // negative) front-pair SIGNED slip ratio, cached for the FFB
+                // thread which fades the synthesized force out as the fronts
+                // lock. Same worst-of-front-pair reading AxleSlipEffect gates on.
+                _lastFrontSlipRatio = (float)Math.Min(frame.TireSlipRatio.FL, frame.TireSlipRatio.FR);
+                // Friction-circle input: worst front |slip ratio| so wheelspin
+                // spends the grip budget the same way lockup does.
+                _lastFrontSlipRatioAbs = (float)Math.Max(
+                    Math.Abs(frame.TireSlipRatio.FL), Math.Abs(frame.TireSlipRatio.FR));
+
                 // Grip auto-cal input: the grip-peak learner watches the raw
                 // front channel (it runs its own spike pre-filter). Learning
                 // happens whenever Mode B is live; _mbAutoCalOn only gates
@@ -4269,6 +4279,14 @@ namespace TrueforceForAll.Plugin
                     _calPrevTicks = nowCal;
                     _gripCal.Tick(frame.FrontGrip01.Value, _lastSpeedKmh, dtMsCal);
                     if (_mbAutoCalOn) _mbCalPeak = (float)_gripCal.EffectivePeak;
+                    // Learned grip peak for the braking-grip radius (friction
+                    // circle / gate). Tracked ALWAYS, regardless of the
+                    // u-normalization toggle, so the radius follows each car's
+                    // grip cal. Per the friction-circle model braking and
+                    // cornering share one grip budget, so the (cornering-learned)
+                    // peak is that budget; a trim absorbs any braking-vs-cornering
+                    // offset.
+                    _mbGripPeakForRadius = (float)_gripCal.EffectivePeak;
                     if (!_calConvergedLogged && _gripCal.Confidence >= 1.0)
                     {
                         _calConvergedLogged = true;
@@ -4299,6 +4317,8 @@ namespace TrueforceForAll.Plugin
                 // counter term stays exactly zero rather than firing on noise.
                 _lastFrontCombined = (float)frame.WheelSlip.Value;   // the source's scalar slip (quad sources take the branch above)
                 _lastRearCombined  = _lastFrontCombined;
+                _lastFrontSlipRatio = 0f;   // no signed slip on a scalar source: gate stays open
+                _lastFrontSlipRatioAbs = 0f; // friction circle: full lateral share
             }
             // Suspension-load input: front suspension compression vs its own
             // slow baseline = live front-axle load ratio. The baseline EMA
@@ -4449,11 +4469,12 @@ namespace TrueforceForAll.Plugin
             //      the HID++ pipe is free. Verified LIVE via the FFB tap
             //      (2 s quiet window), not assumed from the mode: FH6 still
             //      emits PID in some states, and sole-writer must be proven.
-            //      Per wheel: G PRO and RS50 share the HID++ 0x807A level
-            //      protocol and a 10-LED strip; G923 uses the legacy F8-12
-            //      report and fewer LEDs. G PRO is hardware-validated; RS50 and
-            //      G923 are built to the documented protocols, pending on-wheel
-            //      confirmation.
+            //      Per wheel: G PRO, RS50 and the G923 Xbox all speak the HID++
+            //      0x807A level protocol (10-level bar); only the G923 PS uses
+            //      the legacy F8-12 report (5-LED strip). G PRO is hardware-
+            //      validated; the G923 Xbox 0x807A transport (SHORT commands
+            //      padded onto its 20-byte HID++ collection) follows the
+            //      documented protocol, pending on-wheel confirmation.
             if (_rpmLeds != null)
             {
                 bool ledsOn    = Settings?.RpmLedsEnabled ?? false;
@@ -4462,15 +4483,17 @@ namespace TrueforceForAll.Plugin
                             && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
                             && mairaLive;
 
-                // Wheel LED family by chassis. G PRO + RS50 = HID++ 0x807A level
-                // channel, 10-LED strip (WheelLedChannel, via _rpmLeds); the
-                // RS50 in G PRO compat mode spoofs the G PRO PID (C272), and its
-                // native PID (C276) is handled too. G923 = legacy F8-12 report,
-                // fewer LEDs (the F8 path, via DriveG923Leds).
+                // Wheel LED family by chassis. HID++ 0x807A level channel (10-level
+                // bar, WheelLedChannel via _rpmLeds): G PRO + RS50 AND the G923 Xbox
+                // (C26D/C26E), which drives the same 0x807A feature, just over its
+                // 20-byte HID++ collection since it exposes no 7-byte one. RS50 in
+                // G PRO compat mode spoofs the G PRO PID (C272); its native PID
+                // (C276) is handled too. Only the G923 PS (C266) uses the legacy
+                // F8-12 report (5-LED strip, the F8 path via DriveG923Leds).
                 bool levelWheel = _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268   // G PRO (+ RS50 compat)
-                            || _hidWheelPid == 0xC276;                               // RS50 native
-                bool g923Wheel  = _hidWheelPid == 0xC266                             // G923 PS/PC
-                            || _hidWheelPid == 0xC26D || _hidWheelPid == 0xC26E;      // G923 Xbox/PC
+                            || _hidWheelPid == 0xC276                                 // RS50 native
+                            || _hidWheelPid == 0xC26D || _hidWheelPid == 0xC26E;      // G923 Xbox (HID++ 0x807A)
+                bool g923Wheel  = _hidWheelPid == 0xC266;                            // G923 PS/PC (legacy F8-12)
 
                 // Fail CLOSED: quiet must be PROVEN by a live capture, never
                 // assumed. A null tap, a tap whose USBPcap child never
@@ -4532,10 +4555,10 @@ namespace TrueforceForAll.Plugin
 
                 if (levelWheel)
                 {
-                    // G PRO / RS50: HID++ 0x807A level channel (iRacing+MAIRA or
-                    // Mode B). RS50 rides the same channel; if its firmware does
-                    // not answer 0x807A the channel just never resolves and the
-                    // LEDs stay dark (no harm).
+                    // G PRO / RS50 / G923 Xbox: HID++ 0x807A level channel
+                    // (iRacing+MAIRA or Mode B). Any wheel whose firmware does not
+                    // answer 0x807A simply never resolves the channel and the LEDs
+                    // stay dark (no harm).
                     try
                     {
                         _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
@@ -4548,19 +4571,23 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (g923Wheel)
                 {
-                    // G923: legacy F8-12 rev bar, fewer LEDs. Mode B only for
-                    // now (the iRacing+MAIRA path stays on the level channel).
+                    // G923 PS (C266): legacy F8-12 rev bar, 5 LEDs. Mode B only for
+                    // now (the iRacing+MAIRA path stays on the level channel). The
+                    // G923 Xbox is NOT here; it takes the HID++ 0x807A path above.
                     DriveG923Leds(pct, redline, modeBLeds);
                 }
             }
         }
 
-        // ---- G923 rev LEDs (legacy F8-12 path) ----------------------------
-        // The G923 rev strip is driven by the legacy Logitech F8-12 report on
-        // the gamepad collection (LegacyLedF8Channel), NOT the G PRO's HID++
-        // 0x807A. It has 5 shift LEDs (bit 0 first green .. bit 4 last red),
-        // per the Linux hid-lg4ff driver, confirmed identical on the G29 and
-        // G923 (Vcha2268/ForzaG29Leds). The F8 byte is a (1<<n)-1 bitmask.
+        // ---- G923 PS rev LEDs (legacy F8-12 path) -------------------------
+        // The G923 PlayStation variant (C266) drives its rev strip with the
+        // legacy Logitech F8-12 report on the gamepad collection
+        // (LegacyLedF8Channel), NOT HID++ 0x807A. It has 5 shift LEDs (bit 0
+        // first green .. bit 4 last red), per the Linux hid-lg4ff driver,
+        // confirmed identical on the G29 and G923 (Vcha2268/ForzaG29Leds). The
+        // F8 byte is a (1<<n)-1 bitmask. The G923 Xbox (C26D/C26E) uses HID++
+        // 0x807A instead (see the level path above); routing it here would open
+        // an input-only collection and every write would be rejected.
         private const int G923LedCount = 5;
         private int _g923OpenState;   // 0 idle, 1 opening, 2 open, 3 failed
 
@@ -4733,11 +4760,43 @@ namespace TrueforceForAll.Plugin
         // active. Centering is speed-scaled by the model's trail ramp so a
         // parked wheel isn't spring-loaded.
         private float _pModeBDamperGain = 0.15f;   // BDAMP / "Damping" slider
+        private float _pModeBLockRecoverMs = 130f; // BRECOVER / "Lockup recovery" slider: slow re-open tau for the lockup gate / friction circle
+        private float _pModeBLockupPoint = 0.8f;   // BLOCKPT: |slip ratio| = fully spent (gate full point + circle reference); higher = lightens deeper into braking
         private float _pModeBCenterGain = 0.10f;   // BCENTER / "Centering" slider
         // Per-axle feel terms (ModeBComposer): cornering weight from lateral
         // g, counter torque from rear utilization excess over the front.
         private float _pModeBLatGain     = 0.6f;   // BLAT / "Cornering weight" slider
         private float _pModeBCounterGain = 0.5f;   // BCS  / "Countersteer force" slider
+        // Reversal softening (drift-catch snap, issue #38's lateral twin): fade
+        // the composed force while a slide collapses toward center, scaled by how
+        // fast, so the full-scale sign flip stops snapping and the ring loses loop
+        // gain. Default OFF (A/B feel toggle); strength is its own slider.
+        private volatile bool _mbReversalDampOn;   // MBREV / "Reversal damping" feel toggle
+        private float _pModeBReversalGain = 0.4f;  // BREVG / "Reversal damping strength" slider (owner 2026-07-25 baseline)
+        // Trail spring (drift countersteer settle): the direction ramp saturates
+        // at ~1.7deg of slip angle, so during a slide the force is a constant shove
+        // with no proportional restoring and the wheel slews to the lock instead of
+        // settling into a countersteer like real pneumatic trail. Widen the ramp
+        // during a slide (gated on rear breakaway) so the force eases off as the
+        // front realigns = a stable equilibrium. Grip driving keeps the narrow
+        // window. Default OFF (A/B feel toggle); range is its own slider.
+        private volatile bool _mbTrailSpringOn;      // MBTRAIL / "Trail spring" feel toggle
+        private float _pModeBTrailRangeDeg = 6f;     // BTRANGE / "Trail range" slider: full-slide dir-ramp window in degrees (owner 2026-07-25 baseline)
+        // Phase lead (anticipation): the synthesized SAT closes a lagged telemetry
+        // loop (wheel -> 60Hz telemetry -> force -> wheel), so the restoring spring
+        // rings near its target instead of settling like real physics-computed FFB.
+        // Extrapolate the slip angle feeding dir forward by its rate so the force
+        // anticipates where the wheel is going and the loop lag is recovered.
+        // Default OFF (A/B feel toggle); lead time is its own slider.
+        private volatile bool _mbPhaseLeadOn;        // MBLEAD / "Anticipation" feel toggle
+        private float _pModeBPhaseLeadMs = 40f;      // BLEAD / "Lead" slider: prediction horizon in ms
+        // Centering slide-duck: centering pulls toward STRAIGHT, but during a slide
+        // the wheel's stable home is the COUNTERSTEER angle, so centering fights the
+        // trail spring. Ease centering out on the same rear-breakaway gate the trail
+        // spring uses, so it stays for grip driving and gets out of the way in a
+        // slide. Default OFF (A/B feel toggle); duck amount is its own slider.
+        private volatile bool _mbCenterDuckOn;       // MBCDUCK / "Ease centering in slides" feel toggle
+        private float _pModeBCenterDuck = 1f;        // BCDUCK / "Ease amount" slider: 0 = none .. 1 = fully gone at full slide
         private volatile float _lastSurgeAccel;    // m/s², cached in DispatchFrame
         private volatile float _lastSwayAccel;     // m/s² lateral, cached in DispatchFrame
         // Suspension-load feel: front suspension compression over its learned
@@ -4754,6 +4813,16 @@ namespace TrueforceForAll.Plugin
         // keeps exactly one job here: the force DIRECTION.
         private volatile float _lastFrontCombined;
         private volatile float _lastRearCombined;  // rear pair; == front on degraded sources
+        // Worst (most negative) front-pair signed slip ratio, cached for the FFB
+        // thread's braking-lockup gate (issue #38). 0 on scalar/quad-less sources
+        // leaves the gate open.
+        private volatile float _lastFrontSlipRatio;
+        // Worst front-pair |slip ratio| for the friction-circle law (covers
+        // wheelspin as well as lockup). 0 on scalar sources = full lateral share.
+        private volatile float _lastFrontSlipRatioAbs;
+        // Friction-circle A/B toggle (ModeBFrictionCircle; replaces the lockup
+        // gate's multiplier when on).
+        private volatile bool _mbFrictionCircleOn;
         // Latest front slip angle (rad) cached from DispatchFrame for the FFB
         // thread. float (32-bit) so the read is atomic even on 32-bit SimHub;
         // the Stopwatch-tick stamp is Mode B's telemetry-freshness gate (the
@@ -4762,9 +4831,13 @@ namespace TrueforceForAll.Plugin
         private long _lastSlipAngleTicks;
         // FFB-thread state (1 kHz): defensive input EMAs + stall ramp.
         private float _mbSlipEma;      // signed slip angle (direction only)
+        private float _mbPrevSlipEma;  // previous smoothed slip angle, for the reversal-rate derivative
+        private float _mbSlipRateEma;  // smoothed slip-angle rate (rad/s), reversal softening
         private float _mbGripEma;      // front combined slip (magnitude)
         private float _mbGripRearEma;  // rear combined slip (magnitude)
         private float _mbOverEma;      // rear-excess, asymmetric attack/release
+        private float _mbLockRatioEma; // smoothed front slip ratio for the lockup gate
+        private float _mbCircleRatioEma; // smoothed front |slip ratio| for the friction circle
         private float _mbRamp;
         private long  _mbPrevTicks;
 
@@ -4821,6 +4894,12 @@ namespace TrueforceForAll.Plugin
             _pModeBLatGain     = s.ModeBLatGain;
             _pModeBCounterGain = s.ModeBCounterGain;
             _pModeBDirSoft     = s.ModeBDirSoft;
+            _pModeBLockRecoverMs = s.ModeBLockupRecoverMs < 20f ? 20f
+                                 : s.ModeBLockupRecoverMs > 400f ? 400f : s.ModeBLockupRecoverMs;
+            _pModeBLockupPoint = s.ModeBLockupPoint < 0.2f ? 0.2f
+                               : s.ModeBLockupPoint > 2.0f ? 2.0f : s.ModeBLockupPoint;
+            _pModeBGripTrim = s.ModeBGripTrim < 0.3f ? 0.3f
+                            : s.ModeBGripTrim > 1.5f ? 1.5f : s.ModeBGripTrim;
 
             bool want = ModeBEnabledForActiveGame;
             if (want && _forceModeB == 0)
@@ -4832,12 +4911,7 @@ namespace TrueforceForAll.Plugin
                 _contentionSinceTicks = 0;
                 ModeBContentionDetected = false;
                 _crashDuck.Reset();
-                _mbRamp = 0f;
-                _mbPrevTicks = 0;
-                _mbSlipEma = _lastFrontSlipAngle;
-                _mbGripEma = _lastFrontCombined;
-                _mbGripRearEma = _lastRearCombined;
-                _mbOverEma = 0f;
+                SeedModeBEngageState();
             }
             _forceModeB = want ? 1 : 0;
 
@@ -4885,6 +4959,16 @@ namespace TrueforceForAll.Plugin
         private volatile bool _mbAutoCalOn;
         private readonly GripPeakLearner _gripCal = new GripPeakLearner();
         private volatile float _mbCalPeak = 1f;   // telemetry thread writes
+        // Braking-grip radius source (issue #38 follow-up): when the
+        // ModeBLongitudinalGripLearn toggle is on, the friction-circle / gate
+        // radius follows each car's grip-cal learned peak (times _pModeBGripTrim)
+        // instead of the manual BLOCKPT point. The grip cal is stable + per-car;
+        // the earlier bespoke slip-at-peak-decel learner was too noisy on-wheel
+        // (BrakingGripLearner.cs is retained but unused). Telemetry thread writes
+        // _mbGripPeakForRadius; the FFB thread reads it.
+        private volatile bool  _mbBrakeLearnOn;
+        private volatile float _mbGripPeakForRadius = 1f;  // grip cal EffectivePeak; telemetry writes, FFB reads
+        private float _pModeBGripTrim = 1f;                // BGTRIM: radius = trim x grip-cal peak (1 = raw detected grip)
         private long   _calPrevTicks;             // telemetry thread only
         private string _gripCalKey;               // settings key of the loaded state
         private bool   _calConvergedLogged;       // one log line per variant per load
@@ -4957,6 +5041,7 @@ namespace TrueforceForAll.Plugin
             if (saved != null) _gripCal.Restore(saved.Peak, saved.QualifyingSec);
             else _gripCal.Reset();
             _mbCalPeak = (float)_gripCal.EffectivePeak;
+            _mbGripPeakForRadius = (float)_gripCal.EffectivePeak;   // radius follows the new car's grip cal
             _calPrevTicks = 0;
             _calConvergedLogged = _gripCal.Confidence >= 1.0;
             if (saved != null)
@@ -4989,13 +5074,104 @@ namespace TrueforceForAll.Plugin
             _pRoadKickGain = s.ModeBRoadKickGain;
             // Slide-counter growth.
             _mbSlideGrowthOn = s.ModeBSlideCounterGrowth;
+            // Reversal softening (drift-catch snap): toggle + strength, applied
+            // live like the road-kick pair above.
+            _mbReversalDampOn = s.ModeBReversalDamp;
+            _pModeBReversalGain = s.ModeBReversalDampGain;
+            // Trail spring (drift countersteer settle): toggle + range, applied live.
+            _mbTrailSpringOn = s.ModeBTrailSpring;
+            _pModeBTrailRangeDeg = s.ModeBTrailRangeDeg;
+            // Phase lead (anticipation): toggle + lead time, applied live.
+            _mbPhaseLeadOn = s.ModeBPhaseLead;
+            _pModeBPhaseLeadMs = s.ModeBPhaseLeadMs;
+            // Centering slide-duck: toggle + amount, applied live.
+            _mbCenterDuckOn = s.ModeBCenterDuck;
+            _pModeBCenterDuck = s.ModeBCenterDuckAmount;
             // Per-car grip auto-cal. Off = nominal divisor (1.0); the learner
             // keeps accumulating either way so flipping it on later applies
             // everything learned so far.
             _mbAutoCalOn = s.ModeBGripAutoCal;
             _mbCalPeak = s.ModeBGripAutoCal ? (float)_gripCal.EffectivePeak : 1f;
+            // Friction circle: on a toggle, seed the INCOMING law's EMA from the
+            // live ratio so its first gated tick eases in instead of stepping
+            // from a value the other branch left frozen (each branch's EMA stops
+            // updating while the other runs).
+            if (!_mbFrictionCircleOn && s.ModeBFrictionCircle)
+                _mbCircleRatioEma = _lastFrontSlipRatioAbs;
+            else if (_mbFrictionCircleOn && !s.ModeBFrictionCircle)
+                _mbLockRatioEma = _lastFrontSlipRatio;
+            _mbFrictionCircleOn = s.ModeBFrictionCircle;
+            _mbBrakeLearnOn = s.ModeBLongitudinalGripLearn;
 
             if (save) PersistSettings();
+        }
+
+        /// <summary>Reset the Telemetry Based FFB (Mode B) tuning recipe to the
+        /// shipped defaults: every tunable slider and feel-feature toggle back
+        /// to the coded baseline (the 2026-07-03 on-wheel recipe). Deliberately
+        /// leaves the per-game enable (ModeBGameEnabled) and each car's learned
+        /// grip calibration (CarGripCalibration) untouched. Applies live and
+        /// persists. Defaults are read from a fresh TrueforceSettings so this
+        /// can never drift from the model's initializers.</summary>
+        public void ResetModeBTuningToDefaults()
+        {
+            var s = Settings;
+            if (s == null) return;
+            var d = new TrueforceSettings();
+            s.ModeBSatGain     = d.ModeBSatGain;
+            s.ModeBRiseGamma   = d.ModeBRiseGamma;
+            s.ModeBPeakUtil    = d.ModeBPeakUtil;
+            s.ModeBDropFloor   = d.ModeBDropFloor;
+            s.ModeBEmaMs       = d.ModeBEmaMs;
+            s.ModeBSign        = d.ModeBSign;
+            s.ModeBDamper      = d.ModeBDamper;
+            s.ModeBCenter      = d.ModeBCenter;
+            s.ModeBLatGain     = d.ModeBLatGain;
+            s.ModeBCounterGain = d.ModeBCounterGain;
+            s.ModeBDirSoft     = d.ModeBDirSoft;
+            s.ModeBLockupRecoverMs = d.ModeBLockupRecoverMs;
+            s.ModeBLockupPoint     = d.ModeBLockupPoint;
+            s.ModeBCompressor         = d.ModeBCompressor;
+            s.ModeBSuspensionLoad     = d.ModeBSuspensionLoad;
+            s.ModeBEarlyTorquePeak    = d.ModeBEarlyTorquePeak;
+            s.ModeBRoadKick           = d.ModeBRoadKick;
+            s.ModeBRoadKickGain       = d.ModeBRoadKickGain;
+            s.ModeBSlideCounterGrowth = d.ModeBSlideCounterGrowth;
+            s.ModeBReversalDamp       = d.ModeBReversalDamp;
+            s.ModeBReversalDampGain   = d.ModeBReversalDampGain;
+            s.ModeBTrailSpring        = d.ModeBTrailSpring;
+            s.ModeBTrailRangeDeg      = d.ModeBTrailRangeDeg;
+            s.ModeBPhaseLead          = d.ModeBPhaseLead;
+            s.ModeBPhaseLeadMs        = d.ModeBPhaseLeadMs;
+            s.ModeBCenterDuck         = d.ModeBCenterDuck;
+            s.ModeBCenterDuckAmount   = d.ModeBCenterDuckAmount;
+            s.ModeBGripAutoCal        = d.ModeBGripAutoCal;
+            s.ModeBFrictionCircle     = d.ModeBFrictionCircle;
+            s.ModeBLongitudinalGripLearn = d.ModeBLongitudinalGripLearn;
+            s.ModeBGripTrim              = d.ModeBGripTrim;
+            ApplyModeBFromSettings();
+            ApplyModeBFeel();
+            PersistSettings();
+        }
+
+        /// <summary>Seed the FFB-thread Mode B smoothing state from the latest
+        /// telemetry on a clean 0->1 engage, so the first tick eases from live
+        /// values instead of stepping from stale ones. Called from BOTH engage
+        /// sites (ApplyModeBFromSettings and the MODEB access code) so they can
+        /// never drift, which is how the lockup/circle EMAs were once missed on
+        /// the production path.</summary>
+        private void SeedModeBEngageState()
+        {
+            _mbRamp = 0f;
+            _mbPrevTicks = 0;
+            _mbSlipEma = _lastFrontSlipAngle;
+            _mbPrevSlipEma = _lastFrontSlipAngle;   // so the first reversal-rate sample is ~0, not a step
+            _mbSlipRateEma = 0f;
+            _mbGripEma = _lastFrontCombined;
+            _mbGripRearEma = _lastRearCombined;
+            _mbOverEma = 0f;
+            _mbLockRatioEma = _lastFrontSlipRatio;
+            _mbCircleRatioEma = _lastFrontSlipRatioAbs;
         }
 
         private short? ComputeModeBForce()
@@ -5021,6 +5197,13 @@ namespace TrueforceForAll.Plugin
             // signals are noisy.
             float alpha = (float)(1.0 - Math.Exp(-dtMs / Math.Max(2f, _pModeBEmaMs)));
             _mbSlipEma += (_lastFrontSlipAngle - _mbSlipEma) * alpha;
+            // Slip-angle rate off the smoothed signal, then a short EMA to tame the
+            // finite-difference noise (BEMA already pre-smooths the slip). Feeds the
+            // reversal-softening gate below; ~0 in steady cornering, large only when
+            // a slide is being caught fast.
+            double slipRate = (_mbSlipEma - _mbPrevSlipEma) * 1000.0 / dtMs;   // rad/s
+            _mbPrevSlipEma = _mbSlipEma;
+            _mbSlipRateEma += (float)((slipRate - _mbSlipRateEma) * (1.0 - Math.Exp(-dtMs / 12.0)));
             // Front grip EMA is ASYMMETRIC (fifth wheel test: "when I catch
             // traction again on my front wheels it snaps very hard"). Rising
             // utilization (breaking away) tracks fast — the go-light cue must
@@ -5041,8 +5224,31 @@ namespace TrueforceForAll.Plugin
             // mid-band wall that made ±3° rocking jumpy (seventh test).
             // v4 rational curve: zero slope at exact center only, near-
             // linear body. BDIRK tunes the softness live (0 = pure linear).
+            //
+            // Direction-ramp window: shipped 0.03 rad (~1.7deg) saturates dir to
+            // +-1 almost immediately, so during a slide the force is a constant
+            // shove with no proportional restoring (the wheel slews to the lock,
+            // never settling into a countersteer). Trail spring (MBTRAIL): widen
+            // the window toward BTRANGE as the rear breaks away, so dir stays
+            // PROPORTIONAL across the slide and the force eases off as the front
+            // realigns = a stable equilibrium, like real pneumatic trail. Gated on
+            // _mbOverEma (rear-over-front excess, last tick; decoupled from the
+            // front slip angle so it holds the window open through the catch);
+            // grip driving (excess ~0) keeps the shipped narrow window bit-for-bit.
+            double dirWindow = 0.03;
+            if (_mbTrailSpringOn)
+                dirWindow = ModeBComposer.AdaptiveDirWindow(
+                    0.03, _pModeBTrailRangeDeg * (Math.PI / 180.0),
+                    _mbOverEma / ModeBComposer.OverCap);
+            // Phase lead (MBLEAD): push the slip angle forward by its rate so dir
+            // anticipates where the wheel is heading, recovering the telemetry-loop
+            // lag that otherwise makes the spring ring near its target (worst on a
+            // hands-off release). Uses the already-smoothed rate; sign-safe.
+            double slipForDir = _mbPhaseLeadOn
+                ? ModeBComposer.PhaseLeadSlip(_mbSlipEma, _mbSlipRateEma, _pModeBPhaseLeadMs * 0.001)
+                : _mbSlipEma;
             double dir = ModeBComposer.CenterSoftDir(
-                _mbSlipEma * _pModeBSign / 0.03, _pModeBDirSoft);
+                slipForDir * _pModeBSign / dirWindow, _pModeBDirSoft);
 
             // Utilization from the game's grip metric: combined slip with
             // ~1.0 = at the limit. BPEAK rescales where we treat the limit;
@@ -5111,6 +5317,51 @@ namespace TrueforceForAll.Plugin
             // from 20 km/h up. Centering/damper live outside f01 and keep
             // their own behavior.
             f01 *= ModeBComposer.LowSpeedGate(_lastSpeedKmh);
+            // Braking-lockup gate (issue #38): u is combined slip, so a locking
+            // front tire pumps it to peak and drives the aligning force to full
+            // scale. Under heavy brake/slide that near-peak force, with the laggy
+            // direction relay and little velocity damping, swings the wheel left
+            // and right. Physically a locked/hard-sliding front makes almost no
+            // aligning torque, so fade the composed force (SAT + counter) out as
+            // the fronts lock. The gate/circle thresholds scale with the
+            // braking-grip point (lockL below: manual BLOCKPT or the learned
+            // knee), not fixed to the texture gate's. Asymmetric smoothing:
+            // track FAST as grip is being spent
+            // (lockup/spin onset) so the mute lands promptly, but recover SLOWLY
+            // (BRECOVER, "Lockup recovery" slider) as grip returns so the force
+            // eases back like a reloading tire instead of snapping from light to
+            // heavy (owner on-wheel note); same re-grip philosophy as the grip
+            // EMA. A/B (ModeBFrictionCircle): the friction-circle law replaces
+            // the gate; |slip ratio| spends the one grip budget (wheelspin too)
+            // and the force scales by the lateral share left, no threshold.
+            // Radius (slip ratio where the tyre is fully spent) for both laws:
+            // the per-car grip-cal peak times the trim when the toggle is on
+            // (trim 1 = the raw detected grip), else the manual BLOCKPT point.
+            // The grip cal fades from ~1.0 by confidence, so a fresh car eases in.
+            double lockL = _mbBrakeLearnOn ? _pModeBGripTrim * _mbGripPeakForRadius : _pModeBLockupPoint;
+            if (lockL < 0.2) lockL = 0.2; else if (lockL > 2.0) lockL = 2.0;
+            if (_mbFrictionCircleOn)
+            {
+                float circRaw = _lastFrontSlipRatioAbs;
+                double circTau = circRaw > _mbCircleRatioEma ? 12.0 : _pModeBLockRecoverMs;
+                _mbCircleRatioEma += (float)((circRaw - _mbCircleRatioEma) * (1.0 - Math.Exp(-dtMs / circTau)));
+                f01 *= ModeBComposer.FrictionCircleLateralShare(_mbCircleRatioEma, lockL);
+            }
+            else
+            {
+                double lockTau = _lastFrontSlipRatio < _mbLockRatioEma ? 12.0 : _pModeBLockRecoverMs;
+                float lockAlpha = (float)(1.0 - Math.Exp(-dtMs / lockTau));
+                _mbLockRatioEma += (_lastFrontSlipRatio - _mbLockRatioEma) * lockAlpha;
+                f01 *= ModeBComposer.LockupGate(_mbLockRatioEma, -0.4 * lockL, -lockL);
+            }
+            // Reversal softening (drift-catch snap, issue #38's lateral twin):
+            // fade the composed force while the slide COLLAPSES toward center,
+            // scaled by how fast, so the full-scale sign flip stops snapping and
+            // the wheel->slip->force loop loses its gain. Digging deeper into a
+            // slide passes untouched, so loaded drift weight survives. Sign-blind
+            // (a product of two signed inputs), so BSIGN needs no undoing.
+            if (_mbReversalDampOn)
+                f01 *= ModeBComposer.ReversalSoften(_mbSlipEma, _mbSlipRateEma, _pModeBReversalGain);
             // Crash duck (eleventh wheel test: wall hit buzzed the wheel).
             // Impacts slam every synthesis input to saturation at once and
             // the composed force whipsaws; go soft instantly, breathe back
@@ -5155,6 +5406,13 @@ namespace TrueforceForAll.Plugin
             // Ramp-gated, menus get a true zero stream: wheel free AND silent.
             float centerGain = _pModeBCenterGain * _mbRamp
                 * (float)Math.Min(_lastSpeedKmh / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
+            // Slide-duck (MBCDUCK): ease centering out as the rear breaks away (same
+            // gate as the trail spring, current tick since ComputeModeBForce ran
+            // first) so it stops fighting the countersteer in a slide but stays full
+            // for grip driving. _mbOverEma ~0 gripping = untouched.
+            if (_mbCenterDuckOn)
+                centerGain *= (float)ModeBComposer.SlideDuck(
+                    _pModeBCenterDuck, _mbOverEma / ModeBComposer.OverCap);
             if (centerGain != 0f)
             {
                 float steer = _lastSteerNorm;
@@ -5255,15 +5513,7 @@ namespace TrueforceForAll.Plugin
                 case "MODEB":
                     bool modeBOn = value >= 0.5f;
                     if (modeBOn && _forceModeB == 0)
-                    {
-                        // Clean engage: ramp from zero, EMAs from current state.
-                        _mbRamp = 0f;
-                        _mbPrevTicks = 0;
-                        _mbSlipEma = _lastFrontSlipAngle;
-                        _mbGripEma = _lastFrontCombined;
-                        _mbGripRearEma = _lastRearCombined;
-                        _mbOverEma = 0f;
-                    }
+                        SeedModeBEngageState();   // clean engage: ramp from zero, EMAs from live state
                     _forceModeB = modeBOn ? 1 : 0;
                     // Persist as the active game's per-game opt-in so the tab
                     // toggle and this dev override stay consistent (when a
@@ -5330,8 +5580,77 @@ namespace TrueforceForAll.Plugin
                     _pModeBDirSoft = C(value, 0f, 0.5f);
                     if (Settings != null) { Settings.ModeBDirSoft = _pModeBDirSoft; PersistSettings(); }
                     return $"Mode B center softness = {_pModeBDirSoft:0.00} (0 = linear/legacy; higher = wider flat spot at center; fixes buzz vs jumpy trade)";
+                case "BRECOVER":
+                    _pModeBLockRecoverMs = C(value, 20f, 400f);
+                    if (Settings != null) { Settings.ModeBLockupRecoverMs = _pModeBLockRecoverMs; PersistSettings(); }
+                    return $"Mode B lockup recovery = {_pModeBLockRecoverMs:0} ms (how fast force returns as grip comes back)";
+                case "BLOCKPT":
+                    _pModeBLockupPoint = C(value, 0.2f, 2.0f);
+                    if (Settings != null) { Settings.ModeBLockupPoint = _pModeBLockupPoint; PersistSettings(); }
+                    return $"Mode B lockup point = {_pModeBLockupPoint:0.00} slip ratio (higher = wheel keeps its weight deeper into braking before it lightens; raise this if light braking goes limp)";
+                case "BCIRCLE":
+                    bool circleOn = value >= 0.5f;
+                    if (circleOn && !_mbFrictionCircleOn) _mbCircleRatioEma = _lastFrontSlipRatioAbs;
+                    else if (!circleOn && _mbFrictionCircleOn) _mbLockRatioEma = _lastFrontSlipRatio;
+                    _mbFrictionCircleOn = circleOn;
+                    if (Settings != null) { Settings.ModeBFrictionCircle = circleOn; PersistSettings(); }
+                    return circleOn
+                        ? "Friction circle ON: braking/wheelspin spend the tire's grip and force scales by the lateral share left (replaces the lockup gate)."
+                        : "Friction circle OFF: standard lockup gate restored.";
+                case "BLEARN":
+                    _mbBrakeLearnOn = value >= 0.5f;
+                    if (Settings != null) { Settings.ModeBLongitudinalGripLearn = _mbBrakeLearnOn; PersistSettings(); }
+                    if (!_mbBrakeLearnOn)
+                        return "Auto braking grip OFF: radius uses the manual braking-grip point (BLOCKPT).";
+                    double rNow = _pModeBGripTrim * _mbGripPeakForRadius;   // same clamp the force path applies
+                    if (rNow < 0.2) rNow = 0.2; else if (rNow > 2.0) rNow = 2.0;
+                    return $"Auto braking grip ON: the circle/gate radius follows each car's grip auto-cal peak x trim (now {rNow:0.00}; trim {_pModeBGripTrim:0.00}).";
+                case "BGTRIM":
+                    _pModeBGripTrim = C(value, 0.3f, 1.5f);
+                    if (Settings != null) { Settings.ModeBGripTrim = _pModeBGripTrim; PersistSettings(); }
+                    return $"Braking-grip trim = {_pModeBGripTrim:0.00} (radius = trim x grip-cal peak; 1.00 = the raw detected grip, lower lightens sooner)";
+                case "MBREV":
+                    _mbReversalDampOn = value >= 0.5f;
+                    if (Settings != null) { Settings.ModeBReversalDamp = _mbReversalDampOn; PersistSettings(); }
+                    return _mbReversalDampOn
+                        ? $"Reversal damping ON: force fades while a slide is caught back toward center (strength {_pModeBReversalGain:0.00}), so the direction switch stops snapping. Digging into a slide keeps full weight."
+                        : "Reversal damping OFF.";
+                case "BREVG":
+                    _pModeBReversalGain = C(value, 0f, 1f);
+                    if (Settings != null) { Settings.ModeBReversalDampGain = _pModeBReversalGain; PersistSettings(); }
+                    return $"Reversal damping strength = {_pModeBReversalGain:0.00} (0 = off; 1 = force fades to silent on a hard fast catch)";
+                case "MBTRAIL":
+                    _mbTrailSpringOn = value >= 0.5f;
+                    if (Settings != null) { Settings.ModeBTrailSpring = _mbTrailSpringOn; PersistSettings(); }
+                    return _mbTrailSpringOn
+                        ? $"Trail spring ON: during a slide the wheel eases into a stable countersteer instead of slewing to the lock (range {_pModeBTrailRangeDeg:0}deg). Grip driving keeps its normal weight."
+                        : "Trail spring OFF.";
+                case "BTRANGE":
+                    _pModeBTrailRangeDeg = C(value, 2f, 20f);
+                    if (Settings != null) { Settings.ModeBTrailRangeDeg = _pModeBTrailRangeDeg; PersistSettings(); }
+                    return $"Trail range = {_pModeBTrailRangeDeg:0} deg (how far the front realigns before the countersteer force fades to a stable point; higher = gentler, wider settle; lower = stiffer, nearer the shipped feel)";
+                case "MBLEAD":
+                    _mbPhaseLeadOn = value >= 0.5f;
+                    if (Settings != null) { Settings.ModeBPhaseLead = _mbPhaseLeadOn; PersistSettings(); }
+                    return _mbPhaseLeadOn
+                        ? $"Anticipation ON: the force leads the wheel by {_pModeBPhaseLeadMs:0} ms to cancel telemetry lag, so a released wheel settles instead of oscillating around the countersteer."
+                        : "Anticipation OFF.";
+                case "BLEAD":
+                    _pModeBPhaseLeadMs = C(value, 0f, 120f);
+                    if (Settings != null) { Settings.ModeBPhaseLeadMs = _pModeBPhaseLeadMs; PersistSettings(); }
+                    return $"Anticipation lead = {_pModeBPhaseLeadMs:0} ms (how far ahead the force anticipates; raise until a released wheel stops ringing, back off if it gets jittery)";
+                case "MBCDUCK":
+                    _mbCenterDuckOn = value >= 0.5f;
+                    if (Settings != null) { Settings.ModeBCenterDuck = _mbCenterDuckOn; PersistSettings(); }
+                    return _mbCenterDuckOn
+                        ? $"Ease centering in slides ON: centering fades out as the rear breaks away (by {_pModeBCenterDuck:0.00}), so it stops fighting the countersteer in a drift but stays full for grip driving."
+                        : "Ease centering in slides OFF.";
+                case "BCDUCK":
+                    _pModeBCenterDuck = C(value, 0f, 1f);
+                    if (Settings != null) { Settings.ModeBCenterDuckAmount = _pModeBCenterDuck; PersistSettings(); }
+                    return $"Centering ease amount = {_pModeBCenterDuck:0.00} (0 = centering never fades; 1 = centering fully gone at full slide)";
                 default:
-                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BCS/BDIRK)";
+                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BCS/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/MBTRAIL/BTRANGE/MBLEAD/BLEAD/MBCDUCK/BCDUCK)";
             }
         }
 
