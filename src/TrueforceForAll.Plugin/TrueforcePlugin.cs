@@ -6809,6 +6809,20 @@ namespace TrueforceForAll.Plugin
         // reset/follow-default affordances.
         public bool IsSectionOverridden(SectionKind kind) => OverrideHasSection(GetActiveCarOverride(), kind);
 
+        // For the save popover's contextual "recommended" highlight: was THIS
+        // section already part of the car's SAVED preset, before the current
+        // unsaved edit? Checks the persisted baseline, NOT the live override,
+        // because editing a section seeds it into the live draft
+        // (EnsureSectionDraft), so the live override reports true for any
+        // just-edited section.
+        public bool IsSectionInSavedCarOverride(SectionKind kind)
+        {
+            if (string.IsNullOrEmpty(_activeCarId)) return false;
+            CarOverride saved = null;
+            _lastPersistedCarOverrides?.TryGetValue(_activeCarId, out saved);
+            return OverrideHasSection(saved, kind);
+        }
+
         // Sections that support a per-car override (have a field on CarOverride).
         // Master / Ducking / SpikeReduction are global-only.
         public static bool SectionHasCarScope(SectionKind kind)

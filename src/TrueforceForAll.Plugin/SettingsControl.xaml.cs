@@ -11679,7 +11679,6 @@ namespace TrueforceForAll.Plugin
             {
                 Content = "Game preset",
                 Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                Style = TryFindResource("PopoverPrimaryButton") as Style,   // green accent: this is the recommended save
                 ToolTip = presetTip,
             };
             sp.Children.Add(presetBtn);
@@ -11692,6 +11691,20 @@ namespace TrueforceForAll.Plugin
                     + "so the car keeps these values even if the game preset changes later.",
             };
             sp.Children.Add(bothBtn);
+
+            // Contextual "recommended" highlight (green): point at the save that
+            // fits the current setup instead of always Game preset.
+            //   no car preset bound                 -> Game preset
+            //   effect already in the car's preset  -> This car only
+            //   car preset bound, effect not yet in it -> Both
+            var greenStyle = TryFindResource("PopoverPrimaryButton") as Style;
+            bool carPresetActive = !string.IsNullOrEmpty(_plugin.GetActiveCarPresetName(carId));
+            if (!carPresetActive)
+                presetBtn.Style = greenStyle;
+            else if (_plugin.IsSectionInSavedCarOverride(kind))
+                carBtn.Style = greenStyle;
+            else
+                bothBtn.Style = greenStyle;
 
             // No reset-to-default entry here (owner call 2026-07-22): setting
             // the car's preset to None in the picker covers "follow the game
