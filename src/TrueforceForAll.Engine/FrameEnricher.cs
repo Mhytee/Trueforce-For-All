@@ -51,7 +51,22 @@ namespace TrueforceForAll.Core
         {
             if (sourceIsEnhanced)
             {
-                frame.MaxRpm    = overlay.MaxRpm;
+                // MaxRpm: fill-only, never clobber. AC leaves it at 0 on
+                // purpose (SimHub already does that work correctly), but
+                // Forza's sled carries EngineMaxRpm and our source parses
+                // it. Assigning unconditionally threw that value away and
+                // substituted SimHub's, which is ZERO whenever we own the
+                // Forza Data Out port and forwarding is off (SimHub then
+                // receives nothing). A zero MaxRpm silently stalled the
+                // whole variant pipeline: the signature collapsed to
+                // cyl-only, EnsureVariantForLiveSignature refused to
+                // create a row for want of a rev-range discriminator, and
+                // "Set redline" / the engine picker rejected every save
+                // with "couldn't identify this car's engine variant yet"
+                // while the panel still showed a correctly-resolved engine
+                // from the bake. Same fill-only rule as the three fields
+                // below; this one just never got the guard.
+                if (frame.MaxRpm <= 0) frame.MaxRpm = overlay.MaxRpm;
                 frame.AbsActive = overlay.AbsActive;
                 // Redline: only fill when the enhanced source didn't supply its
                 // own (none do today), and never when suppressed (Forza).

@@ -21,10 +21,13 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void FreshLearner_ChangesNothing()
+        public void FreshLearner_UsesNominalPeak()
         {
+            // A car with no learned data normalizes against the nominal ceiling
+            // (1.2, the fleet-average real peak), not 1.0, so fresh cars do not
+            // over-read utilization and inflate the braking-loop gain (issue #38).
             var l = new GripPeakLearner();
-            Assert.Equal(1.0, l.EffectivePeak, 9);
+            Assert.Equal(1.2, l.EffectivePeak, 9);
             Assert.Equal(0.0, l.Confidence, 9);
         }
 
@@ -66,7 +69,7 @@ namespace TrueforceForAll.Core.Tests
         {
             var l = new GripPeakLearner();
             Drive(l, 1.6, 300.0, speedKmh: 5.0);
-            Assert.Equal(1.0, l.Peak, 9);
+            Assert.Equal(1.2, l.Peak, 9);   // untouched: sits at the nominal
             Assert.Equal(0.0, l.Confidence, 9);
         }
 
@@ -86,12 +89,12 @@ namespace TrueforceForAll.Core.Tests
         public void ConfidenceFadesTheCorrectionIn()
         {
             // Partial seat time = partial trust: EffectivePeak sits between
-            // nominal 1.0 and the learned peak, monotonically toward it.
+            // the nominal (1.2) and the learned peak, monotonically toward it.
             var l = new GripPeakLearner();
             Drive(l, 1.4, 20.0);
             Assert.True(l.Confidence > 0.0 && l.Confidence < 1.0);
-            Assert.True(l.EffectivePeak > 1.0 && l.EffectivePeak < l.Peak,
-                $"expected 1.0 < {l.EffectivePeak:0.000} < {l.Peak:0.000}");
+            Assert.True(l.EffectivePeak > l.NominalPeak && l.EffectivePeak < l.Peak,
+                $"expected {l.NominalPeak} < {l.EffectivePeak:0.000} < {l.Peak:0.000}");
         }
 
         [Fact]
@@ -109,7 +112,7 @@ namespace TrueforceForAll.Core.Tests
 
             var garbage = new GripPeakLearner();
             garbage.Restore(double.NaN, -5.0);
-            Assert.Equal(1.0, garbage.Peak, 9);
+            Assert.Equal(1.2, garbage.Peak, 9);   // garbage -> nominal fallback
             Assert.Equal(0.0, garbage.QualifyingSec, 9);
         }
 

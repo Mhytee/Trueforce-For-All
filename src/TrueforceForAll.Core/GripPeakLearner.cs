@@ -65,9 +65,19 @@ namespace TrueforceForAll.Core
         public double PeakMin { get; set; } = 0.6;
         public double PeakMax { get; set; } = 2.0;
 
-        /// <summary>Learned ceiling of the grip metric. Starts at the
-        /// nominal 1.0 and is only trusted via <see cref="EffectivePeak"/>.</summary>
-        public double Peak { get; private set; } = 1.0;
+        /// <summary>Grip-metric ceiling assumed for a car with no learned data.
+        /// The metric nominally reads 1.0 at the limit, but the actual per-car
+        /// ceiling averages ~1.2 (owner FH6 fleet, 2026-07-29 grip-cal dump), so
+        /// a fresh car assuming 1.0 over-reads utilization ~20% on average, and
+        /// far more on grippy cars, which inflates the Mode B force and its
+        /// braking-loop gain (issue #38: fresh cars oscillate more). Starting at
+        /// 1.2 centers the estimate; the learner still converges to the car's
+        /// real peak, and it errs LIGHT (never heavy) on a fresh low-grip car.</summary>
+        public double NominalPeak { get; set; } = 1.2;
+
+        /// <summary>Learned ceiling of the grip metric. Starts at the nominal
+        /// and is only trusted via <see cref="EffectivePeak"/>.</summary>
+        public double Peak { get; private set; } = 1.2;
 
         /// <summary>Accumulated near-limit seconds (drives confidence).</summary>
         public double QualifyingSec { get; private set; }
@@ -75,15 +85,15 @@ namespace TrueforceForAll.Core
         public double Confidence =>
             Math.Min(QualifyingSec / Math.Max(1.0, FullConfidenceSec), 1.0);
 
-        /// <summary>What the caller divides utilization by: 1.0 until the
-        /// learner has earned trust, then the learned peak. Never outside
+        /// <summary>What the caller divides utilization by: the NominalPeak until
+        /// the learner has earned trust, then the learned peak. Never outside
         /// [PeakMin, PeakMax].</summary>
         public double EffectivePeak
         {
             get
             {
                 double p = Math.Min(Math.Max(Peak, PeakMin), PeakMax);
-                return 1.0 + (p - 1.0) * Confidence;
+                return NominalPeak + (p - NominalPeak) * Confidence;
             }
         }
 
@@ -121,7 +131,7 @@ namespace TrueforceForAll.Core
         /// than trusting a corrupt settings file.</summary>
         public void Restore(double peak, double qualifyingSec)
         {
-            Peak = (double.IsNaN(peak) || peak < PeakMin || peak > PeakMax) ? 1.0 : peak;
+            Peak = (double.IsNaN(peak) || peak < PeakMin || peak > PeakMax) ? NominalPeak : peak;
             QualifyingSec = (double.IsNaN(qualifyingSec) || qualifyingSec < 0.0)
                 ? 0.0
                 : Math.Min(qualifyingSec, 10.0 * FullConfidenceSec);
@@ -129,6 +139,6 @@ namespace TrueforceForAll.Core
         }
 
         /// <summary>Back to fresh-car state.</summary>
-        public void Reset() => Restore(1.0, 0.0);
+        public void Reset() => Restore(NominalPeak, 0.0);
     }
 }
