@@ -700,15 +700,13 @@ namespace TrueforceForAll.Plugin
 
                 CaptureExeOverrideBox.Text = _plugin.ActiveCaptureExeOverride ?? "";
 
-                // Rim rev/shift LEDs (iRacing)
-                if (AccessCodeStatus != null && _plugin.Settings?.RpmLedUnlocked == true)
-                    AccessCodeStatus.Text = "Test features unlocked.";
-                if (RpmLedEnabledCheck != null)
-                    RpmLedEnabledCheck.IsChecked = _plugin.Settings?.RpmLedsEnabled == true;
+                // Rim rev/shift LEDs (hidden iRacing section + Mode B toggle)
                 if (MairaPassthroughCheck != null)
                     MairaPassthroughCheck.IsChecked = _plugin.Settings?.MairaFfbPassthrough == true;
                 if (RpmLedStatusText != null)
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
+                if (ModeBRevLightsCheck != null)
+                    ModeBRevLightsCheck.IsChecked = _plugin.Settings?.ModeBRevLightsEnabled != false;
 
                 // Forza section
                 var fz = _plugin.Settings?.Forza;
@@ -1318,16 +1316,14 @@ namespace TrueforceForAll.Plugin
                 // UDP telemetry section: Forza is the only UDP game, so its
                 // config is always shown as the body of the expander.
                 UpdateUdpSectionVisibility();
-                if (RpmLedSection != null)
+                if (RpmLedSection != null && RpmLedSection.Visibility != System.Windows.Visibility.Collapsed)
                 {
-                    // Gated only on the MAIRA / TEST access-code unlock now (the
-                    // passthrough side is still in PR, so it stays out of the
-                    // public UI). No longer tied to iRacing being the active
-                    // game: it lives in Settings as a normal collapsible section.
-                    var want = (_plugin.Settings?.RpmLedUnlocked == true)
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-                    if (RpmLedSection.Visibility != want) RpmLedSection.Visibility = want;
+                    // Permanently hidden (2026-08-01): Marvin declined the MAIRA
+                    // passthrough PR, so the section describes a link that will
+                    // never go live. The IPC listener stays armed (a MAIRA fork
+                    // could still publish), and iRacing lights are on by default
+                    // whenever that happens; there is nothing left to configure.
+                    RpmLedSection.Visibility = System.Windows.Visibility.Collapsed;
                 }
 
                 // "Pick device manually..." buttons (Diagnostics + the
@@ -10407,7 +10403,6 @@ namespace TrueforceForAll.Plugin
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "MAIRA / TEST   Unlock the iRacing rev lights section (in Settings).\n" +
             "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
@@ -11364,29 +11359,22 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            bool ok = code.Equals("MAIRA", StringComparison.OrdinalIgnoreCase)
-                   || code.Equals("TEST", StringComparison.OrdinalIgnoreCase);
-            if (!ok)
+            if (code.Equals("MAIRA", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("TEST", StringComparison.OrdinalIgnoreCase))
             {
-                // Give a visible result for a typed-but-unrecognized code instead
-                // of swallowing it silently (blank input stays silent).
-                if (!string.IsNullOrWhiteSpace(code) && AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Code not recognized. Type HELP to list valid codes.";
+                // Retired 2026-08-01: the iRacing/MAIRA section is permanently
+                // hidden (passthrough declined). Answer instead of silently
+                // ignoring a code that used to work.
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "The iRacing section is retired. Rev lights now have a toggle on the Telemetry FFB tab.";
                 return;
             }
 
-            if (!_plugin.Settings.RpmLedUnlocked)
-            {
-                _plugin.Settings.RpmLedUnlocked = true;
-                _plugin.PersistSettings();
-            }
-            AccessCodeBox.Text = string.Empty;
-            // The unlock persists. The section now lives in Settings as a normal
-            // collapsible "iRacing" section, shown whenever unlocked.
-            if (AccessCodeStatus != null)
-                AccessCodeStatus.Text = "iRacing section unlocked. It's in Settings, just below.";
-            if (RpmLedSection != null)
-                RpmLedSection.Visibility = System.Windows.Visibility.Visible;
+            // Give a visible result for a typed-but-unrecognized code instead
+            // of swallowing it silently (blank input stays silent).
+            if (!string.IsNullOrWhiteSpace(code) && AccessCodeStatus != null)
+                AccessCodeStatus.Text = "Code not recognized. Type HELP to list valid codes.";
         }
 
         private void ResetNotices_Click(object sender, RoutedEventArgs e)
@@ -11437,14 +11425,14 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // ---------- Rim rev/shift LEDs (iRacing) ----------
+        // ---------- Rim rev/shift LEDs ----------
 
-        private void RpmLedEnabled_Changed(object sender, RoutedEventArgs e)
+        private void ModeBRevLights_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.RpmLedsEnabled = RpmLedEnabledCheck.IsChecked == true;
+            _plugin.Settings.ModeBRevLightsEnabled = ModeBRevLightsCheck.IsChecked == true;
             _plugin.PersistSettings();
-            if (!_plugin.Settings.RpmLedsEnabled) _plugin.TurnOffRpmLeds();
+            if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
         }
 
         private void MairaPassthrough_Changed(object sender, RoutedEventArgs e)

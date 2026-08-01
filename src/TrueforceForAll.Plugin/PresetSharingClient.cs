@@ -997,19 +997,20 @@ namespace TrueforceForAll.Plugin
             return RunGetList(url.TrimEnd('/') + PacksPath + qs, anonKey, "pack", timeoutMs);
         }
 
-        /// <summary>Distinct game names across ALL shared car + game presets,
-        /// for the browser's game-filter chips. Without this the chips only
-        /// offered games known to the local install, so a preset for a game
-        /// the viewer never played was unreachable. PostgREST has no
-        /// DISTINCT, so this pulls just the game column from both tables and
-        /// dedupes here; one short string per shared preset, capped at the
-        /// server's 1000-row page horizon per table. Returns null when both
-        /// reads fail (network/auth); one failing table degrades to the
-        /// other's list.</summary>
-        public List<string> FetchCommunityGameNames(int timeoutMs = 8000)
+        /// <summary>Per-game shared-preset counts across ALL car + game
+        /// presets, for the browser's game-filter chips. Without this the
+        /// chips only offered games known to the local install, so a preset
+        /// for a game the viewer never played was unreachable; the counts
+        /// additionally let the UI surface the busiest games first. PostgREST
+        /// has no DISTINCT / GROUP BY, so this pulls just the game column
+        /// from both tables and counts here; one short string per shared
+        /// preset, capped at the server's 1000-row page horizon per table.
+        /// Returns null when both reads fail (network/auth); one failing
+        /// table degrades to the other's counts.</summary>
+        public Dictionary<string, int> FetchCommunityGameCounts(int timeoutMs = 8000)
         {
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             bool anyOk = false;
             foreach (string path in new[] { PresetsPath, GamePresetsPath })
             {
@@ -1019,12 +1020,24 @@ namespace TrueforceForAll.Plugin
                 if (games == null) continue;
                 anyOk = true;
                 foreach (var g in games)
-                    if (!string.IsNullOrWhiteSpace(g)) set.Add(g.Trim());
+                {
+                    if (string.IsNullOrWhiteSpace(g)) continue;
+                    string key = g.Trim();
+                    counts.TryGetValue(key, out int n);
+                    counts[key] = n + 1;
+                }
             }
-            if (!anyOk) return null;
-            var list = set.ToList();
-            list.Sort(StringComparer.OrdinalIgnoreCase);
-            return list;
+            if (!anyOk)
+            {
+                _log?.Invoke("[TF4ALL] Community game-list: both table reads failed (see lines above).");
+                return null;
+            }
+            var parts = counts
+                .OrderByDescending(kv => kv.Value)
+                .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"{kv.Key} ({kv.Value})");
+            _log?.Invoke($"[TF4ALL] Community game-list: {counts.Count} game(s): {string.Join(", ", parts)}");
+            return counts;
         }
 
         // Column-only sibling of RunGetList: rows are {game: "..."} and the
@@ -1040,7 +1053,11 @@ namespace TrueforceForAll.Plugin
                     var task = Task.Run(async () =>
                     {
                         string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
-                        if (string.IsNullOrEmpty(bearer)) return (List<string>)null;
+                        if (string.IsNullOrEmpty(bearer))
+                        {
+                            _log?.Invoke("[TF4ALL] Community game-list: no auth token (signed out?); skipping fetch.");
+                            return (List<string>)null;
+                        }
                         using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
                         {
                             req.Headers.Add("apikey", capturedKey);
@@ -1049,7 +1066,11 @@ namespace TrueforceForAll.Plugin
                                 HttpCompletionOption.ResponseContentRead,
                                 cts.Token).ConfigureAwait(false))
                             {
-                                if (!resp.IsSuccessStatusCode) return (List<string>)null;
+                                if (!resp.IsSuccessStatusCode)
+                                {
+                                    _log?.Invoke($"[TF4ALL] Community game-list: HTTP {(int)resp.StatusCode} from {fullUrl}");
+                                    return (List<string>)null;
+                                }
                                 string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                                 if (string.IsNullOrEmpty(body)) return new List<string>();
                                 var arr = JArray.Parse(body);

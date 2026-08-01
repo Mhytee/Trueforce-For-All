@@ -2661,6 +2661,11 @@
             <TextBlock x:Name="ModeBGameNote" Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Enable this per game, for whichever game is running. Set that game's own force feedback and vibration to 0."/>
 
+            <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
+                      Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                       Text="Your wheel's rev lights follow the engine: the strip fills as revs climb and flashes at the shift point. Turn this off if a game drives the wheel's lights itself."/>
+
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"/>
@@ -3654,28 +3659,27 @@
                 </StackPanel>
             </Expander>
 
-            <!-- iRacing. Rev/shift LED support for MAIRA users. Gated behind the
-                 MAIRA / TEST access code (RpmLedUnlocked); shown whenever unlocked,
-                 no longer tied to iRacing being the active game. Placed above the
-                 access-code box (which stays last). -->
+            <!-- iRacing / MAIRA passthrough. PERMANENTLY HIDDEN since 2026-08-01:
+                 Marvin declined the passthrough PR, so the link this section
+                 configures will never ship in MAIRA proper. Kept (not deleted)
+                 because the MairaIpcSource listener stays armed and a MAIRA fork
+                 could revive the publisher side; iRacing rev lights are then on
+                 by default with nothing to configure. Rev lights for Telemetry
+                 Based FFB have their own toggle on the Telemetry FFB tab. -->
             <Expander x:Name="RpmLedSection" IsExpanded="False" Visibility="Collapsed" Margin="0,0,0,8">
                 <Expander.Header>
                     <TextBlock Text="iRacing" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rev lights off. These toggles drive them again from your RPM. They link through MAIRA's 'Pass FFB through TF4ALL' passthrough, which isn't in a released MAIRA build yet, so this is a tester feature for now. Click Test to check they light up; if they don't, report it with your logs from Feedback &gt; Report an issue."/>
+                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rev lights off. A forked MAIRA with the 'Pass FFB through TF4ALL' publisher can hand the wheel to TF4ALL, which then drives the rev lights automatically. Click Test to check they light up."/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                        <CheckBox x:Name="RpmLedEnabledCheck" Content="Drive the wheel's LEDs in iRacing"
-                                  VerticalAlignment="Center"
-                                  Checked="RpmLedEnabled_Changed" Unchecked="RpmLedEnabled_Changed"
-                                  ToolTip="Only active in iRacing with MAIRA. No effect in other games."/>
                         <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
                     </StackPanel>
                     <CheckBox x:Name="MairaPassthroughCheck" Content="Auto-link with MAIRA"
                               VerticalAlignment="Center" Margin="0,0,0,6"
                               Checked="MairaPassthrough_Changed" Unchecked="MairaPassthrough_Changed"
-                              ToolTip="Leave on. When you turn on MAIRA's matching 'Pass FFB through TF4ALL' toggle, the two link up automatically and your LEDs come back. With MAIRA's toggle off, TF4ALL works exactly as before."/>
+                              ToolTip="Leave on. If a MAIRA build with the 'Pass FFB through TF4ALL' toggle ever publishes, the two link up automatically. Off forces the USBPcap tap path and ignores MAIRA."/>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
@@ -3701,10 +3705,9 @@
             <TextBlock x:Name="AuthorNameStatus" Visibility="Collapsed"/>
 
 
-                    <!-- Tester access code. Unhides the rim-LED / MAIRA
-                     passthrough section (MAIRA side still in PR, RS50/G923
-                     unvalidated, so it stays out of the public UI). Type
-                     MAIRA or TEST to unlock; persists for this install. -->
+                    <!-- Tester access code box. Type HELP for the catalog.
+                     (The old MAIRA / TEST unlock is retired; that section
+                     is permanently hidden above.) -->
                 <StackPanel Orientation="Horizontal" Margin="0,18,0,2">
                     <TextBlock Text="Access code:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                     <TextBox x:Name="AccessCodeBox" Width="120" Height="24" Margin="8,0,0,0"

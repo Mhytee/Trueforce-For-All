@@ -1,9 +1,13 @@
 // Owns the WheelLedChannel and decides when/what to push to the rim LEDs.
 //
-// Scope is deliberately iRacing-only (see TrueforceSettings.RpmLedsEnabled):
-// iRacing's native rev lights ride its Trueforce SDK hook, so MAIRA users who
-// disable in-game Trueforce lose them. Other games either drive the LEDs
-// themselves or aren't in scope.
+// Two gates feed OnFrame (both computed in TrueforcePlugin.DataUpdate):
+//   * Mode B: rev lights whenever Telemetry Based FFB is armed and the FFB
+//     tap PROVES the game's own FFB quiet (fail-closed). User-toggleable via
+//     TrueforceSettings.ModeBRevLightsEnabled (default on) for games that
+//     drive the wheel's lights natively.
+//   * iRacing via MAIRA passthrough: on by default, no toggle; the live
+//     passthrough itself guarantees a quiet HID++ pipe. Dormant until a
+//     MAIRA fork ships the publisher side.
 //
 // The HID++ channel open is a probe (enumerate + getFeature with timeouts) so
 // it can take a beat; it runs once on a background task, never on SimHub's

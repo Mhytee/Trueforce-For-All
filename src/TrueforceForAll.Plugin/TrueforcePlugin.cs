@@ -4559,10 +4559,13 @@ namespace TrueforceForAll.Plugin
             //      documented protocol, pending on-wheel confirmation.
             if (_rpmLeds != null)
             {
-                bool ledsOn    = Settings?.RpmLedsEnabled ?? false;
+                // iRacing lights ride the MAIRA passthrough and are ON BY
+                // DEFAULT with no user toggle: passthrough live = no PID on
+                // the HID++ pipe = LED writes are safe, and the passthrough
+                // itself is the deliberate opt-in. (Dormant until a MAIRA
+                // fork ships the publisher side; Marvin declined the PR.)
                 bool mairaLive = _mairaIpc != null && _mairaIpc.IsOpen;
-                bool iracingGate = ledsOn
-                            && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
+                bool iracingGate = string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
                             && mairaLive;
 
                 // Wheel LED family by chassis. HID++ 0x807A level channel (10-level
@@ -4594,7 +4597,8 @@ namespace TrueforceForAll.Plugin
                 // paused RPM (flashing if you paused near the redline, since
                 // the latch stays set). Mirrors the force pause-release.
                 bool sessionActive = _telemetrySource?.IsSessionActive ?? false;
-                bool modeBLeds = ledsOn && _forceModeB != 0 && gameFfbQuiet && sessionActive;
+                bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true)
+                            && _forceModeB != 0 && gameFfbQuiet && sessionActive;
 
                 double pct     = frame.RpmPercent;
                 bool   redline = frame.RedlineReached;
@@ -13465,27 +13469,30 @@ namespace TrueforceForAll.Plugin
             }
             catch { }
             foreach (var g in BuiltinCarCylinders.CatalogGames()) set.Add(g);
-            var remote = _communityGamesRemote;
-            if (remote != null)
-                foreach (var g in remote) set.Add(g);
             return set.OrderBy(g => g, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
-        // Server-side distinct game list for the community filter chips, so
-        // games nobody on THIS machine has played still get a chip (a
-        // farmingsimulator25 upload was invisible in every other install's
-        // browser). Fetched at most once per TTL and only from the chip
-        // rebuild path, so it rides the user opening the panel rather than
-        // a background poll. Failures keep whatever list we last got and
-        // retry no sooner than the attempt backoff.
-        private volatile List<string> _communityGamesRemote;
+        // Server-side per-game shared-preset counts for the community filter
+        // chips, so games nobody on THIS machine has played still get offered
+        // (a farmingsimulator25 upload was invisible in every other install's
+        // browser) and the busiest games can surface first. Fetched at most
+        // once per TTL and only from the chip rebuild path, so it rides the
+        // user opening the panel rather than a background poll. Failures keep
+        // whatever counts we last got and retry no sooner than the attempt
+        // backoff.
+        private volatile Dictionary<string, int> _communityGamesRemote;
         private DateTime _communityGamesRemoteUtc;
         private DateTime _communityGamesAttemptUtc;
         private int _communityGamesFetchInFlight;
         private static readonly TimeSpan CommunityGamesTtl     = TimeSpan.FromHours(6);
         private static readonly TimeSpan CommunityGamesBackoff = TimeSpan.FromSeconds(60);
 
-        /// <summary>Refresh the server-side game list if stale. When the
+        /// <summary>Latest server-side game -> shared-preset-count map, or
+        /// null before the first successful fetch. Case-insensitive keys.
+        /// Callers must not mutate it (the reference is swapped whole).</summary>
+        internal Dictionary<string, int> GetCommunityGameUploadCounts() => _communityGamesRemote;
+
+        /// <summary>Refresh the server-side game counts if stale. When the
         /// fetch lands games the current cache didn't have, onNewGames runs
         /// (on the worker thread; callers marshal to their dispatcher).</summary>
         internal void PrefetchCommunityGames(Action onNewGames)
@@ -13500,13 +13507,13 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
-                    var fetched = _presetSharing?.FetchCommunityGameNames();
-                    if (fetched == null) return;   // keep the stale list on failure
+                    var fetched = _presetSharing?.FetchCommunityGameCounts();
+                    if (fetched == null) return;   // keep the stale counts on failure
                     var prior = _communityGamesRemote;
                     _communityGamesRemote    = fetched;
                     _communityGamesRemoteUtc = DateTime.UtcNow;
                     bool grew = prior == null
-                        || fetched.Except(prior, StringComparer.OrdinalIgnoreCase).Any();
+                        || fetched.Keys.Any(k => !prior.ContainsKey(k));
                     if (grew) onNewGames?.Invoke();
                 }
                 catch (Exception ex)

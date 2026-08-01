@@ -45,7 +45,7 @@ namespace TrueforceForAll.Plugin
         public static readonly HashSet<string> Portable = new HashSet<string>(StringComparer.Ordinal)
         {
             // Feature toggles the user opted into.
-            "PluginEnabled", "MairaFfbPassthrough", "RpmLedsEnabled", "ShowFeedbackBox",
+            "PluginEnabled", "MairaFfbPassthrough", "ModeBRevLightsEnabled", "ShowFeedbackBox",
             "ShowAchievementCelebrations",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",

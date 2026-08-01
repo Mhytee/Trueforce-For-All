@@ -44,23 +44,24 @@ namespace TrueforceForAll.Plugin
         // and ignore MAIRA entirely.
         public bool MairaFfbPassthrough { get; set; } = true;
 
-        // Drive the wheel rim's RGB rev/shift LEDs from SimHub telemetry over
-        // HID++ (separate channel from the Trueforce stream). Scoped to iRacing:
-        // iRacing's native rev lights ride its Trueforce SDK hook, so MAIRA
-        // users who disable in-game Trueforce lose them; this puts them back.
-        // Default off (new hardware-output feature, opt-in).
-        // On by default: it is gated to iRacing AND to MAIRA passthrough
-        // being live (no PID on the HID++ pipe), so default-on only ever
-        // drives LEDs in the safe iRacing+MAIRA configuration. Other games
-        // and the no-MAIRA iRacing path never see it.
-        public bool RpmLedsEnabled { get; set; } = true;
+        // Drive the wheel's rev lights while Telemetry Based FFB (Mode B) is
+        // on. On by default: Mode B means the game's own FFB is quiet on the
+        // HID++ pipe (tap-proven, fail-closed in the gate), so the 0x807A
+        // LED writes are safe. A toggle exists because Mode B will reach
+        // games that drive the wheel's rev lights natively; there the user
+        // turns ours off. The iRacing (MAIRA passthrough) LED path is NOT
+        // gated by this: it is on whenever the passthrough is live, which
+        // is the equivalent safe condition.
+        // (Replaces RpmLedsEnabled, retired 2026-08-01: one master switch
+        // labeled "iRacing" silently gated the Mode B lights too, and a
+        // stored false darkened the wheel with no visible cause.)
+        public bool ModeBRevLightsEnabled { get; set; } = true;
 
-        // Gate for the rim-LED / MAIRA-passthrough settings section. Hidden
-        // from the public UI until a tester types the access code (MAIRA or
-        // TEST) in the box at the bottom of the settings page. The MAIRA
-        // side is still in PR and unvalidated on RS50/G923, so this keeps
-        // the half-feature out of sight for normal users. Once true it
-        // stays unlocked for that install.
+        // Retired unlock for the old rim-LED / MAIRA-passthrough settings
+        // section (access codes MAIRA / TEST). The section is permanently
+        // hidden since 2026-08-01: Marvin declined the passthrough, so the
+        // UI stays parked until a MAIRA fork revives it. The property stays
+        // so old settings files and backups deserialize cleanly.
         public bool RpmLedUnlocked { get; set; } = false;
 
         // One-time latch for the iRacing "disable native Trueforce in app.ini"
