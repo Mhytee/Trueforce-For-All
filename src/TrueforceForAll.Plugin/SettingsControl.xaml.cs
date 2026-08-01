@@ -605,8 +605,8 @@ namespace TrueforceForAll.Plugin
                     ModeBSignCheck.IsChecked    = mbs.ModeBSign < 0f;
                     ModeBStrengthSlider.Value   = mbs.ModeBSatGain;
                     ModeBStrengthText.Text      = mbs.ModeBSatGain.ToString("F2");
-                    ModeBDirSoftSlider.Value    = mbs.ModeBDirSoft;
-                    ModeBDirSoftText.Text       = mbs.ModeBDirSoft.ToString("F2");
+                    // Center feel (ModeBDirSoft) is code-only now (BDIRK): Direct
+                    // centering + damping own center calm, so the slider left the UI.
                     ModeBDamperSlider.Value     = mbs.ModeBDamper;
                     ModeBDamperText.Text        = mbs.ModeBDamper.ToString("F2");
                     ModeBMinForceSlider.Value   = mbs.ModeBMinForce;
@@ -651,7 +651,8 @@ namespace TrueforceForAll.Plugin
                     ModeBGripCalCheck.IsChecked     = mbs.ModeBGripAutoCal;
                     UpdateModeBGripLimitVisibility();   // hide the grip-limit slider while the learner owns the limit
                     ModeBLateralDemandCheck.IsChecked = mbs.ModeBLateralDemand;
-                    ModeBCenterPdCheck.IsChecked = mbs.ModeBCenterPd;
+                    // Direct centering is always on (hidden MBCPD failsafe only);
+                    // its look-ahead slider lives under Centering.
                     ModeBCenterLeadSlider.Value  = mbs.ModeBCenterLeadMs;
                     ModeBCenterLeadText.Text     = mbs.ModeBCenterLeadMs.ToString("F0");
                 }
@@ -4352,7 +4353,6 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null) return;
             var s = _plugin.Settings;
             s.ModeBSatGain     = (float)ModeBStrengthSlider.Value;
-            s.ModeBDirSoft     = (float)ModeBDirSoftSlider.Value;
             s.ModeBDamper      = (float)ModeBDamperSlider.Value;
             s.ModeBCenter      = (float)ModeBCenterSlider.Value;
             s.ModeBLatGain     = (float)ModeBLatSlider.Value;
@@ -4364,7 +4364,6 @@ namespace TrueforceForAll.Plugin
             s.ModeBLockupRecoverMs = (float)ModeBRecoverSlider.Value;
             s.ModeBMinForce    = (float)ModeBMinForceSlider.Value;
             ModeBStrengthText.Text = s.ModeBSatGain.ToString("F2");
-            ModeBDirSoftText.Text  = s.ModeBDirSoft.ToString("F2");
             ModeBDamperText.Text   = s.ModeBDamper.ToString("F2");
             ModeBCenterText.Text   = s.ModeBCenter.ToString("F2");
             ModeBLatText.Text      = s.ModeBLatGain.ToString("F2");
@@ -4418,7 +4417,8 @@ namespace TrueforceForAll.Plugin
             s.ModeBLongitudinalGripLearn = adaptive;
             UpdateModeBGripLimitVisibility();   // grip-limit slider only shows in manual mode (adaptive off)
             s.ModeBLateralDemand         = ModeBLateralDemandCheck.IsChecked == true;
-            s.ModeBCenterPd              = ModeBCenterPdCheck.IsChecked == true;
+            // ModeBCenterPd stays untouched here: Direct centering is always on
+            // (default true) with only the hidden MBCPD dev code as a failsafe.
             _plugin.ApplyModeBFeel();
             try { _plugin.PersistSettings(); } catch { }
         }
@@ -4493,7 +4493,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
                 "Reset Telemetry Based FFB",
-                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to the shipped baseline. Your per-game on/off choices and each car's learned grip calibration are kept.",
+                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices and each car's learned grip calibration are kept.",
                 DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
             if (ok != true) return;
             _plugin.ResetModeBTuningToDefaults();

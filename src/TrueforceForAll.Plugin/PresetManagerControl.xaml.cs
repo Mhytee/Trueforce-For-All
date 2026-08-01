@@ -1198,6 +1198,16 @@ namespace TrueforceForAll.Plugin
                 chip.Click += CommunityGameChip_Click;
                 CommunityGameChips.Children.Add(chip);
             }
+
+            // Top up with the server-side game list so games this install has
+            // never seen still get chips. The prefetch is TTL-cached and
+            // in-flight-deduped, and the callback only fires when the fetch
+            // adds games the cache didn't have, so this can't rebuild-loop.
+            _plugin.PrefetchCommunityGames(() =>
+            {
+                try { Dispatcher.BeginInvoke(new Action(RebuildCommunityGameChips)); }
+                catch { }
+            });
         }
 
         private void CommunityGameChip_Click(object sender, RoutedEventArgs e)

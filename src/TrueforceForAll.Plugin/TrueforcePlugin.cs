@@ -2435,6 +2435,66 @@ namespace TrueforceForAll.Plugin
                     Settings.LastUsedWheel = shortModel;
                     try { PersistSettingsCore(); } catch { }
                 }
+
+                // Per-wheel defaults merge, once per chassis + defaults generation
+                // on this PC. Target = factory values + the detected wheel's own
+                // defaults (G PRO / RS50 / G923 each have their own). Every recipe
+                // field still holding a SHIPPED default (current factory, the
+                // defaults this code wrote for the PREVIOUS wheel per the latch, or
+                // any previously shipped recipe generation) upgrades to the target;
+                // every field the user moved keeps its value (the silent-revert
+                // lesson: user tuning is never touched without asking). So a fresh
+                // install lands fully on its wheel's defaults, a strength-only
+                // tuner still receives every other new default, and a fully dialed
+                // setup is untouched (Reset applies the full defaults on demand).
+                // Logged either way, so an update or wheel swap is never a feel
+                // mystery.
+                string latchTarget = shortModel + "#" + ModeBDefaultsGeneration;
+                if (!string.IsNullOrEmpty(shortModel) && Settings != null
+                    && !string.Equals(Settings.WheelDefaultsApplied, latchTarget, StringComparison.Ordinal))
+                {
+                    var target = new TrueforceSettings();
+                    ApplyWheelDefaults(target, shortModel);
+
+                    var oldRecipes = new System.Collections.Generic.List<TrueforceSettings>
+                    {
+                        new TrueforceSettings(),   // current factory (per-wheel fields differ from target)
+                    };
+                    if (!string.IsNullOrEmpty(Settings.WheelDefaultsApplied))
+                    {
+                        // Prior latch names the wheel whose defaults this code last
+                        // wrote (strip the #generation suffix; the first latched
+                        // build stored the bare wheel name).
+                        string priorLatch = Settings.WheelDefaultsApplied;
+                        int gen = priorLatch.IndexOf('#');
+                        string priorWheel = gen >= 0 ? priorLatch.Substring(0, gen) : priorLatch;
+                        var priorDefaults = new TrueforceSettings();
+                        ApplyWheelDefaults(priorDefaults, priorWheel);
+                        oldRecipes.Add(priorDefaults);
+                    }
+                    oldRecipes.AddRange(PreviousShippedModeBRecipes());
+
+                    int upgraded = MergeWheelDefaults(Settings, target, oldRecipes);
+                    Settings.WheelDefaultsApplied = latchTarget;
+                    if (upgraded > 0)
+                    {
+                        ApplyModeBFromSettings();
+                        ApplyModeBFeel();
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] Applied the {shortModel} Mode B defaults: {upgraded} setting(s) still on shipped defaults moved to the new values; customized settings kept.");
+                        // Repaint an open settings panel so stale sliders cannot
+                        // write the old values back over the defaults (the Mode B
+                        // write-all handler persists whatever the controls hold;
+                        // same hazard the access-code path fixes the same way).
+                        try { LibraryReloaded?.Invoke(); } catch { }
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] Wheel defaults check ({shortModel}): every Mode B setting is customized; nothing changed. 'Reset tuning to defaults' applies the full {shortModel} defaults.");
+                    }
+                    try { PersistSettingsCore(); } catch { }
+                }
             }
             catch { /* wheel-label persistence is best-effort, never block bring-up */ }
 
@@ -4772,7 +4832,7 @@ namespace TrueforceForAll.Plugin
         // instead of holding it. Toggle: "MODEB 1" / "MODEB 0" access code;
         // tuning: BSAT / BPEAK / BFLOOR / BFULL / BSPD / BSIGN.
         private volatile int _forceModeB;
-        private readonly SatForceModel _satModel = new SatForceModel { DropFloor = 0.20 };
+        private readonly SatForceModel _satModel = new SatForceModel { DropFloor = 0.50 };   // pre-Init placeholder; ApplyModeBFromSettings owns the live value
         private float _pModeBSign    = 1f;     // BSIGN: flips SAT direction if Forza's slip sign is inverted vs the wheel
         private float _pModeBPeakU   = 1.0f;   // BPEAK: combined-slip value treated as the grip limit (u = combined / peak)
         private float _pModeBEmaMs   = 25f;    // BEMA: input smoothing time constant (raise to calm a noisy slip signal)
@@ -4953,7 +5013,7 @@ namespace TrueforceForAll.Plugin
             _pModeBGripTrim = s.ModeBGripTrim < 0.3f ? 0.3f
                             : s.ModeBGripTrim > 1.5f ? 1.5f : s.ModeBGripTrim;
             _pModeBMinForce = s.ModeBMinForce < 0f ? 0f
-                            : s.ModeBMinForce > 0.25f ? 0.25f : s.ModeBMinForce;
+                            : s.ModeBMinForce > 0.5f ? 0.5f : s.ModeBMinForce;
 
             bool want = ModeBEnabledForActiveGame;
             if (want && _forceModeB == 0)
@@ -5169,13 +5229,139 @@ namespace TrueforceForAll.Plugin
             if (save) PersistSettings();
         }
 
+        /// <summary>Per-wheel Mode B defaults, layered ON TOP of the coded
+        /// factory values (which ARE the G PRO defaults). The table (owner
+        /// 2026-08-01): strength 0.80 / 0.90 / 1.25 for G PRO / RS50 / G923;
+        /// min force 0.05 for G PRO and RS50, 0.25 for the G923 (the belt
+        /// drive eats faint torques as internal friction); G923 damping a
+        /// couple of clicks below the G PRO's 0.13 since the belt supplies
+        /// friction of its own. Everything else is shared across all three.
+        /// Used by "Reset tuning to defaults" (wheel-aware) and by the
+        /// one-time fresh-install specialization on wheel detection.</summary>
+        public static void ApplyWheelDefaults(TrueforceSettings s, string wheelModel)
+        {
+            if (s == null) return;
+            switch ((wheelModel ?? "").Trim())
+            {
+                case "RS50":
+                    s.ModeBSatGain  = 0.90f;   // "Strength": RS50 defaults
+                    break;
+                case "G923":
+                    s.ModeBSatGain  = 1.25f;   // "Strength": more headroom on the weaker motor
+                    s.ModeBMinForce = 0.25f;   // real stiction floor
+                    s.ModeBDamper   = 0.09f;   // belt friction already damps; two clicks under the G PRO
+                    break;
+                // G PRO (and anything unrecognized): the coded defaults stand.
+            }
+        }
+
+        /// <summary>Bump when the shipped Mode B recipe (factory values or the
+        /// per-wheel defaults table) changes: the wheel-defaults latch embeds this,
+        /// so every latched install re-evaluates once on the new build. The merge is
+        /// PER FIELD: fields still on any shipped default move to the new values,
+        /// fields the user tuned stay theirs. When bumping, move the outgoing recipe
+        /// (including its per-wheel variants) into PreviousShippedModeBRecipes so it
+        /// stays recognized as a shipped default. Generation 1 = the beta
+        /// 0.2.0-0.2.4 recipe; generation 2 = the 2026-08-01 drift recipe +
+        /// G PRO/RS50/G923 table.</summary>
+        private const int ModeBDefaultsGeneration = 2;
+
+        /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
+        /// current factory values: every previously SHIPPED defaults-set, expressed
+        /// in the CURRENT settings model (fields a build lacked deserialize to the
+        /// current initializers, exactly like that build's JSON loading today). Lets
+        /// the wheel-defaults hook upgrade never-customized users to each new
+        /// defaults generation instead of stranding them on the old shipped feel;
+        /// anyone who moved any slider stays untouched, as always.</summary>
+        private static IEnumerable<TrueforceSettings> PreviousShippedModeBRecipes()
+        {
+            // Beta v0.2.0 through v0.2.4 (verified identical across them in git; the
+            // stable channel never shipped Mode B). Only the fields whose defaults
+            // differ from the current factory values need overrides.
+            yield return new TrueforceSettings
+            {
+                ModeBSatGain      = 1.0f,
+                ModeBRiseGamma    = 0.5f,
+                ModeBDropFloor    = 0.20f,
+                ModeBDamper       = 0.15f,
+                ModeBCenter       = 0.10f,
+                ModeBCounterGain  = 0.5f,
+                ModeBDirSoft      = 0.12f,
+                ModeBRoadKickGain = 1.0f,
+            };
+        }
+
+        // The Mode B recipe fields the defaults machinery owns (every tunable +
+        // feel toggle; ModeBGameEnabled is per-user, not recipe). Drives the
+        // per-field defaults merge, so a field added to the recipe only needs
+        // listing here plus its initializer.
+        private static readonly string[] ModeBRecipeFields =
+        {
+            "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil", "ModeBDropFloor",
+            "ModeBEmaMs", "ModeBSign", "ModeBDamper", "ModeBCenter",
+            "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
+            "ModeBLockupRecoverMs", "ModeBLockupPoint", "ModeBMinForce",
+            "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
+            "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
+            "ModeBReversalDamp", "ModeBReversalDampGain",
+            "ModeBTrailSpring", "ModeBTrailRangeDeg",
+            "ModeBPhaseLead", "ModeBPhaseLeadMs",
+            "ModeBCenterDuck", "ModeBCenterDuckAmount",
+            "ModeBCenterPd", "ModeBCenterLeadMs",
+            "ModeBGripAutoCal", "ModeBFrictionCircle",
+            "ModeBLongitudinalGripLearn", "ModeBGripTrim", "ModeBLateralDemand",
+        };
+
+        // Per-field defaults merge: every recipe field in <paramref name="s"/> still
+        // holding a SHIPPED default value (any entry in <paramref name="oldRecipes"/>)
+        // moves to <paramref name="target"/>'s value; fields the user moved keep their
+        // values. So a user who only tuned Strength still receives every other new
+        // default, and a fully tuned setup is untouched. Exact equality on purpose:
+        // these fields are only written by initializers, sliders, codes, and
+        // ApplyWheelDefaults, so any user write moves them off the coded constants
+        // bit-for-bit. (Inherent ambiguity, accepted: a user who deliberately dialed
+        // a value that EQUALS an old shipped default reads as untouched for that
+        // field and rides along to the new default.) Returns the upgraded count.
+        private static int MergeWheelDefaults(TrueforceSettings s, TrueforceSettings target,
+                                              System.Collections.Generic.List<TrueforceSettings> oldRecipes)
+        {
+            if (s == null || target == null) return 0;
+            int upgraded = 0;
+            foreach (var name in ModeBRecipeFields)
+            {
+                var p = typeof(TrueforceSettings).GetProperty(name);
+                if (p == null)
+                {
+                    SimHub.Logging.Current.Warn("[TF4ALL] Defaults merge: unknown recipe field " + name);
+                    continue;
+                }
+                object cur = p.GetValue(s);
+                object tgt = p.GetValue(target);
+                if (Equals(cur, tgt)) continue;             // already on the new default
+                bool wasShippedDefault = false;
+                foreach (var old in oldRecipes)
+                {
+                    if (Equals(cur, p.GetValue(old))) { wasShippedDefault = true; break; }
+                }
+                if (wasShippedDefault)
+                {
+                    p.SetValue(s, tgt);
+                    upgraded++;
+                }
+            }
+            return upgraded;
+        }
+
         /// <summary>Reset the Telemetry Based FFB (Mode B) tuning recipe to the
-        /// shipped defaults: every tunable slider and feel-feature toggle back
-        /// to the coded baseline (the 2026-07-03 on-wheel recipe). Deliberately
-        /// leaves the per-game enable (ModeBGameEnabled) and each car's learned
-        /// grip calibration (CarGripCalibration) untouched. Applies live and
-        /// persists. Defaults are read from a fresh TrueforceSettings so this
-        /// can never drift from the model's initializers.</summary>
+        /// shipped defaults for the detected wheel: every tunable slider and
+        /// feel-feature toggle back to the coded factory values plus the
+        /// wheel's own defaults on top (ApplyWheelDefaults: G PRO / RS50 /
+        /// G923 each have their own strength, the G923 also a min-force
+        /// floor). Deliberately leaves the per-game enable (ModeBGameEnabled)
+        /// and each car's learned grip calibration (CarGripCalibration)
+        /// untouched. Applies live and persists. Defaults are read from a
+        /// fresh TrueforceSettings so this can never drift from the model's
+        /// initializers.</summary>
         public void ResetModeBTuningToDefaults()
         {
             var s = Settings;
@@ -5216,6 +5402,10 @@ namespace TrueforceForAll.Plugin
             s.ModeBLongitudinalGripLearn = d.ModeBLongitudinalGripLearn;
             s.ModeBGripTrim              = d.ModeBGripTrim;
             s.ModeBLateralDemand         = d.ModeBLateralDemand;
+            // The coded factory values are the G PRO defaults; layer the
+            // detected wheel's own defaults on top so Reset lands on this
+            // wheel's shipped starting point.
+            ApplyWheelDefaults(s, s.LastUsedWheel);
             ApplyModeBFromSettings();
             ApplyModeBFeel();
             PersistSettings();
@@ -5819,7 +6009,7 @@ namespace TrueforceForAll.Plugin
                     if (Settings != null) { Settings.ModeBCenterDuckAmount = _pModeBCenterDuck; PersistSettings(); }
                     return $"Centering ease amount = {_pModeBCenterDuck:0.00} (0 = centering never fades; 1 = centering fully gone at full slide)";
                 case "BMINF":
-                    _pModeBMinForce = C(value, 0f, 0.25f);
+                    _pModeBMinForce = C(value, 0f, 0.5f);
                     if (Settings != null) { Settings.ModeBMinForce = _pModeBMinForce; PersistSettings(); }
                     return $"Min force = {_pModeBMinForce:0.00} (smallest force the wheel renders; raise until faint forces just move YOUR wheel; 0 = off)";
                 case "MBCPD":
@@ -13275,7 +13465,56 @@ namespace TrueforceForAll.Plugin
             }
             catch { }
             foreach (var g in BuiltinCarCylinders.CatalogGames()) set.Add(g);
+            var remote = _communityGamesRemote;
+            if (remote != null)
+                foreach (var g in remote) set.Add(g);
             return set.OrderBy(g => g, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        // Server-side distinct game list for the community filter chips, so
+        // games nobody on THIS machine has played still get a chip (a
+        // farmingsimulator25 upload was invisible in every other install's
+        // browser). Fetched at most once per TTL and only from the chip
+        // rebuild path, so it rides the user opening the panel rather than
+        // a background poll. Failures keep whatever list we last got and
+        // retry no sooner than the attempt backoff.
+        private volatile List<string> _communityGamesRemote;
+        private DateTime _communityGamesRemoteUtc;
+        private DateTime _communityGamesAttemptUtc;
+        private int _communityGamesFetchInFlight;
+        private static readonly TimeSpan CommunityGamesTtl     = TimeSpan.FromHours(6);
+        private static readonly TimeSpan CommunityGamesBackoff = TimeSpan.FromSeconds(60);
+
+        /// <summary>Refresh the server-side game list if stale. When the
+        /// fetch lands games the current cache didn't have, onNewGames runs
+        /// (on the worker thread; callers marshal to their dispatcher).</summary>
+        internal void PrefetchCommunityGames(Action onNewGames)
+        {
+            if (Settings == null || !Settings.CommunityEnabled) return;
+            var now = DateTime.UtcNow;
+            if (_communityGamesRemote != null && (now - _communityGamesRemoteUtc) < CommunityGamesTtl) return;
+            if ((now - _communityGamesAttemptUtc) < CommunityGamesBackoff) return;
+            if (Interlocked.CompareExchange(ref _communityGamesFetchInFlight, 1, 0) != 0) return;
+            _communityGamesAttemptUtc = now;
+            Task.Run(() =>
+            {
+                try
+                {
+                    var fetched = _presetSharing?.FetchCommunityGameNames();
+                    if (fetched == null) return;   // keep the stale list on failure
+                    var prior = _communityGamesRemote;
+                    _communityGamesRemote    = fetched;
+                    _communityGamesRemoteUtc = DateTime.UtcNow;
+                    bool grew = prior == null
+                        || fetched.Except(prior, StringComparer.OrdinalIgnoreCase).Any();
+                    if (grew) onNewGames?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] Community game-list prefetch failed: " + ex.Message);
+                }
+                finally { Interlocked.Exchange(ref _communityGamesFetchInFlight, 0); }
+            });
         }
 
         internal PresetFull FetchCommunityPresetBody(string id)
@@ -14298,7 +14537,30 @@ namespace TrueforceForAll.Plugin
         // CommunityAuth.ActiveIdentityChanged event.
         private void OnActiveIdentityChanged(string newKey)
         {
-            try { MountUserSlot(newKey ?? ""); }
+            newKey = newKey ?? "";
+            // Decide how the incoming slot's saved profile is treated BEFORE the
+            // mount touches anything: the modal (when one is needed) then blocks
+            // over a fully consistent prior-identity state, and the mount itself
+            // never pumps messages mid-swap. This event fires from user sign-in /
+            // sign-out clicks AND from the session-heartbeat remote-revoke path;
+            // the revoke path sets _suppressNextIdentityPrompt first so an
+            // unattended tick can never pop a modal over a race (it keeps the
+            // legacy silent apply).
+            var profileChoice = ProfileApplyChoice.Apply;
+            bool suppressed = _suppressNextIdentityPrompt;
+            _suppressNextIdentityPrompt = false;
+            if (!suppressed)
+            {
+                try { profileChoice = DecideProfileChoiceInteractive(newKey); }
+                catch (Exception ex)
+                {
+                    // A broken prompt must not decide FOR replacing live tuning.
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Account-switch prompt failed (" + ex.GetType().Name + "); keeping current tuning.");
+                    profileChoice = ProfileApplyChoice.KeepCurrent;
+                }
+            }
+            try { MountUserSlot(newKey, profileChoice); }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info(
@@ -14450,7 +14712,29 @@ namespace TrueforceForAll.Plugin
         // / post-restore re-link) therefore only refreshes the slot from live and never applies a
         // stale profile back; a real account CHANGE applies the new account's saved profile + sync
         // state and re-applies them to the live pipeline + UI.
-        private void MountUserSlot(string newKey)
+        // How MountUserSlot treats the incoming slot's saved settings profile on a real
+        // account change. Decided by the CALLER before the mount runs (the interactive
+        // prompt lives in OnActiveIdentityChanged), so the mount never blocks on UI while
+        // its state is half-swapped.
+        internal enum ProfileApplyChoice { Apply, KeepCurrent }
+
+        // Re-entrancy guard: a nested mount (an auto-pull apply racing an identity
+        // change) would corrupt the half-swapped slot state, so it is skipped + logged.
+        private int _mountInProgress;
+
+        private void MountUserSlot(string newKey, ProfileApplyChoice profileChoice = ProfileApplyChoice.Apply)
+        {
+            if (System.Threading.Interlocked.CompareExchange(ref _mountInProgress, 1, 0) != 0)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Nested slot mount skipped (a mount is already in progress).");
+                return;
+            }
+            try { MountUserSlotCore(newKey, profileChoice); }
+            finally { System.Threading.Interlocked.Exchange(ref _mountInProgress, 0); }
+        }
+
+        private void MountUserSlotCore(string newKey, ProfileApplyChoice profileChoice)
         {
             if (Settings == null) return;
             if (Settings.UserSlots == null)
@@ -14508,8 +14792,37 @@ namespace TrueforceForAll.Plugin
             {
                 if (newSlot.ProfileSeededV1 && !string.IsNullOrEmpty(newSlot.ProfileSettingsJson))
                 {
-                    // Existing account: apply its saved feel/effects profile + its own sync state.
-                    ApplyProfileToLive(newSlot);
+                    // Existing slot with its own saved feel/effects profile. Loading it
+                    // over a live session is exactly how an evening of Mode B tuning got
+                    // silently reverted by a mid-session sign-in (2026-07-31: the
+                    // drift-recipe revert), so the CALLER decides (interactive switches
+                    // prompt in OnActiveIdentityChanged, before this mount mutates
+                    // anything; Init re-mounts and revoke sign-outs keep the legacy
+                    // apply). Every outcome is logged; the old silence is what made the
+                    // revert a mystery. "Keep current" adopts the live tuning INTO the
+                    // switched-to slot (the same shape as the brand-new-slot seed
+                    // below), so the choice sticks and the next auto-sync push carries
+                    // it to the cloud.
+                    if (profileChoice == ProfileApplyChoice.Apply)
+                    {
+                        // Apply its saved feel/effects profile + its own sync state.
+                        ApplyProfileToLive(newSlot);
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Account switch: loaded the incoming slot's saved tuning profile.");
+                    }
+                    else
+                    {
+                        newSlot.ProfileSettingsJson = priorSlot.ProfileSettingsJson;
+                        newSlot.ProfileForzaJson    = priorSlot.ProfileForzaJson;
+                        // Sync state still follows the slot (it is account
+                        // bookkeeping, not feel), exactly as ApplyProfileToLive
+                        // would have set it.
+                        Settings.AutoSyncBackupEnabled        = newSlot.AutoSyncBackupEnabled;
+                        Settings.BackupLastSyncedRevision     = newSlot.BackupLastSyncedRevision ?? "";
+                        Settings.BackupLastSyncedEnvelopeJson = newSlot.BackupLastSyncedEnvelopeJson ?? "";
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Account switch: kept the current tuning; the incoming slot's saved profile now matches it.");
+                    }
                 }
                 else
                 {
@@ -14693,22 +15006,37 @@ namespace TrueforceForAll.Plugin
         // minus the community-history fields the slot mounts separately) + this account's per-PC
         // sync state INTO the slot. This is also the SEED on first mount (live is the source of
         // truth), which is why a same-key startup mount can never overwrite live with a stale copy.
-        private void StashLiveProfileInto(UserDataSlot slot)
+        // Serialize the live PORTABLE profile in the stash format (settings minus the
+        // slot-mounted community fields, plus the Forza prefs). False on failure.
+        private bool TryBuildLiveProfile(out string settingsJson, out string forzaJson)
         {
-            if (slot == null || Settings == null) return;
+            settingsJson = null;
+            forzaJson    = "";
             try
             {
                 var env = BackupProjection.Build(Settings, "", DateTime.UtcNow);
                 var s = env.Settings ?? new Newtonsoft.Json.Linq.JObject();
                 s.Remove("DownloadedCommunityPresets");   // slot-mounted separately
                 s.Remove("SharingAuthor");                // slot-mounted separately
-                slot.ProfileSettingsJson = s.ToString(Newtonsoft.Json.Formatting.None);
-                slot.ProfileForzaJson    = env.Forza?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
-                slot.ProfileSeededV1     = true;
+                settingsJson = s.ToString(Newtonsoft.Json.Formatting.None);
+                forzaJson    = env.Forza?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
+                return true;
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Profile stash failed: " + ex.GetType().Name);
+                return false;
+            }
+        }
+
+        private void StashLiveProfileInto(UserDataSlot slot)
+        {
+            if (slot == null || Settings == null) return;
+            if (TryBuildLiveProfile(out string settingsJson, out string forzaJson))
+            {
+                slot.ProfileSettingsJson = settingsJson;
+                slot.ProfileForzaJson    = forzaJson;
+                slot.ProfileSeededV1     = true;
             }
             slot.AutoSyncBackupEnabled        = Settings.AutoSyncBackupEnabled;
             slot.BackupLastSyncedRevision     = Settings.BackupLastSyncedRevision ?? "";
@@ -14740,6 +15068,97 @@ namespace TrueforceForAll.Plugin
             Settings.AutoSyncBackupEnabled        = slot.AutoSyncBackupEnabled;
             Settings.BackupLastSyncedRevision     = slot.BackupLastSyncedRevision ?? "";
             Settings.BackupLastSyncedEnvelopeJson = slot.BackupLastSyncedEnvelopeJson ?? "";
+        }
+
+        // Set on the UI thread just before a PROGRAMMATIC SignOut (the session-heartbeat
+        // remote-revoke path) so the identity-change handler never prompts for a switch the
+        // user did not click; consumed (and cleared) by the next OnActiveIdentityChanged.
+        // Same-thread set-then-consume: the revoke path dispatches SignOut to the UI thread
+        // and FireIdentityChanged runs synchronously inside it.
+        private bool _suppressNextIdentityPrompt;
+
+        // The self-mutating learned state inside a portable profile (grip calibration,
+        // car facts, the per-game auto-remembered enables). Ordinary driving changes these,
+        // so they are excluded from the "did the tuning actually change?" comparison; they
+        // still travel with whichever profile wins.
+        private static readonly string[] LearnedProfileKeys =
+            { "CarGripCalibration", "CarFacts", "CarFactsSelection", "GameEnabled" };
+
+        // True when two portable profiles carry the same DELIBERATE tuning (learned state
+        // stripped, field order/formatting insensitive). Parse failure counts as "differs":
+        // when in doubt, ask rather than silently replace.
+        private static bool TuningProfilesMatch(string aJson, string bJson)
+        {
+            try
+            {
+                var a = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(aJson) ? "{}" : aJson);
+                var b = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(bJson) ? "{}" : bJson);
+                foreach (var k in LearnedProfileKeys) { a.Remove(k); b.Remove(k); }
+                return Newtonsoft.Json.Linq.JToken.DeepEquals(a, b);
+            }
+            catch { return false; }
+        }
+
+        // Decide, BEFORE the mount mutates anything, how an interactive account switch
+        // treats the incoming slot's saved profile. Apply when there is nothing to ask
+        // (same key, brand-new slot, identical deliberate tuning, or no live profile to
+        // compare); otherwise the user chooses via the destructive-styled prompt.
+        private ProfileApplyChoice DecideProfileChoiceInteractive(string newKey)
+        {
+            var s = Settings;
+            if (s?.UserSlots == null) return ProfileApplyChoice.Apply;
+            string priorKey = s.ActiveSlotKey ?? "";
+            if (string.Equals(priorKey, newKey ?? "", StringComparison.Ordinal))
+                return ProfileApplyChoice.Apply;   // same-key refresh never applies a profile anyway
+            if (!s.UserSlots.TryGetValue(newKey ?? "", out var incoming) || incoming == null
+                || !incoming.ProfileSeededV1 || string.IsNullOrEmpty(incoming.ProfileSettingsJson))
+                return ProfileApplyChoice.Apply;   // brand-new slot inherits live: nothing to ask
+            if (!TryBuildLiveProfile(out string liveJson, out _))
+                return ProfileApplyChoice.Apply;   // cannot compare: keep the legacy behavior
+            if (TuningProfilesMatch(incoming.ProfileSettingsJson, liveJson))
+                return ProfileApplyChoice.Apply;   // identical tuning: apply is a no-op
+            return PromptLoadIncomingProfile(signOut: string.IsNullOrEmpty(newKey));
+        }
+
+        // Modal choice for an interactive switch whose incoming profile differs from the
+        // live tuning. Destructive styling on purpose: the safe "Keep current tuning"
+        // button carries BOTH IsDefault and IsCancel, so Enter, Esc, and closing the
+        // dialog all keep the current tuning, and only a deliberate click on the red
+        // load button replaces it (an earlier two-button draft put load on the cancel
+        // slot, where Esc triggered it: the exact revert this prompt exists to prevent).
+        // Copy is direction-aware: on sign-out the incoming profile is the local
+        // pre-sign-in tuning, not any account's. No WPF context = keep current.
+        private ProfileApplyChoice PromptLoadIncomingProfile(bool signOut)
+        {
+            var app = System.Windows.Application.Current;
+            if (app?.Dispatcher == null)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Account switch: no UI available for the tuning prompt; keeping current tuning.");
+                return ProfileApplyChoice.KeepCurrent;
+            }
+            string body, loadLabel;
+            if (signOut)
+            {
+                body = "Signing out. The tuning saved from before you signed in is different from your current settings."
+                     + "\n\nKeep the current tuning, or load the pre-sign-in tuning and replace the current setup?";
+                loadLabel = "Load pre-sign-in tuning";
+            }
+            else
+            {
+                body = "This account's saved tuning is different from your current settings."
+                     + "\n\nKeep the current tuning (it becomes this account's saved tuning), or load the account's saved tuning and replace the current setup?";
+                loadLabel = "Load account tuning";
+            }
+            bool load = app.Dispatcher.Invoke(() =>
+                TrueforceDialog.Show(null, "Trueforce For All", body,
+                    DialogKind.Destructive,
+                    okLabel: loadLabel,
+                    cancelLabel: "Keep current tuning") == true);
+            SimHub.Logging.Current.Info(load
+                ? "[TF4ALL] Account switch: user chose to load the incoming saved tuning."
+                : "[TF4ALL] Account switch: user chose to keep the current tuning.");
+            return load ? ProfileApplyChoice.Apply : ProfileApplyChoice.KeepCurrent;
         }
 
         // Push the global (non-per-car) FFB scalars from Settings to the live mixer + device. The
@@ -20683,11 +21102,18 @@ namespace TrueforceForAll.Plugin
                     if (status != SessionStatus.Revoked) return;   // Active or Unknown: leave the session alone
 
                     SimHub.Logging.Current.Info("[TF4ALL] Session was revoked from another device; signing this device out.");
+                    // Programmatic sign-out: suppress the account-switch tuning prompt
+                    // (nobody clicked anything on this PC; a modal over a possible race
+                    // would be exactly the surprise class the prompt exists to prevent).
+                    // The flag is set on the same thread that fires the identity event.
                     var disp = System.Windows.Application.Current?.Dispatcher;
                     if (disp != null && !disp.CheckAccess())
-                        disp.Invoke(() => { try { _auth.SignOut(); } catch { } });
+                        disp.Invoke(() => { try { _suppressNextIdentityPrompt = true; _auth.SignOut(); } catch { } });
                     else
+                    {
+                        _suppressNextIdentityPrompt = true;
                         _auth.SignOut();
+                    }
                 }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Session heartbeat error: " + ex.Message); }
                 finally { System.Threading.Interlocked.Exchange(ref _sessionHeartbeatBusy, 0); }

@@ -110,6 +110,9 @@ namespace TrueforceForAll.Plugin
             "RememberSignInEmail", "LastSignInEmail",
             // Last wheel detected on this PC (Account session list display); per-PC hardware.
             "LastUsedWheel",
+            // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
+            // per-PC hardware state like LastUsedWheel.
+            "WheelDefaultsApplied",
             // Rebuildable local cache.
             "CarCylinderCache", "CarCylinderCacheVersion",
             // Community-fact cache: re-fetchable from the backend; would only bloat
