@@ -249,6 +249,50 @@ namespace TrueforceForAll.Core
             return slipRad + lead;
         }
 
+        /// <summary>Minimum-force floor for belt/gear-driven wheels. Motors
+        /// behind a belt reduction (G923 class) eat the smallest commanded
+        /// torques as internal friction, so the light states this model is
+        /// built around (drop floor, trail ramp, lockup/recovery fades) render
+        /// as NOTHING instead of nearly-nothing: the "gone light" cue reads as
+        /// "gone dead". Remap the composed force so anything meaningful clears
+        /// the motor's floor: |f| maps to floor + (1 - floor)·|f|, sign
+        /// preserved, so the whole 0..1 shape survives, compressed into the
+        /// band the hardware can actually render. Below <paramref name="eps"/>
+        /// the output ramps linearly to a TRUE zero: exact zero stays exact
+        /// (the parked/center silence guaranteed by the gates upstream is
+        /// untouched) and the remap stays continuous and monotone, so fades
+        /// stay fades. NOTE the eps band guarantees continuity, not smallness:
+        /// a signal oscillating ABOVE eps still lands at the floor, which is
+        /// the point for lightness fades (lockup, reversal) but would UNDO a
+        /// silence gate whose output is attenuated-small rather than exactly
+        /// zero. Callers therefore apply this LAST in the shaping chain, to
+        /// the synthesized force channel only (never the damper/centering
+        /// stability terms, whose whole job is to be small near rest), and
+        /// SCALE <paramref name="minForce01"/> by any quiet-by-design gate
+        /// factors (low-speed gate, crash duck) so the floor melts away
+        /// exactly as fast as those gates close.
+        /// <paramref name="minForce01"/>: the wheel's stiction floor as a
+        /// fraction of full scale (0 = off; wheels that already render faint
+        /// detail need none).</summary>
+        public static double MinForceRemap(double f01, double minForce01, double eps = 0.005)
+        {
+            double m = Math.Min(Math.Max(minForce01, 0.0), 0.5);
+            if (m <= 0.0) return f01;                       // off: exact identity
+            double a = Math.Abs(f01);
+            if (!(a > 0.0)) return 0.0;                     // exact zero (and NaN) stay silent
+            double sign = f01 > 0.0 ? 1.0 : -1.0;
+            double e = Math.Max(1e-6, eps);
+            if (a < e)
+            {
+                // Linear ramp through zero, continuous with the remap at eps.
+                double atEps = m + (1.0 - m) * e;
+                return sign * (a / e) * atEps;
+            }
+            double outMag = m + (1.0 - m) * a;
+            if (outMag > 1.0) outMag = 1.0;
+            return sign * outMag;
+        }
+
         /// <summary>Compose the final Mode B force from the front-axle SAT
         /// term plus the per-axle feel terms.
         /// <paramref name="satSigned"/>: SatForceModel output × direction, [-1, 1].

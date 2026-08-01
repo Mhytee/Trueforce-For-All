@@ -609,6 +609,8 @@ namespace TrueforceForAll.Plugin
                     ModeBDirSoftText.Text       = mbs.ModeBDirSoft.ToString("F2");
                     ModeBDamperSlider.Value     = mbs.ModeBDamper;
                     ModeBDamperText.Text        = mbs.ModeBDamper.ToString("F2");
+                    ModeBMinForceSlider.Value   = mbs.ModeBMinForce;
+                    ModeBMinForceText.Text      = mbs.ModeBMinForce.ToString("F2");
                     ModeBRecoverSlider.Value    = mbs.ModeBLockupRecoverMs;
                     ModeBRecoverText.Text       = mbs.ModeBLockupRecoverMs.ToString("F0");
                     ModeBCenterSlider.Value     = mbs.ModeBCenter;
@@ -644,9 +646,14 @@ namespace TrueforceForAll.Plugin
                     ModeBPhaseLeadCheck.IsChecked    = mbs.ModeBPhaseLead;
                     ModeBPhaseLeadSlider.Value       = mbs.ModeBPhaseLeadMs;
                     ModeBPhaseLeadText.Text          = mbs.ModeBPhaseLeadMs.ToString("F0");
+                    // "Adaptive grip & braking feel" master reflects grip auto-cal;
+                    // it drives friction-circle + brake-learn together on toggle.
                     ModeBGripCalCheck.IsChecked     = mbs.ModeBGripAutoCal;
-                    ModeBFrictionCircleCheck.IsChecked = mbs.ModeBFrictionCircle;
-                    ModeBBrakeLearnCheck.IsChecked = mbs.ModeBLongitudinalGripLearn;
+                    UpdateModeBGripLimitVisibility();   // hide the grip-limit slider while the learner owns the limit
+                    ModeBLateralDemandCheck.IsChecked = mbs.ModeBLateralDemand;
+                    ModeBCenterPdCheck.IsChecked = mbs.ModeBCenterPd;
+                    ModeBCenterLeadSlider.Value  = mbs.ModeBCenterLeadMs;
+                    ModeBCenterLeadText.Text     = mbs.ModeBCenterLeadMs.ToString("F0");
                 }
                 if (ModeBContentionWarning != null)
                     ModeBContentionWarning.Visibility = _plugin.ModeBContentionDetected
@@ -1929,6 +1936,16 @@ namespace TrueforceForAll.Plugin
         {
             string diag = _plugin?.WheelQuietDiagnostic;
             bool wantQuiet = !string.IsNullOrEmpty(diag);
+
+            // When G HUB is running the quiet diagnostic's top cause IS "G HUB is
+            // running", which the dedicated red G HUB banner (also in this group)
+            // already states, so the card showed the same problem as two warnings.
+            // Drop the diagnostic copy in exactly that case; a different, higher-
+            // ranked quiet cause (plugin disabled, master gain 0) is not the G HUB
+            // string and still shows alongside the banner.
+            if (wantQuiet && string.Equals(diag, TrueforcePlugin.GHubQuietDiagnosticMessage, StringComparison.Ordinal))
+                wantQuiet = false;
+
             if (wantQuiet && WheelQuietDiagnosticText != null && WheelQuietDiagnosticText.Text != diag)
                 WheelQuietDiagnosticText.Text = diag;
 
@@ -4345,6 +4362,7 @@ namespace TrueforceForAll.Plugin
             s.ModeBRiseGamma   = (float)ModeBRiseSlider.Value;
             s.ModeBEmaMs       = (float)ModeBSmoothSlider.Value;
             s.ModeBLockupRecoverMs = (float)ModeBRecoverSlider.Value;
+            s.ModeBMinForce    = (float)ModeBMinForceSlider.Value;
             ModeBStrengthText.Text = s.ModeBSatGain.ToString("F2");
             ModeBDirSoftText.Text  = s.ModeBDirSoft.ToString("F2");
             ModeBDamperText.Text   = s.ModeBDamper.ToString("F2");
@@ -4356,8 +4374,20 @@ namespace TrueforceForAll.Plugin
             ModeBRiseText.Text     = s.ModeBRiseGamma.ToString("F2");
             ModeBSmoothText.Text   = s.ModeBEmaMs.ToString("F0");
             ModeBRecoverText.Text  = s.ModeBLockupRecoverMs.ToString("F0");
+            ModeBMinForceText.Text = s.ModeBMinForce.ToString("F2");
             _plugin.ApplyModeBFromSettings();
             SchedulePersistDebounced();
+        }
+
+        // Show the global "Grip limit" slider only when per-car grip auto-cal is
+        // OFF. With it on, the learner owns the per-car limit and the global
+        // slider would just double-scale it, so it is hidden to avoid confusion.
+        private void UpdateModeBGripLimitVisibility()
+        {
+            if (ModeBGripLimitRow == null || ModeBGripCalCheck == null) return;
+            ModeBGripLimitRow.Visibility = ModeBGripCalCheck.IsChecked == true
+                ? System.Windows.Visibility.Collapsed
+                : System.Windows.Visibility.Visible;
         }
 
         // Feel-feature checkboxes (compressor, suspension load, early torque
@@ -4375,9 +4405,20 @@ namespace TrueforceForAll.Plugin
             s.ModeBTrailSpring        = ModeBTrailSpringCheck.IsChecked == true;
             s.ModeBPhaseLead          = ModeBPhaseLeadCheck.IsChecked == true;
             s.ModeBCenterDuck         = ModeBCenterDuckCheck.IsChecked == true;
-            s.ModeBGripAutoCal        = ModeBGripCalCheck.IsChecked == true;
-            s.ModeBFrictionCircle     = ModeBFrictionCircleCheck.IsChecked == true;
-            s.ModeBLongitudinalGripLearn = ModeBBrakeLearnCheck.IsChecked == true;
+            // One "Adaptive grip & braking feel" master toggle drives the whole
+            // learned-limit stack together: per-car grip auto-cal, the friction-
+            // circle braking law, and the learned braking-grip radius. They ship
+            // on and reinforce each other, so exposing them as three separate A/B
+            // checkboxes only invited half-on states. The access codes BCIRCLE /
+            // BLEARN still flip friction-circle / brake-learn independently for
+            // dev A/B (which can desync them from the master until it's toggled).
+            bool adaptive = ModeBGripCalCheck.IsChecked == true;
+            s.ModeBGripAutoCal           = adaptive;
+            s.ModeBFrictionCircle        = adaptive;
+            s.ModeBLongitudinalGripLearn = adaptive;
+            UpdateModeBGripLimitVisibility();   // grip-limit slider only shows in manual mode (adaptive off)
+            s.ModeBLateralDemand         = ModeBLateralDemandCheck.IsChecked == true;
+            s.ModeBCenterPd              = ModeBCenterPdCheck.IsChecked == true;
             _plugin.ApplyModeBFeel();
             try { _plugin.PersistSettings(); } catch { }
         }
@@ -4428,6 +4469,16 @@ namespace TrueforceForAll.Plugin
             float v = (float)ModeBCenterDuckSlider.Value;
             _plugin.Settings.ModeBCenterDuckAmount = v;
             ModeBCenterDuckText.Text = v.ToString("F2");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        private void ModeBCenterLeadSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBCenterLeadSlider.Value;
+            _plugin.Settings.ModeBCenterLeadMs = v;
+            ModeBCenterLeadText.Text = v.ToString("F0");
             _plugin.ApplyModeBFeel();
             SchedulePersistDebounced();
         }
@@ -10361,7 +10412,7 @@ namespace TrueforceForAll.Plugin
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBTRAIL 1/0 trail spring + BTRANGE range deg, MBLEAD 1/0 anticipation + BLEAD lead ms, MBCDUCK 1/0 centering ease + BCDUCK amount, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -10430,23 +10481,20 @@ namespace TrueforceForAll.Plugin
                         || pn == "BRISE" || pn == "BEMA" || pn == "BDAMP" || pn == "BCENTER"
                         || pn == "BLAT" || pn == "BCS" || pn == "BDIRK"
                         || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
-                        || pn == "BLEARN" || pn == "BGTRIM")
+                        || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
+                        || pn == "MBREV" || pn == "BREVG" || pn == "MBTRAIL" || pn == "BTRANGE"
+                        || pn == "MBLEAD" || pn == "BLEAD" || pn == "MBCDUCK" || pn == "BCDUCK"
+                        || pn == "BMINF" || pn == "MBCPD" || pn == "BCLEAD")
                     {
                         string st = _plugin.SetModeBParam(pn, mbVal);
-                        if (pn == "MODEB")
-                        {
-                            // Keep the Telemetry Based FFB tab checkbox in
-                            // sync without re-firing its handler (the plugin
-                            // setter already ran above).
-                            var prevSuppress = _suppressEvents;
-                            _suppressEvents = true;
-                            try
-                            {
-                                if (ModeBEnabledCheck != null)
-                                    ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
-                            }
-                            finally { _suppressEvents = prevSuppress; }
-                        }
+                        // Re-sync ALL controls from the now-updated settings
+                        // (RefreshFromPlugin suppresses its own events).
+                        // Without this, a code-set value sat in Settings while
+                        // its slider/checkbox stayed stale, and the next
+                        // write-all handler (ModeBSlider_ValueChanged /
+                        // ModeBFeel_Changed) silently persisted the stale
+                        // control state back over it, reverting the code.
+                        RefreshFromPlugin();
                         AccessCodeBox.Text = string.Empty;
                         if (AccessCodeStatus != null) AccessCodeStatus.Text = "Set " + st + " (live).";
                         return;
@@ -11749,6 +11797,19 @@ namespace TrueforceForAll.Plugin
             win.ShowDialog();
         }
 
+        /// <summary>Release the car layer's claim on a section after a game-side
+        /// save, surfacing the one car-file write that used to be swallowed: if
+        /// patching the bound car preset to follow the new game default fails
+        /// (e.g. a read-only car folder), warn instead of reporting a clean save,
+        /// because the car would otherwise silently revert on the next load.</summary>
+        private void ReleaseCarSectionOrWarn(TrueforcePlugin.SectionKind kind)
+        {
+            if (!_plugin.ReleaseSectionFromCarLayer(kind))
+                TrueforceDialog.Show(null, "Trueforce For All",
+                    "Saved to the game preset, but couldn't update this car's own preset to follow it, so this car may revert to its previous value after a restart. See the SimHub log for details.",
+                    DialogKind.Warning);
+        }
+
         /// <summary>Save one section into the active game preset: in place on
         /// a user preset; fork (with the naming prompt) when the active
         /// preset is built-in or absent. Shared by the save popover's Game
@@ -11777,7 +11838,7 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.CopySectionToGlobals(kind);
                 if (!SaveAsNewPresetFromUi()) return false;
-                _plugin.ReleaseSectionFromCarLayer(kind);
+                ReleaseCarSectionOrWarn(kind);
                 // The fork's own refresh ran BEFORE the release and can
                 // re-light this effect against the pre-release baseline;
                 // recompute now that the baseline is settled.
@@ -11789,7 +11850,7 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.CopySectionToGlobals(kind);
                 if (!ForkAndSaveAsGamePreset()) return false;
-                _plugin.ReleaseSectionFromCarLayer(kind);
+                ReleaseCarSectionOrWarn(kind);
                 ClearEffectDirty(which);
                 RefreshFromPlugin();
                 return true;
@@ -11804,7 +11865,7 @@ namespace TrueforceForAll.Plugin
                 TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
                 return false;
             }
-            _plugin.ReleaseSectionFromCarLayer(kind);
+            ReleaseCarSectionOrWarn(kind);
             ClearEffectDirty(which);
             RefreshFromPlugin();
             return true;

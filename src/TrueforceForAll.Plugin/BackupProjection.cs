@@ -78,6 +78,8 @@ namespace TrueforceForAll.Plugin
             "ModeBCenterDuck", "ModeBCenterDuckAmount",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
             "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
+            "ModeBLateralDemand",
+            "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
             "CarGripCalibration",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
@@ -203,6 +205,8 @@ namespace TrueforceForAll.Plugin
             "ModeBCenterDuck", "ModeBCenterDuckAmount",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
             "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
+            "ModeBLateralDemand",
+            "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
             "CarGripCalibration",
         };
 

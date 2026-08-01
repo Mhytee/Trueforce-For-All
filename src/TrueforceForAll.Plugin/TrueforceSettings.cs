@@ -604,6 +604,7 @@ namespace TrueforceForAll.Plugin
         public float ModeBDirSoft     { get; set; } = 0.0368278623f; // center flat-spot width (BDIRK); 0 = raw linear
         public float ModeBLockupRecoverMs { get; set; } = 130f; // "Lockup recovery" slider (BRECOVER): how fast force returns after lockup/wheelspin eases
         public float ModeBLockupPoint { get; set; } = 0.8f; // |slip ratio| treated as full lockup (BLOCKPT); higher = wheel keeps its weight deeper into braking before lightening (owner 2026-07-24 on-wheel)
+        public float ModeBMinForce  { get; set; } = 0f;      // "Min force" slider (BMINF): smallest force the wheel renders; lifts faint detail above a belt wheel's internal-friction floor (G923 class). 0 = off.
 
         // Mode B feel features (the haptic-engine layers 6-11, all validated
         // on-wheel and graduated to default ON there; the Mode B master
@@ -622,10 +623,13 @@ namespace TrueforceForAll.Plugin
         public float ModeBPhaseLeadMs        { get; set; } = 20f;    // phase-lead prediction horizon in ms (BLEAD); owner 2026-07-25 baseline
         public bool  ModeBCenterDuck         { get; set; } = false;  // A/B: ease centering out as the rear breaks away so it stops fighting the countersteer in a slide (MBCDUCK)
         public float ModeBCenterDuckAmount   { get; set; } = 1f;     // how much centering fades at full slide, 0..1 (BCDUCK)
+        public bool  ModeBCenterPd           { get; set; } = false;  // A/B: centering springs on the wheel's OWN position (HID reader) with a velocity look-ahead, so the pull toward straight is fresh and cannot ring (MBCPD)
+        public float ModeBCenterLeadMs       { get; set; } = 30f;    // direct-centering look-ahead in ms (BCLEAD): how far ahead of the wheel's motion the spring aims
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
         public bool  ModeBFrictionCircle     { get; set; } = true;   // friction-circle braking law replaces the lockup gate (BCIRCLE); default ON as of 0.2.5 (owner on-wheel: generally better than the gate)
         public bool  ModeBLongitudinalGripLearn { get; set; } = true;  // auto braking-grip: circle/gate radius follows each car's grip-cal peak instead of the manual point (BLEARN); default ON as of 0.2.5
         public float ModeBGripTrim { get; set; } = 1.0f; // radius = trim x grip-cal peak when auto braking-grip is on (BGTRIM; 1 = the raw detected grip)
+        public bool  ModeBLateralDemand { get; set; } = false; // A/B: base the SAT force on LATERAL (cornering) grip so straight-line braking cannot pump the feedback loop (BLDEM)
 
         // Cross-wheel FFB sync policy. Mode B / FFB tuning is wheel-specific (a
         // curve dialed in on a G PRO is wrong on a G923), so the Mode B settings

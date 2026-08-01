@@ -487,5 +487,96 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0.0, ModeBComposer.SlideDuck(5.0, 2.0), 12);    // over-range amount + gate clamp
             Assert.Equal(1.0, ModeBComposer.SlideDuck(-1.0, 1.0), 12);   // negative amount = no duck
         }
+
+        // --- Minimum-force floor (belt-wheel stiction): the last shaping
+        // stage. Everything nonzero clears the motor's floor, exact zero
+        // stays exact, and the remap is continuous and monotone so gate
+        // fades stay fades. ---
+
+        [Fact]
+        public void MinForce_OffIsExactIdentity()
+        {
+            Assert.Equal(0.1234, ModeBComposer.MinForceRemap(0.1234, 0.0), 12);
+            Assert.Equal(-0.9, ModeBComposer.MinForceRemap(-0.9, 0.0), 12);
+            Assert.Equal(0.0, ModeBComposer.MinForceRemap(0.0, 0.0), 12);
+        }
+
+        [Fact]
+        public void MinForce_ExactZeroStaysSilent()
+        {
+            // The center/parked silence built upstream must survive: a true
+            // zero never becomes a floor-sized torque.
+            Assert.Equal(0.0, ModeBComposer.MinForceRemap(0.0, 0.15), 12);
+            Assert.Equal(0.0, ModeBComposer.MinForceRemap(double.NaN, 0.15), 12);
+        }
+
+        [Fact]
+        public void MinForce_SmallForcesClearTheFloor()
+        {
+            // Anything past the eps band lands at or above the floor.
+            double f = ModeBComposer.MinForceRemap(0.02, 0.10);
+            Assert.True(f >= 0.10, $"small force below the floor: {f}");
+            Assert.Equal(0.10 + 0.90 * 0.02, f, 12);
+        }
+
+        [Fact]
+        public void MinForce_PreservesSignAndFullScale()
+        {
+            double pos = ModeBComposer.MinForceRemap(0.4, 0.10);
+            double neg = ModeBComposer.MinForceRemap(-0.4, 0.10);
+            Assert.Equal(-pos, neg, 12);
+            // Full scale is unchanged (the remap tops out at 1).
+            Assert.Equal(1.0, ModeBComposer.MinForceRemap(1.0, 0.10), 12);
+            Assert.Equal(-1.0, ModeBComposer.MinForceRemap(-1.0, 0.10), 12);
+        }
+
+        [Fact]
+        public void MinForce_ContinuousAtEps_AndMonotone()
+        {
+            const double m = 0.12, eps = 0.005;
+            // No step across the eps boundary.
+            double below = ModeBComposer.MinForceRemap(eps * 0.999, m, eps);
+            double above = ModeBComposer.MinForceRemap(eps * 1.001, m, eps);
+            Assert.True(Math.Abs(above - below) < 0.002, $"step at eps: {below} -> {above}");
+
+            // Monotone across the whole range: a gate fading the force down
+            // always fades the output down too (no plateaus that reverse).
+            double prev = -1e-9;
+            for (double f = 0.0; f <= 1.0; f += 0.001)
+            {
+                double outF = ModeBComposer.MinForceRemap(f, m, eps);
+                Assert.True(outF >= prev - 1e-12, $"non-monotone at f={f}");
+                prev = outF;
+            }
+        }
+
+        [Fact]
+        public void MinForce_BelowEps_RampsThroughZero()
+        {
+            // Inside the eps band the output ramps linearly to a true zero
+            // (continuity guard; smallness comes from the caller scaling the
+            // floor by the silence gates, tested below).
+            const double m = 0.15, eps = 0.005;
+            double tiny = ModeBComposer.MinForceRemap(eps * 0.2, m, eps);
+            Assert.True(tiny < m * 0.5, $"eps band not ramping: {tiny}");
+            Assert.True(tiny > 0.0);
+        }
+
+        [Fact]
+        public void MinForce_ScaledFloor_KeepsSilenceGatesQuiet()
+        {
+            // Caller contract (the crawl-buzz regression the adversarial
+            // review caught): the floor is scaled by the silence-gate factors
+            // (low-speed gate, crash duck). At an 8 km/h off-road crawl the
+            // gate passes ~0.055 of the pegged slip garbage; a RAW 0.25 floor
+            // would lift that residual straight back to floor level, while
+            // the gate-scaled floor keeps it around 2% of full scale.
+            double gate = ModeBComposer.LowSpeedGate(8.0);        // ~0.055
+            double residual = 0.13 * gate;                        // trail-limited garbage after the gate
+            double raw = ModeBComposer.MinForceRemap(residual, 0.25);
+            double scaled = ModeBComposer.MinForceRemap(residual, 0.25 * gate);
+            Assert.True(raw > 0.25, $"premise: an unscaled floor lifts crawl garbage ({raw})");
+            Assert.True(scaled < 0.025, $"scaled floor must stay imperceptible: {scaled}");
+        }
     }
 }

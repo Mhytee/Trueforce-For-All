@@ -893,6 +893,14 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>The wheel-quiet diagnostic line for "G HUB is running".
+        /// Shared so the settings card can recognize when its quiet diagnostic
+        /// is merely restating the dedicated G HUB banner (in the same coalesced
+        /// group) and drop the duplicate, instead of surfacing G HUB as two
+        /// separate warnings.</summary>
+        public const string GHubQuietDiagnosticMessage =
+            "Logitech G HUB is running. It claims the wheel and blocks force feedback. Close G HUB, then restart SimHub.";
+
         /// <summary>Why-is-my-wheel-quiet diagnostic. Walks a decision tree
         /// of plausible "no haptic output" causes and returns the most-
         /// blocking one as a single actionable line, or null when the
@@ -924,7 +932,7 @@ namespace TrueforceForAll.Plugin
                 //    detected" because G HUB is the actual cause; surfacing the
                 //    real fix saves the user a debugging detour.
                 if (_isGHubRunning)
-                    return "Logitech G HUB is running. It claims the wheel and blocks force feedback. Close G HUB, then restart SimHub.";
+                    return GHubQuietDiagnosticMessage;
 
                 // 4. Wheel device state. WheelStatus is set by the discovery
                 //    + open path; "Not detected" is the default.
@@ -3673,10 +3681,16 @@ namespace TrueforceForAll.Plugin
                     _noFfbCaptureNotice = null;
             }
 
-            // EXPERIMENTAL: when the kernel-driver intercept is active and we
-            // therefore own the wheel's HID++ pipe, drive rev LEDs from the
-            // game's RPM. With us as sole HID++ author, LED writes don't
-            // contend with game FFB writes. Gated to non-iRacing because
+            // EXPERIMENTAL: when the kernel-driver intercept is active it drops
+            // the GAME's HID++ FFB writes before they reach the wheel, so no
+            // force traffic is left on that endpoint for LED writes to contend
+            // with (our own force goes out on ep3). That is what makes driving
+            // rev LEDs from the game's RPM safe here. NB the enabling condition
+            // is ZERO FFB on the HID++ endpoint, not "we are the sole writer on
+            // it": sole-writer was tested and still dropped out (2026-07-29),
+            // and being ignored is not the same as being absent, the game's
+            // writes contend even while the wheel ignores them. Gated to
+            // non-iRacing because
             // RpmLedController already owns the iRacing LED path. _driverLedChannel
             // is null unless ExperimentalDriverIntercept is on, so this is a
             // no-op in the default case.
@@ -3722,6 +3736,14 @@ namespace TrueforceForAll.Plugin
                 _telemetryStalled = true;
                 SettleEffectsOnStall();
             }
+
+            // Steering-reader self-heal: the HID stream dies silently when
+            // something grabs the device (G HUB, USB hiccup), and both the
+            // damper and Direct centering then fall back to lagged telemetry
+            // for the rest of the session. Poll liveness here on the tick
+            // that keeps running regardless of game state; the healthy path
+            // is a few field reads, and any reopen runs off-thread inside.
+            _steeringReader?.EnsureAlive();
 
             // Issue #13 test path: when StopStreamOnPause is on, hand the wheel
             // fully back to the game while paused (see UpdateStopStreamOnPauseGate).
@@ -4763,6 +4785,14 @@ namespace TrueforceForAll.Plugin
         private float _pModeBLockRecoverMs = 130f; // BRECOVER / "Lockup recovery" slider: slow re-open tau for the lockup gate / friction circle
         private float _pModeBLockupPoint = 0.8f;   // BLOCKPT: |slip ratio| = fully spent (gate full point + circle reference); higher = lightens deeper into braking
         private float _pModeBCenterGain = 0.10f;   // BCENTER / "Centering" slider
+        // Minimum-force floor (BMINF / "Min force" slider): the smallest force
+        // the wheel actually renders. Belt-reduction motors (G923 class) eat
+        // faint torques as internal friction, so the model's light states
+        // (drop floor, trail ramp, recovery fades) read as DEAD instead of
+        // light; the remap (ModeBComposer.MinForceRemap) compresses 0..1 into
+        // floor..1 with a true zero preserved. 0 = off (the shipped default;
+        // wheels that already render faint detail need none).
+        private float _pModeBMinForce = 0f;
         // Per-axle feel terms (ModeBComposer): cornering weight from lateral
         // g, counter torque from rear utilization excess over the front.
         private float _pModeBLatGain     = 0.6f;   // BLAT / "Cornering weight" slider
@@ -4790,6 +4820,28 @@ namespace TrueforceForAll.Plugin
         // Default OFF (A/B feel toggle); lead time is its own slider.
         private volatile bool _mbPhaseLeadOn;        // MBLEAD / "Anticipation" feel toggle
         private float _pModeBPhaseLeadMs = 40f;      // BLEAD / "Lead" slider: prediction horizon in ms
+        // Direct centering (PD spring): the centering term springs on the
+        // wheel's OWN position from the HID steering reader (~report rate,
+        // minimal lag) instead of the game's 60 Hz steer report, plus a
+        // look-ahead term on the band-limited wheel velocity so the spring
+        // aims at where the wheel is HEADED. A spring on a lagged position is
+        // an oscillator (the issue #38 family); springing on the fresh
+        // position with a velocity lead gives the classic PD shape whose
+        // damping scales with the spring gain, so the centering cannot ring
+        // however the sliders are set. Falls back to the telemetry steer when
+        // the reader is absent or stale. Default OFF (A/B feel toggle);
+        // toggle off = the legacy path bit-for-bit.
+        private volatile bool _mbCenterPdOn;         // MBCPD / "Direct centering" feel toggle
+        private float _pModeBCenterLeadMs = 30f;     // BCLEAD / "Look-ahead" slider: velocity lead in ms
+        // Slew-limited centering position (PD path only), FFB-thread-only.
+        // The spring's position source can switch between the HID reader and
+        // the game steer when the reader crosses the 500 ms staleness
+        // boundary (G HUB grabbing the device, USB hiccup); the two disagree
+        // by the telemetry lag during wheel motion, so an unfiltered switch
+        // pops the spring force in one tick. A per-tick slew cap ~2x the
+        // fastest real wheel swing passes genuine motion untouched and
+        // smears a source step over ~15 ms.
+        private float _mbCenterSteerPrev;
         // Centering slide-duck: centering pulls toward STRAIGHT, but during a slide
         // the wheel's stable home is the COUNTERSTEER angle, so centering fights the
         // trail spring. Ease centering out on the same rear-breakaway gate the trail
@@ -4900,6 +4952,8 @@ namespace TrueforceForAll.Plugin
                                : s.ModeBLockupPoint > 2.0f ? 2.0f : s.ModeBLockupPoint;
             _pModeBGripTrim = s.ModeBGripTrim < 0.3f ? 0.3f
                             : s.ModeBGripTrim > 1.5f ? 1.5f : s.ModeBGripTrim;
+            _pModeBMinForce = s.ModeBMinForce < 0f ? 0f
+                            : s.ModeBMinForce > 0.25f ? 0.25f : s.ModeBMinForce;
 
             bool want = ModeBEnabledForActiveGame;
             if (want && _forceModeB == 0)
@@ -4967,6 +5021,10 @@ namespace TrueforceForAll.Plugin
         // (BrakingGripLearner.cs is retained but unused). Telemetry thread writes
         // _mbGripPeakForRadius; the FFB thread reads it.
         private volatile bool  _mbBrakeLearnOn;
+        // Lateral-demand A/B (issue #38 loop root-cause): base the SAT grip
+        // utilization on lateral (cornering) slip, not combined slip, so
+        // straight-line braking cannot inflate the loop gain and self-oscillate.
+        private volatile bool  _mbLateralDemandOn;
         private volatile float _mbGripPeakForRadius = 1f;  // grip cal EffectivePeak; telemetry writes, FFB reads
         private float _pModeBGripTrim = 1f;                // BGTRIM: radius = trim x grip-cal peak (1 = raw detected grip)
         private long   _calPrevTicks;             // telemetry thread only
@@ -5087,6 +5145,10 @@ namespace TrueforceForAll.Plugin
             // Centering slide-duck: toggle + amount, applied live.
             _mbCenterDuckOn = s.ModeBCenterDuck;
             _pModeBCenterDuck = s.ModeBCenterDuckAmount;
+            // Direct centering (PD spring): toggle + look-ahead, applied live.
+            _mbCenterPdOn = s.ModeBCenterPd;
+            _pModeBCenterLeadMs = s.ModeBCenterLeadMs < 0f ? 0f
+                                : s.ModeBCenterLeadMs > 100f ? 100f : s.ModeBCenterLeadMs;
             // Per-car grip auto-cal. Off = nominal divisor (1.0); the learner
             // keeps accumulating either way so flipping it on later applies
             // everything learned so far.
@@ -5102,6 +5164,7 @@ namespace TrueforceForAll.Plugin
                 _mbLockRatioEma = _lastFrontSlipRatio;
             _mbFrictionCircleOn = s.ModeBFrictionCircle;
             _mbBrakeLearnOn = s.ModeBLongitudinalGripLearn;
+            _mbLateralDemandOn = s.ModeBLateralDemand;
 
             if (save) PersistSettings();
         }
@@ -5131,6 +5194,7 @@ namespace TrueforceForAll.Plugin
             s.ModeBDirSoft     = d.ModeBDirSoft;
             s.ModeBLockupRecoverMs = d.ModeBLockupRecoverMs;
             s.ModeBLockupPoint     = d.ModeBLockupPoint;
+            s.ModeBMinForce        = d.ModeBMinForce;
             s.ModeBCompressor         = d.ModeBCompressor;
             s.ModeBSuspensionLoad     = d.ModeBSuspensionLoad;
             s.ModeBEarlyTorquePeak    = d.ModeBEarlyTorquePeak;
@@ -5145,10 +5209,13 @@ namespace TrueforceForAll.Plugin
             s.ModeBPhaseLeadMs        = d.ModeBPhaseLeadMs;
             s.ModeBCenterDuck         = d.ModeBCenterDuck;
             s.ModeBCenterDuckAmount   = d.ModeBCenterDuckAmount;
+            s.ModeBCenterPd           = d.ModeBCenterPd;
+            s.ModeBCenterLeadMs       = d.ModeBCenterLeadMs;
             s.ModeBGripAutoCal        = d.ModeBGripAutoCal;
             s.ModeBFrictionCircle     = d.ModeBFrictionCircle;
             s.ModeBLongitudinalGripLearn = d.ModeBLongitudinalGripLearn;
             s.ModeBGripTrim              = d.ModeBGripTrim;
+            s.ModeBLateralDemand         = d.ModeBLateralDemand;
             ApplyModeBFromSettings();
             ApplyModeBFeel();
             PersistSettings();
@@ -5256,9 +5323,25 @@ namespace TrueforceForAll.Plugin
             // until the learner has near-limit seat time in THIS car). The
             // noise floor zeroes the fuzz the grip channel emits parked /
             // dead straight, the other half of the center-buzz fix.
-            double peakDiv = Math.Max(0.2, _pModeBPeakU * (double)_mbCalPeak);
+            // When the per-car learner owns the ceiling (adaptive/auto-cal on),
+            // the manual grip-limit slider (BPEAK) is hidden in the UI and must
+            // NOT also scale the learned peak, or a stale slider value silently
+            // double-scales it. Learned peak alone when adaptive; the manual
+            // slider applies only in manual mode (auto-cal off, _mbCalPeak = 1).
+            double peakBase = _mbAutoCalOn ? 1.0 : _pModeBPeakU;
+            double peakDiv = Math.Max(0.2, peakBase * (double)_mbCalPeak);
             double u     = ModeBComposer.UtilizationFloor(_mbGripEma     / peakDiv);
             double uRear = ModeBComposer.UtilizationFloor(_mbGripRearEma / peakDiv);
+            // Lateral-demand utilization (issue #38 loop root-cause A/B): weight
+            // the front SAT grip reading by |dir| so it tracks LATERAL (cornering)
+            // grip, not combined slip. |dir| is ~0 with no lateral slip and ~1 in
+            // a corner, so under straight-line braking - where combined slip is
+            // pumped high by longitudinal lockup - u collapses toward zero: no
+            // phantom aligning force, so the direction-feedback loop has nothing
+            // to swing the wheel with. Cornering (|dir| ~ 1) is unchanged, and the
+            // force stays super-linear in dir at center so the loop gain there is
+            // zero (it cannot self-excite from noise).
+            if (_mbLateralDemandOn) u *= Math.Abs(dir);
 
             // Load, v1: longitudinal weight transfer only — braking (surge < 0)
             // loads the front axle, throttle unloads it. ~0.35 of static per g.
@@ -5316,7 +5399,8 @@ namespace TrueforceForAll.Plugin
             // Kills ALL slip-derived synthesis below walking pace; identical
             // from 20 km/h up. Centering/damper live outside f01 and keep
             // their own behavior.
-            f01 *= ModeBComposer.LowSpeedGate(_lastSpeedKmh);
+            double lowGate = ModeBComposer.LowSpeedGate(_lastSpeedKmh);
+            f01 *= lowGate;
             // Braking-lockup gate (issue #38): u is combined slip, so a locking
             // front tire pumps it to peak and drives the aligning force to full
             // scale. Under heavy brake/slide that near-peak force, with the laggy
@@ -5369,7 +5453,33 @@ namespace TrueforceForAll.Plugin
             double gMag = Math.Sqrt(
                 (double)_lastSurgeAccel * _lastSurgeAccel
                 + (double)_lastSwayAccel * _lastSwayAccel) / 9.81;
-            f01 *= _crashDuck.Tick(gMag, dtMs);
+            double duckF = _crashDuck.Tick(gMag, dtMs);
+            f01 *= duckF;
+            // Minimum-force floor (BMINF): LAST in the shaping chain by
+            // design. The feel fades above (lockup gate/circle, reversal
+            // soften) express LIGHTNESS, exactly what a belt wheel's
+            // internal-friction floor swallows, so their faded-but-nonzero
+            // output SHOULD be lifted to stay perceptible. The SILENCE gates
+            // are different: the low-speed gate suppresses crawl-speed slip
+            // garbage by attenuation (it is exactly 0 only below ~6 km/h) and
+            // the crash duck bottoms out at 15%, so a raw floor would lift
+            // exactly the states they exist to mute (adversarial review of
+            // this change proved both numerically: gravel-trap buzz at
+            // 6-20 km/h, wall-hit whipsaw at 2.4x the vetted level). Scaling
+            // the floor by both gate factors keeps quiet-by-design states
+            // quiet: full floor in normal driving, floor melting away exactly
+            // as fast as the gates close. Exact zero stays exact (utilization
+            // floor / sub-6 km/h), and the stage sits BEFORE the ramp multiply
+            // so menus and telemetry loss still decay to a true zero stream.
+            // Synthesis channel only; the centering/damper stability terms in
+            // MaybeReshapeFfb stay unremapped (a damper boosted to a floor
+            // would chatter).
+            if (_pModeBMinForce > 0f)
+            {
+                double minEff = _pModeBMinForce * lowGate * duckF;
+                if (minEff > 0.0)
+                    f01 = ModeBComposer.MinForceRemap(f01, minEff);
+            }
             double v = f01 * _mbRamp * 32767.0;
             if (v > short.MaxValue) v = short.MaxValue;
             else if (v < short.MinValue) v = short.MinValue;
@@ -5413,26 +5523,29 @@ namespace TrueforceForAll.Plugin
             if (_mbCenterDuckOn)
                 centerGain *= (float)ModeBComposer.SlideDuck(
                     _pModeBCenterDuck, _mbOverEma / ModeBComposer.OverCap);
-            if (centerGain != 0f)
-            {
-                float steer = _lastSteerNorm;
-                if (steer > 1f) steer = 1f; else if (steer < -1f) steer = -1f;
-                float dir = steer > 0f ? 1f : -1f;
-                v += centerGain * System.Math.Abs(steer) * dir * 32767.0;
-            }
-
-            // Velocity damper. Adds a torque opposing wheel motion so the
-            // centering force can't ring. Driven by the PHYSICAL wheel
-            // velocity (HID steering reader, ~report-rate, minimal lag)
-            // rather than Forza's 60 Hz EMA-smoothed telemetry steer, because
-            // the let-go oscillation is a fast physical wheel swing a lagged
-            // velocity can't catch. SIGN: a hot-lap trace (2026-06-27) proved
-            // Forza's convention is physical-torque ∝ -(FFB value), and the
-            // physical steer shares the game-steer sign (corr 0.999), so a
-            // force that OPPOSES velocity is +Kd*vel (the original `-=` was
-            // anti-damping and grew the oscillation). Clamped to half scale.
+            // Velocity damper gain, computed early because the physical-state
+            // block below serves both stability terms. Adds a torque opposing
+            // wheel motion so the centering force can't ring. Driven by the
+            // PHYSICAL wheel velocity (HID steering reader, ~report-rate,
+            // minimal lag) rather than Forza's 60 Hz EMA-smoothed telemetry
+            // steer, because the let-go oscillation is a fast physical wheel
+            // swing a lagged velocity can't catch. SIGN: a hot-lap trace
+            // (2026-06-27) proved Forza's convention is physical-torque
+            // ∝ -(FFB value), and the physical steer shares the game-steer
+            // sign (corr 0.999), so a force that OPPOSES velocity is +Kd*vel
+            // (the original `-=` was anti-damping and grew the oscillation).
+            // Clamped to half scale.
             float damperGain = _pModeBDamperGain * _mbRamp;
-            if (damperGain != 0f)
+
+            // Physical wheel state (position + velocity), shared by the
+            // damper and, when Direct centering (MBCPD) is on, the centering
+            // spring. Skipped entirely when no consumer needs it, so a
+            // damper-off, PD-off recipe runs the legacy path bit-for-bit.
+            float velLp = _mbDamperVelLp;
+            float physSteer = float.NaN;   // NaN = no fresh physical position
+            double dtD = 1.0;              // ms since the last physical-state tick
+            bool needPhys = damperGain != 0f || (_mbCenterPdOn && centerGain != 0f);
+            if (needPhys)
             {
                 // Prefer the physical wheel velocity; fall back to the telemetry
                 // velocity if the HID reader is absent or stale.
@@ -5458,37 +5571,87 @@ namespace TrueforceForAll.Plugin
                             _physVelPrevSteer = ps;
                             _physVelPrevTicks = t;
                         }
-                        // Use physical velocity only while fresh; if the wheel
-                        // stops streaming reports, zero it so a stale velocity
-                        // can't leave a constant offset torque on the wheel.
-                        if (Stopwatch.GetTimestamp() - t <= SteerMaxAgeTicks) vel = _physWheelVel;
+                        // Use physical state only while fresh; if the wheel
+                        // stops streaming reports, zero the velocity so a stale
+                        // value can't leave a constant offset torque on the
+                        // wheel (and leave physSteer NaN so the centering
+                        // spring falls back to the telemetry position).
+                        if (Stopwatch.GetTimestamp() - t <= SteerMaxAgeTicks)
+                        {
+                            vel = _physWheelVel;
+                            physSteer = sr.SteerNorm;
+                        }
                         else _physWheelVel = 0f;
                     }
                 }
 
-                // Band-limit the damper velocity (thirteenth wheel test,
-                // trace-proven). The damper is a delayed velocity feedback:
-                // force moves the wheel, HID reports the velocity ~15-20 ms
-                // late, so above ~1/(4·delay) the "opposing" force arrives
-                // more than half a cycle late and PUMPS the motion. The trace
-                // showed a self-sustained ~70 Hz limit cycle (force in phase
-                // with physical velocity, game telemetry frozen) at ±6k LSB,
-                // dead center of the G923's strongest motor band. A ~25 ms
-                // low-pass drops loop gain ~11x at 70 Hz (kills the cycle)
-                // while a genuine hands-off swing (1-3 Hz, what the damper
-                // exists to catch) passes almost untouched. Past the Mode B
-                // gate above this always applies.
+                // Band-limit the stability-term velocity (thirteenth wheel
+                // test, trace-proven). The damper is a delayed velocity
+                // feedback: force moves the wheel, HID reports the velocity
+                // ~15-20 ms late, so above ~1/(4·delay) the "opposing" force
+                // arrives more than half a cycle late and PUMPS the motion.
+                // The trace showed a self-sustained ~70 Hz limit cycle (force
+                // in phase with physical velocity, game telemetry frozen) at
+                // ±6k LSB, dead center of the G923's strongest motor band. A
+                // ~25 ms low-pass drops loop gain ~11x at 70 Hz (kills the
+                // cycle) while a genuine hands-off swing (1-3 Hz, what the
+                // damper exists to catch) passes almost untouched. The
+                // Direct-centering look-ahead term feeds on the SAME
+                // band-limited velocity for the same reason: a raw velocity
+                // lead would hand the 70 Hz loop its gain back through the
+                // centering path.
                 long nowD = Stopwatch.GetTimestamp();
-                double dtD = _mbDampPrevTicks == 0
+                dtD = _mbDampPrevTicks == 0
                     ? 1.0
                     : (nowD - _mbDampPrevTicks) * 1000.0 / Stopwatch.Frequency;
                 if (dtD < 0.1) dtD = 0.1; else if (dtD > 50.0) dtD = 50.0;
                 _mbDampPrevTicks = nowD;
                 float aD = (float)(1.0 - Math.Exp(-dtD / 25.0));
                 _mbDamperVelLp += (vel - _mbDamperVelLp) * aD;
-                vel = _mbDamperVelLp;
+                velLp = _mbDamperVelLp;
+            }
 
-                double damp = damperGain * vel * 32767.0;
+            if (centerGain != 0f)
+            {
+                // Direct centering (MBCPD): spring on the wheel's OWN position
+                // (fresh HID read) instead of the game's 60 Hz report, plus a
+                // look-ahead term on the band-limited wheel velocity so the
+                // spring aims at where the wheel is HEADED. A spring on a
+                // lagged position is an oscillator; position + lead gives the
+                // classic PD shape whose damping scales with the spring gain,
+                // so centering cannot ring however the two sliders are set.
+                // Toggle off: steerCmd is exactly the legacy clamped telemetry
+                // steer (and |steer|*sign(steer) == steer), so the shipped
+                // output is reproduced bit-for-bit.
+                float steer = (_mbCenterPdOn && !float.IsNaN(physSteer)) ? physSteer : _lastSteerNorm;
+                if (steer > 1f) steer = 1f; else if (steer < -1f) steer = -1f;
+                float steerCmd = steer;
+                if (_mbCenterPdOn)
+                {
+                    // Bumpless source handoff: when the HID reader goes stale
+                    // (or comes back), the position source switches and the
+                    // two sources disagree by the telemetry lag, which would
+                    // step the spring force in one tick. Slew-cap the position
+                    // at 0.012 norm/ms: ~2x the fastest real wheel swing
+                    // (a 3 Hz let-go oscillation peaks near 0.006 norm/ms),
+                    // so genuine motion passes untouched while a source step
+                    // slides over ~15 ms. Also dissolves the 8-bit game-steer
+                    // quantization on the fallback path.
+                    float maxStep = (float)(0.012 * dtD);
+                    float dStep = steerCmd - _mbCenterSteerPrev;
+                    if (dStep > maxStep) steerCmd = _mbCenterSteerPrev + maxStep;
+                    else if (dStep < -maxStep) steerCmd = _mbCenterSteerPrev - maxStep;
+                    _mbCenterSteerPrev = steerCmd;
+
+                    steerCmd += _pModeBCenterLeadMs * 0.001f * velLp;
+                    if (steerCmd > 1f) steerCmd = 1f; else if (steerCmd < -1f) steerCmd = -1f;
+                }
+                v += centerGain * steerCmd * 32767.0;
+            }
+
+            if (damperGain != 0f)
+            {
+                double damp = damperGain * velLp * 32767.0;
                 if (damp > 16383.0) damp = 16383.0;
                 else if (damp < -16383.0) damp = -16383.0;
                 v += damp;
@@ -5609,6 +5772,12 @@ namespace TrueforceForAll.Plugin
                     _pModeBGripTrim = C(value, 0.3f, 1.5f);
                     if (Settings != null) { Settings.ModeBGripTrim = _pModeBGripTrim; PersistSettings(); }
                     return $"Braking-grip trim = {_pModeBGripTrim:0.00} (radius = trim x grip-cal peak; 1.00 = the raw detected grip, lower lightens sooner)";
+                case "BLDEM":
+                    _mbLateralDemandOn = value >= 0.5f;
+                    if (Settings != null) { Settings.ModeBLateralDemand = _mbLateralDemandOn; PersistSettings(); }
+                    return _mbLateralDemandOn
+                        ? "Lateral-demand force ON: steering force follows cornering (lateral) grip, so straight-line braking makes almost none and cannot self-oscillate."
+                        : "Lateral-demand force OFF: steering force uses combined grip (legacy).";
                 case "MBREV":
                     _mbReversalDampOn = value >= 0.5f;
                     if (Settings != null) { Settings.ModeBReversalDamp = _mbReversalDampOn; PersistSettings(); }
@@ -5649,8 +5818,22 @@ namespace TrueforceForAll.Plugin
                     _pModeBCenterDuck = C(value, 0f, 1f);
                     if (Settings != null) { Settings.ModeBCenterDuckAmount = _pModeBCenterDuck; PersistSettings(); }
                     return $"Centering ease amount = {_pModeBCenterDuck:0.00} (0 = centering never fades; 1 = centering fully gone at full slide)";
+                case "BMINF":
+                    _pModeBMinForce = C(value, 0f, 0.25f);
+                    if (Settings != null) { Settings.ModeBMinForce = _pModeBMinForce; PersistSettings(); }
+                    return $"Min force = {_pModeBMinForce:0.00} (smallest force the wheel renders; raise until faint forces just move YOUR wheel; 0 = off)";
+                case "MBCPD":
+                    _mbCenterPdOn = value >= 0.5f;
+                    if (Settings != null) { Settings.ModeBCenterPd = _mbCenterPdOn; PersistSettings(); }
+                    return _mbCenterPdOn
+                        ? $"Direct centering ON: centering springs on the wheel's own position (look-ahead {_pModeBCenterLeadMs:0} ms), so the pull toward straight is fresh and cannot ring. Turn OFF and report your wheel model if centering ever pushes AWAY from center."
+                        : "Direct centering OFF: centering uses game-reported steering (legacy).";
+                case "BCLEAD":
+                    _pModeBCenterLeadMs = C(value, 0f, 100f);
+                    if (Settings != null) { Settings.ModeBCenterLeadMs = _pModeBCenterLeadMs; PersistSettings(); }
+                    return $"Direct centering look-ahead = {_pModeBCenterLeadMs:0} ms (how far ahead of the wheel's motion the centering aims; raise if a released wheel still overshoots center, 0 = position only)";
                 default:
-                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BCS/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/MBTRAIL/BTRANGE/MBLEAD/BLEAD/MBCDUCK/BCDUCK)";
+                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BCS/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/MBTRAIL/BTRANGE/MBLEAD/BLEAD/MBCDUCK/BCDUCK/BLDEM/BMINF/MBCPD/BCLEAD)";
             }
         }
 
@@ -6564,14 +6747,45 @@ namespace TrueforceForAll.Plugin
                 bool shouldListen   = !string.IsNullOrEmpty(_activeGame) && IsForzaGameName(_activeGame);
                 if (!currentlyForza && !shouldListen) return;
 
+                string currentKey = CurrentForzaConfigKey();
+
                 // Bulk re-apply paths (slot mount, backup restore) usually leave the
                 // Forza config untouched; keep the healthy listener in place then
                 // rather than blipping telemetry mid-drive with a dispose/rebind.
                 // Explicit UI edits keep the unconditional rebuild (a re-typed port
                 // stays a usable "kick the listener" gesture).
                 if (onlyIfChanged && _forzaUdp != null
-                    && string.Equals(CurrentForzaConfigKey(), _forzaUdpConfigKey, StringComparison.Ordinal))
+                    && string.Equals(currentKey, _forzaUdpConfigKey, StringComparison.Ordinal))
                     return;
+
+                // Forward-only change (same receive port+bind; only the forward
+                // endpoint and/or gap bridge differ): update the forward on the
+                // LIVE source instead of tearing the listener down. Rebinding the
+                // receive port while SimHub is also bound to it hands Forza's
+                // datagrams to SimHub until a plugin restart, which cuts our
+                // telemetry — and in Mode B, where the only force is synthesized
+                // from that telemetry, the wheel goes dead (reported: "toggling
+                // udp forward mid-play cuts ffb and tf until i restart the
+                // plugin"). The forward is a separate send-only socket, so it can
+                // change with zero disturbance to the stream feeding the effects.
+                if (_forzaUdp != null
+                    && !string.Equals(currentKey, _forzaUdpConfigKey, StringComparison.Ordinal)
+                    && string.Equals(BindPrefixOf(currentKey), BindPrefixOf(_forzaUdpConfigKey),
+                                     StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        _forzaUdp.GapBridge.Enabled = Settings.Forza.ForwardGapBridge;
+                        _forzaUdp.UpdateForward(BuildForzaForwardEndpoint(Settings.Forza));
+                        _forzaUdpConfigKey = currentKey;
+                        return;
+                    }
+                    catch
+                    {
+                        // Anything unexpected: fall through to the full rebuild,
+                        // which re-establishes receive and forward from scratch.
+                    }
+                }
 
                 // Tear the Forza listener down so SwapTelemetrySource rebuilds it
                 // with the new port/bind/forward settings. Route the active source
@@ -6609,6 +6823,19 @@ namespace TrueforceForAll.Plugin
                      + (fwd == null ? "" : fwd.ToString()) + "|" + f.ForwardGapBridge;
             }
             catch { return ""; }
+        }
+
+        // "port|bind|forward|gapbridge" -> "port|bind". Lets ApplyForzaSettings
+        // tell a forward-only edit (same receive port+bind, so no rebind needed)
+        // from one that must rebind the listener. Neither a port nor a dotted IP
+        // contains '|', so the receive-key prefix is unambiguous.
+        private static string BindPrefixOf(string configKey)
+        {
+            if (string.IsNullOrEmpty(configKey)) return configKey;
+            int first = configKey.IndexOf('|');
+            if (first < 0) return configKey;
+            int second = configKey.IndexOf('|', first + 1);
+            return second < 0 ? configKey : configKey.Substring(0, second);
         }
 
         public Control GetWPFSettingsControl(PluginManager pluginManager) => new SettingsControl(this);
@@ -10370,10 +10597,14 @@ namespace TrueforceForAll.Plugin
         /// change, light a phantom car-dirty star, and invite a car Save
         /// that persists the missing live entry as a file delete
         /// (adversarial review of the first cut).</summary>
-        public void ReleaseSectionFromCarLayer(SectionKind kind)
+        /// <returns>True when the car layer now matches the just-saved state on
+        /// disk; false when a car-file write failed (the caller should surface it
+        /// rather than report a clean save, so the user knows the car preset may
+        /// revert on the next load). "Nothing to release" is a success.</returns>
+        public bool ReleaseSectionFromCarLayer(SectionKind kind)
         {
-            if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return;
-            if (!SectionHasCarScope(kind)) return;
+            if (Settings == null || string.IsNullOrEmpty(_activeCarId)) return true;
+            if (!SectionHasCarScope(kind)) return true;
 
             string boundName    = GetActiveCarPresetName(_activeCarId);
             bool   boundBuiltin = !string.IsNullOrEmpty(boundName)
@@ -10390,14 +10621,16 @@ namespace TrueforceForAll.Plugin
                     // Keep-alive re-pin: live claim stays, file + baseline
                     // move to the just-saved values (in place, lineage
                     // preserved), so file == effective state everywhere.
-                    if (SaveSectionToActiveCarOverride(kind))
+                    bool repinned = SaveSectionToActiveCarOverride(kind);
+                    if (repinned)
                         SimHub.Logging.Current.Info(
                             $"[TF4ALL] Car preset for '{_activeCarId}' kept alive: {kind} is its only section, re-pinned at the just-saved values.");
                     ApplyActiveCarOverride();
-                    return;
+                    return repinned;
                 }
             }
 
+            bool fileOk = true;
             if (Settings.CarOverrides != null
                 && Settings.CarOverrides.TryGetValue(_activeCarId, out var live)
                 && live != null)
@@ -10409,9 +10642,10 @@ namespace TrueforceForAll.Plugin
             if (_lastPersistedCarOverrides.TryGetValue(_activeCarId, out var saved)
                 && saved != null && OverrideHasSection(saved, kind))
             {
-                RemoveSectionFromActiveCarOverrideFile(kind);
+                fileOk = RemoveSectionFromActiveCarOverrideFile(kind);
             }
             ApplyActiveCarOverride();
+            return fileOk;
         }
 
         /// <summary>WYSIWYG for whole-preset saves: live effect edits made
@@ -11798,14 +12032,23 @@ namespace TrueforceForAll.Plugin
             // it null but the resolver fills CatalogCyl from the bake.
             int? telCyl = ActiveCarEffectiveCyl();
 
-            // No rev-range discriminator yet (engine off / pre-telemetry). We
-            // can't safely create a new row, but an existing variant may still be
+            // No discriminator at all (engine off / pre-telemetry). We can't
+            // safely create a new row, but an existing variant may still be
             // the one we're on (single variant, pinned selection, or last-used).
             // Defer to the read-only finder so an edit targets that row rather
             // than failing. changed stays false -> no spurious create/flush.
             // (FindActiveStoredVariant re-enters _carFactsLock, which Monitor
             // allows recursively on the same thread.)
-            if (telMaxBand <= 0 && telRedBand <= 0)
+            //
+            // A cyl count on its own IS enough to create: it's a real
+            // discriminator (FindActiveStoredVariant and PickStoredVariant both
+            // match on it), and the row starts under-specified so the upgrade
+            // branch below fills MaxRpm/RedlineRpm in place the moment they
+            // appear. Requiring a rev range here was a dead end for any game
+            // that gives us cylinders but no MaxRpm: no row could ever be
+            // created, so the cyl-only signature matched nothing and every
+            // redline / engine pin was refused forever.
+            if (telMaxBand <= 0 && telRedBand <= 0 && !telCyl.HasValue)
                 return FindActiveStoredVariant();
 
             string key = _activeGame + "/" + _activeCarId;
@@ -21646,6 +21889,33 @@ namespace TrueforceForAll.Plugin
             _ffbTap.SetOverrideIdentity((ushort)(Settings?.ManualUsbPcapVid ?? 0), (ushort)(Settings?.ManualUsbPcapPid ?? 0));
             WireFfbTapCallbacks(_ffbTap);
             ApplyUsbBytesLoggingSetting();
+
+            // Recreate the physical steering reader the stop path disposed.
+            // Symmetry fix: this method rebuilt the tap but forgot the reader,
+            // so a picker session or USBPcap reinstall silently cost the
+            // damper + Direct centering their low-lag position source (and
+            // the stationary spring its pause coverage) until the next full
+            // device bring-up. The reader's own self-heal can't help here: a
+            // nulled FIELD has no dead session to resurrect. Mirrors the
+            // bring-up creation site; failure is non-fatal (consumers fall
+            // back to game steering, same as everywhere else).
+            if (_hidWheelVid != 0 || _hidWheelPid != 0)
+            {
+                try
+                {
+                    _steeringReader = new WheelSteeringReader(_hidWheelVid, _hidWheelPid)
+                    {
+                        Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
+                    };
+                    _steeringReader.Start();
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Steering reader failed to restart: {ex.Message}");
+                    _steeringReader = null;
+                }
+            }
+
             return _ffbTap.Start();
         }
 

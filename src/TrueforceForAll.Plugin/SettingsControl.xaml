@@ -2690,6 +2690,15 @@
 
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Min force:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBMinForceSlider" Minimum="0" Maximum="0.25" SmallChange="0.01" LargeChange="0.02"
+                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="ModeBMinForceText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.00"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Smallest force your wheel actually plays. Belt-driven wheels (like the G923) swallow faint forces as internal friction, so light moments feel dead; raise this until the lightest cues just move the rim. Leave at 0 if your wheel already feels every detail."/>
+
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Lockup recovery (ms):" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBRecoverSlider" Minimum="20" Maximum="400" SmallChange="10" LargeChange="50"
                             TickFrequency="50" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -2734,14 +2743,19 @@
                     <TextBlock Text="Advanced tuning" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
-                    <Grid Margin="0,0,0,2">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Grip limit:" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="ModeBPeakSlider" Minimum="0.4" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
-                                    TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" x:Name="ModeBPeakText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
-                    </Grid>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Where the game's combined-slip metric counts as the grip limit (1.0 = Forza's own limit). Lower = the wheel peaks and washes out earlier."/>
+                    <!-- Global grip-limit fallback: only relevant when per-car grip auto-calibration
+                         is OFF (with it on, the learner owns the per-car limit and this just double-scales),
+                         so the row is hidden while auto-cal is on (see UpdateModeBGripLimitVisibility). -->
+                    <StackPanel x:Name="ModeBGripLimitRow">
+                        <Grid Margin="0,0,0,2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Grip limit:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="ModeBPeakSlider" Minimum="0.4" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="ModeBPeakText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Where the game's combined-slip metric counts as the grip limit (1.0 = Forza's own limit). Lower = the wheel peaks and washes out earlier. Only used when per-car grip auto-calibration is off."/>
+                    </StackPanel>
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Slide lightness:" Style="{StaticResource LabelText}"/>
@@ -2798,15 +2812,22 @@
                     <CheckBox x:Name="ModeBSlideGrowthCheck" Margin="0,0,0,2" Content="Countersteer growth"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Countersteer pull grows with how deep the slide is: a shallow drift asks politely, a big moment yanks toward opposite lock."/>
-                    <CheckBox x:Name="ModeBGripCalCheck" Margin="0,0,0,2" Content="Per-car grip auto-calibration"
+                    <CheckBox x:Name="ModeBGripCalCheck" Margin="0,0,0,2" Content="Adaptive grip &amp; braking feel"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Learns where each car's grip actually tops out while you drive (about a lap of pushing) and normalizes the limit feel to it."/>
-                    <CheckBox x:Name="ModeBFrictionCircleCheck" Margin="0,0,0,2" Content="Friction circle braking (A/B test)"
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Learns where each car's grip actually tops out as you drive (about a lap of pushing) and shapes the limit and braking feel to it: the wheel lightens at each car's real grip limit as you brake or slide, instead of at one fixed point. Off = a fixed manual grip limit (the slider above) and the classic lockup fade."/>
+                    <CheckBox x:Name="ModeBLateralDemandCheck" Margin="0,0,0,2" Content="Lateral-demand force (experimental)"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Alternate braking-feel law: braking or wheelspin spends the tire's grip, and steering force smoothly fades to what is left (no lockup threshold). Off = the standard lockup fade. Toggle mid-drive and keep whichever feels better."/>
-                    <CheckBox x:Name="ModeBBrakeLearnCheck" Margin="0,0,0,2" Content="Auto braking grip per car (A/B test)"
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Bases the steering force on cornering (lateral) grip instead of total grip, so braking in a straight line makes almost no force and the wheel cannot start swinging left and right on its own. Cornering feel is unchanged. Experimental."/>
+                    <CheckBox x:Name="ModeBCenterPdCheck" Margin="0,0,0,2" Content="Direct centering (experimental)"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,0" Text="Sets the braking-grip point from each car's learned grip limit (the grip auto-calibration above) instead of one fixed value, so the wheel lightens at each car's real limit. Needs grip auto-calibration on and about a lap of hard driving per car."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Centering follows the wheel's own position instead of the game's delayed report, and aims slightly ahead of the wheel's motion, so the pull toward straight is quicker and a released wheel settles instead of swinging. If centering ever pushes away from center with this on, turn it off and report your wheel model."/>
+                    <Grid Margin="20,0,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Look-ahead (ms):" Style="{StaticResource LabelText}"/>
+                        <Slider     Grid.Column="1" x:Name="ModeBCenterLeadSlider" Minimum="0" Maximum="100" SmallChange="5" LargeChange="10"
+                                    TickFrequency="10" ValueChanged="ModeBCenterLeadSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="ModeBCenterLeadText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
+                    </Grid>
                 </StackPanel>
             </Expander>
 

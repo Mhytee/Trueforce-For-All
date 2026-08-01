@@ -17,10 +17,21 @@
 // wheel. The value is normalized to [-1, 1] (0 = centred) from the axis's own
 // logical range. Read failures are non-fatal: the spring just falls back to
 // game-reported steering.
+//
+// Self-heal: the HID stream dies silently when something else grabs the
+// device (G HUB opening it exclusively, a USB hiccup, a replug): the receiver
+// stops, LastUpdateTicks freezes, and every consumer falls back to game
+// telemetry for the rest of the session. EnsureAlive(), polled cheaply from
+// the plugin's DataUpdate tick, notices the dead receiver (IsRunning on the
+// HidSharp receiver, a definite death signal, so a perfectly still wheel can
+// never false-positive) and reopens the interface on a background task, at
+// most one attempt per RetrySpacingTicks. Same philosophy as the FFB tap's
+// tiered self-heal (issue #12).
 
 using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using HidSharp;
 using HidSharp.Reports;
 using HidSharp.Reports.Input;
@@ -47,6 +58,19 @@ namespace TrueforceForAll.Core
         private uint _steeringUsage;
         private int _running;
 
+        // Self-heal state. _wantRunning: Start() was requested and Stop() has
+        // not been; distinct from _running (an open, receiving session) so a
+        // failed open or a dead receiver keeps retrying. _failLogged latches
+        // per failure episode so retries don't spam the log; success resets it
+        // and logs a single recovery line.
+        private int _wantRunning;
+        private int _healInFlight;
+        private long _lastAttemptTicks;
+        private int _failLogged;
+
+        /// <summary>Minimum spacing between reopen attempts (~5 s).</summary>
+        public static readonly long RetrySpacingTicks = Stopwatch.Frequency * 5;
+
         public Action<string> Logger { get; set; }
 
         /// <summary>Latest physical steering, normalized to roughly [-1, 1]
@@ -72,25 +96,99 @@ namespace TrueforceForAll.Core
 
         public void Start()
         {
+            Interlocked.Exchange(ref _wantRunning, 1);
+            // Claim the heal flag for the synchronous attempt: a wedged USB
+            // stack can hold OpenSteeringInterface past RetrySpacingTicks, and
+            // without the claim the liveness poller would schedule a heal that
+            // races this open on the same fields (double attach / double
+            // receiver.Start). If a heal is already in flight, it does the
+            // opening; _wantRunning is set, so nothing is lost.
+            if (Interlocked.CompareExchange(ref _healInFlight, 1, 0) != 0) return;
+            try { TryStart(); }
+            finally { Interlocked.Exchange(ref _healInFlight, 0); }
+        }
+
+        // One synchronous open attempt. Sets _running on success; safe to call
+        // again after a failed open or a dead session (the heal path).
+        private void TryStart()
+        {
             if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
+            Interlocked.Exchange(ref _lastAttemptTicks, Stopwatch.GetTimestamp());
             try
             {
                 if (!OpenSteeringInterface())
                 {
-                    Log("WheelSteeringReader: no steering axis found on the wheel's HID interfaces; physical-position spring disabled (falling back to game steering).");
+                    if (Interlocked.Exchange(ref _failLogged, 1) == 0)
+                        Log("WheelSteeringReader: no steering axis found / interface busy; falling back to game steering (will keep retrying in the background).");
                     Interlocked.Exchange(ref _running, 0);
                     return;
                 }
                 _receiver.Received += OnReceived;
                 _receiver.Start(_stream);
-                Log($"WheelSteeringReader: reading physical steering (usage 0x{_steeringUsage:X8}).");
+                if (Interlocked.Exchange(ref _failLogged, 0) == 1)
+                    Log($"WheelSteeringReader: recovered, reading physical steering again (usage 0x{_steeringUsage:X8}).");
+                else
+                    Log($"WheelSteeringReader: reading physical steering (usage 0x{_steeringUsage:X8}).");
             }
             catch (Exception ex)
             {
-                Log($"WheelSteeringReader: start failed ({ex.GetType().Name}: {ex.Message}); falling back to game steering.");
+                if (Interlocked.Exchange(ref _failLogged, 1) == 0)
+                    Log($"WheelSteeringReader: start failed ({ex.GetType().Name}: {ex.Message}); falling back to game steering (will keep retrying in the background).");
                 Cleanup();
                 Interlocked.Exchange(ref _running, 0);
             }
+        }
+
+        /// <summary>Pure heal gate: attempt a reopen only when one is wanted,
+        /// the session is dead, and the spacing since the last attempt has
+        /// elapsed. Extracted so the gating logic is unit-testable;
+        /// <see cref="EnsureAlive"/> is the runtime wrapper.</summary>
+        public static bool ShouldAttemptHeal(bool wantRunning, bool sessionAlive,
+                                             long nowTicks, long lastAttemptTicks, long spacingTicks)
+            => wantRunning && !sessionAlive && (nowTicks - lastAttemptTicks) >= spacingTicks;
+
+        /// <summary>Cheap liveness poll; call from any periodic tick (~60 Hz is
+        /// fine, the healthy path is a few field reads). When the receiver has
+        /// died (device grabbed, USB hiccup, replug) or the initial open never
+        /// succeeded, schedules ONE background reopen attempt per
+        /// <see cref="RetrySpacingTicks"/> while Start() is in effect. Never
+        /// blocks the caller: HID enumeration and open run on a pool thread.</summary>
+        public void EnsureAlive()
+        {
+            bool want = Interlocked.CompareExchange(ref _wantRunning, 0, 0) != 0;
+            var recv = _receiver;
+            bool wasReceiving = _running != 0;
+            bool alive = wasReceiving && recv != null && recv.IsRunning;
+            long now = Stopwatch.GetTimestamp();
+            if (!ShouldAttemptHeal(want, alive, now, Interlocked.Read(ref _lastAttemptTicks), RetrySpacingTicks))
+                return;
+            if (Interlocked.CompareExchange(ref _healInFlight, 1, 0) != 0) return;
+
+            // A session that WAS receiving and died deserves its own log line
+            // (an open failure logs inside TryStart); latch per episode.
+            if (wasReceiving && Interlocked.Exchange(ref _failLogged, 1) == 0)
+                Log("WheelSteeringReader: physical steering stream stopped (device grabbed or USB hiccup?); falling back to game steering and retrying in the background.");
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    // Tear down the dead session (Cleanup detaches the event
+                    // handler), then one fresh open attempt.
+                    Cleanup();
+                    Interlocked.Exchange(ref _running, 0);
+                    if (Interlocked.CompareExchange(ref _wantRunning, 0, 0) != 0)
+                        TryStart();
+                    // Stop() raced us into shutdown: undo an open that slipped
+                    // through so no handle outlives the reader.
+                    if (Interlocked.CompareExchange(ref _wantRunning, 0, 0) == 0)
+                    {
+                        Interlocked.Exchange(ref _running, 0);
+                        Cleanup();
+                    }
+                }
+                finally { Interlocked.Exchange(ref _healInFlight, 0); }
+            });
         }
 
         // Find the HID interface + device-item that carries the steering axis,
@@ -203,6 +301,7 @@ namespace TrueforceForAll.Core
 
         public void Stop()
         {
+            Interlocked.Exchange(ref _wantRunning, 0);   // no further heal attempts
             Interlocked.Exchange(ref _running, 0);
             Cleanup();
         }
