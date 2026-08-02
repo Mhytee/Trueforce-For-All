@@ -6346,6 +6346,25 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // TF4ALL Dash phone-access funnel (header phone button + Settings
+        // tab). Opens our QR dialog (DashPhoneWindow) deep-linked to the
+        // dash, so scanning lands straight on TF4ALL Dash instead of
+        // SimHub's dashboard list. Our own dialog rather than SimHub's
+        // MobileAccessAssistant: that one has no copyable URL and no room
+        // for the same-network / add-to-home-screen guidance.
+        private void DashPhoneAccess_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                new DashPhoneWindow { Owner = Window.GetWindow(this) }.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Dash phone-access window failed: " + ex.Message);
+            }
+        }
+
         // Select the ComboBoxItem whose Tag matches the given string (used to
         // map a stored scalar back onto a fixed dropdown). No-op if none match.
         private static void SelectComboByTag(ComboBox combo, string tag)

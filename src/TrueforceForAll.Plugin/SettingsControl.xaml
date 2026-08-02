@@ -873,6 +873,19 @@
                              shortcut. Driven by RefreshAccountChip. -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal"
                                     VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <!-- TF4ALL Dash phone access. Opens our QR dialog
+                                 (DashPhoneWindow) deep-linked to the dash, so scanning
+                                 the QR lands straight on TF4ALL Dash instead of
+                                 SimHub's dashboard list. Always visible: this is the
+                                 funnel for users who don't know SimHub's web dash
+                                 exists. The Settings > TF4ALL Dash section has the
+                                 same entry point. -->
+                            <Button x:Name="DashPhoneHeaderButton"
+                                    Height="26" Padding="6,0" Margin="0,0,4,0" Cursor="Hand"
+                                    Click="DashPhoneAccess_Click"
+                                    ToolTip="Control effects from your phone or tablet. Shows a QR code that opens TF4ALL Dash.">
+                                <TextBlock Text="📱" FontSize="13" VerticalAlignment="Center"/>
+                            </Button>
                             <!-- Achievements crown + new-achievement dot. Shown when signed
                                  in; click opens the Achievements tracker and clears the dot. -->
                             <Button x:Name="AchievementCrownButton" Visibility="Collapsed"
@@ -3008,7 +3021,18 @@
                     <TextBlock Text="TF4ALL Dash" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
-                    <TextBlock Text="Shift light direction:" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
+                    <!-- Phone-access funnel: same handler as the header phone
+                         button; the QR dialog itself carries the scan / same
+                         network / Add to Home Screen guidance. -->
+                    <Button x:Name="DashPhoneSettingsButton" Content="Open on your phone or tablet…"
+                            Style="{StaticResource PopoverPrimaryButton}"
+                            HorizontalAlignment="Left" Height="26"
+                            Click="DashPhoneAccess_Click"
+                            ToolTip="Shows a QR code and link that open TF4ALL Dash on your phone."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="Control effects, gains, and presets from your phone or tablet while driving. No SimHub setup needed: scan the QR code and the dash opens in your phone's browser."/>
+
+                    <TextBlock Text="Shift light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
                     <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="Left to right"
                                  Checked="RemoteRevDirection_Changed"
                                  ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>

@@ -77,6 +77,13 @@
       <HintPath>$(SimHubPath)\MahApps.Metro.IconPacks.Material.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- QRCoder ships inside SimHub (its own mobile access assistant uses
+         it); the TF4ALL Dash phone dialog binds to that copy at runtime.
+         Compile-only, never ship our own (same rule as HidSharp/NAudio). -->
+    <Reference Include="QRCoder">
+      <HintPath>$(SimHubPath)\QRCoder.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <!-- System.Net.Http ships in net48's BCL but isn't auto-referenced by
          SDK-style projects targeting net48. UpdateChecker uses HttpClient. -->
     <Reference Include="System.Net.Http" />
