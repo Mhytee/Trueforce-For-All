@@ -17,6 +17,7 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -26,12 +27,52 @@ namespace TrueforceForAll.Plugin
     internal sealed class DashPhoneWindow : Window
     {
         private static readonly Brush WindowBg = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
-        private static readonly Brush PanelBg  = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
         private static readonly Brush InputBg  = new SolidColorBrush(Color.FromRgb(0x3D, 0x3D, 0x3D));
         private static readonly Brush TextFg   = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
         private static readonly Brush MutedFg  = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A));
         private static readonly Brush HeaderFg = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
         private static readonly Brush BorderFg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
+
+        // Stock WPF button chrome paints its own light-gray body over any
+        // Background we set, and SimHub's theme doesn't reach into windows
+        // the plugin opens itself, so the dialog templates its buttons the
+        // same way the settings panel's styled buttons do: flat rounded
+        // Border with hover/press shades. Copy gets the plugin's primary
+        // green; Open/Close are neutral dark chips.
+        private static readonly Style PrimaryButtonStyle = MakeButtonStyle(
+            Color.FromRgb(0x3D, 0x8B, 0x40), Color.FromRgb(0x46, 0x9A, 0x4A),
+            Color.FromRgb(0x34, 0x7A, 0x37), Brushes.White);
+        private static readonly Style NeutralButtonStyle = MakeButtonStyle(
+            Color.FromRgb(0x3D, 0x3D, 0x3D), Color.FromRgb(0x4A, 0x4A, 0x4A),
+            Color.FromRgb(0x30, 0x30, 0x30), new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0)));
+
+        private static Style MakeButtonStyle(Color bg, Color hover, Color press, Brush fg)
+        {
+            var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+            presenter.SetValue(FrameworkElement.MarginProperty,
+                new TemplateBindingExtension(Control.PaddingProperty));
+            presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            var border = new FrameworkElementFactory(typeof(Border), "Bd");
+            border.SetValue(Border.BackgroundProperty, new SolidColorBrush(bg));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+            border.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+            border.AppendChild(presenter);
+            var template = new ControlTemplate(typeof(Button)) { VisualTree = border };
+            var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(hover), "Bd"));
+            template.Triggers.Add(hoverTrigger);
+            var pressTrigger = new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true };
+            pressTrigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(press), "Bd"));
+            template.Triggers.Add(pressTrigger);
+            var style = new Style(typeof(Button));
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, fg));
+            style.Setters.Add(new Setter(Control.FontSizeProperty, 12.0));
+            style.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold));
+            style.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
+            return style;
+        }
 
         public DashPhoneWindow()
         {
@@ -128,7 +169,7 @@ namespace TrueforceForAll.Plugin
             var copyBtn = new Button {
                 Content = "Copy", Padding = new Thickness(12, 4, 12, 4),
                 Margin = new Thickness(8, 0, 0, 0), MinWidth = 64,
-                Foreground = TextFg, Background = PanelBg,
+                Style = PrimaryButtonStyle,
             };
             copyBtn.Click += (s, e) =>
             {
@@ -161,7 +202,7 @@ namespace TrueforceForAll.Plugin
 
             var openBtn = new Button {
                 Content = "Open on this PC", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg,
+                Style = NeutralButtonStyle,
                 ToolTip = "Opens the dash in this PC's browser to check it's being served.",
             };
             openBtn.Click += (s, e) =>
@@ -190,7 +231,7 @@ namespace TrueforceForAll.Plugin
             }
             var closeBtn = new Button {
                 Content = "Close", Padding = new Thickness(12, 5, 12, 5),
-                Foreground = TextFg, Background = PanelBg,
+                Style = NeutralButtonStyle,
                 IsCancel = true, IsDefault = true,
             };
             closeBtn.Click += (s, e) => Close();
