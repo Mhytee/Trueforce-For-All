@@ -4345,14 +4345,16 @@ namespace TrueforceForAll.Plugin
                     if (_gripCalResetRequested)
                     {
                         _gripCalResetRequested = false;
+                        // Remove bumps the dictionary version too: same lock as
+                        // FlushGripCal, or a concurrent serialize throws.
                         if (!string.IsNullOrEmpty(_gripCalKey))
-                            Settings?.CarGripCalibration?.Remove(_gripCalKey);
+                            lock (_carFactsLock) { Settings?.CarGripCalibration?.Remove(_gripCalKey); }
                         _gripCal.Reset();
-                        _mbCalPeak = (float)_gripCal.EffectivePeak;
+                        _mbCalPeak = _mbAutoCalOn ? (float)_gripCal.EffectivePeak : 1f;
                         _calConvergedLogged = false;
                         ScheduleSettingsFlush();
                         SimHub.Logging.Current.Info(
-                            $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to 1.000, confidence 0; re-learning.");
+                            $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0; re-learning.");
                     }
                     long nowCal = Stopwatch.GetTimestamp();
                     double dtMsCal = _calPrevTicks == 0
@@ -5082,7 +5084,7 @@ namespace TrueforceForAll.Plugin
         // radius follows each car's grip-cal learned peak (times _pModeBGripTrim)
         // instead of the manual BLOCKPT point. The grip cal is stable + per-car;
         // the earlier bespoke slip-at-peak-decel learner was too noisy on-wheel
-        // (BrakingGripLearner.cs is retained but unused). Telemetry thread writes
+        // and its class was deleted 2026-08-02. Telemetry thread writes
         // _mbGripPeakForRadius; the FFB thread reads it.
         private volatile bool  _mbBrakeLearnOn;
         // Lateral-demand A/B (issue #38 loop root-cause): base the SAT grip
@@ -5129,13 +5131,24 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings == null || string.IsNullOrEmpty(_gripCalKey)) return;
             if (_gripCal.QualifyingSec <= 0.0) return;   // never learned: don't pollute the dict
-            if (Settings.CarGripCalibration == null)
-                Settings.CarGripCalibration = new Dictionary<string, CarGripCal>();
-            Settings.CarGripCalibration[_gripCalKey] = new CarGripCal
+            // Structural dict mutation from the TELEMETRY thread: a new variant
+            // key is an Add, which bumps the dictionary version and throws
+            // "Collection was modified" inside any concurrent serialize
+            // (PersistSettingsCore, BuildEnvelopeLocked, the account-switch
+            // profile snapshot). Those all hold _carFactsLock; this is the
+            // writer that was missing it, so the save it collided with was
+            // silently lost. Monitor is reentrant and the body is allocation
+            // only, so holding it here costs the telemetry thread nothing.
+            lock (_carFactsLock)
             {
-                Peak          = (float)_gripCal.Peak,
-                QualifyingSec = (float)_gripCal.QualifyingSec,
-            };
+                if (Settings.CarGripCalibration == null)
+                    Settings.CarGripCalibration = new Dictionary<string, CarGripCal>();
+                Settings.CarGripCalibration[_gripCalKey] = new CarGripCal
+                {
+                    Peak          = (float)_gripCal.Peak,
+                    QualifyingSec = (float)_gripCal.QualifyingSec,
+                };
+            }
         }
 
         /// <summary>Swap the learner to the active VARIANT: flush the outgoing
@@ -5162,7 +5175,12 @@ namespace TrueforceForAll.Plugin
             if (key != null) Settings?.CarGripCalibration?.TryGetValue(key, out saved);
             if (saved != null) _gripCal.Restore(saved.Peak, saved.QualifyingSec);
             else _gripCal.Reset();
-            _mbCalPeak = (float)_gripCal.EffectivePeak;
+            // Honour the adaptive-grip toggle, exactly like ApplyModeBFeel. With
+            // auto-cal OFF the force path multiplies the manual Grip limit by
+            // _mbCalPeak, so writing the learned peak here silently double-scaled
+            // it on every car change (worse since the fresh-car nominal moved off
+            // 1.0): the wheel came out lighter than the visible slider claimed.
+            _mbCalPeak = _mbAutoCalOn ? (float)_gripCal.EffectivePeak : 1f;
             _mbGripPeakForRadius = (float)_gripCal.EffectivePeak;   // radius follows the new car's grip cal
             _calPrevTicks = 0;
             _calConvergedLogged = _gripCal.Confidence >= 1.0;
@@ -14751,7 +14769,14 @@ namespace TrueforceForAll.Plugin
         // account change. Decided by the CALLER before the mount runs (the interactive
         // prompt lives in OnActiveIdentityChanged), so the mount never blocks on UI while
         // its state is half-swapped.
-        internal enum ProfileApplyChoice { Apply, KeepCurrent }
+        // KeepCurrent is the USER's choice from the prompt: the live tuning wins
+        // AND becomes this account's saved profile, exactly as the dialog says.
+        // KeepCurrentUnprompted is the failure fallback (no prompt was shown):
+        // the live tuning still wins, but the incoming account's saved profile
+        // is left ALONE, because overwriting it was never consented to and the
+        // same failure that triggered the fallback may have left the outgoing
+        // profile stale or empty.
+        internal enum ProfileApplyChoice { Apply, KeepCurrent, KeepCurrentUnprompted }
 
         // Re-entrancy guard: a nested mount (an auto-pull apply racing an identity
         // change) would corrupt the half-swapped slot state, so it is skipped + logged.
@@ -14847,14 +14872,46 @@ namespace TrueforceForAll.Plugin
                     }
                     else
                     {
-                        newSlot.ProfileSettingsJson = priorSlot.ProfileSettingsJson;
-                        newSlot.ProfileForzaJson    = priorSlot.ProfileForzaJson;
+                        // Adopt the kept tuning as this account's saved profile
+                        // ONLY when the user actually chose that in the prompt
+                        // and we have a real profile to write. An unprompted
+                        // fallback keep, or an empty outgoing profile (the stash
+                        // shares the failure that caused the fallback), would
+                        // otherwise destroy the incoming account's saved tuning:
+                        // an empty ProfileSettingsJson with ProfileSeededV1 left
+                        // true reads as a brand-new slot on the next switch, so
+                        // that account's tuning and sync state are gone for good.
+                        if (profileChoice == ProfileApplyChoice.KeepCurrent
+                            && !string.IsNullOrEmpty(priorSlot.ProfileSettingsJson))
+                        {
+                            newSlot.ProfileSettingsJson = priorSlot.ProfileSettingsJson;
+                            newSlot.ProfileForzaJson    = priorSlot.ProfileForzaJson;
+                        }
                         // Sync state still follows the slot (it is account
                         // bookkeeping, not feel), exactly as ApplyProfileToLive
                         // would have set it.
                         Settings.AutoSyncBackupEnabled        = newSlot.AutoSyncBackupEnabled;
                         Settings.BackupLastSyncedRevision     = newSlot.BackupLastSyncedRevision ?? "";
                         Settings.BackupLastSyncedEnvelopeJson = newSlot.BackupLastSyncedEnvelopeJson ?? "";
+                        // The kept tuning is a local edit this account's cloud
+                        // has never seen: tuning done while signed out never
+                        // armed the auto-backup (RequestAutoBackup returns
+                        // early when signed out). Arm it now through the SAME
+                        // entry point an ordinary edit uses, so the push is
+                        // actually scheduled. Setting the dirty flag by hand
+                        // was not enough and was worse than nothing: the mount
+                        // deliberately ends in PersistSettingsCore (which never
+                        // arms), so nothing would have uploaded, while a set
+                        // dirty flag also short-circuits RunLibraryDriftCheck,
+                        // disabling the only remaining push backstop for the
+                        // rest of the session. Going through RequestAutoBackup
+                        // also self-gates on signed-in + auto-sync, so a
+                        // sign-OUT keep or an account with sync off no longer
+                        // strands the flag. The dirty state additionally makes
+                        // the auto-pull that follows this switch take the
+                        // 3-way merge path instead of fast-forwarding the
+                        // cloud copy over the tuning the user chose to keep.
+                        RequestAutoBackup();
                         SimHub.Logging.Current.Info(
                             "[TF4ALL] Account switch: kept the current tuning; the incoming slot's saved profile now matches it.");
                     }
@@ -14946,6 +15003,14 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
                 try { UpdateAutoPullTimer(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Auto-pull timer refresh on slot mount failed: " + ex.GetType().Name); }
+                // The incoming profile carries the whole Mode B recipe, and
+                // ApplyGlobalFfbToLive covers only master gain + the FFB
+                // scalars. Without these the settings and the panel show the
+                // account's tuning while the 1 kHz path keeps rendering the
+                // PREVIOUS feel until something else re-applies (the same
+                // pairing ApplyPendingCrossWheelFfb already does).
+                try { ApplyModeBFromSettings(); ApplyModeBFeel(); }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Mode B re-apply on slot mount failed: " + ex.GetType().Name); }
                 // The profile carries DashTabOrder/DashTabsDisabled (Portable);
                 // rebuild the dash's slot map so the phone follows the new
                 // layout without a restart.
@@ -15053,12 +15118,23 @@ namespace TrueforceForAll.Plugin
             forzaJson    = "";
             try
             {
-                var env = BackupProjection.Build(Settings, "", DateTime.UtcNow);
-                var s = env.Settings ?? new Newtonsoft.Json.Linq.JObject();
+                // Built under the settings-serialize choke point, exactly like
+                // PersistSettingsCore: Build walks the whole settings graph
+                // with Newtonsoft while the telemetry thread can be inserting
+                // into CarGripCalibration / CarFacts, which threw "Collection
+                // was modified" mid-switch.
+                Newtonsoft.Json.Linq.JObject s;
+                string forza;
+                lock (_carFactsLock)
+                {
+                    var env = BackupProjection.Build(Settings, "", DateTime.UtcNow);
+                    s     = env.Settings ?? new Newtonsoft.Json.Linq.JObject();
+                    forza = env.Forza?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
+                }
                 s.Remove("DownloadedCommunityPresets");   // slot-mounted separately
                 s.Remove("SharingAuthor");                // slot-mounted separately
                 settingsJson = s.ToString(Newtonsoft.Json.Formatting.None);
-                forzaJson    = env.Forza?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
+                forzaJson    = forza;
                 return true;
             }
             catch (Exception ex)
@@ -15153,7 +15229,19 @@ namespace TrueforceForAll.Plugin
                 || !incoming.ProfileSeededV1 || string.IsNullOrEmpty(incoming.ProfileSettingsJson))
                 return ProfileApplyChoice.Apply;   // brand-new slot inherits live: nothing to ask
             if (!TryBuildLiveProfile(out string liveJson, out _))
-                return ProfileApplyChoice.Apply;   // cannot compare: keep the legacy behavior
+            {
+                // Cannot compare. Fail CLOSED: applying here would silently
+                // replace live tuning with the account's, which is the exact
+                // revert this prompt exists to prevent, and the user would
+                // never be asked. Unprompted, so the incoming account's saved
+                // profile is left untouched and stays recoverable by switching
+                // back (the prompted keep deliberately overwrites it; this one
+                // must not, and its snapshot failure may have left the
+                // outgoing profile stale or empty anyway).
+                SimHub.Logging.Current.Warn(
+                    "[TF4ALL] Account switch: could not snapshot the live tuning to compare; keeping the current tuning and leaving the account's saved profile untouched.");
+                return ProfileApplyChoice.KeepCurrentUnprompted;
+            }
             if (TuningProfilesMatch(incoming.ProfileSettingsJson, liveJson))
                 return ProfileApplyChoice.Apply;   // identical tuning: apply is a no-op
             return PromptLoadIncomingProfile(signOut: string.IsNullOrEmpty(newKey));
@@ -19601,6 +19689,31 @@ namespace TrueforceForAll.Plugin
                     // keeps the zip's pause state (streaming while "disabled",
                     // or paused while "enabled").
                     SyncDeviceToPluginEnabled("Restore rollback");
+                    // ImportSettings pushes the zip's feel to the LIVE model
+                    // (master gain, FFB scalars, the Mode B recipe, audio)
+                    // before this failure; restoring the settings object alone
+                    // would leave the wheel rendering the failed zip's tuning
+                    // while the panel shows the pre-restore values. Re-apply
+                    // the same live surfaces the import touched.
+                    try
+                    {
+                        _mixer.MasterGain = Settings.MasterGain;
+                        ApplyGlobalFfbToLive();
+                        ApplyModeBFromSettings();
+                        ApplyModeBFeel();
+                        if (_audio != null)
+                        {
+                            _audio.Enabled          = Settings.AudioCapture.Enabled;
+                            _audio.Gain             = Settings.AudioCapture.Gain;
+                            _audio.LowpassCutoffHz  = Settings.AudioCapture.LowpassCutoffHz;
+                            _audio.HighpassCutoffHz = Settings.AudioCapture.HighpassCutoffHz;
+                        }
+                    }
+                    catch (Exception reEx)
+                    {
+                        SimHub.Logging.Current.Warn(
+                            "[TF4ALL] Restore rollback: live re-apply failed: " + reEx.Message);
+                    }
                     try
                     {
                         UserPresets.Reload();
@@ -19956,6 +20069,10 @@ namespace TrueforceForAll.Plugin
             // Rebuild the runtime cache from the (potentially updated) folders.
             RebuildPresetCacheFromFolders();
             ApplyActiveCarOverride();
+            // Imported settings carry the Mode B recipe too; push it live so
+            // the wheel matches what the panel now shows.
+            try { ApplyModeBFromSettings(); ApplyModeBFeel(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings import: Mode B re-apply failed: " + ex.Message); }
             // Imported settings carry the dash tab layout; rebuild the slot
             // map so the phone follows it without a restart.
             RefreshDashTabSlots();
@@ -20784,6 +20901,12 @@ namespace TrueforceForAll.Plugin
             // Tell any open preset browser to redraw from the rebuilt caches (no manual Refresh).
             try { LibraryReloaded?.Invoke(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: library-reloaded notify failed: " + ex.Message); }
+            // A restore rewrites the whole Mode B recipe; push it to the live
+            // model or the wheel keeps the pre-restore feel until the user
+            // touches a Mode B control (ApplyActiveCarOverride covers the
+            // effect sections only).
+            try { ApplyModeBFromSettings(); ApplyModeBFeel(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: Mode B re-apply failed: " + ex.Message); }
             // The restored envelope carries DashTabOrder/DashTabsDisabled
             // (Portable); rebuild the dash's slot map so the phone follows
             // the restored layout without a restart.

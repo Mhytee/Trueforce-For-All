@@ -64,11 +64,14 @@ Ten commits here, all data-loss class. Worth being systematic.
 - [ ] Braking feel and drift feel behave as intended, and the drift-feel settings UI moves them (61b6399).
 - [ ] Existing user settings are **not** silently overwritten by the refreshed defaults on upgrade.
 - [ ] Axle slip lockup gate: on-wheel check in both AC and Forza (still pending from the earlier fix).
-- [ ] Auto braking grip (`BrakingGripLearner`, f02d985) behaves per car: the wheel lightens at each car's
-  learned limit, the learned value persists across a restart, and a car swap mid-learn does not carry
-  the previous car's grip over. (Superseded note: the learner was deliberately shipped in f02d985, is
-  wired from `TrueforcePlugin.cs`, and has unit tests. The earlier "must stay untracked" line was
-  written before that decision.)
+- [ ] Auto braking grip behaves per car: the wheel lightens at each car's learned limit, the learned
+  value persists across a restart, and a car swap mid-learn does not carry the previous car's grip
+  over. Implemented by `GripPeakLearner` feeding `_mbGripPeakForRadius` (the BLEARN /
+  `ModeBLongitudinalGripLearn` toggle), NOT by the old `BrakingGripLearner`, which was never wired
+  and was deleted 2026-08-02.
+- [ ] With "Adaptive grip & braking feel" OFF, the Grip limit slider is authoritative: set it to 1.00,
+  switch cars, and confirm the force does not get quietly lighter (it used to be multiplied by the
+  learned per-car peak).
 
 ## E. Rev lights on hardware
 

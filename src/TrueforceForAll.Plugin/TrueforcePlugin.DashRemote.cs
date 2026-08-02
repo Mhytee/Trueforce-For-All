@@ -564,37 +564,46 @@ namespace TrueforceForAll.Plugin
             public Action<bool> SetOn;
             public Func<float> GetGain;
             public Action<float> SetGain;
+            // Ceiling for the dash steppers and keypad, matched PER EFFECT to
+            // that effect's desktop slider Maximum. A dash value above the
+            // slider's range cannot be represented on the desktop: WPF coerces
+            // the thumb to the max while the readout shows the raw number, and
+            // the next drag of that slider writes the coerced value back,
+            // silently discarding the dash tune.
+            public float Max;
         }
         private DashFx[] _dashFx;
 
         private DashFx[] BuildDashFxTable() => new[]
         {
-            new DashFx { Key = "Engine",     Kind = SectionKind.Engine,       GetOn = () => ActiveEngine.Enabled,       SetOn = v => ActiveEngine.Enabled = v,       GetGain = () => ActiveEngine.Gain,       SetGain = v => ActiveEngine.Gain = v },
-            new DashFx { Key = "Bumps",      Kind = SectionKind.Bumps,        GetOn = () => ActiveBumps.Enabled,        SetOn = v => ActiveBumps.Enabled = v,        GetGain = () => ActiveBumps.Gain,        SetGain = v => ActiveBumps.Gain = v },
-            new DashFx { Key = "Traction",   Kind = SectionKind.Traction,     GetOn = () => ActiveTraction.Enabled,     SetOn = v => ActiveTraction.Enabled = v,     GetGain = () => ActiveTraction.Gain,     SetGain = v => ActiveTraction.Gain = v },
-            new DashFx { Key = "AxleSlip",   Kind = SectionKind.AxleSlip,     GetOn = () => ActiveAxleSlip.Enabled,     SetOn = v => ActiveAxleSlip.Enabled = v,     GetGain = () => ActiveAxleSlip.Gain,     SetGain = v => ActiveAxleSlip.Gain = v },
-            new DashFx { Key = "Kerb",       Kind = SectionKind.KerbThump,    GetOn = () => ActiveKerbThump.Enabled,    SetOn = v => ActiveKerbThump.Enabled = v,    GetGain = () => ActiveKerbThump.Gain,    SetGain = v => ActiveKerbThump.Gain = v },
-            new DashFx { Key = "Lockup",     Kind = SectionKind.LockupJudder, GetOn = () => ActiveLockupJudder.Enabled, SetOn = v => ActiveLockupJudder.Enabled = v, GetGain = () => ActiveLockupJudder.Gain, SetGain = v => ActiveLockupJudder.Gain = v },
-            new DashFx { Key = "Shift",      Kind = SectionKind.Shift,        GetOn = () => ActiveShift.Enabled,        SetOn = v => ActiveShift.Enabled = v,        GetGain = () => ActiveShift.Gain,        SetGain = v => ActiveShift.Gain = v },
-            new DashFx { Key = "Abs",        Kind = SectionKind.Abs,          GetOn = () => ActiveAbs.Enabled,          SetOn = v => ActiveAbs.Enabled = v,          GetGain = () => ActiveAbs.Gain,          SetGain = v => ActiveAbs.Gain = v },
-            new DashFx { Key = "Pit",        Kind = SectionKind.PitLimiter,   GetOn = () => ActivePitLimiter.Enabled,   SetOn = v => ActivePitLimiter.Enabled = v,   GetGain = () => ActivePitLimiter.Gain,   SetGain = v => ActivePitLimiter.Gain = v },
-            new DashFx { Key = "Drs",        Kind = SectionKind.Drs,          GetOn = () => ActiveDrs.Enabled,          SetOn = v => ActiveDrs.Enabled = v,          GetGain = () => ActiveDrs.Gain,          SetGain = v => ActiveDrs.Gain = v },
-            new DashFx { Key = "Collision",  Kind = SectionKind.Collision,    GetOn = () => ActiveCollision.Enabled,    SetOn = v => ActiveCollision.Enabled = v,    GetGain = () => ActiveCollision.Gain,    SetGain = v => ActiveCollision.Gain = v },
-            new DashFx { Key = "RevLimiter", Kind = SectionKind.RevLimiter,   GetOn = () => ActiveRevLimiter.Enabled,   SetOn = v => ActiveRevLimiter.Enabled = v,   GetGain = () => ActiveRevLimiter.Gain,   SetGain = v => ActiveRevLimiter.Gain = v },
-            new DashFx { Key = "Airborne",   Kind = SectionKind.Airborne,     GetOn = () => ActiveAirborne.Enabled,     SetOn = v => ActiveAirborne.Enabled = v,     GetGain = null,                          SetGain = null },
+            new DashFx { Key = "Engine", Max = 2f,     Kind = SectionKind.Engine,       GetOn = () => ActiveEngine.Enabled,       SetOn = v => ActiveEngine.Enabled = v,       GetGain = () => ActiveEngine.Gain,       SetGain = v => ActiveEngine.Gain = v },
+            new DashFx { Key = "Bumps", Max = 2f,      Kind = SectionKind.Bumps,        GetOn = () => ActiveBumps.Enabled,        SetOn = v => ActiveBumps.Enabled = v,        GetGain = () => ActiveBumps.Gain,        SetGain = v => ActiveBumps.Gain = v },
+            new DashFx { Key = "Traction", Max = 2f,   Kind = SectionKind.Traction,     GetOn = () => ActiveTraction.Enabled,     SetOn = v => ActiveTraction.Enabled = v,     GetGain = () => ActiveTraction.Gain,     SetGain = v => ActiveTraction.Gain = v },
+            new DashFx { Key = "AxleSlip", Max = 3f,   Kind = SectionKind.AxleSlip,     GetOn = () => ActiveAxleSlip.Enabled,     SetOn = v => ActiveAxleSlip.Enabled = v,     GetGain = () => ActiveAxleSlip.Gain,     SetGain = v => ActiveAxleSlip.Gain = v },
+            new DashFx { Key = "Kerb", Max = 3f,       Kind = SectionKind.KerbThump,    GetOn = () => ActiveKerbThump.Enabled,    SetOn = v => ActiveKerbThump.Enabled = v,    GetGain = () => ActiveKerbThump.Gain,    SetGain = v => ActiveKerbThump.Gain = v },
+            new DashFx { Key = "Lockup", Max = 3f,     Kind = SectionKind.LockupJudder, GetOn = () => ActiveLockupJudder.Enabled, SetOn = v => ActiveLockupJudder.Enabled = v, GetGain = () => ActiveLockupJudder.Gain, SetGain = v => ActiveLockupJudder.Gain = v },
+            new DashFx { Key = "Shift", Max = 2f,      Kind = SectionKind.Shift,        GetOn = () => ActiveShift.Enabled,        SetOn = v => ActiveShift.Enabled = v,        GetGain = () => ActiveShift.Gain,        SetGain = v => ActiveShift.Gain = v },
+            new DashFx { Key = "Abs", Max = 2f,        Kind = SectionKind.Abs,          GetOn = () => ActiveAbs.Enabled,          SetOn = v => ActiveAbs.Enabled = v,          GetGain = () => ActiveAbs.Gain,          SetGain = v => ActiveAbs.Gain = v },
+            new DashFx { Key = "Pit", Max = 2f,        Kind = SectionKind.PitLimiter,   GetOn = () => ActivePitLimiter.Enabled,   SetOn = v => ActivePitLimiter.Enabled = v,   GetGain = () => ActivePitLimiter.Gain,   SetGain = v => ActivePitLimiter.Gain = v },
+            new DashFx { Key = "Drs", Max = 2f,        Kind = SectionKind.Drs,          GetOn = () => ActiveDrs.Enabled,          SetOn = v => ActiveDrs.Enabled = v,          GetGain = () => ActiveDrs.Gain,          SetGain = v => ActiveDrs.Gain = v },
+            new DashFx { Key = "Collision", Max = 2f,  Kind = SectionKind.Collision,    GetOn = () => ActiveCollision.Enabled,    SetOn = v => ActiveCollision.Enabled = v,    GetGain = () => ActiveCollision.Gain,    SetGain = v => ActiveCollision.Gain = v },
+            new DashFx { Key = "RevLimiter", Max = 2f, Kind = SectionKind.RevLimiter,   GetOn = () => ActiveRevLimiter.Enabled,   SetOn = v => ActiveRevLimiter.Enabled = v,   GetGain = () => ActiveRevLimiter.Gain,   SetGain = v => ActiveRevLimiter.Gain = v },
+            new DashFx { Key = "Airborne", Max = 0f,   Kind = SectionKind.Airborne,     GetOn = () => ActiveAirborne.Enabled,     SetOn = v => ActiveAirborne.Enabled = v,     GetGain = null,                          SetGain = null },
         };
 
         // Multiplicative gain step so one press moves small gains (0.07) and
         // large gains (1.5) by a comparable feel amount. Floor + zero rules:
         // stepping down below 0.005 lands on exactly 0 (silence), stepping up
         // from 0 restarts at 0.01.
-        private static float DashStepGain(float g, bool up)
+        private static float DashStepGain(float g, bool up, float max)
         {
+            if (max <= 0f) max = 2f;   // table default guard
             if (up)
             {
+                if (g >= max) return max;
                 if (g < 0.005f) return 0.01f;
                 float n = g * 1.12f;
-                return n > 10f ? 10f : n;
+                return n > max ? max : n;
             }
             float d = g / 1.12f;
             return d < 0.005f ? 0f : d;
@@ -869,12 +878,13 @@ namespace TrueforceForAll.Plugin
                 this.AttachDelegate("Dash.Fx." + f.Key + ".Gain", () =>
                     Settings == null ? 0f : f.GetGain());
                 this.AddAction("DashFx" + f.Key + "GainUp", (a, b) =>
-                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: true))));
+                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: true, max: f.Max))));
                 this.AddAction("DashFx" + f.Key + "GainDown", (a, b) =>
-                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false))));
+                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false, max: f.Max))));
                 this.AddAction("DashFx" + f.Key + "GainOpen", (a, b) =>
                     DashOpenKeypad("fx:" + f.Key, f.Key.ToUpperInvariant() + " GAIN (now "
-                        + (Settings == null ? 0f : f.GetGain()).ToString("0.###") + ", max 10)", 0f, 10f));
+                        + (Settings == null ? 0f : f.GetGain()).ToString("0.###")
+                        + ", max " + f.Max.ToString("0.##") + ")", 0f, f.Max));
             }
 
             // Audio capture is a peer voice, not a TelemetryEffect: it goes
@@ -886,6 +896,11 @@ namespace TrueforceForAll.Plugin
             {
                 if (Settings == null) return;
                 DashNoteActivity();
+                // Stage into the car layer first, exactly like the desktop's
+                // audio handlers: without this the edit lands on the GLOBAL
+                // audio settings, so the UNSAVED bar lights but REVERT finds
+                // nothing to undo and the change is already permanent.
+                EnsureSectionDraft(SectionKind.Audio);
                 SetActiveAudioEnabledLive(!ActiveAudioEnabled);
                 PersistSettings();
                 DashRecordDirty(SectionKind.Audio);
@@ -1216,6 +1231,7 @@ namespace TrueforceForAll.Plugin
             float next = ActiveAudioGain + delta;
             if (next < 0f) next = 0f;
             if (next > DashAudioGainMax) next = DashAudioGainMax;
+            EnsureSectionDraft(SectionKind.Audio);   // car layer, so REVERT can undo it
             SetActiveAudioGainLive(next);
             PersistSettings();   // SetActiveAudioGainLive leaves persisting to the caller
             DashRecordDirty(SectionKind.Audio);
@@ -1357,6 +1373,7 @@ namespace TrueforceForAll.Plugin
             }
             if (target == "audio")
             {
+                EnsureSectionDraft(SectionKind.Audio);   // car layer, so REVERT can undo it
                 SetActiveAudioGainLive(v);
                 PersistSettings();
                 DashRecordDirty(SectionKind.Audio);
