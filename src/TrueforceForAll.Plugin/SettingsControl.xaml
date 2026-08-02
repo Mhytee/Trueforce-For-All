@@ -1103,7 +1103,7 @@
                             <!-- No-car placeholder: tells the user what will appear
                                  here and why they'd care, before they ever drive. -->
                             <TextBlock x:Name="CarFactsNoCarHint" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
-                                       Text="Once you're driving, the car's facts (name, engine, redline) show here. If the redline buzz or the shift lights fire at the wrong RPM, this is where to fix it."/>
+                                       Text="Once you're driving, the car's facts (name, engine, redline) show here. If the redline buzz or the rev lights fire at the wrong RPM, this is where to fix it."/>
                             <StackPanel x:Name="CarFactsRowsPanel">
                             <!-- Name -->
                             <Grid Margin="0,0,0,4">
@@ -3033,7 +3033,7 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="Control effects, gains, and presets from your phone or tablet while driving. No SimHub setup needed: scan the QR code and the dash opens in your phone's browser."/>
 
-                    <TextBlock Text="Shift light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                    <TextBlock Text="Rev light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
                     <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="Left to right"
                                  Checked="RemoteRevDirection_Changed"
                                  ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>
