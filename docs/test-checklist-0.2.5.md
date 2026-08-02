@@ -1,6 +1,13 @@
 # v0.2.5 pre-release test checklist
 
-Build under test: dev, 54 commits past `v0.2.4`, version bumped in `src/Directory.Build.props` (5c03a94).
+Build under test: dev at `cd17b86`, 67 commits past `v0.2.4`, version bumped in `src/Directory.Build.props` (5c03a94).
+
+Machine-checked before this revision (2026-08-01, no hardware needed, all clean): Core tests 345 pass;
+all 35 new top-level settings fields classified in `BackupProjection`; the dash djson/plugin contract has
+no orphans (every TriggerAction and `Dash.*` property resolves, including the dynamically built families);
+the installer ships `DashTemplates\TF4ALL Dash` and wipes `PluginsData\Common\TrueforceForAll\factory`
+before recopying, so the dropped built-in car presets really are gone after an upgrade; `RpmLedsEnabled`
+is fully retired (an orphan key in an upgrader's JSON is ignored by the deserializer).
 
 Install with the **installer**, not a manual DLL copy, for anything in section A: this build ships TF4ALL Dash into SimHub's dashboard library and drops the built-in car presets, and only the installer puts that layout in place.
 
@@ -57,7 +64,11 @@ Ten commits here, all data-loss class. Worth being systematic.
 - [ ] Braking feel and drift feel behave as intended, and the drift-feel settings UI moves them (61b6399).
 - [ ] Existing user settings are **not** silently overwritten by the refreshed defaults on upgrade.
 - [ ] Axle slip lockup gate: on-wheel check in both AC and Forza (still pending from the earlier fix).
-`BrakingGripLearner.cs` and its test stay untracked and do **not** ship in 0.2.5. Nothing to test here; just confirm they were not swept into a commit before the build is cut.
+- [ ] Auto braking grip (`BrakingGripLearner`, f02d985) behaves per car: the wheel lightens at each car's
+  learned limit, the learned value persists across a restart, and a car swap mid-learn does not carry
+  the previous car's grip over. (Superseded note: the learner was deliberately shipped in f02d985, is
+  wired from `TrueforcePlugin.cs`, and has unit tests. The earlier "must stay untracked" line was
+  written before that decision.)
 
 ## E. Rev lights on hardware
 
@@ -85,6 +96,49 @@ Set up once: turn **"Also forward to SimHub" off** (its shipped default) and pic
 - [ ] Repeat with a car that **does** have a community redline: no regression there either.
 - [ ] Forwarding **on** (your normal setup): no regression, variants still carry MaxRpm.
 - [ ] AC still resolves MaxRpm correctly (it relies on the overlay by design).
+
+## H. Landed after this checklist was first written (2026-07-25 to 08-01)
+
+Thirteen commits the sections above predate. Nothing here has had an on-wheel pass.
+
+Dash tab customization + Tele-FFB tab (2490a47, code-reviewed: 6 bugs found and fixed):
+
+- [ ] Hide a tab in Settings > TF4ALL Dash: it disappears on the phone within a second and the
+  remaining tabs stretch to fill the bar. Reorder with the arrows: same, live.
+- [ ] Disabling the tab the phone is CURRENTLY showing snaps it to the first enabled tab. Repeat with
+  an overlay open on that tab (preset picker, keypad, save chooser): the dash must stay usable, not
+  freeze with every button hidden.
+- [ ] The last enabled tab's checkbox is locked (cannot disable all tabs).
+- [ ] Tab layout survives a SimHub restart. **Specifically watch this one**: the pre-fix build corrupted
+  the stored order, and the shipped sanitizer is supposed to recover your real order on first launch.
+- [ ] Tele-FFB tab: per-game enable toggle, rev lights toggle, all 8 knobs step correctly, tap-to-type
+  keypad accepts and rejects with the range shown, and every change is felt live on the wheel.
+- [ ] Tele-FFB on a non-Forza game shows the "not available for this game" note, not dead controls.
+- [ ] A phone knob change while a desktop Telemetry FFB slider is being dragged: neither surface
+  silently reverts the other (the desktop handler used to write all 11 sliders back).
+
+Defaults re-snapshot (66ec11d + cd17b86, generation 3):
+
+- [ ] Fresh profile per wheel lands on the new recipe: strength 0.50 G PRO / 0.60 RS50 / 1.25 G923,
+  damping 0.07, centering 0.25, countersteer 0 with growth off, road kick 0.40, anticipation 40 ms,
+  ease 1.0, centering look-ahead 40 ms, lockup recovery 30 ms.
+- [ ] Drive it: out-of-box feel is sane on a G PRO and not overpowering.
+- [ ] "Reset tuning to defaults" yields exactly that recipe for the detected wheel.
+- [ ] An install with tuned values keeps every tuned value across the upgrade (log line reports how many
+  settings moved).
+
+Community, account, and the rest:
+
+- [ ] Community browser shows a game chip for a game you have never played (Farming Simulator was the
+  reported case), and the "+N more" flyout works. My Uploads filters default to All games.
+- [ ] Naming a car submits silently when sharing is on and stays local when it is off. No prompt either way.
+- [ ] Sign in to a different account with local tuning present: the keep-or-load prompt appears, and
+  choosing keep really keeps the current tuning.
+- [ ] Toggling "Also forward to SimHub" mid-session no longer cuts force feedback.
+- [ ] Visualizer SPIKE badge lights yellow when spike reduction engages, and CLIP still works.
+- [ ] Phone QR funnel: header phone button and Settings > TF4ALL Dash both open the QR dialog, the link
+  copies, and scanning lands directly on TF4ALL Dash.
+- [ ] Settings reads "Rev light direction" (1677b87).
 
 ## Notes / failures
 
