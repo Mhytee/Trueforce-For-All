@@ -15280,13 +15280,13 @@ namespace TrueforceForAll.Plugin
             if (signOut)
             {
                 body = "Signing out. The tuning saved from before you signed in is different from your current settings."
-                     + "\n\nKeep the current tuning, or load the pre-sign-in tuning and replace the current setup?";
+                     + "\n\nKeep what you have now, or switch back to your pre-sign-in tuning?";
                 loadLabel = "Load pre-sign-in tuning";
             }
             else
             {
                 body = "This account's saved tuning is different from your current settings."
-                     + "\n\nKeep the current tuning (it becomes this account's saved tuning), or load the account's saved tuning and replace the current setup?";
+                     + "\n\nKeep what you have now (it becomes this account's saved tuning), or switch to the tuning saved on this account?";
                 loadLabel = "Load account tuning";
             }
             bool load = app.Dispatcher.Invoke(() =>

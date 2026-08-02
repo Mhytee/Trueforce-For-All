@@ -19,6 +19,12 @@ Your pre-test settings backup is `TrueforcePlugin.GeneralSettings.json.pre-test-
 
 The built-in AC / FH6 / Wreckfest car presets and their default bindings were deleted (1f97bff, 13 files). Anything a user had bound to one of them now points at nothing.
 
+**Owner declined the three install-level runs (2026-08-02): upgrade-from-0.2.4-with-a-built-in-binding,
+fresh install, and downgrade.** The fallback path was traced in code instead (3-agent trace, same date):
+a dropped binding resolves to null and every section falls through to the game preset, with no freeze,
+no zeroed override and no phantom picker row. The residual risk is therefore untested-but-reasoned, not
+unknown: see the notes in `project-car-preset-migration` for the per-variant outcomes.
+
 - [ ] Upgrade from **v0.2.4** with car defaults bound to a shipped built-in: plugin loads, no freeze, the binding drops cleanly with a `Car default for 'X' dropped` WARN rather than a crash or a silent wrong preset.
 - [ ] Upgrade from **v0.1.27 stable** (the older preset folder layout): presets and car overrides survive, built-in counts look right in the Presets tab.
 - [ ] A user car preset **named like a factory preset** loads without freezing (b5c3f37, audit batch D).

@@ -6356,7 +6356,7 @@ namespace TrueforceForAll.Plugin
         // names are indexed by SCREEN index (0=Drive .. 5=Tele-FFB) and
         // shared with the default-tab dropdown.
         private static readonly string[] RemoteDashTabNames =
-            { "Drive", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB" };
+            { "Home", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB" };
 
         private static string RemoteDashTabName(int tab) =>
             tab >= 0 && tab < RemoteDashTabNames.Length ? RemoteDashTabNames[tab] : "Tab " + tab;
@@ -11828,10 +11828,10 @@ namespace TrueforceForAll.Plugin
             string activeP = _plugin.ActivePresetName;
             if (string.IsNullOrEmpty(activeP)) return;  // nothing to revert to
             string label = EffectLabel(which);
-            if (TrueforceDialog.Show(null, "Trueforce For All",
-                    $"Revert {label} to the saved values in preset '{activeP}'? Your unsaved {label} changes will be discarded.",
-                    DialogKind.Destructive, okLabel: "Revert", cancelLabel: "Cancel") != true)
-                return;
+            // No confirm: the button only appears while that section is dirty,
+            // it says Revert, and it discards exactly the unsaved changes the
+            // dirty marker is already showing. A modal on every revert was
+            // friction with nothing to protect.
             // Car-scoped sections: revert discards the unsaved per-car DRAFT,
             // restoring this car's saved override (or the game default if none),
             // rather than reverting the global section to the active preset.
