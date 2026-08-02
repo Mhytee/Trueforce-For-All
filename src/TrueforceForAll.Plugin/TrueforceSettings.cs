@@ -246,6 +246,16 @@ namespace TrueforceForAll.Plugin
         [JsonIgnore]
         public static readonly TimeSpan CommunityCacheTtl = TimeSpan.FromDays(7);
 
+        // Shorter TTL for a PARTIAL fetch (at least one fact type came back
+        // empty). Empty is ambiguous: the community may genuinely have no
+        // redline for that car, or that one call may have failed while its
+        // siblings succeeded. The full TTL would freeze a failed call's result
+        // as fact for a week, so the car would keep running on its estimated
+        // redline (wrong rev lights, wrong buzz) with no way to notice.
+        // Retrying in hours costs one request and covers both cases.
+        [JsonIgnore]
+        public static readonly TimeSpan CommunityCachePartialTtl = TimeSpan.FromHours(3);
+
         // ---- Message of the Day (MOTD) -------------------------------------
         // How much of the MOTD feed the user wants on the top strip. PORTABLE
         // (a genuine user choice). Selecting None warns in the UI that important
@@ -1367,6 +1377,11 @@ namespace TrueforceForAll.Plugin
         public RedlineConsensus      Redline { get; set; }
         public EngineLayoutConsensus Layout  { get; set; }
         public CarNameConsensus      Name    { get; set; }
+        // At least one fact type came back empty, so this entry expires on the
+        // short TTL (CommunityCachePartialTtl) instead of the full one. Absent
+        // in older cache files, which deserialize to false and keep the full
+        // TTL: harmless, and they age out on their own.
+        public bool Partial { get; set; }
     }
 
     /// <summary>Per-download bookkeeping for community presets the user

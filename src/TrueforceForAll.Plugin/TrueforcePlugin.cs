@@ -11650,7 +11650,14 @@ namespace TrueforceForAll.Plugin
                     System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.RoundtripKind, out var when))
                 return false;
-            return (DateTime.UtcNow - when.ToUniversalTime()) < TrueforceSettings.CommunityCacheTtl;
+            // A partial fetch (some fact type came back empty, which may mean
+            // "the community has none" or may mean that one call failed) ages
+            // out in hours instead of a week, so a failure cannot masquerade as
+            // fact until the TTL expires.
+            var ttl = e.Partial
+                ? TrueforceSettings.CommunityCachePartialTtl
+                : TrueforceSettings.CommunityCacheTtl;
+            return (DateTime.UtcNow - when.ToUniversalTime()) < ttl;
         }
 
         private CommunityFactCacheEntry GetCommunityCacheEntry(string game, string carId, string sig)
@@ -11691,6 +11698,11 @@ namespace TrueforceForAll.Plugin
                     {
                         FetchedAtUtc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
                         Name = name, Layout = layout, Redline = redline,
+                        // Anything missing keeps this entry on the short TTL:
+                        // the fetch primitives return null both for "no
+                        // consensus" and for a failed call, so a partial result
+                        // must not be trusted for a full week.
+                        Partial = name == null || layout == null || redline == null,
                     };
                     PruneCommunityFactCache();
                 }
