@@ -76,7 +76,7 @@ namespace TrueforceForAll.Plugin
 
         public DashPhoneWindow()
         {
-            Title         = "TF4ALL Dash on your phone";
+            Title         = "TF4ALL Dash";
             Width         = 420;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -89,7 +89,7 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "TF4ALL Dash on your phone",
+                Text = "TF4ALL Dash",
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
