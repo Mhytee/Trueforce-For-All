@@ -883,7 +883,8 @@
                             <Button x:Name="DashPhoneHeaderButton"
                                     Height="26" Padding="6,0" Margin="0,0,4,0" Cursor="Hand"
                                     Click="DashPhoneAccess_Click"
-                                    ToolTip="Control effects from your phone or tablet. Shows a QR code that opens TF4ALL Dash.">
+                                    ToolTip="Control effects from your phone or tablet. Shows a QR code that opens TF4ALL Dash."
+                                    ToolTipService.InitialShowDelay="150">
                                 <TextBlock Text="📱" FontSize="13" VerticalAlignment="Center"/>
                             </Button>
                             <!-- Achievements crown + new-achievement dot. Shown when signed

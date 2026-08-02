@@ -381,12 +381,27 @@ namespace TrueforceForAll.Plugin
                 System.Threading.Interlocked.Exchange(ref _dashClipUntilTicks,
                     now + Stopwatch.Frequency * 150 / 1000);
             }
+            // Spike-reduction badge: the device counts reduced packets at
+            // 1 kHz; comparing counts at the 32 ms column rate catches the
+            // 1 ms events a boolean sample would miss. First sample only
+            // seeds the baseline (a count carried over from earlier driving
+            // must not light the badge on dash open). Same 150 ms hold +
+            // 1.5 s fade contract as the clip glow; yellow on the dash.
+            int tamedCount = dev?.SpikeTameCount ?? 0;
+            if (_dashSpikeSeen.HasValue && tamedCount != _dashSpikeSeen.Value)
+            {
+                System.Threading.Interlocked.Exchange(ref _dashSpikeUntilTicks,
+                    now + Stopwatch.Frequency * 150 / 1000);
+            }
+            _dashSpikeSeen = tamedCount;
             _scopeHead = (h + 1) % ScopeCols;
             _scopeAccum = 0f;
         }
         private float _scopeFfbSmooth;   // producer-thread only
         private volatile int _dashClipSign;
         private long _dashClipUntilTicks; // Interlocked; clip hold; glow decays from its expiry
+        private int? _dashSpikeSeen;      // producer-thread only; null until first sample
+        private long _dashSpikeUntilTicks; // Interlocked; spike hold; glow decays from its expiry
 
         // ------------------------------------------------------------------
         // Snapshot cache for the poll-heavy readouts. GetActiveCarFactsSummary
@@ -610,6 +625,20 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Scope.FfbClipGlow", () =>
             {
                 long until = System.Threading.Interlocked.Read(ref _dashClipUntilTicks);
+                if (until == 0) return 0f;
+                long nowT = Stopwatch.GetTimestamp();
+                if (nowT < until) return 1f;
+                float sec = (float)(nowT - until) / Stopwatch.Frequency;
+                float g = 1f - sec / 1.5f;
+                return g > 0f ? g : 0f;
+            });
+            // Spike-reduction badge glow: same contract as FfbClipGlow
+            // (solid 1 while the hold is active, then linear fade to 0
+            // over 1.5 s); the dash binds it to the yellow SPIKE badge
+            // layer's Opacity on the visualizer.
+            this.AttachDelegate("Dash.Scope.SpikeGlow", () =>
+            {
+                long until = System.Threading.Interlocked.Read(ref _dashSpikeUntilTicks);
                 if (until == 0) return 0f;
                 long nowT = Stopwatch.GetTimestamp();
                 if (nowT < until) return 1f;

@@ -16,6 +16,7 @@ $TILE    = '#FF232936'   # buttons / tiles (off state)
 $TILEON  = '#FF23503A'   # toggle tile on state
 $GREEN   = '#FF37D67A'
 $RED     = '#FFE5484D'
+$YELLOW  = '#FFE8C547'   # spike-reduction badge lit state
 $WHITE   = '#FFF2F4F8'
 $MUTED   = '#FF8B93A7'
 $GRAY    = '#FF6B7280'
@@ -612,22 +613,37 @@ $SCOPE_PURPLE = '#FFA08CFF'
 $SCOPE_GRID   = '#FF262F3A'
 $s5 = [System.Collections.Generic.List[object]]::new()
 $s5.Add((New-Text 'sc-title' 16 18 300 34 22 'VISUALIZER' $WHITE 0 $null 'Bold'))
-# CLIP badge: gray at rest; a red layer + white text crossfade in on a
-# clip and fade back out over ~1.5 s, driven by the plugin-computed
-# FfbClipGlow (1 at the clip instant, linear decay to 0).
+# CLIP + SPIKE badges: gray at rest; a colored layer + text crossfade in
+# while active and fade back out over ~1.5 s, driven by the plugin-computed
+# glow properties (1 while active, linear decay to 0). CLIP = red, the FFB
+# line hit the rails; SPIKE = yellow, spike reduction actively softened the
+# force (dark text: white on yellow is unreadable).
 $clipGlow = '(1*$prop("' + $P + '.Scope.FfbClipGlow"))'
-$s5.Add((New-Rect 'sc-clip-bg' 446 25 58 20 $TILE $null 4))
-$clipGlowBg = New-Rect 'sc-clip-glow' 446 25 58 20 $RED @{
+$s5.Add((New-Rect 'sc-clip-bg' 384 25 58 20 $TILE $null 4))
+$clipGlowBg = New-Rect 'sc-clip-glow' 384 25 58 20 $RED @{
     Opacity = BindJS 'Opacity' ('return 100*' + $clipGlow)
 } 4
 $clipGlowBg.Opacity = 0.0
 $s5.Add($clipGlowBg)
-$s5.Add((New-Text 'sc-clip-t' 446 25 58 20 12 'CLIP' $GRAY 1 $null 'Bold'))
-$clipGlowT = New-Text 'sc-clip-t2' 446 25 58 20 12 'CLIP' $WHITE 1 @{
+$s5.Add((New-Text 'sc-clip-t' 384 25 58 20 12 'CLIP' $GRAY 1 $null 'Bold'))
+$clipGlowT = New-Text 'sc-clip-t2' 384 25 58 20 12 'CLIP' $WHITE 1 @{
     Opacity = BindJS 'Opacity' ('return 100*' + $clipGlow)
 } 'Bold'
 $clipGlowT.Opacity = 0.0
 $s5.Add($clipGlowT)
+$spikeGlow = '(1*$prop("' + $P + '.Scope.SpikeGlow"))'
+$s5.Add((New-Rect 'sc-spike-bg' 446 25 58 20 $TILE $null 4))
+$spikeGlowBg = New-Rect 'sc-spike-glow' 446 25 58 20 $YELLOW @{
+    Opacity = BindJS 'Opacity' ('return 100*' + $spikeGlow)
+} 4
+$spikeGlowBg.Opacity = 0.0
+$s5.Add($spikeGlowBg)
+$s5.Add((New-Text 'sc-spike-t' 446 25 58 20 12 'SPIKE' $GRAY 1 $null 'Bold'))
+$spikeGlowT = New-Text 'sc-spike-t2' 446 25 58 20 12 'SPIKE' '#FF1A1A1A' 1 @{
+    Opacity = BindJS 'Opacity' ('return 100*' + $spikeGlow)
+} 'Bold'
+$spikeGlowT.Opacity = 0.0
+$s5.Add($spikeGlowT)
 $s5.Add((New-Rect 'sc-leg1-sw' 520 28 14 14 $SCOPE_AMBER $null 2))
 $s5.Add((New-Text 'sc-leg1-t' 540 18 106 34 13 'GAME FFB' $MUTED 0))
 $s5.Add((New-Rect 'sc-leg2-sw' 650 28 14 14 $SCOPE_PURPLE $null 2))
@@ -682,7 +698,7 @@ for ($i = 0; $i -lt 78; $i++) {
     $col.Bindings['Top'] = BindJS 'Top' ('var v=1*$prop("' + $P + '.Scope.Tex' + $i + '");if(v>1)v=1;if(v<0)v=0;var h=2+v*160;return 344-h/2')
     $s5.Add($col)
 }
-$s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of history. Red = FFB clipping.' $GRAY 0))
+$s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of history. Red = FFB clipping. Yellow = spike reduction.' $GRAY 0))
 
 TabBar $P 4 | ForEach-Object { $s5.Add($_) }
 ToastBar $P | ForEach-Object { $s5.Add($_) }
