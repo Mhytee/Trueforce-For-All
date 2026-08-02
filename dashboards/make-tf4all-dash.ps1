@@ -619,27 +619,27 @@ $s5.Add((New-Text 'sc-title' 16 18 300 34 22 'VISUALIZER' $WHITE 0 $null 'Bold')
 # line hit the rails; SPIKE = yellow, spike reduction actively softened the
 # force (dark text: white on yellow is unreadable).
 $clipGlow = '(1*$prop("' + $P + '.Scope.FfbClipGlow"))'
-$s5.Add((New-Rect 'sc-clip-bg' 384 25 58 20 $TILE $null 4))
-$clipGlowBg = New-Rect 'sc-clip-glow' 384 25 58 20 $RED @{
+$s5.Add((New-Rect 'sc-clip-bg' 446 25 58 20 $TILE $null 4))
+$clipGlowBg = New-Rect 'sc-clip-glow' 446 25 58 20 $RED @{
     Opacity = BindJS 'Opacity' ('return 100*' + $clipGlow)
 } 4
 $clipGlowBg.Opacity = 0.0
 $s5.Add($clipGlowBg)
-$s5.Add((New-Text 'sc-clip-t' 384 25 58 20 12 'CLIP' $GRAY 1 $null 'Bold'))
-$clipGlowT = New-Text 'sc-clip-t2' 384 25 58 20 12 'CLIP' $WHITE 1 @{
+$s5.Add((New-Text 'sc-clip-t' 446 25 58 20 12 'CLIP' $GRAY 1 $null 'Bold'))
+$clipGlowT = New-Text 'sc-clip-t2' 446 25 58 20 12 'CLIP' $WHITE 1 @{
     Opacity = BindJS 'Opacity' ('return 100*' + $clipGlow)
 } 'Bold'
 $clipGlowT.Opacity = 0.0
 $s5.Add($clipGlowT)
 $spikeGlow = '(1*$prop("' + $P + '.Scope.SpikeGlow"))'
-$s5.Add((New-Rect 'sc-spike-bg' 446 25 58 20 $TILE $null 4))
-$spikeGlowBg = New-Rect 'sc-spike-glow' 446 25 58 20 $YELLOW @{
+$s5.Add((New-Rect 'sc-spike-bg' 384 25 58 20 $TILE $null 4))
+$spikeGlowBg = New-Rect 'sc-spike-glow' 384 25 58 20 $YELLOW @{
     Opacity = BindJS 'Opacity' ('return 100*' + $spikeGlow)
 } 4
 $spikeGlowBg.Opacity = 0.0
 $s5.Add($spikeGlowBg)
-$s5.Add((New-Text 'sc-spike-t' 446 25 58 20 12 'SPIKE' $GRAY 1 $null 'Bold'))
-$spikeGlowT = New-Text 'sc-spike-t2' 446 25 58 20 12 'SPIKE' '#FF1A1A1A' 1 @{
+$s5.Add((New-Text 'sc-spike-t' 384 25 58 20 12 'SPIKE' $GRAY 1 $null 'Bold'))
+$spikeGlowT = New-Text 'sc-spike-t2' 384 25 58 20 12 'SPIKE' '#FF1A1A1A' 1 @{
     Opacity = BindJS 'Opacity' ('return 100*' + $spikeGlow)
 } 'Bold'
 $spikeGlowT.Opacity = 0.0
