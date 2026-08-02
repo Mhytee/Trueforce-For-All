@@ -2696,7 +2696,7 @@
                             TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                 <TextBox Grid.Column="2" x:Name="ModeBMinForceText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.05"/>
             </Grid>
-            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The smallest force your wheel will actually play. A belt-driven wheel like the G923 turns very light forces into nothing at all, so quiet moments feel dead and small details never reach your hands. Raise this until the faintest cues just move the rim. Leave it near 0 on a wheel that already feels everything."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The smallest force your wheel will play. Raising it lifts faint cues above the wheel's own friction and brings the average force up, so a belt-driven wheel like the G923 feels stronger overall."/>
 
             <TextBlock Text="Steering feel" FontWeight="SemiBold" Margin="0,10,0,2"/>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
