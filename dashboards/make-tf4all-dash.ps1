@@ -1113,8 +1113,8 @@ $ovModeB['mb-rl-bg'] = @{ Show = $true; BackgroundColor = $TILEON }
 $ovModeB['mb-rl-t']  = @{ Show = $true; Text = 'REV LIGHTS ON' }
 $ovModeB['mb-hint']  = @{ Show = $true }
 $pvModeB = @{
-    Strength = '0.50'; MinForce = '0.05'; Damper = '0.13'; Center = '0.20'
-    Lat = '0.60'; Counter = '0.40'; Floor = '0.50'; Recover = '32'
+    Strength = '0.50'; MinForce = '0.05'; Damper = '0.07'; Center = '0.25'
+    Lat = '0.60'; Counter = '0.00'; Floor = '0.50'; Recover = '30'
 }
 foreach ($k in $pvModeB.Keys) {
     $ovModeB["mb-$k-t"]      = @{ Show = $true }

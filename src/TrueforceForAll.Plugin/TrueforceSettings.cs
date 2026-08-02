@@ -605,9 +605,9 @@ namespace TrueforceForAll.Plugin
         // (IsModeBCapableGame: the Forza titles FM8 / FH4 / FH5 / FH6, run with
         // the game's own force feedback and vibration at 0). The tuning below
         // is global (shared across games); defaults are the owner's G PRO
-        // recipe as dialed in on the wheel (refreshed 2026-08-01: the
-        // mountain-drift recipe from the Mode B stability pass, values rounded
-        // to what the sliders display; strength is the one per-wheel value,
+        // recipe as dialed in on the wheel (re-snapshot 2026-08-01 evening
+        // from the live wheel after the drift sessions, values rounded to
+        // what the sliders display; strength is the one per-wheel value,
         // see ApplyWheelDefaults). ----
         public Dictionary<string, bool> ModeBGameEnabled { get; set; }
             = new Dictionary<string, bool>();
@@ -617,12 +617,12 @@ namespace TrueforceForAll.Plugin
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit
         public float ModeBEmaMs     { get; set; } = 40f;     // input smoothing time constant
         public float ModeBSign      { get; set; } = 1f;      // SAT direction (BSIGN; -1 flips)
-        public float ModeBDamper    { get; set; } = 0.13f;   // "Damping" slider: velocity damping (Mode B only)
-        public float ModeBCenter    { get; set; } = 0.20f;   // "Centering" slider: speed-scaled centering (Mode B only)
+        public float ModeBDamper    { get; set; } = 0.07f;   // "Damping" slider: velocity damping (Mode B only)
+        public float ModeBCenter    { get; set; } = 0.25f;   // "Centering" slider: speed-scaled centering (Mode B only)
         public float ModeBLatGain     { get; set; } = 0.60f; // cornering weight: +gain per lateral g (BLAT)
-        public float ModeBCounterGain { get; set; } = 0.40f; // countersteer force on rear breakaway (BCS)
+        public float ModeBCounterGain { get; set; } = 0f;    // countersteer force on rear breakaway (BCS); 0 = off (owner: direct centering + trail spring carry the catch)
         public float ModeBDirSoft     { get; set; } = 0f;    // center flat-spot width (BDIRK); 0 = raw linear (Direct centering + the damper own center calm now)
-        public float ModeBLockupRecoverMs { get; set; } = 32f; // "Lockup recovery" slider (BRECOVER): how fast force returns after lockup/wheelspin eases
+        public float ModeBLockupRecoverMs { get; set; } = 30f; // "Lockup recovery" slider (BRECOVER): how fast force returns after lockup/wheelspin eases
         public float ModeBLockupPoint { get; set; } = 0.8f; // |slip ratio| treated as full lockup (BLOCKPT); higher = wheel keeps its weight deeper into braking before lightening (owner 2026-07-24 on-wheel)
         public float ModeBMinForce  { get; set; } = 0.05f;   // "Min force" slider (BMINF): smallest force the wheel renders; lifts faint detail above the motor's friction floor. G PRO/RS50 default 0.05; G923 0.25 via ApplyWheelDefaults.
 
@@ -633,18 +633,18 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBSuspensionLoad     { get; set; } = true;   // steering load from suspension compression
         public bool  ModeBEarlyTorquePeak    { get; set; } = true;   // torque plateaus at 75% utilization
         public bool  ModeBRoadKick           { get; set; } = true;   // one-wheel bump kick in the force channel
-        public float ModeBRoadKickGain       { get; set; } = 0.6994894f; // kick strength
-        public bool  ModeBSlideCounterGrowth { get; set; } = true;   // countersteer force grows with slide depth
+        public float ModeBRoadKickGain       { get; set; } = 0.40f;  // kick strength
+        public bool  ModeBSlideCounterGrowth { get; set; } = false;  // countersteer force grows with slide depth; default OFF with countersteer force at 0 (owner 2026-08-01)
         public bool  ModeBReversalDamp       { get; set; } = true;   // fade force while a slide is caught back toward center, so the direction switch stops snapping (MBREV); default ON 2026-08-01 (mountain-drift validation)
         public float ModeBReversalDampGain   { get; set; } = 0.50f;  // reversal-damping strength, 0..1 (BREVG)
         public bool  ModeBTrailSpring        { get; set; } = true;   // widen the direction ramp during a slide so the wheel settles into a countersteer like real trail instead of slewing to the lock (MBTRAIL); default ON 2026-08-01
         public float ModeBTrailRangeDeg      { get; set; } = 6f;     // full-slide direction-ramp window in degrees (BTRANGE)
         public bool  ModeBPhaseLead          { get; set; } = true;   // lead the force ahead of the wheel to cancel telemetry-loop lag so a released wheel settles instead of oscillating (MBLEAD); default ON 2026-08-01
-        public float ModeBPhaseLeadMs        { get; set; } = 20f;    // phase-lead prediction horizon in ms (BLEAD)
+        public float ModeBPhaseLeadMs        { get; set; } = 40f;    // phase-lead prediction horizon in ms (BLEAD)
         public bool  ModeBCenterDuck         { get; set; } = true;   // ease centering out as the rear breaks away so it stops fighting the countersteer in a slide (MBCDUCK); default ON 2026-08-01
-        public float ModeBCenterDuckAmount   { get; set; } = 0.90f;  // how much centering fades at full slide, 0..1 (BCDUCK)
+        public float ModeBCenterDuckAmount   { get; set; } = 1.0f;   // how much centering fades at full slide, 0..1 (BCDUCK)
         public bool  ModeBCenterPd           { get; set; } = true;   // centering springs on the wheel's OWN position (HID reader) with a velocity look-ahead, so the pull toward straight is fresh and cannot ring (MBCPD); default ON 2026-08-01
-        public float ModeBCenterLeadMs       { get; set; } = 30f;    // direct-centering look-ahead in ms (BCLEAD): how far ahead of the wheel's motion the spring aims
+        public float ModeBCenterLeadMs       { get; set; } = 40f;    // direct-centering look-ahead in ms (BCLEAD): how far ahead of the wheel's motion the spring aims
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
         public bool  ModeBFrictionCircle     { get; set; } = true;   // friction-circle braking law replaces the lockup gate (BCIRCLE); default ON as of 0.2.5 (owner on-wheel: generally better than the gate)
         public bool  ModeBLongitudinalGripLearn { get; set; } = true;  // auto braking-grip: circle/gate radius follows each car's grip-cal peak instead of the manual point (BLEARN); default ON as of 0.2.5

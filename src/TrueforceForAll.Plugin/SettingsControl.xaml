@@ -2716,7 +2716,7 @@
                 <TextBlock Grid.Column="0" Text="Damping:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBDamperSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
                             TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBox Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.13"/>
+                <TextBox Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.07"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
 
@@ -2725,7 +2725,7 @@
                 <TextBlock Grid.Column="0" Text="Centering:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBCenterSlider" Minimum="0" Maximum="0.5" SmallChange="0.02" LargeChange="0.05"
                             TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBox Grid.Column="2" x:Name="ModeBCenterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.20"/>
+                <TextBox Grid.Column="2" x:Name="ModeBCenterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.25"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,2" Text="Caster-style pull toward straight, scaled up with speed (a parked wheel stays free). Follows the wheel's own position, so a released wheel settles into center instead of swinging past."/>
             <Grid Margin="20,0,0,2">
@@ -2733,7 +2733,7 @@
                 <TextBlock Grid.Column="0" Text="Look-ahead (ms):" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBCenterLeadSlider" Minimum="0" Maximum="100" SmallChange="5" LargeChange="10"
                             TickFrequency="10" ValueChanged="ModeBCenterLeadSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBox Grid.Column="2" x:Name="ModeBCenterLeadText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
+                <TextBox Grid.Column="2" x:Name="ModeBCenterLeadText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="40"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="How far ahead of the wheel's motion the centering aims. Raise if a released wheel overshoots center; lower if centering feels nervous."/>
 
@@ -2751,7 +2751,7 @@
                 <TextBlock Grid.Column="0" Text="Road kick strength:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBRoadKickGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
                             TickFrequency="0.25" ValueChanged="ModeBRoadKickGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBox Grid.Column="2" x:Name="ModeBRoadKickGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.70"/>
+                <TextBox Grid.Column="2" x:Name="ModeBRoadKickGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.40"/>
             </Grid>
 
             <Expander IsExpanded="False" Margin="0,8,0,4">
@@ -2767,7 +2767,7 @@
                         <TextBlock Grid.Column="0" Text="Countersteer force:" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="ModeBCounterSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
                                     TickFrequency="0.15" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="2" x:Name="ModeBCounterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.40"/>
+                        <TextBox Grid.Column="2" x:Name="ModeBCounterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.00"/>
                     </Grid>
                     <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="When the rear steps out, the wheel pulls toward the countersteer. 0 = off; raise until slides are catchable by feel."/>
 
@@ -2803,7 +2803,7 @@
                         <TextBlock Grid.Column="0" Text="Ease amount:" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="ModeBCenterDuckSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                     TickFrequency="0.1" ValueChanged="ModeBCenterDuckSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="2" x:Name="ModeBCenterDuckText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.90"/>
+                        <TextBox Grid.Column="2" x:Name="ModeBCenterDuckText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                     </Grid>
 
                     <CheckBox x:Name="ModeBReversalDampCheck" Margin="0,0,0,2" Content="Reversal damping"
@@ -2825,7 +2825,7 @@
                         <TextBlock Grid.Column="0" Text="Lead (ms):" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="ModeBPhaseLeadSlider" Minimum="0" Maximum="120" SmallChange="5" LargeChange="10"
                                     TickFrequency="20" ValueChanged="ModeBPhaseLeadSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="2" x:Name="ModeBPhaseLeadText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="20"/>
+                        <TextBox Grid.Column="2" x:Name="ModeBPhaseLeadText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="40"/>
                     </Grid>
                 </StackPanel>
             </Expander>
@@ -2847,7 +2847,7 @@
                         <TextBlock Grid.Column="0" Text="Lockup recovery (ms):" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="ModeBRecoverSlider" Minimum="20" Maximum="400" SmallChange="10" LargeChange="50"
                                     TickFrequency="50" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="2" x:Name="ModeBRecoverText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="32"/>
+                        <TextBox Grid.Column="2" x:Name="ModeBRecoverText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="30"/>
                     </Grid>
                     <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How quickly steering weight returns as the tires regain grip after a lockup or slide. Lower snaps back fast, higher hands the weight back gently."/>
 

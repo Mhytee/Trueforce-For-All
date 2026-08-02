@@ -5237,11 +5237,12 @@ namespace TrueforceForAll.Plugin
         /// factory values (which ARE the G PRO defaults). The table (owner
         /// 2026-08-01): strength 0.50 / 0.60 / 1.25 for G PRO / RS50 / G923;
         /// min force 0.05 for G PRO and RS50, 0.25 for the G923 (the belt
-        /// drive eats faint torques as internal friction); G923 damping a
-        /// couple of clicks below the G PRO's 0.13 since the belt supplies
-        /// friction of its own. Everything else is shared across all three.
-        /// Used by "Reset tuning to defaults" (wheel-aware) and by the
-        /// one-time fresh-install specialization on wheel detection.</summary>
+        /// drive eats faint torques as internal friction); G923 damping held
+        /// at its gen-2 value 0.09 (chosen for the belt's own friction; the
+        /// G PRO factory damping later moved below it to 0.07). Everything
+        /// else is shared across all three. Used by "Reset tuning to
+        /// defaults" (wheel-aware) and by the one-time fresh-install
+        /// specialization on wheel detection.</summary>
         public static void ApplyWheelDefaults(TrueforceSettings s, string wheelModel)
         {
             if (s == null) return;
@@ -5266,9 +5267,10 @@ namespace TrueforceForAll.Plugin
         /// fields the user tuned stay theirs. When bumping, move the outgoing recipe
         /// (including its per-wheel variants) into PreviousShippedModeBRecipes so it
         /// stays recognized as a shipped default. Generation 1 = the beta
-        /// 0.2.0-0.2.4 recipe; generation 2 = the 2026-08-01 drift recipe +
-        /// G PRO/RS50/G923 table; generation 3 = the same recipe with strength
-        /// retuned to 0.50 / 0.60 / 1.25.</summary>
+        /// 0.2.0-0.2.4 recipe; generation 2 = the 2026-08-01 morning drift
+        /// recipe + G PRO/RS50/G923 table; generation 3 = the 2026-08-01
+        /// evening re-snapshot of the owner's wheel (strength 0.50 / 0.60 /
+        /// 1.25 plus the retuned feel values).</summary>
         private const int ModeBDefaultsGeneration = 3;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
@@ -5293,14 +5295,31 @@ namespace TrueforceForAll.Plugin
                 ModeBCounterGain  = 0.5f,
                 ModeBDirSoft      = 0.12f,
                 ModeBRoadKickGain = 1.0f,
+                ModeBSlideCounterGrowth = true,
             };
-            // Generation 2 (the 2026-08-01 drift recipe; dev/test builds only,
-            // never in a published release) differed from the current factory
-            // only in strength: 0.80 factory/G PRO plus the 0.90 RS50 variant.
-            // The G923 variant (1.25/0.25/0.09) is unchanged in generation 3
-            // and reachable via the prior-latch ApplyWheelDefaults path, so it
-            // needs no entry here.
-            yield return new TrueforceSettings { ModeBSatGain = 0.80f };
+            // Generation 2 (the 2026-08-01 morning drift recipe; dev/test
+            // builds only, never in a published release): the fields that
+            // differ from the gen-3 evening re-snapshot. One entry carries
+            // them all (the merge compares per field against ANY entry).
+            // Beta lacked the recover/lead/duck/center-lead fields entirely
+            // (they deserialize to the current initializers = the target, so
+            // they need no coverage). The RS50 strength variant gets its own
+            // entry; the G923 variant (1.25/0.25/0.09) is unchanged in
+            // generation 3 and reachable via the prior-latch
+            // ApplyWheelDefaults path, so it needs none.
+            yield return new TrueforceSettings
+            {
+                ModeBSatGain            = 0.80f,
+                ModeBDamper             = 0.13f,
+                ModeBCenter             = 0.20f,
+                ModeBCounterGain        = 0.40f,
+                ModeBLockupRecoverMs    = 32f,
+                ModeBRoadKickGain       = 0.6994894f,
+                ModeBSlideCounterGrowth = true,
+                ModeBPhaseLeadMs        = 20f,
+                ModeBCenterDuckAmount   = 0.90f,
+                ModeBCenterLeadMs       = 30f,
+            };
             yield return new TrueforceSettings { ModeBSatGain = 0.90f };
         }
 
