@@ -57,8 +57,9 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashOverlay = "";        // "" | "layout" | "keypad" | "presets"
         private volatile string _dashKeypadEntry = "";    // digits being typed
         // What the keypad edits when SET is pressed: "master" | "audio" |
-        // "redline" | "fx:<Key>" (a _dashFx table key). The title doubles as
-        // the validation-feedback line: SET with a bad value swaps it for a
+        // "redline" | "fx:<Key>" (a _dashFx table key) | "modeb:<Key>" (a
+        // _dashModeB table key). The title doubles as the
+        // validation-feedback line: SET with a bad value swaps it for a
         // specific error (with the field's range), and the next keypress
         // restores the base title.
         private volatile string _dashKeypadTarget = "";
@@ -66,19 +67,85 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashKeypadBaseTitle = "";
         private float _dashKeypadMin, _dashKeypadMax;   // valid range for the open session
 
-        // Active tab for the dash's tab-bar navigation (0=Home, 1=Car
-        // facts, 2=Effects, 3=Presets, 4=Visualizer). Every dash screen gates
-        // its ScreenEnabledExpression on Dash.Tab, so the plugin owns
-        // which screen shows and the tab bar is the only navigation.
-        // Replaces screen swiping: the web viewer fires ButtonItems on
-        // touch-down and swallows the gesture, so on a button-dense
-        // screen starting a swipe kept triggering whatever the finger
-        // landed on without ever changing screen. With exactly one
-        // screen enabled, SimHub's swipe/NextScreen is inert.
+        // Active tab for the dash's tab-bar navigation (screen indices:
+        // 0=Home, 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer,
+        // 5=Tele-FFB). Every dash screen gates its ScreenEnabledExpression
+        // on Dash.Tab, so the plugin owns which screen shows and the tab
+        // bar is the only navigation. Replaces screen swiping: the web
+        // viewer fires ButtonItems on touch-down and swallows the gesture,
+        // so on a button-dense screen starting a swipe kept triggering
+        // whatever the finger landed on without ever changing screen. With
+        // exactly one screen enabled, SimHub's swipe/NextScreen is inert.
         // Seeded at Init from Settings (DashLastTab or DashDefaultTab per
         // the remember-last-tab pref); tab taps write back DashLastTab.
-        private const int DashTabCount = 5;
+        private const int DashTabCount = 6;
         private volatile int _dashTab;
+
+        // Tab-bar SLOT indirection so users can hide and reorder tabs from
+        // the Settings tab. The djson's six slots are position-fixed; each
+        // binds its label / visibility / highlight to Dash.TabSlot<i>.* and
+        // fires DashTabSlotSelect<i>, and the plugin maps slots to screens
+        // here. _dashTabSlots = enabled screen indices in display order
+        // (never empty; sanitizer falls back to Drive). Volatile reference
+        // swap: rebuilt on the UI/action thread, read per property poll.
+        private static readonly string[] DashTabNames =
+            { "HOME", "CAR FACTS", "EFFECTS", "PRESETS", "VISUALIZER", "TELE-FFB" };
+        // Factory display order: Tele-FFB sits between Effects and Presets.
+        // An empty stored DashTabOrder resolves to exactly this.
+        private static readonly int[] DashTabFactoryOrder = { 0, 1, 2, 5, 3, 4 };
+        private volatile int[] _dashTabSlots = new int[0];
+
+        /// <summary>Full tab order (screen indices, disabled tabs included),
+        /// sanitized. Shared by the dash slot map and the Settings-tab
+        /// editor. Unknown indices drop; tabs the stored list doesn't know
+        /// (empty list, or a tab added by an update) append at the end in
+        /// factory order. Dedupe keeps the LAST occurrence deliberately:
+        /// Json.NET's Auto ObjectCreationHandling appends a stored array
+        /// onto a pre-initialized list, so a list corrupted by the old
+        /// non-empty default reads factory-prefix + user-order-suffix, and
+        /// last-wins recovers the user's order instead of the prefix.</summary>
+        internal List<int> GetDashTabFullOrder()
+        {
+            var order = new List<int>(DashTabCount);
+            var seen = new HashSet<int>();
+            var stored = Settings?.DashTabOrder;
+            if (stored != null)
+                for (int i = stored.Count - 1; i >= 0; i--)
+                {
+                    int t = stored[i];
+                    if (t >= 0 && t < DashTabCount && seen.Add(t)) order.Add(t);
+                }
+            order.Reverse();
+            foreach (int t in DashTabFactoryOrder)
+                if (seen.Add(t)) order.Add(t);
+            return order;
+        }
+
+        /// <summary>Rebuild the slot map from settings. Called at Init, by
+        /// the Settings-tab editor after any layout change, and by the
+        /// restore/import/account-switch paths that rewrite the layout; if
+        /// the current tab just got disabled, snaps to the first enabled
+        /// one.</summary>
+        internal void RefreshDashTabSlots()
+        {
+            var order = GetDashTabFullOrder();
+            var disabled = Settings?.DashTabsDisabled;
+            if (disabled != null && disabled.Count > 0)
+                order.RemoveAll(t => disabled.Contains(t));
+            if (order.Count == 0) order.Add(0);   // hand-edited file disabled everything
+            _dashTabSlots = order.ToArray();
+            if (Array.IndexOf(_dashTabSlots, _dashTab) < 0)
+            {
+                // The snap is a forced navigation: drop any open overlay
+                // exactly like DashSelectTab does, else an overlay whose
+                // members live only on the now-disabled screen strands with
+                // every button on the dash hidden (dead remote until a
+                // SimHub restart).
+                _dashTab = _dashTabSlots[0];
+                _dashOverlay = "";
+                _dashPresetScope = "";
+            }
+        }
 
         // Live RPM for the rev strip, stashed per frame in DispatchFrame.
         // The strip's percent uses OUR effective redline (user pin >
@@ -417,6 +484,11 @@ namespace TrueforceForAll.Plugin
             public string RedlineSource = "";
             public bool TuningDirty;
             public bool CanRevert;
+            // Tele-FFB screen state. Snapshot-served (not per-poll) because
+            // the enabled check walks the ModeBGameEnabled dictionary, which
+            // the toggle mutates on another thread.
+            public bool ModeBSupported;
+            public bool ModeBOn;
         }
         private DashSnapshot _dashSnap = new DashSnapshot();
         // Freshness is an explicit flag + tick pair, NOT an int.MinValue
@@ -469,6 +541,8 @@ namespace TrueforceForAll.Plugin
                 // snapshot cadence rather than the per-frame property poll.
                 s.TuningDirty = DashHasDirty();
                 s.CanRevert   = DashCanRevert();
+                s.ModeBSupported = ActiveGameSupportsModeB;
+                s.ModeBOn        = ModeBEnabledForActiveGame;
                 _dashSnap = s;
             }
             catch { /* keep serving the previous snapshot */ }
@@ -526,6 +600,77 @@ namespace TrueforceForAll.Plugin
             return d < 0.005f ? 0f : d;
         }
 
+        // ------------------------------------------------------------------
+        // Telemetry FFB (Mode B) knobs for the dash's Tele-FFB screen. These
+        // are GLOBAL settings (no SectionKind, no preset/car scope), so the
+        // mutate path is the master-gain shape: direct settings write +
+        // ApplyModeBFromSettings + PersistSettings. Deliberately does NOT
+        // touch the UNSAVED/SAVE bar: there is nothing preset-side to save,
+        // exactly like the desktop Telemetry FFB tab. Ranges mirror the
+        // desktop sliders: WPF clamps an out-of-range hydrated value to a
+        // slider's Max, so a wider dash range would get silently clamped
+        // the next time that slider is dragged. Steps are absolute, not
+        // the effects' multiplicative x1.12: these are feel ranges with
+        // meaningful zeros.
+        // ------------------------------------------------------------------
+        private sealed class DashModeBKnob
+        {
+            public string Key;      // property/action suffix + keypad routing key
+            public string Label;    // keypad title
+            public float Min, Max, Step;
+            public string Fmt;      // current-value display format
+            public Func<TrueforceSettings, float> Get;
+            public Action<TrueforceSettings, float> Set;
+        }
+        private DashModeBKnob[] _dashModeB;
+
+        private static DashModeBKnob[] BuildDashModeBTable() => new[]
+        {
+            new DashModeBKnob { Key = "Strength", Label = "STRENGTH",         Min = 0.05f, Max = 1.5f, Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBSatGain,         Set = (s, v) => s.ModeBSatGain = v },
+            new DashModeBKnob { Key = "MinForce", Label = "MIN FORCE",        Min = 0f,    Max = 0.5f, Step = 0.01f, Fmt = "0.00", Get = s => s.ModeBMinForce,        Set = (s, v) => s.ModeBMinForce = v },
+            new DashModeBKnob { Key = "Damper",   Label = "DAMPING",          Min = 0f,    Max = 0.6f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBDamper,          Set = (s, v) => s.ModeBDamper = v },
+            new DashModeBKnob { Key = "Center",   Label = "CENTERING",        Min = 0f,    Max = 0.5f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBCenter,          Set = (s, v) => s.ModeBCenter = v },
+            new DashModeBKnob { Key = "Lat",      Label = "CORNERING WEIGHT", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBLatGain,         Set = (s, v) => s.ModeBLatGain = v },
+            new DashModeBKnob { Key = "Counter",  Label = "COUNTERSTEER",     Min = 0f,    Max = 1.5f, Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBCounterGain,     Set = (s, v) => s.ModeBCounterGain = v },
+            new DashModeBKnob { Key = "Floor",    Label = "SLIDE LIGHTNESS",  Min = 0.05f, Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBDropFloor,       Set = (s, v) => s.ModeBDropFloor = v },
+            new DashModeBKnob { Key = "Recover",  Label = "LOCKUP RECOVERY MS", Min = 20f, Max = 400f, Step = 10f,   Fmt = "0",    Get = s => s.ModeBLockupRecoverMs, Set = (s, v) => s.ModeBLockupRecoverMs = v },
+        };
+
+        private void DashNudgeModeB(DashModeBKnob k, float delta)
+        {
+            var s = Settings;
+            if (s == null) return;
+            DashNoteActivity();
+            // Round to 3 decimals so repeated float adds don't accumulate
+            // dust in the readout (0.13 + 0.02 must show 0.15, not 0.1500001).
+            float next = (float)Math.Round(k.Get(s) + delta, 3);
+            if (next < k.Min) next = k.Min;
+            if (next > k.Max) next = k.Max;
+            DashSetModeB(k, next);
+        }
+
+        // Shared commit for steppers and the keypad. All eight knobs are
+        // tunables consumed by ApplyModeBFromSettings (none are feel toggles),
+        // so one apply call pushes the live model; the 1 kHz FFB thread picks
+        // the volatiles up next tick, no re-arm needed.
+        private void DashSetModeB(DashModeBKnob k, float value)
+        {
+            var s = Settings;
+            if (s == null) return;
+            try
+            {
+                k.Set(s, value);
+                ApplyModeBFromSettings();
+                PersistSettings();
+                RaiseDashRemoteChanged();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Dash Telemetry FFB action failed (" + k.Key + "): " + ex.Message);
+            }
+        }
+
         private void RaiseDashRemoteChanged()
         {
             try { DashRemoteChanged?.Invoke(); } catch { }
@@ -548,15 +693,18 @@ namespace TrueforceForAll.Plugin
         private void InitDashRemote(PluginManager pluginManager)
         {
             _dashFx = BuildDashFxTable();
+            _dashModeB = BuildDashModeBTable();
 
             // Opening tab: last used when the user opted into remembering it
             // (default), else their chosen fixed default. Clamped so a
             // settings file written by a future dash with more tabs can't
-            // strand this one on a screen that doesn't exist.
+            // strand this one on a screen that doesn't exist; the slot
+            // refresh then snaps a disabled tab to the first enabled one.
             int startTab = Settings?.DashRememberLastTab != false
                 ? (Settings?.DashLastTab ?? 0)
                 : (Settings?.DashDefaultTab ?? 0);
             _dashTab = Math.Max(0, Math.Min(DashTabCount - 1, startTab));
+            RefreshDashTabSlots();
 
             // ---------- properties: status ----------
             this.AttachDelegate("Dash.WheelOk", () =>
@@ -746,6 +894,64 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashAudioGainUp",   (a, b) => DashNudgeAudioGain(+DashAudioGainStep));
             this.AddAction("DashAudioGainDown", (a, b) => DashNudgeAudioGain(-DashAudioGainStep));
 
+            // ---------- properties + actions: Telemetry FFB (Tele-FFB tab) ----------
+            // Mode B settings are global (no preset/car scope), so the
+            // mutate path is the master-gain shape and none of this touches
+            // the UNSAVED/SAVE bar. Supported/On ride the snapshot: the
+            // enabled check walks the ModeBGameEnabled dictionary.
+            this.AttachDelegate("Dash.ModeB.Supported",   () => DashSnap().ModeBSupported);
+            this.AttachDelegate("Dash.ModeB.On",          () => DashSnap().ModeBOn);
+            this.AttachDelegate("Dash.ModeB.RevLightsOn", () => Settings?.ModeBRevLightsEnabled != false);
+            this.AddAction("DashModeBToggle", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                if (!ActiveGameSupportsModeB)
+                {
+                    DashToast(string.IsNullOrEmpty(_activeGame)
+                        ? "NO GAME RUNNING - START DRIVING FIRST"
+                        : "TELEMETRY FFB IS NOT AVAILABLE FOR THIS GAME");
+                    return;
+                }
+                // Applies live + persists; per-game flag, deliberately not
+                // part of the shared recipe.
+                SetModeBEnabledForActiveGame(!ModeBEnabledForActiveGame);
+                _dashSnapValid = false;
+                RaiseDashRemoteChanged();
+            });
+            this.AddAction("DashModeBRevLightsToggle", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                Settings.ModeBRevLightsEnabled = !Settings.ModeBRevLightsEnabled;
+                PersistSettings();
+                // Desktop parity (ModeBRevLights_Changed): douse the rim
+                // LEDs immediately on disable instead of leaving the last
+                // frame lit until the next natural write.
+                if (!Settings.ModeBRevLightsEnabled) TurnOffRpmLeds();
+                RaiseDashRemoteChanged();
+            });
+            foreach (var kb in _dashModeB)
+            {
+                var k = kb;   // capture per iteration
+                this.AttachDelegate("Dash.ModeB." + k.Key, () =>
+                {
+                    var s = Settings;
+                    return s == null ? 0f : k.Get(s);
+                });
+                this.AddAction("DashModeB" + k.Key + "Up",   (a, b) => DashNudgeModeB(k, +k.Step));
+                this.AddAction("DashModeB" + k.Key + "Down", (a, b) => DashNudgeModeB(k, -k.Step));
+                this.AddAction("DashModeB" + k.Key + "Open", (a, b) =>
+                {
+                    var s = Settings;
+                    if (s == null) return;
+                    DashOpenKeypad("modeb:" + k.Key,
+                        k.Label + " (now " + k.Get(s).ToString(k.Fmt) + ", "
+                        + k.Min.ToString("0.##") + "-" + k.Max.ToString("0.##") + ")",
+                        k.Min, k.Max);
+                });
+            }
+
             // ---------- actions: global ----------
             // Master gain reuses NudgeMasterGain (applies + persists + raises
             // MasterGainChangedExternally) with the user's configured step.
@@ -758,36 +964,34 @@ namespace TrueforceForAll.Plugin
                 RaiseDashRemoteChanged();
             });
 
-            // ---------- actions: tab-bar navigation ----------
-            for (int t = 0; t < DashTabCount; t++)
+            // ---------- properties + actions: tab-bar navigation ----------
+            // The bar is six position-fixed SLOTS; each binds its label,
+            // visibility and highlight to these properties and fires the
+            // slot action, and the plugin maps slots to screens per the
+            // user's layout. Direct DashTabSelect<screen> actions stay
+            // registered for compatibility with an older deployed djson.
+            for (int i = 0; i < DashTabCount; i++)
             {
-                int tab = t;
-                this.AddAction("DashTabSelect" + tab, (a, b) =>
+                int slot = i;
+                this.AttachDelegate("Dash.TabSlot" + slot + ".Label", () =>
                 {
-                    DashNoteActivity();
-                    _dashTab = tab;
-                    // The dash hides the bar while an overlay is up, so
-                    // overlay state seen here is stale; drop it rather
-                    // than strand an open overlay on the new tab.
-                    _dashOverlay = "";
-                    _dashPresetScope = "";
-                    // Record for remember-last-tab. Disk write only while the
-                    // pref is on (crash resilience); off, the field still
-                    // rides along with the next ordinary settings save.
-                    if (Settings != null && Settings.DashLastTab != tab)
-                    {
-                        Settings.DashLastTab = tab;
-                        if (Settings.DashRememberLastTab)
-                        {
-                            try { PersistSettings(); }
-                            catch (Exception ex)
-                            {
-                                SimHub.Logging.Current.Info(
-                                    "[TF4ALL] Persist DashLastTab failed: " + ex.Message);
-                            }
-                        }
-                    }
+                    var slots = _dashTabSlots;
+                    return slot < slots.Length ? DashTabNames[slots[slot]] : "";
                 });
+                this.AttachDelegate("Dash.TabSlot" + slot + ".On", () =>
+                    slot < _dashTabSlots.Length);
+                this.AttachDelegate("Dash.TabSlot" + slot + ".Active", () =>
+                {
+                    var slots = _dashTabSlots;
+                    return slot < slots.Length && slots[slot] == _dashTab;
+                });
+                this.AddAction("DashTabSlotSelect" + slot, (a, b) =>
+                {
+                    var slots = _dashTabSlots;
+                    if (slot >= slots.Length) return;
+                    DashSelectTab(slots[slot]);
+                });
+                this.AddAction("DashTabSelect" + slot, (a, b) => DashSelectTab(slot));
             }
 
             // ---------- actions: engine layout picker ----------
@@ -934,6 +1138,52 @@ namespace TrueforceForAll.Plugin
             });
 
             SimHub.Logging.Current.Info("[TF4ALL] Dash remote bridge registered (properties + actions for the TF4ALL Remote dashboard).");
+        }
+
+        // Shared tab switch for slot taps and the legacy direct-select
+        // actions. Tapping the already-active tab is a no-op past the
+        // overlay drop (the slot buttons stay live on the active slot).
+        private void DashSelectTab(int tab)
+        {
+            if (tab < 0 || tab >= DashTabCount) return;
+            // Disabled tabs are not navigable: a legacy DashTabSelect action
+            // from an old deployed djson (or a slot tap racing a desktop
+            // disable) must not park the dash on a hidden screen.
+            if (Array.IndexOf(_dashTabSlots, tab) < 0) return;
+            DashNoteActivity();
+            _dashTab = tab;
+            // The dash hides the bar while an overlay is up, so overlay
+            // state seen here is stale; drop it rather than strand an open
+            // overlay on the new tab.
+            _dashOverlay = "";
+            _dashPresetScope = "";
+            // Record for remember-last-tab. Disk write only while the
+            // pref is on (crash resilience); off, the field still
+            // rides along with the next ordinary settings save.
+            if (Settings != null && Settings.DashLastTab != tab)
+            {
+                Settings.DashLastTab = tab;
+                if (Settings.DashRememberLastTab)
+                {
+                    try { PersistSettings(); }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Persist DashLastTab failed: " + ex.Message);
+                    }
+                }
+            }
+            // Close the desktop-disable race: if RefreshDashTabSlots
+            // published a layout without this tab between the membership
+            // check above and the write, re-snap here; whichever of the two
+            // runs last leaves a consistent state.
+            var slots = _dashTabSlots;
+            if (slots.Length > 0 && Array.IndexOf(slots, _dashTab) < 0)
+            {
+                _dashTab = slots[0];
+                _dashOverlay = "";
+                _dashPresetScope = "";
+            }
         }
 
         // Shared mutate path for table effects: draft, mutate, push live,
@@ -1121,6 +1371,19 @@ namespace TrueforceForAll.Plugin
                 {
                     if (f.Key != key || f.SetGain == null) continue;
                     DashMutateFx(f, () => f.SetGain(v));
+                    DashCloseKeypad();
+                    return;
+                }
+            }
+            if (target.StartsWith("modeb:", StringComparison.Ordinal))
+            {
+                // Range already validated against the min/max stamped at
+                // open (the knob's desktop slider range).
+                string key = target.Substring(6);
+                foreach (var k in _dashModeB)
+                {
+                    if (k.Key != key) continue;
+                    DashSetModeB(k, v);
                     DashCloseKeypad();
                     return;
                 }

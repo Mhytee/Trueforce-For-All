@@ -496,11 +496,10 @@ namespace TrueforceForAll.Plugin
                 if (RemoteDashRememberTabCheck != null)
                     RemoteDashRememberTabCheck.IsChecked = _plugin.Settings?.DashRememberLastTab != false;
                 if (RemoteDashDefaultTabCombo != null)
-                {
-                    SelectComboByTag(RemoteDashDefaultTabCombo,
-                        (_plugin.Settings?.DashDefaultTab ?? 0).ToString());
                     RemoteDashDefaultTabCombo.IsEnabled = _plugin.Settings?.DashRememberLastTab == false;
-                }
+                // Populates the default-tab combo too (enabled tabs only, in
+                // the user's order) and re-selects the stored default.
+                RebuildRemoteDashTabsEditor();
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
@@ -4337,28 +4336,30 @@ namespace TrueforceForAll.Plugin
         }
 
         // One handler for every Mode B tunable slider (main + Advanced
-        // tuning). Writes all of them back in one pass (cheap, and keeps the
-        // readouts in lockstep), then re-applies live.
-        // INVARIANT: every slider's Min/Max in the XAML must cover the full
-        // clamp range of the matching SetModeBParam access code. WPF clamps a
-        // value loaded above the slider Max down to the Max, and the next
-        // write-all pass here would persist that clamped value, silently
-        // clobbering a dev-code setting outside the slider's range.
+        // tuning). Writes ONLY the slider that fired: the old write-all pass
+        // raced the dash's Tele-FFB knobs (a phone edit landing mid-drag was
+        // silently overwritten with this panel's stale slider positions) and
+        // was the reason slider ranges had to cover access-code clamp
+        // ranges. Readouts still refresh in one pass so they stay in
+        // lockstep with settings changed elsewhere.
+        // Slider ranges SHOULD still cover the matching SetModeBParam
+        // access-code clamp range: WPF clamps a loaded out-of-range value to
+        // the slider Max, and dragging THAT slider would persist the clamp.
         private void ModeBSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             var s = _plugin.Settings;
-            s.ModeBSatGain     = (float)ModeBStrengthSlider.Value;
-            s.ModeBDamper      = (float)ModeBDamperSlider.Value;
-            s.ModeBCenter      = (float)ModeBCenterSlider.Value;
-            s.ModeBLatGain     = (float)ModeBLatSlider.Value;
-            s.ModeBCounterGain = (float)ModeBCounterSlider.Value;
-            s.ModeBPeakUtil    = (float)ModeBPeakSlider.Value;
-            s.ModeBDropFloor   = (float)ModeBFloorSlider.Value;
-            s.ModeBRiseGamma   = (float)ModeBRiseSlider.Value;
-            s.ModeBEmaMs       = (float)ModeBSmoothSlider.Value;
-            s.ModeBLockupRecoverMs = (float)ModeBRecoverSlider.Value;
-            s.ModeBMinForce    = (float)ModeBMinForceSlider.Value;
+            if      (ReferenceEquals(sender, ModeBStrengthSlider)) s.ModeBSatGain         = (float)ModeBStrengthSlider.Value;
+            else if (ReferenceEquals(sender, ModeBDamperSlider))   s.ModeBDamper          = (float)ModeBDamperSlider.Value;
+            else if (ReferenceEquals(sender, ModeBCenterSlider))   s.ModeBCenter          = (float)ModeBCenterSlider.Value;
+            else if (ReferenceEquals(sender, ModeBLatSlider))      s.ModeBLatGain         = (float)ModeBLatSlider.Value;
+            else if (ReferenceEquals(sender, ModeBCounterSlider))  s.ModeBCounterGain     = (float)ModeBCounterSlider.Value;
+            else if (ReferenceEquals(sender, ModeBPeakSlider))     s.ModeBPeakUtil        = (float)ModeBPeakSlider.Value;
+            else if (ReferenceEquals(sender, ModeBFloorSlider))    s.ModeBDropFloor       = (float)ModeBFloorSlider.Value;
+            else if (ReferenceEquals(sender, ModeBRiseSlider))     s.ModeBRiseGamma       = (float)ModeBRiseSlider.Value;
+            else if (ReferenceEquals(sender, ModeBSmoothSlider))   s.ModeBEmaMs           = (float)ModeBSmoothSlider.Value;
+            else if (ReferenceEquals(sender, ModeBRecoverSlider))  s.ModeBLockupRecoverMs = (float)ModeBRecoverSlider.Value;
+            else if (ReferenceEquals(sender, ModeBMinForceSlider)) s.ModeBMinForce        = (float)ModeBMinForceSlider.Value;
             ModeBStrengthText.Text = s.ModeBSatGain.ToString("F2");
             ModeBDamperText.Text   = s.ModeBDamper.ToString("F2");
             ModeBCenterText.Text   = s.ModeBCenter.ToString("F2");
@@ -6344,6 +6345,204 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] Persist DashDefaultTab failed: " + ex.Message);
             }
+        }
+
+        // ---------- TF4ALL Dash tab layout editor ----------
+        // One row per dash tab: enable checkbox + up/down reorder buttons.
+        // Rebuilt wholesale after every change (six rows, cheap). The
+        // plugin's GetDashTabFullOrder is the single sanitizer for the
+        // stored layout, and RefreshDashTabSlots pushes the result to the
+        // dash live, so changes apply with no dashboard reload. Display
+        // names are indexed by SCREEN index (0=Drive .. 5=Tele-FFB) and
+        // shared with the default-tab dropdown.
+        private static readonly string[] RemoteDashTabNames =
+            { "Drive", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB" };
+
+        private static string RemoteDashTabName(int tab) =>
+            tab >= 0 && tab < RemoteDashTabNames.Length ? RemoteDashTabNames[tab] : "Tab " + tab;
+
+        // Layout signature of the last-built editor; unchanged signature =
+        // skip the rebuild (see below).
+        private string _remoteDashTabsSignature;
+
+        private void RebuildRemoteDashTabsEditor()
+        {
+            if (RemoteDashTabsPanel == null || _plugin?.Settings == null) return;
+            // Building rows fires Checked/SelectionChanged; hold events off
+            // without clobbering an outer hydration pass's own suppression.
+            bool prevSuppress = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                var order = _plugin.GetDashTabFullOrder();
+                var disabled = new HashSet<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+                int enabledCount = 0;
+                int firstEnabled = 0;
+                bool anyEnabled = false;
+                foreach (int t in order)
+                    if (!disabled.Contains(t))
+                    {
+                        enabledCount++;
+                        if (!anyEnabled) { firstEnabled = t; anyEnabled = true; }
+                    }
+
+                // Normalize the stored default when its tab is hidden or
+                // unknown: the dash startup read snaps to the first enabled
+                // tab anyway, so COMMIT that snap instead of displaying a
+                // value the disk does not hold. Without this the fallback
+                // was uncommittable (re-picking the shown item fires no
+                // SelectionChanged) and re-enabling the tab weeks later
+                // silently resurrected the stale default.
+                int def = _plugin.Settings.DashDefaultTab;
+                if (anyEnabled && def != firstEnabled
+                    && (def < 0 || def >= RemoteDashTabNames.Length || disabled.Contains(def)))
+                {
+                    _plugin.Settings.DashDefaultTab = firstEnabled;
+                    try { _plugin.PersistSettings(); }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Persist DashDefaultTab failed: " + ex.Message);
+                    }
+                }
+
+                // Skip no-op rebuilds: RefreshFromPlugin runs on every dash
+                // action (DashRemoteChanged fires per phone tap), and a
+                // wholesale Children.Clear mid mouse-press swallows the
+                // click (the pressed control leaves the visual tree) and
+                // resets an open default-tab dropdown. Only a real layout
+                // or default change rebuilds.
+                string sig = string.Join(",", order) + "|"
+                    + string.Join(",", _plugin.Settings.DashTabsDisabled ?? new List<int>()) + "|"
+                    + _plugin.Settings.DashDefaultTab;
+                if (sig == _remoteDashTabsSignature && RemoteDashTabsPanel.Children.Count > 0)
+                    return;
+                _remoteDashTabsSignature = sig;
+
+                RemoteDashTabsPanel.Children.Clear();
+                for (int pos = 0; pos < order.Count; pos++)
+                {
+                    int tab = order[pos];
+                    bool on = !disabled.Contains(tab);
+                    var row = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Margin = new Thickness(0, 2, 0, 0),
+                    };
+                    var up = new Button
+                    {
+                        Content = "▲", Width = 26, Height = 20, FontSize = 10,
+                        Padding = new Thickness(0),
+                        IsEnabled = pos > 0,
+                        ToolTip = "Move this tab left on the dash",
+                    };
+                    int posUp = pos;
+                    up.Click += (s, args) => RemoteDashTabMove(posUp, -1);
+                    row.Children.Add(up);
+                    var down = new Button
+                    {
+                        Content = "▼", Width = 26, Height = 20, FontSize = 10,
+                        Padding = new Thickness(0), Margin = new Thickness(4, 0, 0, 0),
+                        IsEnabled = pos < order.Count - 1,
+                        ToolTip = "Move this tab right on the dash",
+                    };
+                    int posDown = pos;
+                    down.Click += (s, args) => RemoteDashTabMove(posDown, +1);
+                    row.Children.Add(down);
+                    var check = new CheckBox
+                    {
+                        Content = RemoteDashTabName(tab),
+                        IsChecked = on,
+                        Margin = new Thickness(10, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        // The dash needs at least one screen, so the last
+                        // enabled tab's checkbox locks itself.
+                        IsEnabled = !(on && enabledCount == 1),
+                    };
+                    if (on && enabledCount == 1)
+                        check.ToolTip = "At least one tab must stay on";
+                    int tabId = tab;
+                    check.Checked += (s, args) => RemoteDashTabToggle(tabId, true);
+                    check.Unchecked += (s, args) => RemoteDashTabToggle(tabId, false);
+                    row.Children.Add(check);
+                    RemoteDashTabsPanel.Children.Add(row);
+                }
+
+                // Default-tab dropdown mirrors the layout: enabled tabs only,
+                // in display order. A stored default that is now disabled
+                // shows as the first enabled tab, which is exactly what the
+                // plugin's startup read snaps to, so the combo never lies.
+                if (RemoteDashDefaultTabCombo != null)
+                {
+                    RemoteDashDefaultTabCombo.Items.Clear();
+                    foreach (int t in order)
+                    {
+                        if (disabled.Contains(t)) continue;
+                        RemoteDashDefaultTabCombo.Items.Add(new ComboBoxItem
+                        {
+                            Tag = t.ToString(),
+                            Content = RemoteDashTabName(t),
+                        });
+                    }
+                    SelectComboByTag(RemoteDashDefaultTabCombo,
+                        _plugin.Settings.DashDefaultTab.ToString());
+                    if (RemoteDashDefaultTabCombo.SelectedIndex < 0
+                        && RemoteDashDefaultTabCombo.Items.Count > 0)
+                        RemoteDashDefaultTabCombo.SelectedIndex = 0;
+                }
+            }
+            finally { _suppressEvents = prevSuppress; }
+        }
+
+        private void RemoteDashTabMove(int pos, int delta)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var order = _plugin.GetDashTabFullOrder();
+            int other = pos + delta;
+            if (pos < 0 || pos >= order.Count || other < 0 || other >= order.Count) return;
+            int tmp = order[pos]; order[pos] = order[other]; order[other] = tmp;
+            SaveRemoteDashTabLayout(order, null);
+        }
+
+        private void RemoteDashTabToggle(int tab, bool on)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var disabled = new List<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+            if (on)
+            {
+                disabled.RemoveAll(t => t == tab);
+            }
+            else if (!disabled.Contains(tab))
+            {
+                disabled.Add(tab);
+                // The last enabled tab's checkbox is locked, but guard
+                // anyway (a rebuild can race a queued click): never let the
+                // layout go all-disabled.
+                bool anyEnabled = false;
+                foreach (int t in _plugin.GetDashTabFullOrder())
+                    if (!disabled.Contains(t)) { anyEnabled = true; break; }
+                if (!anyEnabled) { RebuildRemoteDashTabsEditor(); return; }
+            }
+            SaveRemoteDashTabLayout(null, disabled);
+        }
+
+        // Persists the layout, pushes it to the live dash slot map, and
+        // rebuilds the editor (which also refreshes the default-tab combo).
+        // Lists are fresh copies, never mutated after being handed to
+        // Settings: the settings serializer may walk them concurrently.
+        private void SaveRemoteDashTabLayout(List<int> order, List<int> disabled)
+        {
+            if (_plugin?.Settings == null) return;
+            if (order != null) _plugin.Settings.DashTabOrder = order;
+            if (disabled != null) _plugin.Settings.DashTabsDisabled = disabled;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist dash tab layout failed: " + ex.Message);
+            }
+            _plugin.RefreshDashTabSlots();
+            RebuildRemoteDashTabsEditor();
         }
 
         // TF4ALL Dash phone-access funnel (header phone button + Settings
@@ -10504,10 +10703,11 @@ namespace TrueforceForAll.Plugin
                         // Re-sync ALL controls from the now-updated settings
                         // (RefreshFromPlugin suppresses its own events).
                         // Without this, a code-set value sat in Settings while
-                        // its slider/checkbox stayed stale, and the next
-                        // write-all handler (ModeBSlider_ValueChanged /
-                        // ModeBFeel_Changed) silently persisted the stale
-                        // control state back over it, reverting the code.
+                        // its slider/checkbox stayed stale, and a later drag
+                        // of that stale slider (ModeBSlider_ValueChanged) or
+                        // the write-all ModeBFeel_Changed silently persisted
+                        // the stale control state back over it, reverting the
+                        // code.
                         RefreshFromPlugin();
                         AccessCodeBox.Text = string.Empty;
                         if (AccessCodeStatus != null) AccessCodeStatus.Text = "Set " + st + " (live).";

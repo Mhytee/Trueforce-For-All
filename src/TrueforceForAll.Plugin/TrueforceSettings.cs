@@ -410,6 +410,24 @@ namespace TrueforceForAll.Plugin
         public int  DashDefaultTab      { get; set; } = 0;
         public int  DashLastTab         { get; set; } = 0;
 
+        // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
+        // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
+        // user's display order; DashTabsDisabled hides tabs without losing
+        // their position. Sanitized at read (GetDashTabFullOrder): unknown
+        // indices drop, missing ones append in factory order, so an empty
+        // list means factory order and a tab added by an update shows up
+        // enabled for everyone, customized layouts included.
+        // MUST default EMPTY: SimHub's settings loader deserializes with a
+        // bare JsonSerializer (ObjectCreationHandling.Auto), which APPENDS
+        // the stored array onto a pre-populated initializer list instead of
+        // replacing it; a non-empty default here made every restart prepend
+        // the factory order and silently revert the user's layout.
+        // At least one tab always stays enabled: the Settings editor blocks
+        // disabling the last one and the reader falls back to Drive if a
+        // hand-edited file disables everything.
+        public List<int> DashTabOrder     { get; set; } = new List<int>();
+        public List<int> DashTabsDisabled { get; set; } = new List<int>();
+
         // FFB pass-through tuning. Scale lets users dial down the felt strength
         // when their wheel firmware applies a different gain to ep3 cur than
         // to ep0 PID FFB; invert flips sign in case AC's HID++ feature 0x0e

@@ -211,30 +211,54 @@ function RevStrip([string]$P) {
 # control and never changed screen anyway. Each screen's
 # ScreenEnabledExpression gates on Dash.Tab, so exactly one screen is
 # enabled at a time (swipes are inert) and these buttons are the
-# navigation. The active tab is static per screen: screen N only shows
-# while Dash.Tab == N, so N renders highlighted with no button.
+# navigation.
+# The bar is six position-fixed SLOTS driven entirely by plugin
+# properties (Dash.TabSlot<i>.Label / .On / .Active), so users can hide
+# and reorder tabs from the desktop Settings tab with no dash reload:
+# enabled tabs pack left in the user's order, empty slots vanish, and
+# the highlight follows whichever slot maps to the active screen. Every
+# slot carries a button (DashTabSlotSelect<i>); the plugin maps slots to
+# screens and treats a tap on the active slot as a no-op.
 # Hidden while any overlay is up: the viewer gives item visuals
 # pointer-events:none, so an overlay backdrop would NOT shield these
 # buttons from taps; display:none (a Visible binding) does.
-function TabBar([string]$P, [int]$active) {
-    $names = @('HOME', 'CAR FACTS', 'EFFECTS', 'PRESETS', 'VISUALIZER')
-    $vis = 'return (""+$prop("' + $P + '.Overlay"))==""'
+function TabBar([string]$P) {
+    $overlayClosed = '(""+$prop("' + $P + '.Overlay"))==""'
+    # Enabled-slot count, summed from the six .On props inside the formula
+    # itself (no extra plugin property needed). Slots pack left, so the
+    # visible slots are exactly 0..n-1 and each slot's Left/Width bind to
+    # pitch = usable width / n: hiding a tab makes the rest stretch to
+    # fill the bar. Plugin missing -> n falls back to 6 (bar is hidden
+    # then anyway, .On reads null).
+    $countJs = '($prop("' + $P + '.TabSlot0.On")?1:0)+($prop("' + $P + '.TabSlot1.On")?1:0)+($prop("' + $P + '.TabSlot2.On")?1:0)+($prop("' + $P + '.TabSlot3.On")?1:0)+($prop("' + $P + '.TabSlot4.On")?1:0)+($prop("' + $P + '.TabSlot5.On")?1:0)'
     $items = [System.Collections.Generic.List[object]]::new()
-    for ($i = 0; $i -lt $names.Count; $i++) {
-        $x = 10 + $i * 157
-        $bgc = if ($i -eq $active) { $script:TILEON } else { $script:TILE }
-        $txc = if ($i -eq $active) { $script:WHITE } else { $script:MUTED }
-        $bg = New-Rect "tab$i-bg" $x 446 153 32 $bgc $null 4
+    for ($i = 0; $i -lt 6; $i++) {
+        $x = 10 + $i * 131
+        $slot = $P + '.TabSlot' + $i
+        $vis = 'return ' + $overlayClosed + ' && $prop("' + $slot + '.On")'
+        $leftJs  = 'var n=' + $countJs + ';if(n<1)n=6;return 10+' + $i + '*(784/n)'
+        $widthJs = 'var n=' + $countJs + ';if(n<1)n=6;return (784/n)-4'
+        $bg = New-Rect "tab$i-bg" $x 446 127 32 $TILE @{
+            BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $slot + '.Active")?"' + $TILEON + '":"' + $TILE + '"')
+            Left  = BindJS 'Left'  $leftJs
+            Width = BindJS 'Width' $widthJs
+        } 4
         $bg.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($bg)
-        $t = New-Text "tab$i-t" $x 446 153 32 14 $names[$i] $txc 1 $null 'Bold'
+        $t = New-Text "tab$i-t" $x 446 127 32 13 '' $MUTED 1 @{
+            Text      = BindJS 'Text'      ('return ""+($prop("' + $slot + '.Label")||"")')
+            TextColor = BindJS 'TextColor' ('return $prop("' + $slot + '.Active")?"' + $WHITE + '":"' + $MUTED + '"')
+            Left      = BindJS 'Left'  $leftJs
+            Width     = BindJS 'Width' $widthJs
+        } 'Bold'
         $t.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($t)
-        if ($i -ne $active) {
-            $b = New-Button "tab$i" $x 446 153 32 "DashTabSelect$i"
-            $b.Bindings['Visible'] = BindJS 'Visible' $vis
-            $items.Add($b)
+        $b = New-Button "tab$i" $x 446 127 32 "DashTabSlotSelect$i" @{
+            Left  = BindJS 'Left'  $leftJs
+            Width = BindJS 'Width' $widthJs
         }
+        $b.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($b)
     }
     $items
 }
@@ -365,7 +389,7 @@ $s1.Add((New-Text 'aud-t' 408 372 376 66 22 '' $WHITE 1 @{
 } 'Bold'))
 $s1.Add((New-Button 'aud-btn' 408 372 376 66 'DashFxAudioToggle'))
 
-TabBar $P 0 | ForEach-Object { $s1.Add($_) }
+TabBar $P | ForEach-Object { $s1.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
 RevStrip $P | ForEach-Object { $s1.Add($_) }
@@ -458,7 +482,7 @@ $s2.Add((OnOverlay (New-Rect 'lp-cancel-bg' 8 438 782 36 $TILE) 'layout'))
 $s2.Add((OnOverlay (New-Text 'lp-cancel-t' 8 438 782 36 16 'CANCEL' $RED 1 $null 'Bold') 'layout'))
 $s2.Add((OnOverlay (New-Button 'lp-cancel' 8 438 782 36 'DashEngineLayoutClose') 'layout'))
 
-TabBar $P 1 | ForEach-Object { $s2.Add($_) }
+TabBar $P | ForEach-Object { $s2.Add($_) }
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
@@ -543,7 +567,7 @@ $revertBar = @(
 foreach ($b in $saveBar)   { $b.Bindings['Visible'] = BindJS 'Visible' $dirtyVis;  $s3.Add($b) }
 foreach ($b in $revertBar) { $b.Bindings['Visible'] = BindJS 'Visible' $revertVis; $s3.Add($b) }
 
-TabBar $P 2 | ForEach-Object { $s3.Add($_) }
+TabBar $P | ForEach-Object { $s3.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s3.Add($_) }
 
 # ---- overlay: save scope chooser (Dash.Overlay == "savescope") ----
@@ -595,7 +619,7 @@ $s4.Add((New-Text 'pr-carp-hint-t' 648 260 120 84 17 'CHANGE' $WHITE 1))
 $s4.Add((New-Button 'pr-carp-btn' 648 260 120 84 'DashPresetOpenCar'))
 
 
-TabBar $P 3 | ForEach-Object { $s4.Add($_) }
+TabBar $P | ForEach-Object { $s4.Add($_) }
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
 RevStrip $P | ForEach-Object { $s4.Add($_) }
@@ -700,9 +724,93 @@ for ($i = 0; $i -lt 78; $i++) {
 }
 $s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of history. Red = FFB clipping. Yellow = spike reduction.' $GRAY 0))
 
-TabBar $P 4 | ForEach-Object { $s5.Add($_) }
+TabBar $P | ForEach-Object { $s5.Add($_) }
 ToastBar $P | ForEach-Object { $s5.Add($_) }
 RevStrip $P | ForEach-Object { $s5.Add($_) }
+
+# =====================================================================
+# Screen 6: TELE-FFB (Telemetry FFB / Mode B tuning)
+# Mode B settings are GLOBAL (no preset/car scope): edits apply live and
+# persist immediately, so this screen has no save/revert bar. Everything
+# below the title gates on Dash.ModeB.Supported (the Forza titles);
+# unsupported games get an explainer instead of dead controls.
+# =====================================================================
+$s6 = [System.Collections.Generic.List[object]]::new()
+$s6.Add((New-Text 'mb-title' 16 14 300 34 22 'TELEMETRY FFB' $WHITE 0 $null 'Bold'))
+$s6.Add((New-Text 'mb-game' 320 14 464 34 16 '' $MUTED 2 @{
+    Text = BindJS 'Text' ('return ""+($prop("' + $P + '.Game")||"No game")')
+}))
+
+$mbSupported = '$prop("' + $P + '.ModeB.Supported")'
+# Gated content collects here; every item gets a Supported Visible
+# binding stamped below (Hide-ButtonsUnderOverlay then ANDs the
+# overlay-closed gate onto the buttons).
+$mbGated = [System.Collections.Generic.List[object]]::new()
+
+# Toggle tiles: per-game enable + rev lights
+$mbGated.Add((New-Rect 'mb-en-bg' 16 54 376 54 $TILE @{
+    BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.ModeB.On")?"' + $TILEON + '":"' + $TILE + '"')
+}))
+$mbGated.Add((New-Text 'mb-en-t' 16 54 376 54 19 '' $WHITE 1 @{
+    Text = BindJS 'Text' ('return $prop("' + $P + '.ModeB.On")?"TELEMETRY FFB ON":"TELEMETRY FFB OFF"')
+} 'Bold'))
+$mbGated.Add((New-Button 'mb-en-btn' 16 54 376 54 'DashModeBToggle'))
+$mbGated.Add((New-Rect 'mb-rl-bg' 408 54 376 54 $TILE @{
+    BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.ModeB.RevLightsOn")?"' + $TILEON + '":"' + $TILE + '"')
+}))
+$mbGated.Add((New-Text 'mb-rl-t' 408 54 376 54 19 '' $WHITE 1 @{
+    Text = BindJS 'Text' ('return $prop("' + $P + '.ModeB.RevLightsOn")?"REV LIGHTS ON":"REV LIGHTS OFF"')
+} 'Bold'))
+$mbGated.Add((New-Button 'mb-rl-btn' 408 54 376 54 'DashModeBRevLightsToggle'))
+
+# Knob rows, Effects-screen geometry: label + [-] value [+]; the value is
+# a tap zone for the shared keypad. Keys/steps/ranges live plugin-side in
+# the _dashModeB table; toFixed decimals mirror the desktop readouts.
+$mbKnobs = @(
+    @('Strength', 'Strength',           2),
+    @('MinForce', 'Min force',          2),
+    @('Damper',   'Damping',            2),
+    @('Center',   'Centering',          2),
+    @('Lat',      'Cornering weight',   2),
+    @('Counter',  'Countersteer',       2),
+    @('Floor',    'Slide lightness',    2),
+    @('Recover',  'Lockup recovery ms', 0)
+)
+for ($i = 0; $i -lt $mbKnobs.Count; $i++) {
+    $key = $mbKnobs[$i][0]; $label = $mbKnobs[$i][1]; $dec = $mbKnobs[$i][2]
+    $col = [math]::Floor($i / 4); $row = $i % 4
+    $x = 10 + $col * 404; $y = 126 + $row * 56
+    $mbGated.Add((New-Text "mb-$key-t" ($x + 8) $y 160 50 16 $label $WHITE 0))
+    $mbGated.Add((New-Rect  "mb-$key-dn-bg" ($x + 176) $y 50 50 $TILE))
+    $mbGated.Add((New-Text  "mb-$key-dn-t"  ($x + 176) $y 50 50 26 '-' $WHITE 1 $null 'Bold'))
+    $mbGated.Add((New-Button "mb-$key-dn"   ($x + 176) $y 50 50 "DashModeB${key}Down"))
+    $mbGated.Add((New-Rect "mb-$key-val-bg" ($x + 230) $y 82 50 $PANEL $null 0))
+    $mbGated.Add((New-Text "mb-$key-val" ($x + 230) $y 82 50 17 '' $WHITE 1 @{
+        Text = BindJS 'Text' ('return (1*$prop("' + $P + '.ModeB.' + $key + '")).toFixed(' + $dec + ')')
+    }))
+    $mbGated.Add((New-Button "mb-$key-val-tap" ($x + 230) $y 82 50 "DashModeB${key}Open"))
+    $mbGated.Add((New-Rect  "mb-$key-up-bg" ($x + 316) $y 50 50 $TILE))
+    $mbGated.Add((New-Text  "mb-$key-up-t"  ($x + 316) $y 50 50 26 '+' $WHITE 1 $null 'Bold'))
+    $mbGated.Add((New-Button "mb-$key-up"   ($x + 316) $y 50 50 "DashModeB${key}Up"))
+}
+$mbGated.Add((New-Text 'mb-hint' 16 394 768 44 14 'Tap a value to type an exact number. Changes apply instantly and are shared across games. More options live on the desktop Telemetry FFB tab.' $GRAY 0))
+foreach ($it in $mbGated) {
+    $it.Bindings['Visible'] = BindJS 'Visible' ('return ' + $mbSupported + '?true:false')
+    $s6.Add($it)
+}
+
+# Unsupported-game explainer (inverse gate; also what shows in menus)
+$mbNote1 = New-Text 'mb-na-t1' 0 180 800 34 22 'Telemetry FFB is not available for this game' $WHITE 1 $null 'Bold'
+$mbNote1.Bindings['Visible'] = BindJS 'Visible' ('return !' + $mbSupported)
+$s6.Add($mbNote1)
+$mbNote2 = New-Text 'mb-na-t2' 60 224 680 60 16 'It works in Forza Motorsport and Forza Horizon 4, 5 and 6. Start one of those games to tune it here.' $MUTED 1
+$mbNote2.Bindings['Visible'] = BindJS 'Visible' ('return !' + $mbSupported)
+$s6.Add($mbNote2)
+
+TabBar $P | ForEach-Object { $s6.Add($_) }
+KeypadOverlay $P | ForEach-Object { $s6.Add($_) }
+ToastBar $P | ForEach-Object { $s6.Add($_) }
+RevStrip $P | ForEach-Object { $s6.Add($_) }
 
 # =====================================================================
 # Assemble document
@@ -753,9 +861,9 @@ $meta = [ordered]@{
     Category = 'TF4ALL'; Title = 'TF4ALL Dash'
     Description = 'Control panel and rev lights for Trueforce For All: gains, effects, car facts and presets from a phone or tablet'
     Author = 'Mhytee'
-    ScreenCount = 5.0
-    InGameScreensIndexs = @(0, 1, 2, 3, 4)
-    IdleScreensIndexs = @(0, 1, 2, 3, 4)
+    ScreenCount = 6.0
+    InGameScreensIndexs = @(0, 1, 2, 3, 4, 5)
+    IdleScreensIndexs = @(0, 1, 2, 3, 4, 5)
     MainPreviewIndex = 0
     IsOverlay = $false
     Width = 800.0; Height = 480.0
@@ -775,7 +883,8 @@ $doc = [ordered]@{
         (New-Screen 'Car facts' $s2 1),
         (New-Screen 'Effects' $s3 2),
         (New-Screen 'Presets' $s4 3),
-        (New-Screen 'Visualizer' $s5 4)
+        (New-Screen 'Visualizer' $s5 4),
+        (New-Screen 'Tele-FFB' $s6 5)
     )
     SnapToGrid = $false; HideLabels = $false
     ShowForeground = $true; ForegroundOpacity = 50.0
@@ -915,17 +1024,20 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
 }
 
 # Per-screen chrome: rev strip at ~78% of redline (segments 0-8 lit,
-# left-to-right thresholds) + the tab bar (Visible-bound only to hide
-# under overlays, so previews should show it; per-screen active colors
-# are already static).
-function PreviewChrome([double]$pct) {
+# left-to-right thresholds) + the tab bar. The bar's labels and highlight
+# are property-bound at runtime (slot indirection), so previews supply
+# the factory layout and the screen's own slot as active.
+function PreviewChrome([double]$pct, [int]$activeSlot) {
     $o = @{}
     for ($i = 0; $i -lt 16; $i++) {
         if ($pct -ge (50 + $i * 3.125)) { $o["rev-seg$i"] = @{ Show = $true } }
     }
-    for ($i = 0; $i -lt 5; $i++) {
-        $o["tab$i-bg"] = @{ Show = $true }
-        $o["tab$i-t"]  = @{ Show = $true }
+    $slotNames = @('HOME', 'CAR FACTS', 'EFFECTS', 'TELE-FFB', 'PRESETS', 'VISUALIZER')
+    for ($i = 0; $i -lt 6; $i++) {
+        $bgc = if ($i -eq $activeSlot) { $TILEON } else { $TILE }
+        $txc = if ($i -eq $activeSlot) { $WHITE } else { $MUTED }
+        $o["tab$i-bg"] = @{ Show = $true; BackgroundColor = $bgc }
+        $o["tab$i-t"]  = @{ Show = $true; Text = $slotNames[$i]; TextColor = $txc }
     }
     $o
 }
@@ -934,7 +1046,7 @@ $pvGame   = 'Assetto Corsa'
 $pvCar    = 'Mazda MX-5 Cup'
 $pvPreset = 'Assetto Corsa (default)'
 
-$ovDrive = PreviewChrome 78
+$ovDrive = PreviewChrome 78 0
 $ovDrive['wheel']    = @{ Text = 'WHEEL OK'; TextColor = $GREEN }
 $ovDrive['gamecar']  = @{ Text = "$pvGame  -  $pvCar" }
 $ovDrive['preset']   = @{ Text = "PRESET  $pvPreset" }
@@ -946,13 +1058,13 @@ $ovDrive['plug-t']   = @{ Text = 'PLUGIN ON' }
 $ovDrive['aud-bg']   = @{ BackgroundColor = $TILEON }
 $ovDrive['aud-t']    = @{ Text = 'AUDIO HAPTICS ON' }
 
-$ovFacts = PreviewChrome 78
+$ovFacts = PreviewChrome 78 1
 $ovFacts['cf-car']       = @{ Text = $pvCar }
 $ovFacts['cf-eng-value'] = @{ Text = 'Inline 4  (community)' }
 $ovFacts['cf-rl-value']  = @{ Text = '7200 rpm' }
 $ovFacts['cf-info']      = @{ Text = 'MAX RPM  7500      REDLINE SOURCE  community' }
 
-$ovFx = PreviewChrome 78
+$ovFx = PreviewChrome 78 2
 $pvGains = @{
     Engine = '0.850'; Bumps = '0.600'; Traction = '0.550'; AxleSlip = '0.450'
     Kerb = '0.700'; Lockup = '0.500'; Shift = '0.400'; Abs = '0.350'
@@ -964,7 +1076,7 @@ foreach ($e in $effects) {
     if ($e[2]) { $ovFx["fx-$key-gain"] = @{ Text = $pvGains[$key] } }
 }
 
-$ovPresets = PreviewChrome 78
+$ovPresets = PreviewChrome 78 4
 $ovPresets['pr-car']        = @{ Text = "$pvGame  -  $pvCar" }
 $ovPresets['pr-game-value'] = @{ Text = $pvPreset }
 $ovPresets['pr-carp-value'] = @{ Text = '(none saved for this car)' }
@@ -974,7 +1086,7 @@ $ovPresets['pr-carp-value'] = @{ Text = '(none saved for this car)' }
 # column bindings use). Wave amplitude deliberately exceeds 1 so the
 # preview shows the clip feature: the pinned sections read at the rails
 # with the marker strips lit over them.
-$ovScope = PreviewChrome 78
+$ovScope = PreviewChrome 78 5
 $ffbPts = @(); $clipPosPts = @(); $clipNegPts = @()
 for ($i = 0; $i -lt 120; $i++) {
     $v = 0.88 * [math]::Sin($i / 8.5) + 0.36 * [math]::Sin($i / 2.9 + 1.3)
@@ -991,12 +1103,36 @@ for ($i = 0; $i -lt 78; $i++) {
     $ovScope["sc-tex$i"] = @{ Top = 344 - $th / 2; Height = $th }
 }
 
+# Tele-FFB: gated content hides behind Visible bindings, so the preview
+# shows the supported-game state via Show overrides + the owner recipe.
+$ovModeB = PreviewChrome 78 3
+$ovModeB['mb-game']  = @{ Text = 'Forza Horizon 6' }
+$ovModeB['mb-en-bg'] = @{ Show = $true; BackgroundColor = $TILEON }
+$ovModeB['mb-en-t']  = @{ Show = $true; Text = 'TELEMETRY FFB ON' }
+$ovModeB['mb-rl-bg'] = @{ Show = $true; BackgroundColor = $TILEON }
+$ovModeB['mb-rl-t']  = @{ Show = $true; Text = 'REV LIGHTS ON' }
+$ovModeB['mb-hint']  = @{ Show = $true }
+$pvModeB = @{
+    Strength = '0.80'; MinForce = '0.05'; Damper = '0.13'; Center = '0.20'
+    Lat = '0.60'; Counter = '0.40'; Floor = '0.50'; Recover = '32'
+}
+foreach ($k in $pvModeB.Keys) {
+    $ovModeB["mb-$k-t"]      = @{ Show = $true }
+    $ovModeB["mb-$k-dn-bg"]  = @{ Show = $true }
+    $ovModeB["mb-$k-dn-t"]   = @{ Show = $true }
+    $ovModeB["mb-$k-val-bg"] = @{ Show = $true }
+    $ovModeB["mb-$k-val"]    = @{ Show = $true; Text = $pvModeB[$k] }
+    $ovModeB["mb-$k-up-bg"]  = @{ Show = $true }
+    $ovModeB["mb-$k-up-t"]   = @{ Show = $true }
+}
+
 Render-Preview $s1 $ovDrive   (Join-Path $OutDir 'TF4ALL Dash.djson.00.png')
 Render-Preview $s2 $ovFacts   (Join-Path $OutDir 'TF4ALL Dash.djson.01.png')
 Render-Preview $s3 $ovFx      (Join-Path $OutDir 'TF4ALL Dash.djson.02.png')
 Render-Preview $s4 $ovPresets (Join-Path $OutDir 'TF4ALL Dash.djson.03.png')
 Render-Preview $s5 $ovScope   (Join-Path $OutDir 'TF4ALL Dash.djson.04.png')
+Render-Preview $s6 $ovModeB   (Join-Path $OutDir 'TF4ALL Dash.djson.05.png')
 Copy-Item (Join-Path $OutDir 'TF4ALL Dash.djson.00.png') (Join-Path $OutDir 'TF4ALL Dash.djson.png') -Force
 
-$itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count + $s5.Count
-Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count) visualizer=$($s5.Count); previews: main + 5 screens)"
+$itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count + $s5.Count + $s6.Count
+Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count) visualizer=$($s5.Count) teleffb=$($s6.Count); previews: main + 6 screens)"

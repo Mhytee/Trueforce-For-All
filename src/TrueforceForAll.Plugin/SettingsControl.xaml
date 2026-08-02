@@ -3049,18 +3049,23 @@
                               ToolTip="The dash comes back on whichever tab was open last, surviving SimHub restarts."/>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <TextBlock Text="Default tab:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <!-- Items are built in code (RebuildRemoteDashTabsEditor):
+                             only ENABLED tabs are offered, in the user's order. -->
                         <ComboBox x:Name="RemoteDashDefaultTabCombo" Width="140" Margin="8,0,0,0"
                                   SelectionChanged="RemoteDashDefaultTab_Changed"
-                                  ToolTip="The tab the dash opens on when 'Remember last used tab' is off.">
-                            <ComboBoxItem Tag="0" Content="Drive"/>
-                            <ComboBoxItem Tag="1" Content="Car facts"/>
-                            <ComboBoxItem Tag="2" Content="Effects"/>
-                            <ComboBoxItem Tag="3" Content="Presets"/>
-                            <ComboBoxItem Tag="4" Content="Visualizer"/>
-                        </ComboBox>
+                                  ToolTip="The tab the dash opens on when 'Remember last used tab' is off."/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="With remember on, the dash reopens where you left it, even across SimHub restarts. Turn it off to always start on the default tab picked here (applies at the next SimHub start)."/>
+
+                    <!-- Tab layout editor: one row per dash tab (enable checkbox
+                         + up/down reorder). Rows are built in code
+                         (RebuildRemoteDashTabsEditor); the dash re-reads the
+                         layout live, so changes apply with no reload. -->
+                    <TextBlock Text="Tabs:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                    <StackPanel x:Name="RemoteDashTabsPanel"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="Untick a tab to hide it on the dash; use the arrows to change the order. Changes apply instantly, no dashboard reload needed. At least one tab always stays on."/>
                 </StackPanel>
             </Expander>
 

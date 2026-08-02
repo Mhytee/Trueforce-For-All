@@ -14918,6 +14918,10 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
                 try { UpdateAutoPullTimer(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Auto-pull timer refresh on slot mount failed: " + ex.GetType().Name); }
+                // The profile carries DashTabOrder/DashTabsDisabled (Portable);
+                // rebuild the dash's slot map so the phone follows the new
+                // layout without a restart.
+                RefreshDashTabSlots();
             }
 
             try { PersistSettingsCore(); }
@@ -19924,6 +19928,9 @@ namespace TrueforceForAll.Plugin
             // Rebuild the runtime cache from the (potentially updated) folders.
             RebuildPresetCacheFromFolders();
             ApplyActiveCarOverride();
+            // Imported settings carry the dash tab layout; rebuild the slot
+            // map so the phone follows it without a restart.
+            RefreshDashTabSlots();
             SimHub.Logging.Current.Info($"[TF4ALL] Settings imported from {path}.");
         }
 
@@ -20749,6 +20756,10 @@ namespace TrueforceForAll.Plugin
             // Tell any open preset browser to redraw from the rebuilt caches (no manual Refresh).
             try { LibraryReloaded?.Invoke(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup restore: library-reloaded notify failed: " + ex.Message); }
+            // The restored envelope carries DashTabOrder/DashTabsDisabled
+            // (Portable); rebuild the dash's slot map so the phone follows
+            // the restored layout without a restart.
+            RefreshDashTabSlots();
         }
 
         // ---- Auto-sync (debounced, fast-forward only) ----
