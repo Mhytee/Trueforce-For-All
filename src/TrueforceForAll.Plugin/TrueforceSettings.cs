@@ -611,7 +611,7 @@ namespace TrueforceForAll.Plugin
         // see ApplyWheelDefaults). ----
         public Dictionary<string, bool> ModeBGameEnabled { get; set; }
             = new Dictionary<string, bool>();
-        public float ModeBSatGain   { get; set; } = 0.80f; // peak torque fraction; the G PRO default (owner 2026-08-01). RS50/G923 get their own via ApplyWheelDefaults.
+        public float ModeBSatGain   { get; set; } = 0.50f; // peak torque fraction; the G PRO default (owner 2026-08-01). RS50/G923 get their own via ApplyWheelDefaults.
         public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit

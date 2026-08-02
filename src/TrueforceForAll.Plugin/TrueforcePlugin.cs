@@ -2491,7 +2491,7 @@ namespace TrueforceForAll.Plugin
                     else
                     {
                         SimHub.Logging.Current.Info(
-                            $"[TF4ALL] Wheel defaults check ({shortModel}): every Mode B setting is customized; nothing changed. 'Reset tuning to defaults' applies the full {shortModel} defaults.");
+                            $"[TF4ALL] Wheel defaults check ({shortModel}): nothing to change (each Mode B setting already matches the {shortModel} defaults or is customized). 'Reset tuning to defaults' applies the full {shortModel} defaults.");
                     }
                     try { PersistSettingsCore(); } catch { }
                 }
@@ -5235,7 +5235,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Per-wheel Mode B defaults, layered ON TOP of the coded
         /// factory values (which ARE the G PRO defaults). The table (owner
-        /// 2026-08-01): strength 0.80 / 0.90 / 1.25 for G PRO / RS50 / G923;
+        /// 2026-08-01): strength 0.50 / 0.60 / 1.25 for G PRO / RS50 / G923;
         /// min force 0.05 for G PRO and RS50, 0.25 for the G923 (the belt
         /// drive eats faint torques as internal friction); G923 damping a
         /// couple of clicks below the G PRO's 0.13 since the belt supplies
@@ -5248,7 +5248,7 @@ namespace TrueforceForAll.Plugin
             switch ((wheelModel ?? "").Trim())
             {
                 case "RS50":
-                    s.ModeBSatGain  = 0.90f;   // "Strength": RS50 defaults
+                    s.ModeBSatGain  = 0.60f;   // "Strength": RS50 defaults
                     break;
                 case "G923":
                     s.ModeBSatGain  = 1.25f;   // "Strength": more headroom on the weaker motor
@@ -5267,8 +5267,9 @@ namespace TrueforceForAll.Plugin
         /// (including its per-wheel variants) into PreviousShippedModeBRecipes so it
         /// stays recognized as a shipped default. Generation 1 = the beta
         /// 0.2.0-0.2.4 recipe; generation 2 = the 2026-08-01 drift recipe +
-        /// G PRO/RS50/G923 table.</summary>
-        private const int ModeBDefaultsGeneration = 2;
+        /// G PRO/RS50/G923 table; generation 3 = the same recipe with strength
+        /// retuned to 0.50 / 0.60 / 1.25.</summary>
+        private const int ModeBDefaultsGeneration = 3;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
         /// current factory values: every previously SHIPPED defaults-set, expressed
@@ -5293,6 +5294,14 @@ namespace TrueforceForAll.Plugin
                 ModeBDirSoft      = 0.12f,
                 ModeBRoadKickGain = 1.0f,
             };
+            // Generation 2 (the 2026-08-01 drift recipe; dev/test builds only,
+            // never in a published release) differed from the current factory
+            // only in strength: 0.80 factory/G PRO plus the 0.90 RS50 variant.
+            // The G923 variant (1.25/0.25/0.09) is unchanged in generation 3
+            // and reachable via the prior-latch ApplyWheelDefaults path, so it
+            // needs no entry here.
+            yield return new TrueforceSettings { ModeBSatGain = 0.80f };
+            yield return new TrueforceSettings { ModeBSatGain = 0.90f };
         }
 
         // The Mode B recipe fields the defaults machinery owns (every tunable +
