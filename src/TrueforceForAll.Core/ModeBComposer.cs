@@ -1,7 +1,7 @@
-// Mode B force composition — the per-axle layer on top of SatForceModel
+﻿// Mode B force composition — the per-axle layer on top of SatForceModel
 // (phase 4 of docs/haptic-engine-plan.md). SatForceModel stays a pure
-// front-axle SAT curve; this composes the two feel terms the first wheel
-// tests showed it lacks:
+// front-axle SAT curve; this adds the feel term the first wheel tests
+// showed it lacks:
 //
 //  * Cornering weight: real steering torque is dominated by front lateral
 //    force, so weight must build with lateral g — a 0.9 g sweeper is heavy,
@@ -9,14 +9,19 @@
 //    as a multiplier on the SAT term so the peak-and-drop shape (lightness
 //    past the limit) is preserved, just scaled.
 //
-//  * Countersteer force: with front-only utilization, rear breakaway is
-//    invisible — the front keeps grip, u stays low, the wheel stays limp
-//    exactly when it should pull hard toward the counter-steer. The rear's
-//    utilization EXCESS over the front gates an additive torque in the
-//    front-slip direction (the sign-verified counter-steer direction).
-//    Gating on the excess (not raw rear slip) keeps straight-line
-//    wheelspin quiet: a burnout spikes rear slip but dir ~ 0 and the
-//    trail ramp is low.
+// RETIRED 2026-08-02: the additive "countersteer force" (BCS), an extra
+// torque gated on the rear's utilization excess over the front. It existed
+// because front-only utilization makes rear breakaway invisible: the front
+// keeps grip, u stays low, and the wheel stays limp exactly when it should
+// warn. The trail spring (AdaptiveDirWindow) closed that gap by a better
+// route, and four on-wheel sessions across four different shapings of the
+// counter term (slide-depth growth, a front-slip handoff, a rear-excess
+// crossfade, and a |dir| center gate) all returned the same verdict: the
+// wheel is smoother the lower it goes. It survived only around 0.1-0.2 of
+// gain, where it was barely perceptible, so it was carrying a slider, three
+// toggles, four access codes and four helper curves to deliver almost
+// nothing. The rear-excess signal itself is NOT retired: it still gates the
+// trail spring and SlideDuck through SlideGate01.
 //
 // Pure math, no state — smoothing of every input lives at the integration
 // layer ("smooth the inputs, not the force"). Returns a signed normalized
@@ -33,9 +38,42 @@ namespace TrueforceForAll.Core
         /// kerb spikes).</summary>
         public const double LatGCap = 1.5;
 
-        /// <summary>Rear-over-front utilization excess treated as a full
-        /// slide; excess beyond this adds no more counter torque.</summary>
-        public const double OverCap = 1.0;
+        /// <summary>DEFAULT half-way point of the slide gate: the rear-over-front
+        /// excess at which <see cref="SlideGate01"/> reads 0.5. Tunable per install
+        /// (ModeBSlideHalfPoint / BOVERCAP).
+        ///
+        /// Set from measurement, not taste. On-wheel logging 2026-08-02 (551
+        /// half-second buckets above 30 km/h) put the excess at p50 0.39, p90 7.45,
+        /// p99 29.7, max 62.1: two orders of magnitude. No HARD cap can serve that
+        /// range, which is what the previous OverCap = 1.0 tried to be. It pegged
+        /// 38.7% of buckets; a cap of 16 still pegged 3.8% while leaving ordinary
+        /// slides (excess 1 to 5) barely registering. Hence the soft saturation in
+        /// SlideGate01, where this constant is a SCALE rather than a ceiling and
+        /// getting it wrong degrades gracefully instead of clipping. At 2.0 the
+        /// measured p50 lands near the base window, p90 near fully open, and the
+        /// extremes stay distinguishable.</summary>
+        public const double SlideHalfPoint = 2.0;
+
+        /// <summary>Normalise a raw rear-over-front excess into the 0..1 slide gate
+        /// that <see cref="AdaptiveDirWindow"/>, <see cref="SlideDuck"/> and the
+        /// counter's activation all run on. One place, so a changed scale can never
+        /// reach two of the three and not the third.
+        ///
+        /// Soft saturation x/(x+k) rather than a clamp: the signal is unbounded and
+        /// wildly heavy-tailed (see <see cref="SlideHalfPoint"/>), so a hard cap
+        /// turned all three consumers into switches, flattening every slide past
+        /// the cap into one identical "full slide" reading. This approaches 1
+        /// asymptotically and never clips, so a car whose rear reaches 4 and one
+        /// that reaches 8 are both deep slides yet still distinguishable. Each
+        /// consumer smoothsteps this result, which restores the zero slope at the
+        /// bottom (a grazing slide must not snap in) and adds one at the top.
+        /// <paramref name="halfPoint"/>: the excess that reads 0.5.</summary>
+        public static double SlideGate01(double overExcess, double halfPoint = SlideHalfPoint)
+        {
+            if (double.IsNaN(overExcess)) return 0.0;
+            double x = overExcess > 0.0 ? overExcess : 0.0;
+            return x / (x + Math.Max(0.05, halfPoint));
+        }
 
         /// <summary>Center-stable direction blend (sixth wheel test: "at
         /// wheel center sometimes the motor buzzes out... let go at center
@@ -293,45 +331,19 @@ namespace TrueforceForAll.Core
             return sign * outMag;
         }
 
-        /// <summary>Compose the final Mode B force from the front-axle SAT
-        /// term plus the per-axle feel terms.
+        /// <summary>Compose the final Mode B force: the front-axle SAT term scaled
+        /// by cornering weight, clamped to the normalized range. Once the
+        /// countersteer term was retired (see the file header) this is all that
+        /// remains of the per-axle layer, but it stays a named step rather than an
+        /// inline multiply because the clamp is the one place the synthesis
+        /// guarantees a bounded output before the shaping chain runs.
         /// <paramref name="satSigned"/>: SatForceModel output × direction, [-1, 1].
-        /// <paramref name="dir"/>: smooth signed direction blend, [-1, 1].
-        /// <paramref name="overExcess"/>: rear utilization excess over the
-        /// front (≥ 0), temporally smoothed by the caller — the composer owns
-        /// only the SHAPE. Smoothstepped over (0 .. OverCap): zero slope at
-        /// onset, so a grazing rear slide barely registers and the pull
-        /// builds progressively instead of snapping in (third wheel test:
-        /// "no traction then TRACTION").
         /// <paramref name="latG"/>: |lateral acceleration| in g (≥ 0).
-        /// <paramref name="latGain"/>: cornering-weight gain (0 = off).
-        /// <paramref name="counterGain"/>: countersteer force gain (0 = off).
-        /// <paramref name="trail01"/>: speed trail ramp, 0 parked → 1 at speed.
-        /// <paramref name="slideDepth01"/>: test layer 10 (GAP #2) — scales
-        /// the counter term by slide depth so a shallow drift asks politely
-        /// and a deep one yanks toward opposite lock like real SAT, instead
-        /// of full counter arriving the moment dir saturates at ±0.03 rad.
-        /// Caller derives it as min(|front slip|/0.15, 1); pass 1.0 for the
-        /// legacy layer-off behavior.</summary>
-        public static double Compose(
-            double satSigned, double dir,
-            double overExcess,
-            double latG, double latGain,
-            double counterGain, double trail01,
-            double slideDepth01 = 1.0)
+        /// <paramref name="latGain"/>: cornering-weight gain (0 = off).</summary>
+        public static double Compose(double satSigned, double latG, double latGain)
         {
             double latMult = 1.0 + Math.Max(0.0, latGain) * Math.Min(Math.Max(latG, 0.0), LatGCap);
-
-            double t = Math.Min(Math.Max(overExcess, 0.0), OverCap) / OverCap;
-            double shaped = t * t * (3.0 - 2.0 * t);      // C1 onset and saturation
-            double counter = Math.Max(0.0, counterGain)
-                           * shaped
-                           * dir
-                           * Math.Min(Math.Max(trail01, 0.0), 1.0)
-                           * Math.Min(Math.Max(slideDepth01, 0.0), 1.0);
-
-            double f = satSigned * latMult + counter;
-            return Math.Min(1.0, Math.Max(-1.0, f));
+            return Math.Min(1.0, Math.Max(-1.0, satSigned * latMult));
         }
     }
 }

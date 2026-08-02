@@ -1,4 +1,4 @@
-// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
+﻿// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
 //
 // A backup must reproduce a user's setup on a SECOND PC. The live settings blob
 // mixes three kinds of field:
@@ -70,11 +70,11 @@ namespace TrueforceForAll.Plugin
             // CarFacts rationale, not the GamesWithRedline one).
             "ModeBGameEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
             "ModeBDropFloor", "ModeBEmaMs", "ModeBSign", "ModeBDamper",
-            "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
+            "ModeBCenter", "ModeBLatGain", "ModeBDirSoft",
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
-            "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
+            "ModeBRoadKick", "ModeBRoadKickGain",
             "ModeBReversalDamp", "ModeBReversalDampGain",
-            "ModeBTrailSpring", "ModeBTrailRangeDeg",
+            "ModeBTrailSpring", "ModeBTrailRangeDeg", "ModeBSlideHalfPoint",
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
             "ModeBCenterDuck", "ModeBCenterDuckAmount",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
@@ -200,11 +200,11 @@ namespace TrueforceForAll.Plugin
         {
             "ModeBGameEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
             "ModeBDropFloor", "ModeBEmaMs", "ModeBSign", "ModeBDamper",
-            "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
+            "ModeBCenter", "ModeBLatGain", "ModeBDirSoft",
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
-            "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
+            "ModeBRoadKick", "ModeBRoadKickGain",
             "ModeBReversalDamp", "ModeBReversalDampGain",
-            "ModeBTrailSpring", "ModeBTrailRangeDeg",
+            "ModeBTrailSpring", "ModeBTrailRangeDeg", "ModeBSlideHalfPoint",
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
             "ModeBCenterDuck", "ModeBCenterDuckAmount",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",

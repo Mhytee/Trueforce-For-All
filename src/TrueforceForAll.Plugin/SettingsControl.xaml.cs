@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -619,8 +619,6 @@ namespace TrueforceForAll.Plugin
                     ModeBCenterDuckText.Text       = mbs.ModeBCenterDuckAmount.ToString("F2");
                     ModeBLatSlider.Value        = mbs.ModeBLatGain;
                     ModeBLatText.Text           = mbs.ModeBLatGain.ToString("F2");
-                    ModeBCounterSlider.Value    = mbs.ModeBCounterGain;
-                    ModeBCounterText.Text       = mbs.ModeBCounterGain.ToString("F2");
                     ModeBPeakSlider.Value       = mbs.ModeBPeakUtil;
                     ModeBPeakText.Text          = mbs.ModeBPeakUtil.ToString("F2");
                     ModeBFloorSlider.Value      = mbs.ModeBDropFloor;
@@ -635,7 +633,6 @@ namespace TrueforceForAll.Plugin
                     ModeBRoadKickCheck.IsChecked    = mbs.ModeBRoadKick;
                     ModeBRoadKickGainSlider.Value   = mbs.ModeBRoadKickGain;
                     ModeBRoadKickGainText.Text      = mbs.ModeBRoadKickGain.ToString("F2");
-                    ModeBSlideGrowthCheck.IsChecked = mbs.ModeBSlideCounterGrowth;
                     ModeBReversalDampCheck.IsChecked = mbs.ModeBReversalDamp;
                     ModeBReversalGainSlider.Value    = mbs.ModeBReversalDampGain;
                     ModeBReversalGainText.Text       = mbs.ModeBReversalDampGain.ToString("F2");
@@ -4353,7 +4350,6 @@ namespace TrueforceForAll.Plugin
             else if (ReferenceEquals(sender, ModeBDamperSlider))   s.ModeBDamper          = (float)ModeBDamperSlider.Value;
             else if (ReferenceEquals(sender, ModeBCenterSlider))   s.ModeBCenter          = (float)ModeBCenterSlider.Value;
             else if (ReferenceEquals(sender, ModeBLatSlider))      s.ModeBLatGain         = (float)ModeBLatSlider.Value;
-            else if (ReferenceEquals(sender, ModeBCounterSlider))  s.ModeBCounterGain     = (float)ModeBCounterSlider.Value;
             else if (ReferenceEquals(sender, ModeBPeakSlider))     s.ModeBPeakUtil        = (float)ModeBPeakSlider.Value;
             else if (ReferenceEquals(sender, ModeBFloorSlider))    s.ModeBDropFloor       = (float)ModeBFloorSlider.Value;
             else if (ReferenceEquals(sender, ModeBRiseSlider))     s.ModeBRiseGamma       = (float)ModeBRiseSlider.Value;
@@ -4364,7 +4360,6 @@ namespace TrueforceForAll.Plugin
             ModeBDamperText.Text   = s.ModeBDamper.ToString("F2");
             ModeBCenterText.Text   = s.ModeBCenter.ToString("F2");
             ModeBLatText.Text      = s.ModeBLatGain.ToString("F2");
-            ModeBCounterText.Text  = s.ModeBCounterGain.ToString("F2");
             ModeBPeakText.Text     = s.ModeBPeakUtil.ToString("F2");
             ModeBFloorText.Text    = s.ModeBDropFloor.ToString("F2");
             ModeBRiseText.Text     = s.ModeBRiseGamma.ToString("F2");
@@ -4387,7 +4382,7 @@ namespace TrueforceForAll.Plugin
         }
 
         // Feel-feature checkboxes (compressor, suspension load, early torque
-        // peak, road kick, slide counter growth, grip auto-cal).
+        // peak, road kick, grip auto-cal).
         private void ModeBFeel_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -4396,7 +4391,6 @@ namespace TrueforceForAll.Plugin
             s.ModeBSuspensionLoad     = ModeBSuspLoadCheck.IsChecked == true;
             s.ModeBEarlyTorquePeak    = ModeBEarlyPeakCheck.IsChecked == true;
             s.ModeBRoadKick           = ModeBRoadKickCheck.IsChecked == true;
-            s.ModeBSlideCounterGrowth = ModeBSlideGrowthCheck.IsChecked == true;
             s.ModeBReversalDamp       = ModeBReversalDampCheck.IsChecked == true;
             s.ModeBTrailSpring        = ModeBTrailSpringCheck.IsChecked == true;
             s.ModeBPhaseLead          = ModeBPhaseLeadCheck.IsChecked == true;
@@ -10625,7 +10619,7 @@ namespace TrueforceForAll.Plugin
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBTRAIL 1/0 trail spring + BTRANGE range deg, MBLEAD 1/0 anticipation + BLEAD lead ms, MBCDUCK 1/0 centering ease + BCDUCK amount, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBTRAIL 1/0 trail spring + BTRANGE range deg, MBLEAD 1/0 anticipation + BLEAD lead ms, MBCDUCK 1/0 centering ease + BCDUCK amount, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -10692,10 +10686,11 @@ namespace TrueforceForAll.Plugin
                     if (pn == "MODEB" || pn == "BSIGN" || pn == "BSAT"
                         || pn == "BPEAK" || pn == "BFLOOR" || pn == "BFULL" || pn == "BSPD"
                         || pn == "BRISE" || pn == "BEMA" || pn == "BDAMP" || pn == "BCENTER"
-                        || pn == "BLAT" || pn == "BCS" || pn == "BDIRK"
+                        || pn == "BLAT" || pn == "BDIRK"
                         || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
                         || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
-                        || pn == "MBREV" || pn == "BREVG" || pn == "MBTRAIL" || pn == "BTRANGE"
+                        || pn == "MBREV" || pn == "BREVG"
+                        || pn == "MBTRAIL" || pn == "BTRANGE" || pn == "BOVERCAP"
                         || pn == "MBLEAD" || pn == "BLEAD" || pn == "MBCDUCK" || pn == "BCDUCK"
                         || pn == "BMINF" || pn == "MBCPD" || pn == "BCLEAD")
                     {

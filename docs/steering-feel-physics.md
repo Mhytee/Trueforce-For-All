@@ -43,7 +43,7 @@ The product produces the signature everyone's hands know:
 | Torque rises with front lateral force | SatForceModel rise × lat-g cornering weight (BLAT) | Good — the lat-g multiplier is a direct `F_lat` proxy |
 | Torque peak before grip peak | Peak pinned AT u = 1.0 | **GAP #1** — our wheel is still gaining weight where a real one has already plateaued; the pre-limit warning window is compressed |
 | Caster floor in a slide | DropFloor (0.20 default, slider) | Good — physically the `t_m` remainder; Andrew's 0.20 sits at the sporty end of the real 0.3–0.6 range, which suits a feel-forward setup |
-| Counter-steer torque from front slip direction | dir = front slip angle (sign-verified) + BCS rear-excess counter term | Right signal source. **GAP #2**: dir saturates at ±0.03 rad, so counter strength doesn't grow with slide depth the way real SAT does |
+| Counter-steer torque from front slip direction | dir = front slip angle (sign-verified), shaped by the trail spring (MBTRAIL) | Good. **GAP #2 closed differently than planned**: the trail spring widens the dir window during a slide so the wheel settles into a countersteer. The additive BCS counter term that originally addressed this was RETIRED 2026-08-02. See below |
 | Load sensitivity (sub-proportional) | LoadEffect 0.5 | Good hedge — real tires gain grip sub-linearly with load, ~0.5 effective is the right ballpark |
 | Speed-proportional trail buildup | SpeedFullKmh ramp | Good |
 | Understeer stick-slip chatter (~10–20 Hz) | Layer 1 judder at 14 Hz past the limit | Good, matches the real mechanism |
@@ -66,11 +66,48 @@ We already carry per-corner suspension travel at 60 Hz → derive
 the force channel (not the texture channel). This is the "alive road"
 feeling sim wheels famously lack; FM8's suspension channel is clean enough.
 
-**Layer 10 — slide-depth counter growth (GAP #2).** Let the counter-steer
-magnitude keep growing past the 0.03 rad dir saturation: scale the BCS term
-by min(|front slip|/0.15, 1) so a shallow drift asks politely and a big one
-yanks toward opposite lock like a real car. Test with progressively bigger
-power slides.
+**Layer 10 (GAP #2), superseded 2026-08-02.** The original plan was
+"slide-depth counter growth": scale the BCS term by min(|front slip|/0.15, 1)
+so a shallow drift asks politely and a big one yanks toward opposite lock. It
+shipped in beta 0.2.0-0.2.4 and was retired, because the trail spring closed
+the same gap by a better route and the two work against each other.
+
+Why they conflict. Both terms in `ModeBComposer.Compose` carry the same `dir`,
+so the composed force factors as `dir x (sat + counter)` and the spring rate
+the hands feel is that bracket divided by the direction-ramp window. The trail
+spring stabilises a slide by WIDENING that window (`AdaptiveDirWindow`),
+dividing the rate down. The counter term adds straight back into the numerator,
+gated on the same rear-breakaway excess that opened the window. Worse, the SAT
+term is designed to collapse toward `DropFloor` in a slide, so the counter's
+SHARE of the rate peaks exactly where the trail spring wants to be softest: on
+the beta recipe (SatGain 0.50, DropFloor 0.50, BCS 0.50) the counter term
+carried more rate than the SAT term it was meant to supplement. Growth aimed
+that stiffness at the deepest part of the slide. Owner's on-wheel read, which
+started this: "with countersteer at 0 the wheel feels more stable, especially
+in slides."
+
+What was tried, and the verdict. Four shapings were built and driven back to
+back: the original slide-depth growth; `CounterHandoff`, an inverse fade over
+front slip angle; `CounterCrossfade`, the same fade timed on the rear-breakaway
+gate instead so the two were complementary by construction; and a `|dir|` center
+gate after the term was caught oscillating the wheel at center under power (it
+is LINEAR in dir, so unlike the lateral-demand SAT path its loop gain at dead
+center is nonzero, and wheelspin opens the gate while the wheel is straight).
+Every session returned the same answer: the wheel is smoother the less
+countersteer it gets. It survived only around 0.1 to 0.2 of gain, where it was
+barely perceptible, while carrying a slider, three toggles, four access codes
+and four helper curves. RETIRED 2026-08-02 by owner decision. The trail spring
+covers the gap.
+
+What survives, and is the real lesson: the rear-excess GATE those terms shared
+with the trail spring and `SlideDuck`. Logging it (551 half-second buckets above
+30 km/h) showed p50 0.39, p90 7.45, p99 29.7, max 62.1, two orders of magnitude,
+against an `OverCap` of 1.0 that had been assumed for months. 38.7% of buckets
+were fully pegged, so the trail spring and the centering ease were running as
+switches rather than the progressive ramps they were designed as. That is now
+`SlideGate01`, a soft saturation `x/(x+k)` with `k = SlideHalfPoint = 2.0` from
+the measured distribution, tunable via BOVERCAP. Nothing clips. Still open: the
+excess is not speed-normalised, and crawl-speed wheelspin drives it to 17+.
 
 ## Motor reality check (G PRO on the rig, G923 at the desk)
 

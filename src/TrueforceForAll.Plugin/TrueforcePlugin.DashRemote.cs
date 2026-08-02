@@ -640,7 +640,7 @@ namespace TrueforceForAll.Plugin
             new DashModeBKnob { Key = "Damper",   Label = "DAMPING",          Min = 0f,    Max = 0.6f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBDamper,          Set = (s, v) => s.ModeBDamper = v },
             new DashModeBKnob { Key = "Center",   Label = "CENTERING",        Min = 0f,    Max = 0.5f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBCenter,          Set = (s, v) => s.ModeBCenter = v },
             new DashModeBKnob { Key = "Lat",      Label = "CORNERING WEIGHT", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBLatGain,         Set = (s, v) => s.ModeBLatGain = v },
-            new DashModeBKnob { Key = "Counter",  Label = "COUNTERSTEER",     Min = 0f,    Max = 1.5f, Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBCounterGain,     Set = (s, v) => s.ModeBCounterGain = v },
+            new DashModeBKnob { Key = "Trail",    Label = "TRAIL RANGE",      Min = 2f,    Max = 20f,  Step = 1f,    Fmt = "0",    Get = s => s.ModeBTrailRangeDeg,   Set = (s, v) => s.ModeBTrailRangeDeg = v },
             new DashModeBKnob { Key = "Floor",    Label = "SLIDE LIGHTNESS",  Min = 0.05f, Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBDropFloor,       Set = (s, v) => s.ModeBDropFloor = v },
             new DashModeBKnob { Key = "Recover",  Label = "LOCKUP RECOVERY MS", Min = 20f, Max = 400f, Step = 10f,   Fmt = "0",    Get = s => s.ModeBLockupRecoverMs, Set = (s, v) => s.ModeBLockupRecoverMs = v },
         };
@@ -714,6 +714,18 @@ namespace TrueforceForAll.Plugin
                 : (Settings?.DashDefaultTab ?? 0);
             _dashTab = Math.Max(0, Math.Min(DashTabCount - 1, startTab));
             RefreshDashTabSlots();
+
+            // ---------- properties: Mode B tuning diagnostics ----------
+            // Read-only support/tuning aids for the trail spring, which owns slide
+            // feel on its own now. RearExcess is the gate both AdaptiveDirWindow
+            // and SlideDuck run on, normalised through SlideGate01 by the
+            // BOVERCAP half-point; TrailWindowDeg is the window ACTUALLY used, so
+            // it can be compared against the Trail range slider (sitting at the
+            // 1.7 deg base means the trail spring is effectively asleep). Cheap
+            // enough to ship: three delegate reads, no allocation, no logging.
+            this.AttachDelegate("ModeB.RearExcess",     () => Math.Round((double)_mbOverEma, 3));
+            this.AttachDelegate("ModeB.RearExcessPeak", () => Math.Round((double)_mbOverPeak, 3));
+            this.AttachDelegate("ModeB.TrailWindowDeg", () => Math.Round(_mbDirWindowRad * (180.0 / Math.PI), 2));
 
             // ---------- properties: status ----------
             this.AttachDelegate("Dash.WheelOk", () =>

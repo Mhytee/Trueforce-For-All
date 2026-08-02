@@ -2764,25 +2764,12 @@
 
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Countersteer force:" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="ModeBCounterSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
-                                    TickFrequency="0.15" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="2" x:Name="ModeBCounterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.00"/>
-                    </Grid>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="When the rear steps out, the wheel pulls toward the countersteer. 0 = off; raise until slides are catchable by feel."/>
-
-                    <Grid Margin="0,0,0,2">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Slide lightness:" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="ModeBFloorSlider" Minimum="0.05" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                     TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                         <TextBox Grid.Column="2" x:Name="ModeBFloorText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
                     </Grid>
                     <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Torque left once the front has fully let go. Lower = a more dramatic gone-light cue."/>
-
-                    <CheckBox x:Name="ModeBSlideGrowthCheck" Margin="0,0,0,2" Content="Countersteer growth"
-                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Countersteer pull grows with how deep the slide is: a shallow drift asks politely, a big moment yanks toward opposite lock."/>
 
                     <CheckBox x:Name="ModeBTrailSpringCheck" Margin="0,0,0,2" Content="Trail spring"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
@@ -2895,7 +2882,7 @@
 
                     <CheckBox x:Name="ModeBCompressorCheck" Margin="0,0,0,2" Content="Force compressor"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Soft ceiling on the steering force: stacked cornering weight and countersteer force compress into the top of the range instead of clipping flat."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Soft ceiling on the steering force: stacked cornering weight and road kick compress into the top of the range instead of clipping flat."/>
 
                     <CheckBox x:Name="ModeBLateralDemandCheck" Margin="0,0,0,2" Content="Lateral-demand force"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>

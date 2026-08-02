@@ -102,8 +102,8 @@ namespace TrueforceForAll.Core.Tests
                 double load01 = 1.0 - 0.35 * ((f.AccelerationSurge ?? 0) / 9.81);
                 double satF = sat.Force01(u, 1.0, load01, f.SpeedKmh) * dir;
                 double trail = Math.Min(f.SpeedKmh / 60.0, 1.0);
-                double force = ModeBComposer.Compose(satF, dir, overEma,
-                    Math.Abs(f.AccelerationSway ?? 0) / 9.81, 0.6, 0.5, trail);
+                double force = ModeBComposer.Compose(
+                    satF, Math.Abs(f.AccelerationSway ?? 0) / 9.81, 0.6);
                 force = comp.Apply(force);
 
                 Assert.False(double.IsNaN(force) || double.IsInfinity(force), "force NaN/Inf");

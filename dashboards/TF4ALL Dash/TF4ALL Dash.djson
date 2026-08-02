@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "6c000f94-696a-4f00-95c4-d65db9e6f3f4",
+    "Id":  "4ff48222-50df-4897-854f-0eff93167326",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c652dfe1-bd71-492b-9050-4b437db89561",
+                        "ScreenId":  "fba8a43b-f509-45d1-8403-2a81a4c134c4",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -5434,7 +5434,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "04af39ba-ae34-49f9-972e-28ae80e413d1",
+                        "ScreenId":  "601d37bc-934c-4827-a650-79b19c8d837a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14023,7 +14023,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "b4189af4-5f9d-4167-8ade-351128cea89c",
+                        "ScreenId":  "ca834e4f-ba6a-4890-a692-148e1075244a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -24646,7 +24646,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8dbb1c82-bc5d-401f-99b4-54ca81b50552",
+                        "ScreenId":  "a3177c52-c0dd-4463-9772-0960e25ff5bc",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -29244,7 +29244,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "79936445-bfe1-4070-93bb-d6ad443cfcd2",
+                        "ScreenId":  "236083a8-965d-4edb-9fac-f004621e8f16",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -40357,7 +40357,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "af481c02-eb2d-4cbf-99f5-8ae4e3710c43",
+                        "ScreenId":  "d0ae71ae-6657-4ec6-b3e3-d9f7fc4f071e",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -42573,7 +42573,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  16,
-                                          "Text":  "Countersteer",
+                                          "Text":  "Trail range",
                                           "TextColor":  "#FFF2F4F8",
                                           "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
@@ -42587,7 +42587,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Counter-t",
+                                          "Name":  "mb-Trail-t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42631,7 +42631,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Counter-dn-bg",
+                                          "Name":  "mb-Trail-dn-bg",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42663,7 +42663,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Counter-dn-t",
+                                          "Name":  "mb-Trail-dn-t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42685,7 +42685,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.DashModeBCounterDown",
+                                          "TriggerAction":  "TrueforcePlugin.DashModeBTrailDown",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -42699,7 +42699,7 @@
                                           "Top":  182,
                                           "Visible":  true,
                                           "Width":  50,
-                                          "Name":  "mb-Counter-dn",
+                                          "Name":  "mb-Trail-dn",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42743,7 +42743,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Counter-val-bg",
+                                          "Name":  "mb-Trail-val-bg",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42775,12 +42775,12 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Counter-val",
+                                          "Name":  "mb-Trail-val",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.ModeB.Counter\")).toFixed(2)"
+                                                                                        "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.ModeB.Trail\")).toFixed(0)"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -42805,7 +42805,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.DashModeBCounterOpen",
+                                          "TriggerAction":  "TrueforcePlugin.DashModeBTrailOpen",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -42819,7 +42819,7 @@
                                           "Top":  182,
                                           "Visible":  true,
                                           "Width":  82,
-                                          "Name":  "mb-Counter-val-tap",
+                                          "Name":  "mb-Trail-val-tap",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42863,7 +42863,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Counter-up-bg",
+                                          "Name":  "mb-Trail-up-bg",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42895,7 +42895,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Counter-up-t",
+                                          "Name":  "mb-Trail-up-t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42917,7 +42917,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.DashModeBCounterUp",
+                                          "TriggerAction":  "TrueforcePlugin.DashModeBTrailUp",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -42931,7 +42931,7 @@
                                           "Top":  182,
                                           "Visible":  true,
                                           "Width":  50,
-                                          "Name":  "mb-Counter-up",
+                                          "Name":  "mb-Trail-up",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {

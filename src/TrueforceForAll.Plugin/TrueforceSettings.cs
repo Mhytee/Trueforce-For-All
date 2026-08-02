@@ -630,7 +630,6 @@ namespace TrueforceForAll.Plugin
         public float ModeBDamper    { get; set; } = 0.07f;   // "Damping" slider: velocity damping (Mode B only)
         public float ModeBCenter    { get; set; } = 0.25f;   // "Centering" slider: speed-scaled centering (Mode B only)
         public float ModeBLatGain     { get; set; } = 0.60f; // cornering weight: +gain per lateral g (BLAT)
-        public float ModeBCounterGain { get; set; } = 0f;    // countersteer force on rear breakaway (BCS); 0 = off (owner: direct centering + trail spring carry the catch)
         public float ModeBDirSoft     { get; set; } = 0f;    // center flat-spot width (BDIRK); 0 = raw linear (Direct centering + the damper own center calm now)
         public float ModeBLockupRecoverMs { get; set; } = 30f; // "Lockup recovery" slider (BRECOVER): how fast force returns after lockup/wheelspin eases
         public float ModeBLockupPoint { get; set; } = 0.8f; // |slip ratio| treated as full lockup (BLOCKPT); higher = wheel keeps its weight deeper into braking before lightening (owner 2026-07-24 on-wheel)
@@ -644,11 +643,11 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBEarlyTorquePeak    { get; set; } = true;   // torque plateaus at 75% utilization
         public bool  ModeBRoadKick           { get; set; } = true;   // one-wheel bump kick in the force channel
         public float ModeBRoadKickGain       { get; set; } = 0.40f;  // kick strength
-        public bool  ModeBSlideCounterGrowth { get; set; } = false;  // countersteer force grows with slide depth; default OFF with countersteer force at 0 (owner 2026-08-01)
         public bool  ModeBReversalDamp       { get; set; } = true;   // fade force while a slide is caught back toward center, so the direction switch stops snapping (MBREV); default ON 2026-08-01 (mountain-drift validation)
         public float ModeBReversalDampGain   { get; set; } = 0.50f;  // reversal-damping strength, 0..1 (BREVG)
         public bool  ModeBTrailSpring        { get; set; } = true;   // widen the direction ramp during a slide so the wheel settles into a countersteer like real trail instead of slewing to the lock (MBTRAIL); default ON 2026-08-01
         public float ModeBTrailRangeDeg      { get; set; } = 6f;     // full-slide direction-ramp window in degrees (BTRANGE)
+        public float ModeBSlideHalfPoint     { get; set; } = 2.0f;   // rear-over-front excess that reads as a HALF slide (BOVERCAP): the scale for the trail spring and the centering ease alike. Soft-saturating, so this is a scale and not a ceiling; 2.0 comes from the 2026-08-02 on-wheel distribution (p50 0.39, p90 7.45)
         public bool  ModeBPhaseLead          { get; set; } = true;   // lead the force ahead of the wheel to cancel telemetry-loop lag so a released wheel settles instead of oscillating (MBLEAD); default ON 2026-08-01
         public float ModeBPhaseLeadMs        { get; set; } = 40f;    // phase-lead prediction horizon in ms (BLEAD)
         public bool  ModeBCenterDuck         { get; set; } = true;   // ease centering out as the rear breaks away so it stops fighting the countersteer in a slide (MBCDUCK); default ON 2026-08-01
