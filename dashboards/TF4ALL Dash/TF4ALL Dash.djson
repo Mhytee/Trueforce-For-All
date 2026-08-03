@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "0fade3de-9c66-4e42-a9ea-c838945731d7",
+    "Id":  "ff91ed0a-d1de-44bf-89e1-6ac186a21bb4",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "462aeb43-28a9-492b-a995-c05d2b37c7a1",
+                        "ScreenId":  "4be68663-90cb-4ad1-ac5a-ddae3bf4ddf5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "1b22ce58-42f4-439b-9455-32edd24e6a93",
+                        "ScreenId":  "64e0b8b6-a516-4435-9aa7-4af9e65e6f82",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "d24c398b-df86-46d1-88dc-b5614f4707a5",
+                        "ScreenId":  "d95ece60-fda9-4ea6-b6a4-bcd7e45c6b48",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8b037da2-bcb6-4861-9f7b-accd0c878f09",
+                        "ScreenId":  "19a2d169-f4a4-465a-ab31-d10dff9060c0",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "728703a7-7828-4c72-a0b5-04fc8d9b0975",
+                        "ScreenId":  "c08fd0c7-3472-4711-948c-82120db2f61d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8428d18a-ff56-412c-92b7-d4af4cc7bb0c",
+                        "ScreenId":  "2092de55-6449-4a3a-be54-fc9f5775771d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "52db1804-0387-4179-9145-e6523d7f8299",
+                        "ScreenId":  "ea1f6667-dab4-46ef-b26c-df3e6e0f14f9",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -58391,7 +58391,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;return Math.round(u*100)+\"% grip\""
+                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var g=Math.round((1-u)*100);if(g\u003c0)g=0;if(g\u003e100)g=100;return g+\"% grip left\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -68840,7 +68840,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;return Math.round(u*100)+\"% grip\""
+                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var g=Math.round((1-u)*100);if(g\u003c0)g=0;if(g\u003e100)g=100;return g+\"% grip left\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -80505,7 +80505,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;return Math.round(u*100)+\"% grip\""
+                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var g=Math.round((1-u)*100);if(g\u003c0)g=0;if(g\u003e100)g=100;return g+\"% grip left\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -92730,7 +92730,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;return Math.round(u*100)+\"% grip\""
+                                                                                        "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var g=Math.round((1-u)*100);if(g\u003c0)g=0;if(g\u003e100)g=100;return g+\"% grip left\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"

@@ -852,8 +852,14 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $fdot.Bindings['Top']  = BindJS 'Top'  ($uJs + $dirJs + 'return ' + ($gcy - 8) + '+(b/m)*u*' + $gr)
     $fdot.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($fdot)
+    # Counts DOWN: what the tyre has left, not what it is spending. "0%
+    # grip" while cruising reads as no grip at all, which is backwards.
+    # The word "left" carries the direction, because the number now falls
+    # while the dot travels outward and the two would otherwise look like
+    # they disagree.
     $t = New-Text "d$slot-fc-v" $ix ($iy + 22) $iw 20 13 '' $script:MUTED 2 @{
-        Text = BindJS 'Text' ($uJs + 'return Math.round(u*100)+"% grip"')
+        Text = BindJS 'Text' ($uJs + 'var g=Math.round((1-u)*100);' +
+            'if(g<0)g=0;if(g>100)g=100;return g+"% grip left"')
     }
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     $items.Add((AddNote 'fc' 'This game does not report accelerations.' 'Friction' $dFric))
