@@ -823,8 +823,17 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $dot.Bindings['Top']  = BindJS 'Top'  ($gLonJs + 'return ' + ($gcy - 7) + '+g*' + ($gr / 1.5))
     $dot.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($dot)
+    # Both axes SIGNED, because the combined magnitude that used to sit
+    # here read the same under a hard brake as under a hard launch, which
+    # is the one distinction a g meter exists to make. Long is positive
+    # accelerating and negative braking; lat is positive turning right.
+    # The dot keeps the felt-force convention and so travels opposite the
+    # sign, the way a real g meter's needle does.
     $t = New-Text "d$slot-gc-v" $ix ($iy + 22) $iw 20 13 '' $script:MUTED 2 @{
-        Text = BindJS 'Text' ('var a=1*$prop("' + $P + '.Drive.GLat");var b=1*$prop("' + $P + '.Drive.GLong");if(isNaN(a)||isNaN(b))return "";return Math.sqrt(a*a+b*b).toFixed(2)+" g"')
+        Text = BindJS 'Text' ('var a=1*$prop("' + $P + '.Drive.GLat");' +
+            'var b=1*$prop("' + $P + '.Drive.GLong");' +
+            'if(isNaN(a)||isNaN(b))return "";' +
+            'return (b>=0?"+":"")+b.toFixed(2)+" long   "+(a>=0?"+":"")+a.toFixed(2)+" lat"')
     }
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     $items.Add((AddNote 'gc' 'This game does not report accelerations.' 'GCircle' $dG))
