@@ -177,7 +177,13 @@ mid-session doesn't mean alt-tabbing out of the game.
 - Rev lights across the top of every screen. Fill left to right or
   outside in, your pick in Settings.
 - Visualizer: scrolling waveforms of the game's steering force and the
-  haptic layer, as sent to the wheel, with FFB clipping marked in red.
+  haptic layer, as sent to the wheel. Clipping turns the trace red, and
+  a yellow SPIKE badge marks where spike reduction stepped in.
+- Telemetry Based FFB: turn it on or off for the game you are in, and
+  tune its main knobs from the rig. Tap any value to type an exact
+  number instead of stepping to it.
+- Make it yours: hide the tabs you don't use and reorder the rest, in
+  Settings > TF4ALL Dash.
 
 ![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
 
