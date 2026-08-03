@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "bd3cc603-17aa-4179-ab06-b67d1fb07f7e",
+    "Id":  "59f8a807-51a9-47aa-926e-e42bb54314b4",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f24b23ad-1014-48ef-b6f0-93ca38b2d7bb",
+                        "ScreenId":  "fd6fed5f-ed1c-4e4a-8623-8d98825aac78",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -5718,7 +5718,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "6657a65f-7e70-488f-8273-519a110ed449",
+                        "ScreenId":  "ec901420-0c49-4449-81e9-5e4afd98ffda",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14591,7 +14591,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "73b978a7-9bf1-4468-8a9c-5d4490c6498f",
+                        "ScreenId":  "f4322b61-bf90-4ebe-90ad-e191be8296c1",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -25498,7 +25498,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "21d7a756-029b-4da1-8793-a6fdda18800e",
+                        "ScreenId":  "8da83f93-f7ac-4177-9712-e3a553bd4f22",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -30380,7 +30380,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "5bd59f4b-9e1c-4faf-99a8-d86cf00c2226",
+                        "ScreenId":  "8acdca82-dae6-4f84-b884-b572dbc8d8f8",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -41777,7 +41777,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8735cf4c-f45e-49c5-b99f-0152c58bb83f",
+                        "ScreenId":  "24074689-c5d5-4a74-a55e-ac7003f630bb",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -49887,7 +49887,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a7615866-56c8-4f61-b998-4a92aedd5c6a",
+                        "ScreenId":  "1f7e2898-e190-413b-be4d-b4ecdc59e095",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -55236,38 +55236,6 @@
                                                        }
                                       },
                                       {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "GAME FFB",
-                                          "TextColor":  "#FFE3A445",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  24,
-                                          "Opacity":  100,
-                                          "Top":  53,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d0-sc-lg1t",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#66E5484D",
                                           "BorderStyle":  {
@@ -56406,38 +56374,6 @@
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d0-sc-z2",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "TRUEFORCE",
-                                          "TextColor":  "#FFA08CFF",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  24,
-                                          "Opacity":  100,
-                                          "Top":  141,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d0-sc-lg2t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -58779,6 +58715,158 @@
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE3A445",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  24,
+                                          "Opacity":  100,
+                                          "Top":  204,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-sc-lg1",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "GAME FFB",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  37,
+                                          "Opacity":  100,
+                                          "Top":  199,
+                                          "Visible":  true,
+                                          "Width":  64,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-sc-lg1t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  102,
+                                          "Opacity":  100,
+                                          "Top":  204,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-sc-lg2",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "TRUEFORCE",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  115,
+                                          "Opacity":  100,
+                                          "Top":  199,
+                                          "Visible":  true,
+                                          "Width":  70,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-sc-lg2t",
+                                          "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -64041,38 +64129,6 @@
                                                        }
                                       },
                                       {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "GAME FFB",
-                                          "TextColor":  "#FFE3A445",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  522,
-                                          "Opacity":  100,
-                                          "Top":  53,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d1-sc-lg1t",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#66E5484D",
                                           "BorderStyle":  {
@@ -65211,38 +65267,6 @@
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d1-sc-z2",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "TRUEFORCE",
-                                          "TextColor":  "#FFA08CFF",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  522,
-                                          "Opacity":  100,
-                                          "Top":  141,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d1-sc-lg2t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -67584,6 +67608,158 @@
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE3A445",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  522,
+                                          "Opacity":  100,
+                                          "Top":  204,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-sc-lg1",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "GAME FFB",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  535,
+                                          "Opacity":  100,
+                                          "Top":  199,
+                                          "Visible":  true,
+                                          "Width":  64,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-sc-lg1t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  600,
+                                          "Opacity":  100,
+                                          "Top":  204,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-sc-lg2",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Scope\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "TRUEFORCE",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  613,
+                                          "Opacity":  100,
+                                          "Top":  199,
+                                          "Visible":  true,
+                                          "Width":  70,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-sc-lg2t",
+                                          "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -74054,46 +74230,6 @@
                                                        }
                                       },
                                       {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "GAME FFB",
-                                          "TextColor":  "#FFE3A445",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  24,
-                                          "Opacity":  100,
-                                          "Top":  265,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d2-sc-lg1t",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Scope\""
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       },
-                                                           "Top":  {
-                                                                       "Formula":  {
-                                                                                       "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?265:53"
-                                                                                   },
-                                                                       "Mode":  2,
-                                                                       "TargetPropertyName":  "Top"
-                                                                   }
-                                                       }
-                                      },
-                                      {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#66E5484D",
                                           "BorderStyle":  {
@@ -75453,46 +75589,6 @@
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?392.5:339.5"
-                                                                                   },
-                                                                       "Mode":  2,
-                                                                       "TargetPropertyName":  "Top"
-                                                                   }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "TRUEFORCE",
-                                          "TextColor":  "#FFA08CFF",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  24,
-                                          "Opacity":  100,
-                                          "Top":  356,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d2-sc-lg2t",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Scope\""
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       },
-                                                           "Top":  {
-                                                                       "Formula":  {
-                                                                                       "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?356:250"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -77829,6 +77925,158 @@
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE3A445",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  24,
+                                          "Opacity":  100,
+                                          "Top":  422,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-sc-lg1",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "GAME FFB",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  37,
+                                          "Opacity":  100,
+                                          "Top":  417,
+                                          "Visible":  true,
+                                          "Width":  64,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-sc-lg1t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  102,
+                                          "Opacity":  100,
+                                          "Top":  422,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-sc-lg2",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "TRUEFORCE",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  115,
+                                          "Opacity":  100,
+                                          "Top":  417,
+                                          "Visible":  true,
+                                          "Width":  70,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-sc-lg2t",
+                                          "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -84299,46 +84547,6 @@
                                                        }
                                       },
                                       {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "GAME FFB",
-                                          "TextColor":  "#FFE3A445",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  522,
-                                          "Opacity":  100,
-                                          "Top":  265,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d3-sc-lg1t",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Scope\""
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       },
-                                                           "Top":  {
-                                                                       "Formula":  {
-                                                                                       "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?265:53"
-                                                                                   },
-                                                                       "Mode":  2,
-                                                                       "TargetPropertyName":  "Top"
-                                                                   }
-                                                       }
-                                      },
-                                      {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#66E5484D",
                                           "BorderStyle":  {
@@ -85698,46 +85906,6 @@
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?392.5:339.5"
-                                                                                   },
-                                                                       "Mode":  2,
-                                                                       "TargetPropertyName":  "Top"
-                                                                   }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
-                                          "FontWeight":  "Normal",
-                                          "TextWrapping":  1,
-                                          "FontStyle":  "Normal",
-                                          "FontSize":  10,
-                                          "Text":  "TRUEFORCE",
-                                          "TextColor":  "#FFA08CFF",
-                                          "HorizontalAlignment":  0,
-                                          "VerticalAlignment":  1,
-                                          "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  16,
-                                          "Left":  522,
-                                          "Opacity":  100,
-                                          "Top":  356,
-                                          "Visible":  true,
-                                          "Width":  70,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "d3-sc-lg2t",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Scope\""
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       },
-                                                           "Top":  {
-                                                                       "Formula":  {
-                                                                                       "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?356:250"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -88074,6 +88242,158 @@
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE3A445",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  522,
+                                          "Opacity":  100,
+                                          "Top":  422,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-sc-lg1",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "GAME FFB",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  535,
+                                          "Opacity":  100,
+                                          "Top":  417,
+                                          "Visible":  true,
+                                          "Width":  64,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-sc-lg1t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "2,2,2,2",
+                                                              "RadiusTopLeft":  2,
+                                                              "RadiusTopRight":  2,
+                                                              "RadiusBottomLeft":  2,
+                                                              "RadiusBottomRight":  2,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  9,
+                                          "Left":  600,
+                                          "Opacity":  100,
+                                          "Top":  422,
+                                          "Visible":  true,
+                                          "Width":  9,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-sc-lg2",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Scope\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  10,
+                                          "Text":  "TRUEFORCE",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  613,
+                                          "Opacity":  100,
+                                          "Top":  417,
+                                          "Visible":  true,
+                                          "Width":  70,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-sc-lg2t",
+                                          "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,

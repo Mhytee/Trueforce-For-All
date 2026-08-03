@@ -742,13 +742,6 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $z1 = New-Rect "d$slot-sc-z1" $ix $l1mid $iw 2 $script:SCOPE_GRID $null 0
     $z1.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($z1)
-    # The full screen carries its colour key in a top-right legend, which
-    # has nowhere to go here without colliding with the header and the
-    # badges. Each lane gets its own tinted label instead, which says the
-    # same thing closer to the thing it describes.
-    $lt1 = New-Text "d$slot-sc-lg1t" $ix ($l1y + 1) 70 16 10 'GAME FFB' $script:SCOPE_AMBER 0
-    $lt1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($lt1)
-
     # Clip threshold rails, dotted like the full screen: the force line
     # reaching them IS the clip, which is what the badge then reports.
     $railOff = ($scLane / 2) * 0.98
@@ -772,8 +765,6 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $z2 = New-Rect "d$slot-sc-z2" $ix $l2mid $iw 2 $script:SCOPE_GRID $null 0
     $z2.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($z2)
-    $lt2 = New-Text "d$slot-sc-lg2t" $ix ($l2y + 1) 70 16 10 'TRUEFORCE' $script:SCOPE_PURPLE 0
-    $lt2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($lt2)
     $cols = 39
     $cw = $iw / $cols
     for ($c = 0; $c -lt $cols; $c++) {
@@ -785,6 +776,18 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $col.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($col)
     }
+    # Colour key, bottom left, the same pairing the full screen uses. It
+    # sits over the quiet end of the envelope lane rather than taking a
+    # row of its own, so it costs no height in a box this size.
+    $lgY = $y + $h - 18
+    $sw1 = New-Rect "d$slot-sc-lg1" $ix $lgY 9 9 $script:SCOPE_AMBER $null 2
+    $sw1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($sw1)
+    $lt1 = New-Text "d$slot-sc-lg1t" ($ix + 13) ($lgY - 5) 64 18 10 'GAME FFB' $script:MUTED 0
+    $lt1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($lt1)
+    $sw2 = New-Rect "d$slot-sc-lg2" ($ix + 78) $lgY 9 9 $script:SCOPE_PURPLE $null 2
+    $sw2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($sw2)
+    $lt2 = New-Text "d$slot-sc-lg2t" ($ix + 91) ($lgY - 5) 70 18 10 'TRUEFORCE' $script:MUTED 0
+    $lt2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($lt2)
 
     # In the taller one-row layout a text stack would otherwise sit at the
     # top of a half-empty card, which reads as misaligned beside the boxes
@@ -1890,7 +1893,9 @@ $ovDriveTab['d2-sc-clip-bg']  = @{ Show = $true }
 $ovDriveTab['d2-sc-clip-t']   = @{ Show = $true }
 $ovDriveTab['d2-sc-spike-bg'] = @{ Show = $true }
 $ovDriveTab['d2-sc-spike-t']  = @{ Show = $true }
+$ovDriveTab['d2-sc-lg1']  = @{ Show = $true }
 $ovDriveTab['d2-sc-lg1t'] = @{ Show = $true }
+$ovDriveTab['d2-sc-lg2']  = @{ Show = $true }
 $ovDriveTab['d2-sc-lg2t'] = @{ Show = $true }
 foreach ($side in @(-1, 1)) { for ($seg = 0; $seg -lt 12; $seg++) { $ovDriveTab["d2-sc-rail$($side)_$seg"] = @{ Show = $true } } }
 $scLane = ((212 - 46) - 16) / 2
