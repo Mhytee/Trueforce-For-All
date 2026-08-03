@@ -120,6 +120,8 @@ namespace TrueforceForAll.Core
         private const int DASH_ACCEL  = 71;
         private const int DASH_BRAKE  = 72;
         private const int DASH_GEAR   = 75;
+        // Gear byte Forza sends while a shift is in progress.
+        private const byte GEAR_SHIFTING = 11;
         // Steer: signed int8, offset-from-center, -127 (full left) .. +127
         // (full right). Feeds the stationary-spring FFB floor so it works in
         // Forza, not just AC. Low resolution (254 steps lock-to-lock) so the
@@ -173,9 +175,8 @@ namespace TrueforceForAll.Core
 
         public Action<string> Logger { get; set; }
 
-        // TEMPORARY: bounded gear-byte tracing, see the diagnostic in Parse.
-        private int _gearDiagLeft = 80;
-        private int _gearDiagLast = -1;
+        // Last gear byte we believed, so the shift sentinel can hold it.
+        private int _lastGoodGear = 1;   // 1 = N
 
         /// <summary>Latest display-only dash fields (tyre temps, fuel, lap
         /// times, position), or null before the first packet carrying a dash
@@ -604,20 +605,17 @@ namespace TrueforceForAll.Core
                 accelByte = buf[dashBase + DASH_ACCEL];
                 brakeByte = buf[dashBase + DASH_BRAKE];
                 gearByte  = buf[dashBase + DASH_GEAR];
-                // TEMPORARY DIAGNOSTIC (gear reads "10" mid-shift on the
-                // owner's rig and a two-frame debounce did not clear it, so
-                // the raw bytes are needed rather than another guess). Logs
-                // each gear-byte change with its neighbours, capped so a
-                // session cannot be flooded. Remove once the cause is known.
-                if (_gearDiagLeft > 0 && gearByte != _gearDiagLast)
-                {
-                    _gearDiagLast = gearByte;
-                    _gearDiagLeft--;
-                    Logger?.Invoke($"[TF4ALL] Forza gear diag: byte={gearByte} -> '{GearString(gearByte)}'"
-                        + $" clutch={buf[dashBase + 73]} handbrake={buf[dashBase + 74]}"
-                        + $" steer={unchecked((sbyte)buf[dashBase + DASH_STEER])}"
-                        + $" len={len} dashBase={dashBase}");
-                }
+                // Forza parks the gear byte at 11 while a shift is in flight.
+                // Byte tracing on the owner's rig caught it flashing 11 for
+                // ~200 ms between R, N and 1st on a stationary car, so it is
+                // a sentinel and not 10th gear: an actual 10-speed can only
+                // reach 11 from 9th or 10th, which is exactly the case this
+                // lets through. Held rather than shown, so the readout tracks
+                // the in-game gear and GearShift does not fire on a phantom.
+                if (gearByte == GEAR_SHIFTING && _lastGoodGear < GEAR_SHIFTING - 1)
+                    gearByte = (byte)_lastGoodGear;
+                else
+                    _lastGoodGear = gearByte;
                 // Steer is a signed byte (read the byte, reinterpret as sbyte)
                 // normalized to ~[-1, 1]. Sign matches Forza's convention
                 // (+ = right); the spring's downstream invert was tuned on

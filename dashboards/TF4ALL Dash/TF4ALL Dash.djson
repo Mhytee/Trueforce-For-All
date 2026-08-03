@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "dadb9a0f-741e-433c-8a5a-81d371c06765",
+    "Id":  "9f01467b-fdd2-4be2-8453-97cd66670b1e",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "e084b321-d35d-4742-84d6-29543abbab94",
+                        "ScreenId":  "2243489a-5cda-4c4e-8d9c-3f2b03524b7f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "28392650-4c28-498b-a398-14c1892896c1",
+                        "ScreenId":  "b2b8d4ca-cef9-45b2-a59b-558360f5f589",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9c7613ce-3894-41fd-8638-4acb44dcbd30",
+                        "ScreenId":  "a3a22028-5214-44bd-ba66-0b8f1c1e5231",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "95f57f2f-bca8-4e58-bd99-f1942e7f8ee1",
+                        "ScreenId":  "0ad8a8bf-f39a-4a4a-840c-50ab0989f956",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a742de0d-bdd3-4aad-bac1-96460fae36d9",
+                        "ScreenId":  "89b7c5b2-a143-47d7-b969-83064c6cb1aa",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "857a5f42-4c70-4f75-855b-1467ef4912ae",
+                        "ScreenId":  "937bfda3-f959-4ed7-9845-b371de8754e2",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "2c746f1a-1b75-4243-9b4a-4cf1317aa482",
+                        "ScreenId":  "150aa3a0-0e74-499a-bab5-ff57c9dd7609",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -53068,7 +53068,7 @@
 
                                                                            }
                                                           },
-                                          "Height":  200,
+                                          "Height":  358,
                                           "Left":  302,
                                           "Opacity":  100,
                                           "Top":  60,
@@ -53087,7 +53087,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return 200"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -53131,7 +53131,7 @@
                                           "Height":  2,
                                           "Left":  302,
                                           "Opacity":  100,
-                                          "Top":  258,
+                                          "Top":  416,
                                           "Visible":  true,
                                           "Width":  10,
                                           "BorderBottom":  0,
@@ -53147,7 +53147,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,200*v/100)"
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return hh"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -53155,7 +53155,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var b=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?260:335;return b-Math.max(2,200*v/100)"
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return 418-hh"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -53188,7 +53188,7 @@
 
                                                                            }
                                                           },
-                                          "Height":  200,
+                                          "Height":  358,
                                           "Left":  488,
                                           "Opacity":  100,
                                           "Top":  60,
@@ -53207,7 +53207,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return 200"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -53251,7 +53251,7 @@
                                           "Height":  2,
                                           "Left":  488,
                                           "Opacity":  100,
-                                          "Top":  258,
+                                          "Top":  416,
                                           "Visible":  true,
                                           "Width":  10,
                                           "BorderBottom":  0,
@@ -53267,7 +53267,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,200*v/100)"
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return hh"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -53275,7 +53275,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var b=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?260:335;return b-Math.max(2,200*v/100)"
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return 418-hh"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -53311,7 +53311,7 @@
                                           "Height":  8,
                                           "Left":  302,
                                           "Opacity":  100,
-                                          "Top":  312,
+                                          "Top":  428,
                                           "Visible":  true,
                                           "Width":  196,
                                           "BorderBottom":  0,
@@ -53324,14 +53324,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "dr-st-bg",
                                           "Bindings":  {
-                                                           "Top":  {
-                                                                       "Formula":  {
-                                                                                       "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?312:387"
-                                                                                   },
-                                                                       "Mode":  2,
-                                                                       "TargetPropertyName":  "Top"
-                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -53363,7 +53355,7 @@
                                           "Height":  14,
                                           "Left":  399,
                                           "Opacity":  100,
-                                          "Top":  309,
+                                          "Top":  425,
                                           "Visible":  true,
                                           "Width":  2,
                                           "BorderBottom":  0,
@@ -53376,14 +53368,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "dr-st-tick",
                                           "Bindings":  {
-                                                           "Top":  {
-                                                                       "Formula":  {
-                                                                                       "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?309:384"
-                                                                                   },
-                                                                       "Mode":  2,
-                                                                       "TargetPropertyName":  "Top"
-                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -53415,7 +53399,7 @@
                                           "Height":  12,
                                           "Left":  393,
                                           "Opacity":  100,
-                                          "Top":  310,
+                                          "Top":  426,
                                           "Visible":  true,
                                           "Width":  12,
                                           "BorderBottom":  0,
@@ -53428,14 +53412,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "dr-st",
                                           "Bindings":  {
-                                                           "Top":  {
-                                                                       "Formula":  {
-                                                                                       "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?310:385"
-                                                                                   },
-                                                                       "Mode":  2,
-                                                                       "TargetPropertyName":  "Top"
-                                                                   },
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
@@ -54312,7 +54288,7 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  24,
                                           "Opacity":  100,
                                           "Top":  50,
@@ -54384,7 +54360,7 @@
                                           "Height":  36,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -54431,7 +54407,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  84,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d0-hm-mg-tap",
@@ -54467,7 +54443,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -54504,7 +54480,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -54543,7 +54519,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  34,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d0-hm-mgdn",
@@ -54579,7 +54555,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -54616,7 +54592,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -54655,7 +54631,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  224,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d0-hm-mgup",
@@ -54688,10 +54664,10 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  24,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  132,
                                           "Visible":  true,
                                           "Width":  254,
                                           "BorderBottom":  0,
@@ -54728,7 +54704,7 @@
                                           "Height":  14,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  130,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  234,
                                           "Rotation":  0,
@@ -54767,7 +54743,7 @@
                                           "Height":  18,
                                           "Left":  226,
                                           "Opacity":  100,
-                                          "Top":  128,
+                                          "Top":  136,
                                           "Visible":  true,
                                           "Width":  42,
                                           "BorderBottom":  0,
@@ -54812,7 +54788,7 @@
                                           "Height":  18,
                                           "Left":  226,
                                           "Opacity":  100,
-                                          "Top":  128,
+                                          "Top":  136,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Rotation":  0,
@@ -54867,7 +54843,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
                                           "Left":  226,
-                                          "Top":  128,
+                                          "Top":  136,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Name":  "d0-hm-ag-pill",
@@ -54896,7 +54872,7 @@
                                           "Height":  36,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -54943,7 +54919,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  84,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d0-hm-ag-tap",
@@ -54979,7 +54955,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -55016,7 +54992,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -55055,7 +55031,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  34,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d0-hm-agdn",
@@ -55091,7 +55067,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -55128,7 +55104,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -55167,7 +55143,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  224,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d0-hm-agup",
@@ -58462,7 +58438,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -58470,7 +58446,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -58598,7 +58574,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -58606,7 +58582,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -63825,7 +63801,7 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  522,
                                           "Opacity":  100,
                                           "Top":  50,
@@ -63897,7 +63873,7 @@
                                           "Height":  36,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -63944,7 +63920,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  582,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d1-hm-mg-tap",
@@ -63980,7 +63956,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -64017,7 +63993,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -64056,7 +64032,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  532,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d1-hm-mgdn",
@@ -64092,7 +64068,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -64129,7 +64105,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -64168,7 +64144,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  722,
-                                          "Top":  72,
+                                          "Top":  80,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d1-hm-mgup",
@@ -64201,10 +64177,10 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  522,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  132,
                                           "Visible":  true,
                                           "Width":  254,
                                           "BorderBottom":  0,
@@ -64241,7 +64217,7 @@
                                           "Height":  14,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  130,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  234,
                                           "Rotation":  0,
@@ -64280,7 +64256,7 @@
                                           "Height":  18,
                                           "Left":  724,
                                           "Opacity":  100,
-                                          "Top":  128,
+                                          "Top":  136,
                                           "Visible":  true,
                                           "Width":  42,
                                           "BorderBottom":  0,
@@ -64325,7 +64301,7 @@
                                           "Height":  18,
                                           "Left":  724,
                                           "Opacity":  100,
-                                          "Top":  128,
+                                          "Top":  136,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Rotation":  0,
@@ -64380,7 +64356,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
                                           "Left":  724,
-                                          "Top":  128,
+                                          "Top":  136,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Name":  "d1-hm-ag-pill",
@@ -64409,7 +64385,7 @@
                                           "Height":  36,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -64456,7 +64432,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  582,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d1-hm-ag-tap",
@@ -64492,7 +64468,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -64529,7 +64505,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -64568,7 +64544,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  532,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d1-hm-agdn",
@@ -64604,7 +64580,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -64641,7 +64617,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -64680,7 +64656,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  722,
-                                          "Top":  146,
+                                          "Top":  162,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d1-hm-agup",
@@ -67975,7 +67951,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -67983,7 +67959,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -68111,7 +68087,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -68119,7 +68095,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73441,7 +73417,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?238:146"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?238:138"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73497,7 +73473,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?239:147"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?239:139"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73522,7 +73498,7 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  24,
                                           "Opacity":  100,
                                           "Top":  262,
@@ -73549,7 +73525,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?262:170"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?262:162"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73589,7 +73565,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:176"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:168"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73610,7 +73586,7 @@
                                           "Height":  36,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -73637,7 +73613,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73665,7 +73641,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  84,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d2-hm-mg-tap",
@@ -73681,7 +73657,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73709,7 +73685,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -73733,7 +73709,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73754,7 +73730,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -73773,7 +73749,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73801,7 +73777,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  34,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d2-hm-mgdn",
@@ -73817,7 +73793,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73845,7 +73821,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -73869,7 +73845,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73890,7 +73866,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -73909,7 +73885,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73937,7 +73913,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  224,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d2-hm-mgup",
@@ -73953,7 +73929,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73978,10 +73954,10 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  24,
                                           "Opacity":  100,
-                                          "Top":  336,
+                                          "Top":  344,
                                           "Visible":  true,
                                           "Width":  254,
                                           "BorderBottom":  0,
@@ -74005,7 +73981,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?336:244"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?344:244"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74026,7 +74002,7 @@
                                           "Height":  14,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  342,
+                                          "Top":  350,
                                           "Visible":  true,
                                           "Width":  234,
                                           "Rotation":  0,
@@ -74045,7 +74021,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?342:250"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?350:250"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74073,7 +74049,7 @@
                                           "Height":  18,
                                           "Left":  226,
                                           "Opacity":  100,
-                                          "Top":  340,
+                                          "Top":  348,
                                           "Visible":  true,
                                           "Width":  42,
                                           "BorderBottom":  0,
@@ -74105,7 +74081,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?340:248"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:248"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74126,7 +74102,7 @@
                                           "Height":  18,
                                           "Left":  226,
                                           "Opacity":  100,
-                                          "Top":  340,
+                                          "Top":  348,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Rotation":  0,
@@ -74161,7 +74137,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?340:248"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:248"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74189,7 +74165,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
                                           "Left":  226,
-                                          "Top":  340,
+                                          "Top":  348,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Name":  "d2-hm-ag-pill",
@@ -74205,7 +74181,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?340:248"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:248"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74226,7 +74202,7 @@
                                           "Height":  36,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -74253,7 +74229,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74281,7 +74257,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  84,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d2-hm-ag-tap",
@@ -74297,7 +74273,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74325,7 +74301,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -74349,7 +74325,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74370,7 +74346,7 @@
                                           "Height":  36,
                                           "Left":  34,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -74389,7 +74365,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74417,7 +74393,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  34,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d2-hm-agdn",
@@ -74433,7 +74409,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74461,7 +74437,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -74485,7 +74461,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74506,7 +74482,7 @@
                                           "Height":  36,
                                           "Left":  224,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -74525,7 +74501,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -74553,7 +74529,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  224,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d2-hm-agup",
@@ -74569,7 +74545,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -78696,7 +78672,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -78704,7 +78680,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -78848,7 +78824,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -78856,7 +78832,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84506,7 +84482,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?238:146"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?238:138"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84562,7 +84538,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?239:147"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?239:139"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84587,7 +84563,7 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  522,
                                           "Opacity":  100,
                                           "Top":  262,
@@ -84614,7 +84590,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?262:170"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?262:162"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84654,7 +84630,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:176"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:168"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84675,7 +84651,7 @@
                                           "Height":  36,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -84702,7 +84678,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84730,7 +84706,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  582,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d3-hm-mg-tap",
@@ -84746,7 +84722,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84774,7 +84750,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -84798,7 +84774,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84819,7 +84795,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -84838,7 +84814,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84866,7 +84842,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  532,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d3-hm-mgdn",
@@ -84882,7 +84858,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84910,7 +84886,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -84934,7 +84910,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -84955,7 +84931,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -84974,7 +84950,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85002,7 +84978,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  722,
-                                          "Top":  284,
+                                          "Top":  292,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d3-hm-mgup",
@@ -85018,7 +84994,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?284:192"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292:192"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85043,10 +85019,10 @@
 
                                                                            }
                                                           },
-                                          "Height":  66,
+                                          "Height":  74,
                                           "Left":  522,
                                           "Opacity":  100,
-                                          "Top":  336,
+                                          "Top":  344,
                                           "Visible":  true,
                                           "Width":  254,
                                           "BorderBottom":  0,
@@ -85070,7 +85046,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?336:244"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?344:244"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85091,7 +85067,7 @@
                                           "Height":  14,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  342,
+                                          "Top":  350,
                                           "Visible":  true,
                                           "Width":  234,
                                           "Rotation":  0,
@@ -85110,7 +85086,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?342:250"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?350:250"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85138,7 +85114,7 @@
                                           "Height":  18,
                                           "Left":  724,
                                           "Opacity":  100,
-                                          "Top":  340,
+                                          "Top":  348,
                                           "Visible":  true,
                                           "Width":  42,
                                           "BorderBottom":  0,
@@ -85170,7 +85146,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?340:248"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:248"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85191,7 +85167,7 @@
                                           "Height":  18,
                                           "Left":  724,
                                           "Opacity":  100,
-                                          "Top":  340,
+                                          "Top":  348,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Rotation":  0,
@@ -85226,7 +85202,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?340:248"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:248"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85254,7 +85230,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
                                           "Left":  724,
-                                          "Top":  340,
+                                          "Top":  348,
                                           "Visible":  true,
                                           "Width":  42,
                                           "Name":  "d3-hm-ag-pill",
@@ -85270,7 +85246,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?340:248"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:248"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85291,7 +85267,7 @@
                                           "Height":  36,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Rotation":  0,
@@ -85318,7 +85294,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85346,7 +85322,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  582,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  134,
                                           "Name":  "d3-hm-ag-tap",
@@ -85362,7 +85338,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85390,7 +85366,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -85414,7 +85390,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85435,7 +85411,7 @@
                                           "Height":  36,
                                           "Left":  532,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -85454,7 +85430,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85482,7 +85458,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  532,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d3-hm-agdn",
@@ -85498,7 +85474,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85526,7 +85502,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "BorderBottom":  0,
@@ -85550,7 +85526,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85571,7 +85547,7 @@
                                           "Height":  36,
                                           "Left":  722,
                                           "Opacity":  100,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Rotation":  0,
@@ -85590,7 +85566,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -85618,7 +85594,7 @@
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  36,
                                           "Left":  722,
-                                          "Top":  358,
+                                          "Top":  374,
                                           "Visible":  true,
                                           "Width":  44,
                                           "Name":  "d3-hm-agup",
@@ -85634,7 +85610,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:266"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?374:274"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -89761,7 +89737,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -89769,7 +89745,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -89913,7 +89889,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -89921,7 +89897,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -102899,7 +102875,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?16:0"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -102951,7 +102935,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103003,7 +102995,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103055,7 +103055,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103107,7 +103115,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103159,7 +103175,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103211,7 +103235,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103263,7 +103295,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103315,7 +103355,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103367,7 +103415,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103419,7 +103475,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103471,7 +103535,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103523,7 +103595,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103575,7 +103655,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103627,7 +103715,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103679,7 +103775,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103731,7 +103835,15 @@
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
-                                                                     }
+                                                                     },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -103792,6 +103904,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -103860,6 +103980,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -103928,6 +104056,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -103996,6 +104132,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104064,6 +104208,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104132,6 +104284,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104200,6 +104360,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104268,6 +104436,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104336,6 +104512,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104404,6 +104588,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104472,6 +104664,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104540,6 +104740,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104608,6 +104816,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104676,6 +104892,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104744,6 +104968,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -104812,6 +105044,14 @@
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
                                                                                },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.RevCentered\")?17:1"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,

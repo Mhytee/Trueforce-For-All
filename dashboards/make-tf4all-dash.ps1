@@ -165,23 +165,30 @@ function KeypadOverlay([string]$P) {
 # (Dash.RpmPct: user pin > community > telemetry > estimate). Green,
 # amber, red zones; goes dark when telemetry stalls. Lets a wheel-mounted
 # remote double as rev lights in race.
-function RevStrip([string]$P) {
+function RevStrip([string]$P, [bool]$driveTab = $false) {
     $items = [System.Collections.Generic.List[object]]::new()
     # Span is a user choice (Dash.RevCentered): the full width of the
     # screen, or just the middle column, which on the Drive tab is the
     # space above the gear between the two box columns. Every segment,
     # socket and the backing bar bind their Left and Width to it, so the
     # switch applies live with no dashboard reload.
-    # Centred span is 300..500, matching the gear column on the Drive tab.
+    # Centred, it also drops to y 16 on the Drive tab so its top edge lines
+    # up with the top of the boxes. Every other screen keeps it at y 0: the
+    # middle of their header row is where the title and car name live.
     # Whole-pixel pitch on purpose: these numbers land in JS source, and a
     # fractional one would be written with the machine's decimal separator.
     $cenX = 300; $cenW = 200
+    $cenY = if ($driveTab) { 16 } else { 0 }
+    # No Top binding at all when it does not move: six screens' worth of
+    # no-op formulas would still be evaluated on every data update.
     $segLeftJs  = { param($i) 'return $prop("' + $P + '.RevCentered")?' + (305 + $i * 12) + ':' + (2 + $i * 50) }
     $segWidthJs = 'return $prop("' + $P + '.RevCentered")?10:46'
+    $segTopJs   = 'return $prop("' + $P + '.RevCentered")?' + ($cenY + 1) + ':1'
     $bg = New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' @{
         Left  = BindJS 'Left'  ('return $prop("' + $P + '.RevCentered")?' + $cenX + ':0')
         Width = BindJS 'Width' ('return $prop("' + $P + '.RevCentered")?' + $cenW + ':800')
     } 0
+    if ($cenY -ne 0) { $bg.Bindings['Top'] = BindJS 'Top' ('return $prop("' + $P + '.RevCentered")?' + $cenY + ':0') }
     $items.Add($bg)
     # Unlit sockets: a faint 1px outline per LED position, always visible,
     # so the strip is discoverable before the first rev (an all-dark strip
@@ -191,6 +198,7 @@ function RevStrip([string]$P) {
         $sock = New-Rect "rev-sock$i" $x 1 46 10 $script:CLEAR $null 2
         $sock.Bindings['Left']  = BindJS 'Left'  (& $segLeftJs $i)
         $sock.Bindings['Width'] = BindJS 'Width' $segWidthJs
+        if ($cenY -ne 0) { $sock.Bindings['Top'] = BindJS 'Top' $segTopJs }
         $sock.BorderStyle.BorderColor = '#FF39404C'
         $sock.BorderStyle.BorderTop = 1; $sock.BorderStyle.BorderBottom = 1
         $sock.BorderStyle.BorderLeft = 1; $sock.BorderStyle.BorderRight = 1
@@ -217,6 +225,7 @@ function RevStrip([string]$P) {
             Left  = BindJS 'Left'  (& $segLeftJs $i)
             Width = BindJS 'Width' $segWidthJs
         } 2
+        if ($cenY -ne 0) { $seg.Bindings['Top'] = BindJS 'Top' $segTopJs }
         # RevFlash: steady true below redline, wheel-synced blink at/above.
         $seg.Bindings['Visible'] = BindJS 'Visible' ('var t=$prop("' + $P + '.RevOutsideIn")?' + $tOut + ':' + $tLtr + ';return (1*$prop("' + $P + '.RpmPct"))>=t && $prop("' + $P + '.RevFlash")')
         $items.Add($seg)
@@ -452,7 +461,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     foreach ($gRow in $gainRows) {
         $gid = $gRow[0]; $glabel = $gRow[1]; $gprop = $gRow[2]
         $gopen = $gRow[3]; $gdn = $gRow[4]; $gup = $gRow[5]; $gonProp = $gRow[6]
-        $pnl = New-Rect "d$slot-hm-$gid-p" $ix $gy $iw 66 $script:TILE $null 5
+        # 74 tall rather than 66: the extra 8 goes under the caption row so
+        # the ON/OFF pill has a gap beneath it instead of resting on the
+        # steppers, and the panel still clears the bottom of the smallest box.
+        $pnl = New-Rect "d$slot-hm-$gid-p" $ix $gy $iw 74 $script:TILE $null 5
         $pnl.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pnl)
         $t = New-Text "d$slot-hm-$gid-l" ($ix + 10) ($gy + 6) ($iw - 20) 14 10 $glabel $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -483,23 +495,23 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         }
         $vX = $ix + 10 + $gStep + 6
         $vW = $iw - 20 - ($gStep + 6) * 2
-        $t = New-Text "d$slot-hm-$gid" $vX ($gy + 22) $vW 36 28 '' $script:WHITE 1 @{
+        $t = New-Text "d$slot-hm-$gid" $vX ($gy + 30) $vW 36 28 '' $script:WHITE 1 @{
             Text = BindJS 'Text' $valJs
         } 'Bold'
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
         # Tap the number to type it, as on the tab.
-        $b = New-Button "d$slot-hm-$gid-tap" $vX ($gy + 22) $vW 36 $gopen
+        $b = New-Button "d$slot-hm-$gid-tap" $vX ($gy + 30) $vW 36 $gopen
         $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
         foreach ($st in @(@(($gid + 'dn'), $gdn, '-', ($ix + 10)), @(($gid + 'up'), $gup, '+', ($ix + $iw - 10 - $gStep)))) {
             $sx = $st[3]
-            $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($gy + 22) $gStep 36 $script:PANEL $null 4
+            $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($gy + 30) $gStep 36 $script:PANEL $null 4
             $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-            $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($gy + 22) $gStep 36 24 $st[2] $script:WHITE 1 $null 'Bold'
+            $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($gy + 30) $gStep 36 24 $st[2] $script:WHITE 1 $null 'Bold'
             $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-            $bb = New-Button "d$slot-hm-$($st[0])" $sx ($gy + 22) $gStep 36 $st[1]
+            $bb = New-Button "d$slot-hm-$($st[0])" $sx ($gy + 30) $gStep 36 $st[1]
             $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
         }
-        $gy += 74
+        $gy += 82
     }
 
     # ---------------- PRESETS (ours) ---------------------------------
@@ -751,6 +763,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Steering has NO SimHub equivalent (it exposes no universal steering
     # field), so that bar is ours alone and simply hides when the active
     # source does not report it.
+    # Parenthesised on purpose: PowerShell's comma binds tighter than +, so
+    # a bare concatenation splits into extra elements and the JS body here
+    # gets cut off at the first + (which is what silently froze these bars).
     $vis = KeyVis 'Inputs' $null
     $items.Add((AddHead 'in' 'INPUTS' 'Inputs'))
     $barW = 46; $barGap = 20
@@ -758,8 +773,8 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $barY = $iy + 30
     $barX0 = $ix + ($iw - ($barW * 2 + $barGap)) / 2
     $pedals = @(
-        @('thr', 'Throttle', $script:GREEN, 'var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'),
-        @('brk', 'Brake',    $script:RED,   'var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')
+        @('thr', 'Throttle', $script:GREEN, ('var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
+        @('brk', 'Brake',    $script:RED,   ('var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'))
     )
     for ($pi = 0; $pi -lt $pedals.Count; $pi++) {
         $pkey = $pedals[$pi][0]; $plabel = $pedals[$pi][1]
@@ -1637,41 +1652,42 @@ $s7.Add($spd)
 # column has spare. Brake left, throttle right, matching a pedal box.
 # Independent of the Inputs box, which shows the same three in a card.
 $pedOn = '$prop("' + $P + '.DrivePedals")'
-$pedTopJs = 'return ' + $twoRows + '?60:135'
-$pedH = 200
+# The bars run all the way down to the steering, so they use the whole
+# height the gear column has spare. Only the top moves with the layout:
+# the bottom is fixed at the content edge in both.
+$pedTop2 = 60; $pedTop1 = 135; $pedBot = 418
+$pedTopJs = 'return ' + $twoRows + '?' + $pedTop2 + ':' + $pedTop1
+$pedHJs   = 'return ' + $twoRows + '?' + ($pedBot - $pedTop2) + ':' + ($pedBot - $pedTop1)
 foreach ($pd in @(
     @('brk', 302, ('var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'), $RED),
     @('thr', 488, ('var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'), $GREEN))) {
     $pk = $pd[0]; $px = $pd[1]; $pJs = $pd[2]; $pCol = $pd[3]
-    $tr = New-Rect "dr-ped-$pk-bg" $px 60 10 $pedH $TILE @{
+    $tr = New-Rect "dr-ped-$pk-bg" $px $pedTop2 10 ($pedBot - $pedTop2) $TILE @{
         Top    = BindJS 'Top'    $pedTopJs
-        Height = BindJS 'Height' ('return ' + $pedH)
+        Height = BindJS 'Height' $pedHJs
     } 5
     $tr.Bindings['Visible'] = BindJS 'Visible' ('return ' + $pedOn)
     $s7.Add($tr)
-    # Fills upward from the bar's bottom edge, which moves with the layout.
-    $fl = New-Rect "dr-ped-$pk" $px 258 10 2 $pCol $null 5
-    $fl.Bindings['Height'] = BindJS 'Height' ($pJs + 'return Math.max(2,' + $pedH + '*v/100)')
-    $fl.Bindings['Top']    = BindJS 'Top'    ($pJs + 'var b=' + $twoRows + '?260:335;return b-Math.max(2,' + $pedH + '*v/100)')
+    # Fills upward from the fixed bottom edge, so Top moves as Height does.
+    $pedFillJs = $pJs + 'var H=' + $twoRows + '?' + ($pedBot - $pedTop2) + ':' + ($pedBot - $pedTop1) + ';var hh=Math.max(2,H*v/100);'
+    $fl = New-Rect "dr-ped-$pk" $px ($pedBot - 2) 10 2 $pCol $null 5
+    $fl.Bindings['Height'] = BindJS 'Height' ($pedFillJs + 'return hh')
+    $fl.Bindings['Top']    = BindJS 'Top'    ($pedFillJs + 'return ' + $pedBot + '-hh')
     $fl.Bindings['Visible'] = BindJS 'Visible' ('return ' + $pedOn)
     $s7.Add($fl)
 }
-# Steering under the gear: centre-origin, hidden when the source reports
-# no steering rather than sitting convincingly straight.
+# Steering sits on the bottom edge, level with the foot of the boxes, so
+# it reads as the base of the gear column in either layout. Centre-origin,
+# hidden when the source reports no steering rather than sitting
+# convincingly straight.
 $steerVis = 'return ' + $pedOn + ' && (1*$prop("' + $P + '.Steer"))>-1.5'
-$stBg = New-Rect 'dr-st-bg' 302 312 196 8 $TILE @{
-    Top = BindJS 'Top' ('return ' + $twoRows + '?312:387')
-} 4
+$stBg = New-Rect 'dr-st-bg' 302 428 196 8 $TILE $null 4
 $stBg.Bindings['Visible'] = BindJS 'Visible' $steerVis
 $s7.Add($stBg)
-$stTick = New-Rect 'dr-st-tick' 399 309 2 14 '#FF39404C' @{
-    Top = BindJS 'Top' ('return ' + $twoRows + '?309:384')
-} 0
+$stTick = New-Rect 'dr-st-tick' 399 425 2 14 '#FF39404C' $null 0
 $stTick.Bindings['Visible'] = BindJS 'Visible' $steerVis
 $s7.Add($stTick)
-$stDot = New-Rect 'dr-st' 393 310 12 12 $WHITE @{
-    Top = BindJS 'Top' ('return ' + $twoRows + '?310:385')
-} 6
+$stDot = New-Rect 'dr-st' 393 426 12 12 $WHITE $null 6
 $stDot.Bindings['Left'] = BindJS 'Left' ('var s=1*$prop("' + $P + '.Steer");if(s<-1)s=-1;if(s>1)s=1;return 394+s*92')
 $stDot.Bindings['Visible'] = BindJS 'Visible' $steerVis
 $s7.Add($stDot)
@@ -1692,7 +1708,7 @@ EngineLayoutOverlay $P | ForEach-Object { $s7.Add($_) }
 PresetOverlay $P | ForEach-Object { $s7.Add($_) }
 FlagBar $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }
-RevStrip $P | ForEach-Object { $s7.Add($_) }
+RevStrip $P $true | ForEach-Object { $s7.Add($_) }
 
 # =====================================================================
 # Assemble document
@@ -1779,6 +1795,31 @@ $doc = [ordered]@{
     IsOverlay = $false
     EnableClickThroughOverlay = $true
     EnableOnDashboardMessaging = $false
+}
+
+# Every binding body is JS assembled by string concatenation, and a
+# truncated one fails silently: the viewer just leaves the item frozen at
+# its static value, which looks like a dead control rather than a broken
+# formula (the Inputs pedal bars sat at zero for a release this way).
+# Unbalanced quotes or brackets catch that class of mistake here instead.
+$bad = @()
+foreach ($scr in $doc.Screens) {
+    foreach ($it in $scr.Items) {
+        if (-not $it.Bindings) { continue }
+        foreach ($bk in $it.Bindings.Keys) {
+            $ex = [string]$it.Bindings[$bk].Formula.Expression
+            $q = ([regex]::Matches($ex, '"')).Count
+            $op = ([regex]::Matches($ex, '[\(\[]')).Count
+            $cl = ([regex]::Matches($ex, '[\)\]]')).Count
+            if (($q % 2) -ne 0 -or $op -ne $cl) {
+                $bad += "$($it.Name).$bk : $ex"
+            }
+        }
+    }
+}
+if ($bad.Count) {
+    $bad | ForEach-Object { Write-Host "MALFORMED BINDING  $_" -ForegroundColor Red }
+    throw "$($bad.Count) malformed binding expression(s); dashboard NOT written."
 }
 
 $json = $doc | ConvertTo-Json -Depth 60
@@ -2086,7 +2127,7 @@ for ($i = 0; $i -lt 4; $i++) {
 # Pedals and steering around the gear, on by default: throttle carrying
 # the car through the corner, brake released, a touch of right lock.
 $ovDriveTab['dr-ped-thr-bg'] = @{ Show = $true }
-$ovDriveTab['dr-ped-thr']    = @{ Show = $true; Top = 90; Height = 170 }
+$ovDriveTab['dr-ped-thr']    = @{ Show = $true; Top = 114; Height = 304 }
 $ovDriveTab['dr-ped-brk-bg'] = @{ Show = $true }
 $ovDriveTab['dr-ped-brk']    = @{ Show = $true }
 $ovDriveTab['dr-st-bg']      = @{ Show = $true }

@@ -4302,32 +4302,12 @@ namespace TrueforceForAll.Plugin
             // gets them: SimHub's own properties are empty for that setup, and
             // the two biggest numbers on the screen would otherwise read N and
             // "--" while every box around them worked.
-            // Forza reports a gear mid-shift that the car is not in: it shows
-            // as "10" between gears, which is what gear byte 11 maps to. A
-            // two-frame debounce did NOT clear it, so the bad value persists
-            // longer than a frame and the filter is on plausibility instead:
-            // gears change one step at a time, so a numeric jump of more than
-            // one is not believed until it has held for ~8 frames (about a
-            // seventh of a second). A real skip-shift still lands, just that
-            // much later; N and R are never numeric so they show at once.
-            // Display only: the force path reads frame.Gear directly, so
-            // shift effects are untouched either way.
-            string gNow = frame.Gear ?? "";
-            if (int.TryParse(gNow, out int gNext)
-                && int.TryParse(_dashLiveGear, out int gCur)
-                && Math.Abs(gNext - gCur) > 1)
-            {
-                if (++_dashGearOddFrames >= 8)
-                {
-                    _dashLiveGear = gNow;
-                    _dashGearOddFrames = 0;
-                }
-            }
-            else
-            {
-                _dashLiveGear = gNow;
-                _dashGearOddFrames = 0;
-            }
+            // Shown exactly as the source reports it. The mid-shift "10" was
+            // Forza's shift sentinel and is handled where it arrives, in
+            // ForzaUdpTelemetrySource, so the readout has no reason to second
+            // guess the frame: a filter here would only make the dash disagree
+            // with the in-game gear.
+            _dashLiveGear = frame.Gear ?? "";
             _dashLiveSpeedKmh = (float)frame.SpeedKmh;
             // Driver inputs for the Drive tab's inputs box. Steering is the
             // interesting one: SimHub has no universal steering property (see
