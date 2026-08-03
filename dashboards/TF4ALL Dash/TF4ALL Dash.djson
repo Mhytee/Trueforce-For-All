@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "50ead317-06bb-4584-a36c-67a70505a042",
+    "Id":  "1791347a-ee28-406d-bde8-eee06e62f1ce",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c2106cec-656a-4d6c-bf66-b8075a24a12e",
+                        "ScreenId":  "1a7088f7-8687-49cd-a1a9-c9829442b918",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9aa4dd99-1a07-4813-8f91-09db05d1712a",
+                        "ScreenId":  "7be950c2-8a14-492b-bec7-2b3515070c5a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "3bb698ff-3ec9-470d-9697-36b86de5ca31",
+                        "ScreenId":  "c77cd6d3-5fb5-4b92-82f4-9d74b6898c91",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "51ee9d94-bd11-4036-9240-ec1aa0b88986",
+                        "ScreenId":  "4405a693-7391-4a46-8cfc-fac605ba8ab9",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c5de94f4-1ea6-4d98-b442-4b267105141b",
+                        "ScreenId":  "d90e75e3-870a-48b8-b6ef-57b7cdfd730c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "af68c816-094d-4abd-a1ad-ac54074bd592",
+                        "ScreenId":  "11dbe4d0-aa0e-40a6-a71f-0ef2a5b599e6",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "dc20f377-2c78-430a-aae5-40aeff1bd712",
+                        "ScreenId":  "9480343e-e2b5-4e30-b5da-24146cc92714",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -58376,11 +58376,11 @@
                                                                            }
                                                           },
                                           "Height":  88,
-                                          "Left":  95,
+                                          "Left":  54,
                                           "Opacity":  100,
                                           "Top":  56,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -58420,11 +58420,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  95,
+                                          "Left":  54,
                                           "Opacity":  100,
                                           "Top":  144,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -58466,18 +58466,18 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Throttle",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  95,
+                                          "Left":  48,
                                           "Opacity":  100,
                                           "Top":  148,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -58512,11 +58512,11 @@
                                                                            }
                                                           },
                                           "Height":  88,
-                                          "Left":  161,
+                                          "Left":  106,
                                           "Opacity":  100,
                                           "Top":  56,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -58556,11 +58556,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  161,
+                                          "Left":  106,
                                           "Opacity":  100,
                                           "Top":  144,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -58602,22 +58602,294 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Brake",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  161,
+                                          "Left":  100,
                                           "Opacity":  100,
                                           "Top":  148,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d0-in-brk-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  88,
+                                          "Left":  158,
+                                          "Opacity":  100,
+                                          "Top":  56,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-in-clu-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  158,
+                                          "Opacity":  100,
+                                          "Top":  144,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-in-clu",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Clutch",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  152,
+                                          "Opacity":  100,
+                                          "Top":  148,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-in-clu-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  88,
+                                          "Left":  210,
+                                          "Opacity":  100,
+                                          "Top":  56,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-in-hbr-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  210,
+                                          "Opacity":  100,
+                                          "Top":  144,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-in-hbr",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Handbrake",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  148,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-in-hbr-l",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -67889,11 +68161,11 @@
                                                                            }
                                                           },
                                           "Height":  88,
-                                          "Left":  593,
+                                          "Left":  552,
                                           "Opacity":  100,
                                           "Top":  56,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67933,11 +68205,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  593,
+                                          "Left":  552,
                                           "Opacity":  100,
                                           "Top":  144,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67979,18 +68251,18 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Throttle",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  593,
+                                          "Left":  546,
                                           "Opacity":  100,
                                           "Top":  148,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -68025,11 +68297,11 @@
                                                                            }
                                                           },
                                           "Height":  88,
-                                          "Left":  659,
+                                          "Left":  604,
                                           "Opacity":  100,
                                           "Top":  56,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -68069,11 +68341,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  659,
+                                          "Left":  604,
                                           "Opacity":  100,
                                           "Top":  144,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -68115,22 +68387,294 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Brake",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  659,
+                                          "Left":  598,
                                           "Opacity":  100,
                                           "Top":  148,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d1-in-brk-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  88,
+                                          "Left":  656,
+                                          "Opacity":  100,
+                                          "Top":  56,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-in-clu-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  656,
+                                          "Opacity":  100,
+                                          "Top":  144,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-in-clu",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Clutch",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  650,
+                                          "Opacity":  100,
+                                          "Top":  148,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-in-clu-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  88,
+                                          "Left":  708,
+                                          "Opacity":  100,
+                                          "Top":  56,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-in-hbr-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  708,
+                                          "Opacity":  100,
+                                          "Top":  144,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-in-hbr",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Inputs\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Handbrake",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  148,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-in-hbr-l",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -78594,11 +79138,11 @@
                                                                            }
                                                           },
                                           "Height":  94,
-                                          "Left":  95,
+                                          "Left":  54,
                                           "Opacity":  100,
                                           "Top":  268,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -78654,11 +79198,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  95,
+                                          "Left":  54,
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -78700,18 +79244,18 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Throttle",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  95,
+                                          "Left":  48,
                                           "Opacity":  100,
                                           "Top":  366,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -78746,11 +79290,11 @@
                                                                            }
                                                           },
                                           "Height":  94,
-                                          "Left":  161,
+                                          "Left":  106,
                                           "Opacity":  100,
                                           "Top":  268,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -78806,11 +79350,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  161,
+                                          "Left":  106,
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -78852,22 +79396,326 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Brake",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  161,
+                                          "Left":  100,
                                           "Opacity":  100,
                                           "Top":  366,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d2-in-brk-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  94,
+                                          "Left":  158,
+                                          "Opacity":  100,
+                                          "Top":  268,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-in-clu-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:56"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?94:306"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  158,
+                                          "Opacity":  100,
+                                          "Top":  362,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-in-clu",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Clutch",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  152,
+                                          "Opacity":  100,
+                                          "Top":  366,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-in-clu-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  94,
+                                          "Left":  210,
+                                          "Opacity":  100,
+                                          "Top":  268,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-in-hbr-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:56"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?94:306"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  210,
+                                          "Opacity":  100,
+                                          "Top":  362,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-in-hbr",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Handbrake",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  366,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-in-hbr-l",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -89659,11 +90507,11 @@
                                                                            }
                                                           },
                                           "Height":  94,
-                                          "Left":  593,
+                                          "Left":  552,
                                           "Opacity":  100,
                                           "Top":  268,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -89719,11 +90567,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  593,
+                                          "Left":  552,
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -89765,18 +90613,18 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Throttle",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  593,
+                                          "Left":  546,
                                           "Opacity":  100,
                                           "Top":  366,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -89811,11 +90659,11 @@
                                                                            }
                                                           },
                                           "Height":  94,
-                                          "Left":  659,
+                                          "Left":  604,
                                           "Opacity":  100,
                                           "Top":  268,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -89871,11 +90719,11 @@
                                                                            }
                                                           },
                                           "Height":  2,
-                                          "Left":  659,
+                                          "Left":  604,
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  38,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -89917,22 +90765,326 @@
                                           "FontWeight":  "Normal",
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
-                                          "FontSize":  12,
+                                          "FontSize":  11,
                                           "Text":  "Brake",
                                           "TextColor":  "#FF8B93A7",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  18,
-                                          "Left":  659,
+                                          "Left":  598,
                                           "Opacity":  100,
                                           "Top":  366,
                                           "Visible":  true,
-                                          "Width":  46,
+                                          "Width":  50,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d3-in-brk-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  94,
+                                          "Left":  656,
+                                          "Opacity":  100,
+                                          "Top":  268,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-in-clu-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:56"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?94:306"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFA08CFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  656,
+                                          "Opacity":  100,
+                                          "Top":  362,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-in-clu",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Clutch",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  650,
+                                          "Opacity":  100,
+                                          "Top":  366,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-in-clu-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF232936",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  94,
+                                          "Left":  708,
+                                          "Opacity":  100,
+                                          "Top":  268,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-in-hbr-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:56"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?94:306"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "5,5,5,5",
+                                                              "RadiusTopLeft":  5,
+                                                              "RadiusTopRight":  5,
+                                                              "RadiusBottomLeft":  5,
+                                                              "RadiusBottomRight":  5,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  2,
+                                          "Left":  708,
+                                          "Opacity":  100,
+                                          "Top":  362,
+                                          "Visible":  true,
+                                          "Width":  38,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-in-hbr",
+                                          "Bindings":  {
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Inputs\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  11,
+                                          "Text":  "Handbrake",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  366,
+                                          "Visible":  true,
+                                          "Width":  50,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-in-hbr-l",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {

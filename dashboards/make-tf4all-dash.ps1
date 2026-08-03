@@ -757,9 +757,12 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
 
     # ---------------- INPUTS (pedals + steering) ---------------------
-    # What the driver did, next to what the wheel did. Throttle and brake
+    # What the driver did, next to what the wheel did. All four controls
     # prefer SimHub's own properties (every game it reads reports them)
     # and fall back to our parse for the Forza-without-forwarding case.
+    # Clutch and handbrake keep their bars when released rather than
+    # disappearing, so an automatic reads as "clutch at rest" instead of
+    # looking like the box lost a channel.
     # Steering has NO SimHub equivalent (it exposes no universal steering
     # field), so that bar is ours alone and simply hides when the active
     # source does not report it.
@@ -768,14 +771,20 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # gets cut off at the first + (which is what silently froze these bars).
     $vis = KeyVis 'Inputs' $null
     $items.Add((AddHead 'in' 'INPUTS' 'Inputs'))
-    $barW = 46; $barGap = 20
+    $barW = 38; $barGap = 14
     $barH = [math]::Max(60, $h - 118)
     $barY = $iy + 30
-    $barX0 = $ix + ($iw - ($barW * 2 + $barGap)) / 2
+    # Labels overhang their bar into the gaps, so "Handbrake" fits without
+    # widening the bars themselves.
+    $lblW = $barW + $barGap - 2
+    $amber = '#FFE8A33D'
     $pedals = @(
-        @('thr', 'Throttle', $script:GREEN, ('var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
-        @('brk', 'Brake',    $script:RED,   ('var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'))
+        @('thr', 'Throttle',  $script:GREEN,         ('var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
+        @('brk', 'Brake',     $script:RED,           ('var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
+        @('clu', 'Clutch',    $script:SCOPE_PURPLE,  ('var v=1*$prop("' + $SIM + 'Clutch");if(!(v>0))v=100*(1*$prop("' + $P + '.Clutch"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
+        @('hbr', 'Handbrake', $amber,                ('var v=1*$prop("' + $SIM + 'Handbrake");if(!(v>0))v=100*(1*$prop("' + $P + '.Handbrake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'))
     )
+    $barX0 = $ix + ($iw - ($barW * $pedals.Count + $barGap * ($pedals.Count - 1))) / 2
     for ($pi = 0; $pi -lt $pedals.Count; $pi++) {
         $pkey = $pedals[$pi][0]; $plabel = $pedals[$pi][1]
         $pcol = $pedals[$pi][2]; $pJs = $pedals[$pi][3]
@@ -789,7 +798,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $fill.Bindings['Top']    = BindJS 'Top'    ($pJs + 'return ' + ($barY + $barH) + '-Math.max(2,' + $barH + '*v/100)')
         $fill.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($fill)
-        $t = New-Text "d$slot-in-$pkey-l" $px ($barY + $barH + 4) $barW 18 12 $plabel $script:MUTED 1
+        $t = New-Text "d$slot-in-$pkey-l" ($px - ($lblW - $barW) / 2) ($barY + $barH + 4) $lblW 18 11 $plabel $script:MUTED 1
         $t.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($t)
     }

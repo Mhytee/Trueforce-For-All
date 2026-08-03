@@ -34,6 +34,12 @@ namespace TrueforceForAll.Core
         /// brake does not, so it rides here for the dash's inputs box.</summary>
         public float Brake01;
 
+        /// <summary>Clutch and handbrake, 0..1, for the same box. Both read a
+        /// flat zero on a pad or a wheel without those controls, and on an
+        /// automatic, so the box hides a channel that never moves rather than
+        /// drawing a bar that is always empty.</summary>
+        public float Clutch01, Handbrake01;
+
         public float Boost;
         /// <summary>Forza reports fuel as a 0..1 fraction of the tank, not
         /// litres.</summary>

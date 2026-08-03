@@ -119,11 +119,15 @@ namespace TrueforceForAll.Core
         private const int DASH_SPEED  = 12;
         private const int DASH_ACCEL  = 71;
         private const int DASH_BRAKE  = 72;
+        private const int DASH_CLUTCH = 73;
+        private const int DASH_HANDBRAKE = 74;
         private const int DASH_GEAR   = 75;
-        // Gear byte Forza sends while a shift is in progress, and the longest
-        // the last gear is held through it. Traced shifts ran 128 to 239 ms.
-        private const byte GEAR_SHIFTING = 11;
-        private const int  GearSentinelHoldMs = 400;
+        // Neutral on the FH6 scale, which a shift passes through: the byte
+        // sits here for the 128 to 239 ms a change takes. Held briefly so an
+        // upshift does not flash N and GearShift sees one change, not two.
+        // Past the hold it is a real neutral and shows as one.
+        private const byte GEAR_NEUTRAL_ALT = 11;
+        private const int  GearNeutralHoldMs = 400;
         // Steer: signed int8, offset-from-center, -127 (full left) .. +127
         // (full right). Feeds the stationary-spring FFB floor so it works in
         // Forza, not just AC. Low resolution (254 steps lock-to-lock) so the
@@ -179,8 +183,14 @@ namespace TrueforceForAll.Core
 
         // Last gear byte we believed, so the shift sentinel can hold it,
         // and when the sentinel started, so a hold cannot run away.
-        private int _lastGoodGear = 1;   // 1 = N
+        private int _lastGoodGear = 1;
         private int _sentinelSinceTick;
+
+        // Set once this title is shown to number forward gears from 1 (see
+        // the detection in ParsePacket). One way: a title does not change
+        // its gear scale mid-session.
+        private bool _gearOneIsFirst;
+        private int  _gearOneFirstFrames;
 
         // TEMPORARY: the owner reports 1st reading as N while driving, which
         // neither the sentinel nor the documented 0=R/1=N/2=1st mapping
@@ -620,21 +630,40 @@ namespace TrueforceForAll.Core
                 brakeByte = buf[dashBase + DASH_BRAKE];
                 gearByte  = buf[dashBase + DASH_GEAR];
                 byte rawGear = gearByte;
-                // Forza parks the gear byte at 11 while a shift is in flight.
-                // Byte tracing on the owner's rig caught it between every pair
-                // of gears, always 128 to 239 ms and never longer, so it is a
-                // sentinel and not 10th gear: an actual 10-speed can only reach
-                // 11 from 9th or 10th, which is exactly the case this lets
-                // through. Held rather than shown, so the readout tracks the
-                // in-game gear and GearShift does not fire on a phantom.
-                // The hold is capped at the traced duration with room to spare:
-                // if 11 ever persists past that it is not a shift, and showing
-                // the raw value is better than sitting on a gear the car left.
+                // Which gear scale this title uses, decided by physics rather
+                // than by packet length. The documented scale is 0=R, 1=N,
+                // 2=1st, but FH6 numbers forward gears from 1 and uses 11 for
+                // neutral, which puts every forward gear one low and shows 1st
+                // as N. Neutral cannot pull a car, so byte 1 seen at speed,
+                // under throttle, with the engine well off idle proves 1 is a
+                // driving gear. Several frames in a row, because a single
+                // frame of a coast-down in true neutral could look similar.
+                if (!_gearOneIsFirst && gearByte == 1 && accelByte > 200
+                    && speedMs > 7f && maxRpm > 0f && curRpm > maxRpm * 0.2f)
+                {
+                    if (++_gearOneFirstFrames >= 5)
+                    {
+                        _gearOneIsFirst = true;
+                        Log("[Forza-gear] forward gears start at 1 and neutral is 11 for this "
+                            + "title (byte 1 seen driving under load); gear readout rescaled.");
+                    }
+                }
+                else if (gearByte != 1)
+                {
+                    _gearOneFirstFrames = 0;
+                }
+                // A shift passes through neutral, so the byte sits at 11 for
+                // the 128 to 239 ms it takes. Held briefly rather than shown,
+                // so an upshift does not flash N and GearShift sees one change
+                // instead of two. Past the hold it is a driver sitting in
+                // neutral, which shows as neutral. On the documented scale the
+                // guard also stops a phantom "10" between gears; a real
+                // 10-speed reaches 11 only from 9th or 10th, which it allows.
                 int nowTick = Environment.TickCount;
-                if (gearByte == GEAR_SHIFTING && _lastGoodGear < GEAR_SHIFTING - 1)
+                if (gearByte == GEAR_NEUTRAL_ALT && _lastGoodGear < GEAR_NEUTRAL_ALT - 1)
                 {
                     if (_sentinelSinceTick == 0) _sentinelSinceTick = nowTick;
-                    if (unchecked(nowTick - _sentinelSinceTick) < GearSentinelHoldMs)
+                    if (unchecked(nowTick - _sentinelSinceTick) < GearNeutralHoldMs)
                         gearByte = (byte)_lastGoodGear;
                     else
                         _lastGoodGear = gearByte;
@@ -674,6 +703,8 @@ namespace TrueforceForAll.Core
                     TireTempRL = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 8),
                     TireTempRR = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12),
                     Brake01       = brakeByte / 255.0f,
+                    Clutch01      = buf[dashBase + DASH_CLUTCH]    / 255.0f,
+                    Handbrake01   = buf[dashBase + DASH_HANDBRAKE] / 255.0f,
                     Boost         = ReadFloat(buf, dashBase + DASH_BOOST),
                     FuelFraction  = ReadFloat(buf, dashBase + DASH_FUEL),
                     BestLapSec    = ReadFloat(buf, dashBase + DASH_BEST_LAP),
@@ -948,11 +979,16 @@ namespace TrueforceForAll.Core
             return gear <= 11;
         }
 
-        // Forza convention: 0=R, 1=N, 2=1st, 3=2nd, ... Matches AC's gear
-        // string convention so GearShiftEffect compares unchanged.
-        private static string GearString(int gear)
+        // Two scales in the wild, both starting reverse at 0. The documented
+        // one is 0=R, 1=N, 2=1st; FH6 numbers forward gears from 1 and puts
+        // neutral at 11, which is why 11 sits between every pair of gears
+        // (a shift passes through neutral). Either way the output matches
+        // AC's string convention so GearShiftEffect compares unchanged.
+        private string GearString(int gear)
         {
             if (gear == 0) return "R";
+            if (_gearOneIsFirst)
+                return gear >= GEAR_NEUTRAL_ALT ? "N" : gear.ToString();
             if (gear == 1) return "N";
             return (gear - 1).ToString();
         }

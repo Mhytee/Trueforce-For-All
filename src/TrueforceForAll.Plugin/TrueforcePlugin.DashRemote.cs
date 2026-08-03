@@ -933,6 +933,12 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Throttle", () => _telemetryStalled ? 0f : _dashLiveThrottle);
             this.AttachDelegate("Dash.Steer",    () => _telemetryStalled ? -2f : _dashLiveSteer);
             this.AttachDelegate("Dash.Brake",    () => ForzaUdpSource?.DashExtras?.Brake01 ?? 0f);
+            // -1 means "this source does not report it", which the inputs box
+            // reads as "hide the bar". A clutch or handbrake that is genuinely
+            // released reports 0 and still draws, so an automatic shows an
+            // empty clutch bar rather than losing it.
+            this.AttachDelegate("Dash.Clutch",    () => (float?)ForzaUdpSource?.DashExtras?.Clutch01 ?? -1f);
+            this.AttachDelegate("Dash.Handbrake", () => (float?)ForzaUdpSource?.DashExtras?.Handbrake01 ?? -1f);
             this.AttachDelegate("Dash.Drive.Util",  () => ModeBUtilization);
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
