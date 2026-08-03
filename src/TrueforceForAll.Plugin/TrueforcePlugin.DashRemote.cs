@@ -213,6 +213,8 @@ namespace TrueforceForAll.Plugin
         private volatile float _dashLiveRpm;
         // Gear + speed for the Drive tab, stashed from the same frame.
         private volatile string _dashLiveGear = "";
+        // Candidate gear awaiting a second frame; see the stash in DispatchFrame.
+        private string _dashGearPending = "";
         private volatile float _dashLiveSpeedKmh;
         // Driver inputs for the Drive tab's inputs box. Steer is -2 when the
         // active source reports no steering at all.
@@ -1362,6 +1364,11 @@ namespace TrueforceForAll.Plugin
             if (next < 0f) next = 0f;
             if (next > DashAudioGainMax) next = DashAudioGainMax;
             EnsureSectionDraft(SectionKind.Audio);   // car layer, so REVERT can undo it
+            // Reaching for the gain on a capture that is off means the user
+            // wants to hear it: turning it up otherwise does nothing at all
+            // and reads as a broken control. Turning it DOWN counts too, so
+            // the pair behaves the same way round.
+            if (!ActiveAudioEnabled && next > 0f) SetActiveAudioEnabledLive(true);
             SetActiveAudioGainLive(next);
             PersistSettings();   // SetActiveAudioGainLive leaves persisting to the caller
             DashRecordDirty(SectionKind.Audio);
@@ -1504,6 +1511,9 @@ namespace TrueforceForAll.Plugin
             if (target == "audio")
             {
                 EnsureSectionDraft(SectionKind.Audio);   // car layer, so REVERT can undo it
+                // Same reasoning as the steppers: typing a gain in means the
+                // user expects to hear it.
+                if (!ActiveAudioEnabled && v > 0f) SetActiveAudioEnabledLive(true);
                 SetActiveAudioGainLive(v);
                 PersistSettings();
                 DashRecordDirty(SectionKind.Audio);

@@ -425,11 +425,17 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         @('mg', 'MASTER GAIN', ($P + '.MasterGain'), 'DashMasterGainOpen', 'DashMasterGainDown', 'DashMasterGainUp', ''),
         @('ag', 'AUDIO GAIN',  ($P + '.AudioGain'),  'DashAudioGainOpen',  'DashAudioGainDown',  'DashAudioGainUp',  ($P + '.Fx.Audio.On'))
     )
-    $gy = $iy + 22
+    # One lightened sub-panel per gain, matching car facts and presets:
+    # caption, then the value flanked by its steppers so the controls sit
+    # with the number they change.
+    $gy = $iy + 24
+    $gStep = 44
     foreach ($gRow in $gainRows) {
         $gid = $gRow[0]; $glabel = $gRow[1]; $gprop = $gRow[2]
         $gopen = $gRow[3]; $gdn = $gRow[4]; $gup = $gRow[5]; $gonProp = $gRow[6]
-        $t = New-Text "d$slot-hm-$gid-l" $ix $gy $iw 14 11 $glabel $script:MUTED 0
+        $pnl = New-Rect "d$slot-hm-$gid-p" $ix $gy $iw 66 $script:TILE $null 5
+        $pnl.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pnl)
+        $t = New-Text "d$slot-hm-$gid-l" ($ix + 10) ($gy + 6) ($iw - 20) 14 10 $glabel $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
         # An audio gain the capture is not using reads as off, not as a
         # number that is doing nothing.
@@ -438,23 +444,25 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         } else {
             'return (1*$prop("' + $gprop + '")).toFixed(2)'
         }
-        $t = New-Text "d$slot-hm-$gid" $ix ($gy + 15) $iw 34 28 '' $script:WHITE 1 @{
+        $vX = $ix + 10 + $gStep + 6
+        $vW = $iw - 20 - ($gStep + 6) * 2
+        $t = New-Text "d$slot-hm-$gid" $vX ($gy + 22) $vW 36 28 '' $script:WHITE 1 @{
             Text = BindJS 'Text' $valJs
         } 'Bold'
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-        # Dead space beside the number must not open the keypad (tab rule).
-        $b = New-Button "d$slot-hm-$gid-tap" ($ix + $iw / 2 - 42) ($gy + 15) 84 34 $gopen
+        # Tap the number to type it, as on the tab.
+        $b = New-Button "d$slot-hm-$gid-tap" $vX ($gy + 22) $vW 36 $gopen
         $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-        foreach ($st in @(@(($gid + 'dn'), $gdn, '-', 0), @(($gid + 'up'), $gup, '+', ($half + 8)))) {
-            $sx = $ix + $st[3]
-            $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($gy + 51) $half 28 $script:TILE
+        foreach ($st in @(@(($gid + 'dn'), $gdn, '-', ($ix + 10)), @(($gid + 'up'), $gup, '+', ($ix + $iw - 10 - $gStep)))) {
+            $sx = $st[3]
+            $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($gy + 22) $gStep 36 $script:PANEL $null 4
             $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-            $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($gy + 51) $half 28 22 $st[2] $script:WHITE 1 $null 'Bold'
+            $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($gy + 22) $gStep 36 24 $st[2] $script:WHITE 1 $null 'Bold'
             $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-            $bb = New-Button "d$slot-hm-$($st[0])" $sx ($gy + 51) $half 28 $st[1]
+            $bb = New-Button "d$slot-hm-$($st[0])" $sx ($gy + 22) $gStep 36 $st[1]
             $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
         }
-        $gy += 84
+        $gy += 74
     }
 
     # ---------------- PRESETS (ours) ---------------------------------
@@ -607,11 +615,15 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $gcy = ($iy + 30 + $y + $h - 12) / 2
     $items.Add((New-Ring "d$slot-gc-r1" $gcx $gcy $gr '#FF39404C' 1 $vis))
     $items.Add((New-Ring "d$slot-gc-r2" $gcx $gcy ($gr / 2) '#FF2A303A' 1 $vis))
+    # The dot shows the force you FEEL, not the car's acceleration vector:
+    # squeeze the throttle and it sinks toward you, brake and it rises,
+    # turn right and it swings left, which is the way a g meter on a dash
+    # reads. Both signs are therefore inverted from the raw accelerations.
     $gLatJs = 'var g=1*$prop("' + $P + '.Drive.GLat");if(isNaN(g))g=0;if(g>1.5)g=1.5;if(g<-1.5)g=-1.5;'
     $gLonJs = 'var g=1*$prop("' + $P + '.Drive.GLong");if(isNaN(g))g=0;if(g>1.5)g=1.5;if(g<-1.5)g=-1.5;'
     $dot = New-Rect "d$slot-gc-dot" ($gcx - 7) ($gcy - 7) 14 14 $script:GREEN $null 7
-    $dot.Bindings['Left'] = BindJS 'Left' ($gLatJs + 'return ' + ($gcx - 7) + '+g*' + ($gr / 1.5))
-    $dot.Bindings['Top']  = BindJS 'Top'  ($gLonJs + 'return ' + ($gcy - 7) + '-g*' + ($gr / 1.5))
+    $dot.Bindings['Left'] = BindJS 'Left' ($gLatJs + 'return ' + ($gcx - 7) + '-g*' + ($gr / 1.5))
+    $dot.Bindings['Top']  = BindJS 'Top'  ($gLonJs + 'return ' + ($gcy - 7) + '+g*' + ($gr / 1.5))
     $dot.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($dot)
     $t = New-Text "d$slot-gc-v" $ix ($iy + 22) $iw 20 13 '' $script:MUTED 2 @{
@@ -635,8 +647,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $fdot = New-Rect "d$slot-fc-dot" ($gcx - 8) ($gcy - 8) 16 16 $script:GREEN @{
         BackgroundColor = BindJS 'BackgroundColor' ($uJs + 'return u<0.75?"' + $script:GREEN + '":(u<1.0?"#FFE8A33D":"' + $script:RED + '")')
     } 8
-    $fdot.Bindings['Left'] = BindJS 'Left' ($uJs + $dirJs + 'return ' + ($gcx - 8) + '+(a/m)*u*' + $gr)
-    $fdot.Bindings['Top']  = BindJS 'Top'  ($uJs + $dirJs + 'return ' + ($gcy - 8) + '-(b/m)*u*' + $gr)
+    # Same felt-force convention as the g circle above, so the two boxes
+    # never disagree about which way the load is pointing.
+    $fdot.Bindings['Left'] = BindJS 'Left' ($uJs + $dirJs + 'return ' + ($gcx - 8) + '-(a/m)*u*' + $gr)
+    $fdot.Bindings['Top']  = BindJS 'Top'  ($uJs + $dirJs + 'return ' + ($gcy - 8) + '+(b/m)*u*' + $gr)
     $fdot.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($fdot)
     $t = New-Text "d$slot-fc-v" $ix ($iy + 22) $iw 20 13 '' $script:MUTED 2 @{

@@ -4302,7 +4302,16 @@ namespace TrueforceForAll.Plugin
             // gets them: SimHub's own properties are empty for that setup, and
             // the two biggest numbers on the screen would otherwise read N and
             // "--" while every box around them worked.
-            _dashLiveGear = frame.Gear ?? "";
+            // Forza can report a gear for a single frame mid-shift that is not
+            // the gear the car is in (it surfaced as a brief "10" between
+            // gears, which is what byte 11 maps to). A change has to be seen
+            // on two consecutive frames before it reaches the dash: that costs
+            // about one frame, which is imperceptible, and removes the
+            // flicker. Display only; the force path still reads frame.Gear
+            // directly, so shift effects are untouched.
+            string gNow = frame.Gear ?? "";
+            if (gNow == _dashGearPending) _dashLiveGear = gNow;
+            else _dashGearPending = gNow;
             _dashLiveSpeedKmh = (float)frame.SpeedKmh;
             // Driver inputs for the Drive tab's inputs box. Steering is the
             // interesting one: SimHub has no universal steering property (see
