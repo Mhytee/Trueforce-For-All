@@ -99,6 +99,22 @@ namespace TrueforceForAll.Plugin
         public static bool IsBuiltin(string presetName)
             => !string.IsNullOrEmpty(presetName) && Store.PresetJsons.ContainsKey(presetName);
 
+        /// <summary>Relabel the structural " (default)" suffix to
+        /// " (built-in)" for display. Built-ins are STORED with " (default)"
+        /// (the marker IsBuiltin, refresh-on-load and export stripping key
+        /// off), but every UI surface shows " (built-in)" so the word
+        /// "default" only ever means the per-game auto-load binding. Display
+        /// only; never feed the result back into preset lookups.</summary>
+        public static string ToDisplayName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return name;
+            const string oldSuffix = " (default)";
+            const string newSuffix = " (built-in)";
+            return name.EndsWith(oldSuffix, StringComparison.Ordinal)
+                ? name.Substring(0, name.Length - oldSuffix.Length) + newSuffix
+                : name;
+        }
+
         /// <summary>Validate the loaded built-ins (parse + missing-section
         /// check) against the given top-level section names. For the dev panel.</summary>
         public static List<string> Validate(IEnumerable<string> expectedSections)

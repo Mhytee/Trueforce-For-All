@@ -1,4 +1,4 @@
-# Real-world steering feel vs. the Mode B model
+﻿# Real-world steering feel vs. the Mode B model
 
 What a real steering wheel actually transmits, how our synthesis stacks up
 term by term, and the gaps ranked by how much feel they're worth. Written to
@@ -43,7 +43,7 @@ The product produces the signature everyone's hands know:
 | Torque rises with front lateral force | SatForceModel rise × lat-g cornering weight (BLAT) | Good — the lat-g multiplier is a direct `F_lat` proxy |
 | Torque peak before grip peak | Peak pinned AT u = 1.0 | **GAP #1** — our wheel is still gaining weight where a real one has already plateaued; the pre-limit warning window is compressed |
 | Caster floor in a slide | DropFloor (0.20 default, slider) | Good — physically the `t_m` remainder; Andrew's 0.20 sits at the sporty end of the real 0.3–0.6 range, which suits a feel-forward setup |
-| Counter-steer torque from front slip direction | dir = front slip angle (sign-verified) + BCS rear-excess counter term | Right signal source. **GAP #2**: dir saturates at ±0.03 rad, so counter strength doesn't grow with slide depth the way real SAT does |
+| Counter-steer torque from front slip direction | dir = sign of the front slip signal, saturating at 3% of peak slip | **GAP #2 STILL OPEN, and now understood.** Both attempts at it (the BCS counter term and the trail spring) were retired 2026-08-02. The blocker is a units bug, not a tuning one. See below |
 | Load sensitivity (sub-proportional) | LoadEffect 0.5 | Good hedge — real tires gain grip sub-linearly with load, ~0.5 effective is the right ballpark |
 | Speed-proportional trail buildup | SpeedFullKmh ramp | Good |
 | Understeer stick-slip chatter (~10–20 Hz) | Layer 1 judder at 14 Hz past the limit | Good, matches the real mechanism |
@@ -66,46 +66,70 @@ We already carry per-corner suspension travel at 60 Hz → derive
 the force channel (not the texture channel). This is the "alive road"
 feeling sim wheels famously lack; FM8's suspension channel is clean enough.
 
-**Layer 10 — slide-depth counter growth (GAP #2).** Let the counter-steer
-magnitude keep growing past the 0.03 rad dir saturation: scale the BCS term
-by min(|front slip|/0.15, 1) so a shallow drift asks politely and a big one
-yanks toward opposite lock like a real car. Test with progressively bigger
-power slides.
+**Layer 10 (GAP #2): both attempts retired 2026-08-02, gap still open.**
 
-## Motor reality check (G PRO on the rig, G923 at the desk)
+Two different mechanisms were built to make the steering settle into a
+countersteer during a slide. Neither survived, and the reasons are different
+and both worth keeping.
 
-- Direct-drive G PRO: ~11 N·m ceiling, flat response through our whole
-  texture band. The 2.2 N·m belt G923 low-passes hard above ~150 Hz —
-  front-scrub content (150–250 Hz) will read muted there; fine on the PRO.
-- Our force channel is effectively torque command at 1 kHz; the motor and
-  rim inertia are the only filters. That's why smoothness bugs (steps,
-  slams) are feelable at all — nothing mechanical hides them.
-- **SWEEP protocol** (access code, see below): play the built-in frequency
-  sweep and note where the rim feels strong / buzzy / dead. That maps the
-  rig's real usable band so effect frequencies can sit where the hardware
-  actually renders, instead of where the math says. SWEEP1..SWEEP6 play one
-  octave each (~5 s) for band-by-band judging; plain SWEEP is the full run.
+**Attempt 1, the BCS counter term** (shipped beta 0.2.0-0.2.4). An additive
+torque gated on the rear's utilization excess over the front. Four shapings
+were driven back to back: slide-depth growth; `CounterHandoff`, an inverse fade
+over front slip; `CounterCrossfade`, the same fade timed on the rear-breakaway
+gate so the two were complementary by construction; and a `|dir|` center gate
+added after the term was caught ringing the wheel at center under power (it is
+LINEAR in dir, so unlike the lateral-demand SAT path its loop gain at dead
+center is nonzero, and wheelspin opens the gate while the wheel is straight).
+Every session gave the same verdict: the wheel is smoother the less it gets. It
+survived only near 0.1 of gain, barely perceptible, while carrying a slider,
+three toggles, four access codes and four helper curves.
 
-## Measured: Andrew's G923, 2026-07-06 (SWEEP1-6 at 0.6 amp / 0.5 master)
+**Attempt 2, the trail spring** (`AdaptiveDirWindow`, new in 0.2.5, never
+shipped). It widened the direction window during a slide so `dir` would stay
+proportional rather than saturating. Logging proved it **never once acted**: in
+50 of 50 samples across two sessions the front slip was outside the window, so
+`dir` stayed pinned at 1 through every slide, at 6 deg, at 15, and at 45.
 
-| Band | Range | Verdict |
-|------|-------|---------|
-| 1 | 8–16 Hz | aggressive, jerky — rim rocking, reads as FFB shoves |
-| 2 | 16–32 Hz | violent but consistent — "off-road at high speed" |
-| 3 | 32–63 Hz | very violent, starting to buzz — "fast kerb" |
-| 4 | 63–125 Hz | PEAK — "thought the wheel was gonna explode" |
-| 5 | 125–250 Hz | good high end, texture without aggression |
-| 6 | 250–400 Hz | whiny, barely noticeable — above the motor's ceiling |
+**The root cause, which is the real finding.** `TelemetryFrame.FrontSlipAngleRad`
+is misnamed and its doc is wrong. It carries Forza's `TireSlipAngle` straight
+through with no conversion, and that value is NOT radians: it is normalised slip
+where about 1.0 means the tire is at its peak slip angle, exactly like its
+sibling `TireCombinedSlip` which this codebase already reads that way (see
+`ModeBPeakUtil`). Measured range was 0.15 to 1.05 in ordinary drifting and 7.3
+in a spin, which is impossible as radians (420 deg) and exactly right as a
+fraction of peak.
 
-An electronic whine rides the low bands at this amplitude (motor-driver PWM
-leaking through, not a fault). Placement rules that follow:
-- The prior assumption above ("low-passes hard above ~150 Hz") was close:
-  usable texture extends to ~250 Hz, dead past that. Keep all effect
-  content under 250 Hz; nothing goes above.
-- 63–125 Hz is the danger band: full-scale content there is genuinely
-  violent. Big cues (collision, kerb strikes, lockup pulses) can afford to
-  sit here at LOW amplitude; sustained textures should not.
-- Kerb thump at 30 Hz lives in a strong band — its weak first test was
-  amplitude/duration, not placement (already mitigated: default gain 1.6).
-- Front-scrub 150–250 Hz (band 5) is exactly right for always-on texture:
-  present but never overwhelming.
+So the shipped 0.03 direction window is not 1.7 deg, it is **3% of peak slip**,
+and `dir` has been effectively `sign(slip)` in anything but a straight line
+since the model was written. Any feature that tries to use the slip MAGNITUDE
+is dead on arrival until the units are fixed, which is precisely why both
+attempts at GAP #2 failed while everything else works: force SIZE comes from
+`u` (combined slip), whose units are read correctly.
+
+**To reopen this gap**, in order: rename the field and fix its doc; express the
+direction window in slip units instead of the fictional radians/degrees;
+re-derive the base window (0.03 of peak slip is arbitrary, it just happens to
+give sign-like behaviour); only then rebuild a proportional-in-slide term and
+validate it.
+
+**The rear-axle branch went with them.** The rear-over-front excess, its
+soft-saturating gate (`SlideGate01` / `SlideHalfPoint` / BOVERCAP) and the
+centering ease it fed (`SlideDuck`) existed only to serve those two terms. With
+both gone the gate had no consumer, and the ease was A/B'd on the wheel at full
+authority (BOVERCAP 0.5, matching the hard-cap behaviour it was validated under
+on 2026-08-01) and still could not be told apart. Its effect measured 4 to 11%
+of the total force in a slide at shipped settings, about 25% at full authority,
+and neither registered.
+
+So Mode B is now a PURE FRONT-AXLE model: force size from the front's combined
+slip, direction from the front's slip sign, plus cornering weight, the braking
+laws and the stability terms. Rear breakaway still reaches the driver through
+`AxleSlipEffect`'s rear voice in the texture channel, which is a separate
+shipped effect and untouched. `RearGrip01` itself stays in the telemetry frame
+for that effect and for `EventDeriver`'s breakaway events.
+
+**The lesson worth keeping.** This whole slide-feel cluster was validated as a
+BATCH on 2026-08-01 and never term by term. Isolating them one at a time in a
+single evening found two that were structurally inert and one imperceptible.
+Anything added here in future should be A/B'd on its own before it earns a
+default, a slider, or a line in the release notes.

@@ -997,6 +997,101 @@ namespace TrueforceForAll.Plugin
             return RunGetList(url.TrimEnd('/') + PacksPath + qs, anonKey, "pack", timeoutMs);
         }
 
+        /// <summary>Per-game shared-preset counts across ALL car + game
+        /// presets, for the browser's game-filter chips. Without this the
+        /// chips only offered games known to the local install, so a preset
+        /// for a game the viewer never played was unreachable; the counts
+        /// additionally let the UI surface the busiest games first. PostgREST
+        /// has no DISTINCT / GROUP BY, so this pulls just the game column
+        /// from both tables and counts here; one short string per shared
+        /// preset, capped at the server's 1000-row page horizon per table.
+        /// Returns null when both reads fail (network/auth); one failing
+        /// table degrades to the other's counts.</summary>
+        public Dictionary<string, int> FetchCommunityGameCounts(int timeoutMs = 8000)
+        {
+            if (!ShouldSubmit(out var url, out var anonKey)) return null;
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            bool anyOk = false;
+            foreach (string path in new[] { PresetsPath, GamePresetsPath })
+            {
+                var games = RunGetGameColumn(
+                    url.TrimEnd('/') + path + "?select=game&limit=1000",
+                    anonKey, timeoutMs);
+                if (games == null) continue;
+                anyOk = true;
+                foreach (var g in games)
+                {
+                    if (string.IsNullOrWhiteSpace(g)) continue;
+                    string key = g.Trim();
+                    counts.TryGetValue(key, out int n);
+                    counts[key] = n + 1;
+                }
+            }
+            if (!anyOk)
+            {
+                _log?.Invoke("[TF4ALL] Community game-list: both table reads failed (see lines above).");
+                return null;
+            }
+            var parts = counts
+                .OrderByDescending(kv => kv.Value)
+                .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"{kv.Key} ({kv.Value})");
+            _log?.Invoke($"[TF4ALL] Community game-list: {counts.Count} game(s): {string.Join(", ", parts)}");
+            return counts;
+        }
+
+        // Column-only sibling of RunGetList: rows are {game: "..."} and the
+        // caller wants the raw strings. Same signed-in read requirement as
+        // the browse fetches.
+        private List<string> RunGetGameColumn(string fullUrl, string anonKey, int timeoutMs)
+        {
+            string capturedKey = anonKey;
+            try
+            {
+                using (var cts = new CancellationTokenSource(timeoutMs))
+                {
+                    var task = Task.Run(async () =>
+                    {
+                        string bearer = await GetAccessTokenOrNullAsync().ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(bearer))
+                        {
+                            _log?.Invoke("[TF4ALL] Community game-list: no auth token (signed out?); skipping fetch.");
+                            return (List<string>)null;
+                        }
+                        using (var req = new HttpRequestMessage(HttpMethod.Get, fullUrl))
+                        {
+                            req.Headers.Add("apikey", capturedKey);
+                            req.Headers.Add("Authorization", "Bearer " + bearer);
+                            using (var resp = await _http.SendAsync(req,
+                                HttpCompletionOption.ResponseContentRead,
+                                cts.Token).ConfigureAwait(false))
+                            {
+                                if (!resp.IsSuccessStatusCode)
+                                {
+                                    _log?.Invoke($"[TF4ALL] Community game-list: HTTP {(int)resp.StatusCode} from {fullUrl}");
+                                    return (List<string>)null;
+                                }
+                                string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                if (string.IsNullOrEmpty(body)) return new List<string>();
+                                var arr = JArray.Parse(body);
+                                var list = new List<string>(arr.Count);
+                                foreach (var row in arr)
+                                    list.Add((string)row?["game"]);
+                                return list;
+                            }
+                        }
+                    }, cts.Token);
+                    if (!task.Wait(timeoutMs)) return null;
+                    return task.Result;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[TF4ALL] Community game-list fetch failed: {ex.Message}");
+                return null;
+            }
+        }
+
         // Build the "&game=in.(...)" filter for a multi-game browse. Values
         // are double-quoted + URL-encoded so a game name with spaces (e.g.
         // "Forza Horizon 6") survives the in-list grammar. Null/empty = no

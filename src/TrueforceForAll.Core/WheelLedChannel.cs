@@ -1,4 +1,9 @@
-// Drives the Logitech G PRO wheel rim's rev/shift LEDs over HID++.
+// Drives the Logitech G PRO (and RS50, and G923 Xbox) wheel rim's rev/shift
+// LEDs over HID++. The G923 Xbox uses the SAME 0x807A feature and level pair;
+// it just exposes no 7-byte SHORT collection, so its SHORT-form commands ride
+// the 20-byte LONG collection padded to 20B with report id 0x11 (see the
+// _cmdShort fields). The G923 PlayStation variant is different: it uses the
+// legacy F8-12 report, handled by LegacyLedF8Channel, not this class.
 //
 // Protocol decoded 2026-05-16 from a USBPcap capture of G HUB driving the
 // rev lights in a game (captures/gpro_leds.pcap, analyzer gpro_leds.py).
@@ -70,6 +75,15 @@ namespace TrueforceForAll.Core
         private HidStream _short, _long, _veryLong;
         private string _devName;
 
+        // Where SHORT-form HID++ commands (getFeature, ARM, the fn2 of the level
+        // pair) are written. The G PRO has a real 7-byte SHORT collection and
+        // uses report id 0x10. The G923 Xbox exposes NO 7-byte collection, so its
+        // SHORT commands ride the 20-byte LONG collection instead, padded to 20B
+        // and sent with report id 0x11 (its FFB uses 0x11 the same way).
+        private HidStream _cmdShort;
+        private int  _cmdShortLen;      // pad SHORT commands to this length (7 or 20)
+        private byte _cmdShortRepId;    // report id for SHORT commands (0x10 or 0x11)
+
         private byte _idxRev;       // resolved feature index of page 0x807A
         private bool _ready;
         private volatile bool _armed;
@@ -105,11 +119,19 @@ namespace TrueforceForAll.Core
                     var list = DeviceList.Local;
                     foreach (var (pid, model) in WheelDiscovery.SupportedPids)
                     {
+                        // On the G923 Xbox the Trueforce interface is mi_01 (it is
+                        // mi_02 on the G PRO). Opening it here would collide with our
+                        // ep3 Trueforce stream, so skip it for those PIDs; the HID++
+                        // rev-light collections live on mi_00 (col02 = command,
+                        // col03 = reply).
+                        bool skipMi01 = pid == 0xC26D || pid == 0xC26E;
                         foreach (var dev in list.GetHidDevices(WheelDiscovery.LogitechVid, pid))
                         {
                             string path = dev.DevicePath ?? string.Empty;
                             if (path.IndexOf("mi_02", StringComparison.OrdinalIgnoreCase) >= 0)
                                 continue;   // Trueforce audio interface, never HID++
+                            if (skipMi01 && path.IndexOf("mi_01", StringComparison.OrdinalIgnoreCase) >= 0)
+                                continue;   // G923 Xbox Trueforce interface
                             string stem = GroupStem(path);
                             if (!groups.TryGetValue(stem, out var g))
                                 groups[stem] = g = new List<HidDevice>();
@@ -170,13 +192,17 @@ namespace TrueforceForAll.Core
                     opened.Add(s);
 
                     if (outLen == LenShort && shortS == null) { shortS = s; _devName = dev.GetFriendlyName(); }
-                    else if (outLen == LenLong && longS == null) longS = s;
+                    else if (outLen == LenLong && longS == null) { longS = s; if (_devName == null) _devName = dev.GetFriendlyName(); }
                     else if (outLen == LenVeryLong && veryS == null) veryS = s;
                 }
 
-                if (shortS == null)
+                // The G923 Xbox exposes no 7-byte SHORT collection: its SHORT-form
+                // HID++ commands ride the 20-byte LONG collection instead. The G PRO
+                // has a real SHORT collection. Require at least one writable command
+                // collection of either kind.
+                if (shortS == null && longS == null)
                 {
-                    _log($"[RPM-LED] group has no SHORT (7-byte) collection: {stem}");
+                    _log($"[RPM-LED] group has no SHORT or LONG command collection: {stem}");
                     DisposeAll(opened); return false;
                 }
                 if (longS == null && veryS == null)
@@ -186,6 +212,8 @@ namespace TrueforceForAll.Core
                 }
 
                 _short = shortS; _long = longS; _veryLong = veryS;
+                if (shortS != null) { _cmdShort = shortS; _cmdShortLen = LenShort; _cmdShortRepId = RepShort; }
+                else                { _cmdShort = longS;  _cmdShortLen = LenLong;  _cmdShortRepId = RepLong;  }
 
                 byte idx = TryGetFeature(PageRevLights);
                 if (idx == 0)
@@ -214,7 +242,7 @@ namespace TrueforceForAll.Core
             }
         }
 
-        private void ClearStreams() { _short = _long = _veryLong = null; _ready = false; }
+        private void ClearStreams() { _short = _long = _veryLong = _cmdShort = null; _ready = false; }
 
         private static void DisposeAll(List<HidStream> streams)
         {
@@ -232,13 +260,19 @@ namespace TrueforceForAll.Core
         private byte TryGetFeature(ushort pageId)
         {
             var req = new byte[LenShort];
-            req[0] = RepShort; req[1] = DevWired; req[2] = RootIndex; req[3] = RootGetFn;
+            req[0] = _cmdShortRepId; req[1] = DevWired; req[2] = RootIndex; req[3] = RootGetFn;
             req[4] = (byte)(pageId >> 8); req[5] = (byte)(pageId & 0xFF); req[6] = 0x00;
 
-            try { _short.Write(req); }
+            try { _cmdShort.Write(PadShort(req)); }
             catch (Exception ex) { _log($"[RPM-LED] getFeature write failed: {ex.Message}"); return 0; }
 
-            foreach (var s in new[] { _long, _veryLong, _short })
+            // Replies land on the largest collection (the 64-byte VERY_LONG /
+            // col03 on the G923 Xbox); read it first when there is no dedicated
+            // SHORT collection so we don't burn read timeouts on the command one.
+            var replyOrder = _short != null
+                ? new[] { _long, _veryLong, _short }
+                : new[] { _veryLong, _long };
+            foreach (var s in replyOrder)
             {
                 byte idx = ReadFeatureReply(s, pageId);
                 if (idx == 0xFF) return 0;
@@ -412,10 +446,28 @@ namespace TrueforceForAll.Core
 
         public void Clear() => TurnOff();
 
-        private void WriteShort(byte[] r) => _short.Write(r);
+        // Callers build a 7-byte SHORT payload with r[0] as a placeholder report
+        // id. Route it to the command stream: the G PRO uses its real 7-byte SHORT
+        // collection (report 0x10); the G923 Xbox has none, so SHORT rides the
+        // 20-byte LONG collection padded to 20B with report id 0x11.
+        private void WriteShort(byte[] r)
+        {
+            r[0] = _cmdShortRepId;
+            _cmdShort.Write(PadShort(r));
+        }
         private void WriteLong(byte[] r)
         {
-            if (_long != null) _long.Write(r); else _short.Write(r);
+            if (_long != null) _long.Write(r); else _cmdShort.Write(r);
+        }
+
+        // Pad a SHORT (7-byte) payload up to the command stream's output length.
+        // A no-op for the G PRO (LenShort == 7); pads to 20B for the G923 Xbox.
+        private byte[] PadShort(byte[] r)
+        {
+            if (_cmdShortLen <= r.Length) return r;
+            var padded = new byte[_cmdShortLen];
+            Array.Copy(r, padded, r.Length);
+            return padded;
         }
 
         public void Dispose()

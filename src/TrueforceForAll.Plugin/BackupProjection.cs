@@ -1,4 +1,4 @@
-// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
+﻿// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
 //
 // A backup must reproduce a user's setup on a SECOND PC. The live settings blob
 // mixes three kinds of field:
@@ -45,12 +45,14 @@ namespace TrueforceForAll.Plugin
         public static readonly HashSet<string> Portable = new HashSet<string>(StringComparer.Ordinal)
         {
             // Feature toggles the user opted into.
-            "PluginEnabled", "MairaFfbPassthrough", "RpmLedsEnabled", "ShowFeedbackBox",
+            "PluginEnabled", "MairaFfbPassthrough", "ModeBRevLightsEnabled", "ShowFeedbackBox",
             "ShowAchievementCelebrations",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
             "MotdLevel", "ShowEffectsTabShareButtons",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
+            "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
+            "DashTabOrder", "DashTabsDisabled",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
@@ -68,10 +70,16 @@ namespace TrueforceForAll.Plugin
             // CarFacts rationale, not the GamesWithRedline one).
             "ModeBGameEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
             "ModeBDropFloor", "ModeBEmaMs", "ModeBSign", "ModeBDamper",
-            "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
+            "ModeBCenter", "ModeBLatGain", "ModeBDirSoft",
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
-            "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
-            "ModeBGripAutoCal", "CarGripCalibration",
+            "ModeBRoadKick", "ModeBRoadKickGain",
+            "ModeBReversalDamp", "ModeBReversalDampGain",
+            "ModeBPhaseLead", "ModeBPhaseLeadMs",
+            "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
+            "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
+            "ModeBLateralDemand",
+            "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
+            "CarGripCalibration",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
@@ -101,6 +109,9 @@ namespace TrueforceForAll.Plugin
             "RememberSignInEmail", "LastSignInEmail",
             // Last wheel detected on this PC (Account session list display); per-PC hardware.
             "LastUsedWheel",
+            // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
+            // per-PC hardware state like LastUsedWheel.
+            "WheelDefaultsApplied",
             // Rebuildable local cache.
             "CarCylinderCache", "CarCylinderCacheVersion",
             // Community-fact cache: re-fetchable from the backend; would only bloat
@@ -147,6 +158,9 @@ namespace TrueforceForAll.Plugin
             // Preset-manager UI layout.
             "ManagerCommunityForCars", "ManageGamesSort", "ManageCarsSort", "ManageCustomsSort",
             "ManageGamesColumns", "ManageCarsColumns", "ManageCustomsColumns",
+            // Remote-dash last-open-tab bookkeeping (the remember/default PREFS travel;
+            // where the dash happened to sit on PC1 is transient UI state).
+            "DashLastTab",
             // Runtime caches of the on-disk library: back up the FILES, not these dicts.
             // They are rebuilt from user/games + user/cars on the next Init.
             "Presets", "GameDefaults", "CarDefaults", "CarOverrides", "GamePresets",
@@ -184,10 +198,16 @@ namespace TrueforceForAll.Plugin
         {
             "ModeBGameEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
             "ModeBDropFloor", "ModeBEmaMs", "ModeBSign", "ModeBDamper",
-            "ModeBCenter", "ModeBLatGain", "ModeBCounterGain", "ModeBDirSoft",
+            "ModeBCenter", "ModeBLatGain", "ModeBDirSoft",
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
-            "ModeBRoadKick", "ModeBRoadKickGain", "ModeBSlideCounterGrowth",
-            "ModeBGripAutoCal", "CarGripCalibration",
+            "ModeBRoadKick", "ModeBRoadKickGain",
+            "ModeBReversalDamp", "ModeBReversalDampGain",
+            "ModeBPhaseLead", "ModeBPhaseLeadMs",
+            "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
+            "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
+            "ModeBLateralDemand",
+            "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
+            "CarGripCalibration",
         };
 
         /// <summary>True only when both wheel labels are known AND name a

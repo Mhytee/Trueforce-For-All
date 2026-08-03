@@ -1,7 +1,8 @@
-// Test layers 8-10 (the three gaps from docs/steering-feel-physics.md):
-// early torque peak (SatForceModel.PlateauStartU), road kick
-// (RoadKickModel), and slide-depth counter growth (ModeBComposer's
-// slideDepth01 parameter).
+﻿// Test layers 8 and 9 from docs/steering-feel-physics.md: early torque peak
+// (SatForceModel.PlateauStartU) and road kick (RoadKickModel). Layer 10 was
+// GAP #2, the countersteer/slide-feel term; every attempt at it was retired
+// 2026-08-02 along with the rear-axle gate they shared, so nothing of it
+// remains to test. See the ModeBComposer header for the post-mortem.
 
 using System;
 using TrueforceForAll.Core;
@@ -120,28 +121,5 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0.0, m.Tick(0.15, 0.02, 16), 9);
         }
 
-        // ---------------- Layer 10: slide-depth counter growth ----------------
-
-        [Fact]
-        public void SlideDepth_DefaultOneIsLegacyBehavior()
-        {
-            double legacy = ModeBComposer.Compose(0.2, 1.0, 0.5, 0.8, 0.6, 0.5, 1.0);
-            double explicit1 = ModeBComposer.Compose(0.2, 1.0, 0.5, 0.8, 0.6, 0.5, 1.0, slideDepth01: 1.0);
-            Assert.Equal(legacy, explicit1, 12);
-        }
-
-        [Fact]
-        public void SlideDepth_ScalesCounterOnly_NotTheSatTerm()
-        {
-            // No rear excess → no counter → slide depth must change nothing.
-            double satOnlyDeep = ModeBComposer.Compose(0.3, 1.0, 0.0, 0.8, 0.6, 0.5, 1.0, slideDepth01: 1.0);
-            double satOnlyShallow = ModeBComposer.Compose(0.3, 1.0, 0.0, 0.8, 0.6, 0.5, 1.0, slideDepth01: 0.1);
-            Assert.Equal(satOnlyDeep, satOnlyShallow, 12);
-
-            // With rear excess, shallower slide = weaker total (counter shrank).
-            double deep = ModeBComposer.Compose(0.2, 1.0, 0.8, 0.8, 0.6, 0.5, 1.0, slideDepth01: 1.0);
-            double shallow = ModeBComposer.Compose(0.2, 1.0, 0.8, 0.8, 0.6, 0.5, 1.0, slideDepth01: 0.25);
-            Assert.True(shallow < deep, $"shallow {shallow} should be below deep {deep}");
-        }
     }
 }

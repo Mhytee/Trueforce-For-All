@@ -3,9 +3,7 @@
 **Logitech Trueforce-compatible haptics for any SimHub-supported game.**
 
 > **You are on the beta branch.** This branch carries the next release
-> while it gets tested in the open (currently v0.2.0: community preset
-> sharing, telemetry-based force feedback for the Forza titles, rev
-> lights, and more). Builds from here ship as pre-releases on the
+> while it gets tested in the open. Builds from here ship as pre-releases on the
 > [releases page][releases]; anyone can install them and receive
 > future betas through the in-app updater. The stable channel lives on the
 > [`main` branch](https://github.com/Mhytee/Trueforce-For-All/tree/main).
@@ -13,8 +11,8 @@
 > say so in the [Discord][discord].
 
 While official support for Trueforce has been steadily growing, there are still many major titles which are yet to receive support or will never get support. This
-plugin fills those gaps by making the wheel's haptics work everywhere SimHub does. Built on top of the wire
-protocol reverse-engineered by the [mescon Linux driver project][mescon].
+plugin fills those gaps: in games without native Trueforce, it builds
+haptics from telemetry or from game audio.
 
 > **Status:** Actively in development. The plugin is functional today.
 > Feedback is welcome, on [GitHub issues][issues] or in the
@@ -88,7 +86,7 @@ preserves via FFB pass-through. It mixes:
   - **Kerb thump**: a firm whack the instant a wheel first catches a
     kerb, distinct from the rumble that follows it, scaling with speed
     so a fast strike hits harder. (Per-tire telemetry, currently the
-    Forza titles; off by default.)
+    Forza titles.)
   - **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
     lockup, drift). Read directly from per-wheel slip in games that
     expose it (AC and the Forza titles), weighing each tire by load so
@@ -98,12 +96,12 @@ preserves via FFB pass-through. It mixes:
   - **Axle slip**: understeer and oversteer as two distinct feelings
     instead of one blur: a high scrub texture as the front washes wide,
     a deeper pulse as the rear steps out. (Per-tire telemetry, currently
-    the Forza titles; off by default.)
+    the Forza titles.)
   - **Lockup judder**: when a wheel locks under braking, a coarse
     pulsing judder kicks in, the feel of a flat-spotted tire skidding
     rather than rolling, fading as the car slows. A locked wheel becomes
     something you feel and can correct instead of a silent loss of grip.
-    (Per-tire telemetry, currently the Forza titles; off by default.)
+    (Per-tire telemetry, currently the Forza titles.)
   - **Collision**: amplitude-scaled thud on impact, with a soft-knee
     curve so harder hits feel stronger without becoming unsafe, plus a
     refractory window so multi-frame crashes don't stutter.
@@ -111,9 +109,9 @@ preserves via FFB pass-through. It mixes:
     effects cut out so jumps feel weightless, then return on landing.
     Detected from wheel load / suspension (AC and the Forza Horizon
     games). On by default.
-  - **Stationary spring**: optional centering force so a parked or
-    crawling car has some weight at the wheel instead of going limp,
-    fading out as speed builds (AC and Forza Horizon; off by default).
+  - **Stationary spring**: centering force so a parked or crawling car
+    has some weight at the wheel instead of going limp, fading out as
+    speed builds (AC).
 
 - **Audio-derived effects**: WASAPI loopback captures the game's
   audio output (engine, tire, impact sounds) and feeds it into the
@@ -166,11 +164,31 @@ instead of yanks while sustained cornering load and weight transfer
 pass through untouched. Useful on its own, even with all our other
 effects turned off.
 
+## TF4ALL Dash
+
+The plugin ships its own SimHub dashboard, made for a phone or tablet
+kept next to you or mounted on the rig, so changing something
+mid-session doesn't mean alt-tabbing out of the game.
+
+- Set the redline start or engine type for a car.
+- Turn individual effects on and off and set their gain.
+- Adjust master and audio capture gain.
+- Switch presets.
+- Rev lights across the top of every screen. Fill left to right or
+  outside in, your pick in Settings.
+- Visualizer: scrolling waveforms of the game's steering force and the
+  haptic layer, as sent to the wheel, with FFB clipping marked in red.
+
+![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
+
+Installs with the plugin and appears in SimHub's dashboard list.
+
 ## Community features
 
 Once one driver figures out a car's redline, fixes its name, or picks
 its engine layout, everyone driving that same car gets it automatically.
-Everything here is opt-in, and the plugin works fully offline without it
+Community features are on by default and anonymous: car facts need no
+account. Turn them off in Settings and the plugin works fully offline
 (see [Privacy](#privacy)).
 
 - **Community preset browser**, built into the Presets tab. Browse what
@@ -179,15 +197,18 @@ Everything here is opt-in, and the plugin works fully offline without it
 - **Share your own.** Game presets, car presets, custom engines, and
   multi-preset packs can all be shared, with a description attached.
 - **Car facts flow back automatically.** Correct a redline, fix a car's
-  name, or pick an engine layout, and the plugin offers to send that
-  fact to the community. The next driver loading the same car gets the
-  correction applied without ever opening a panel.
+  name, or pick an engine layout, and the fact is shared anonymously.
+  The next driver loading the same car gets the correction applied
+  without ever opening a panel. Sharing follows your community
+  settings and can be turned off.
 - **Downloaded presets stay current.** When a curator updates a preset
   you downloaded, an "updates available" chip surfaces it; apply updates
   manually or automatically.
-- **Sign in with just an email.** A one-time code, no password to
-  manage. From the Account tab you can set a display name, see how your
-  shared presets are doing, export your data, or delete your account.
+- **No account needed; sign-in adds extras.** Car facts work
+  anonymously; an optional sign-in (an emailed one-time code, no
+  password) unlocks preset sharing and the Account tab, where you can
+  set a display name, see how your shared presets are doing, export
+  your data, or delete your account.
 
 No single bad submission wins out: presets are surfaced by votes, and
 car facts converge as more drivers submit agreeing values.
@@ -439,9 +460,10 @@ the mescon driver's own implementation on RS50 hardware.
 
 ## Privacy
 
-The plugin runs fully offline by default. The optional online features
-(sign-in, community presets, car data, cloud backup) are opt-in; what they
-store, who processes it, and how to export or delete it is covered in
+Community features are on by default and anonymous; turn them off in
+Settings and the plugin runs fully offline. What the online features
+(community presets, car data, sign-in, cloud backup) store, who
+processes it, and how to export or delete it is covered in
 [PRIVACY.md](PRIVACY.md).
 
 ## License

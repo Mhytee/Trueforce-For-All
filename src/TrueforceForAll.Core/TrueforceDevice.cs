@@ -143,6 +143,29 @@ namespace TrueforceForAll.Core
         public Func<short?> FfbTargetProvider { get; set; }
         public int FfbTargetMaxAgeMs { get; set; } = 10000;
 
+        /// <summary>The FFB target the stream pump most recently pulled from
+        /// <see cref="FfbTargetProvider"/> (signed int16 tap scale), 0 when
+        /// none was fresh. Read-only observability surface for the TF4ALL
+        /// Dash signal scope; written once per packet on the pump thread.</summary>
+        public short LastFfbTarget => _lastFfbTarget;
+        private volatile short _lastFfbTarget;
+
+        /// <summary>The signed FFB actually written into the ep3 cur field
+        /// this packet: smoothing, scale and spike taming applied, clamped to
+        /// the int16 rails; motor sign convention (after FfbInvertSign). 0
+        /// while the stream emits silence. Read-only observability surface
+        /// for the TF4ALL Dash visualizer; written on the pump thread.</summary>
+        public short LastFfbOutput => _lastFfbOutput;
+        private volatile short _lastFfbOutput;
+
+        /// <summary>Count of packets where spike taming actually reduced the
+        /// force (slew clamp engaged or transient attenuation applied), not
+        /// merely had the feature enabled. Monotonic; consumers watch for
+        /// changes rather than sampling a boolean so 1 ms events survive
+        /// display-rate polling. Written on the pump thread only.</summary>
+        public int SpikeTameCount => _spikeTameCount;
+        private volatile int _spikeTameCount;
+
         // FFB pass-through tuning. AC's HID++ feature 0x0e and the wheel's ep3
         // cur field use OPPOSITE sign conventions, empirically: turning right
         // and releasing produces a centering force in AC at negative LSBs, but
@@ -746,6 +769,7 @@ namespace TrueforceForAll.Core
             if (_paused && !forceActive) return;
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
+            _lastFfbTarget = ffbTargetMaybe ?? (short)0;
             bool sendActive = ffbTargetMaybe.HasValue || forceActive;
 
             if (sendActive)
@@ -865,13 +889,14 @@ namespace TrueforceForAll.Core
                     // input can change per tick; preserves peak amplitude
                     // because the wheel still reaches the target value,
                     // just over a few extra ms. Only active in slew mode.
+                    bool tamed = false;
                     bool useSlew = FfbSpikeTamingEnabled && FfbSpikeUseSlewLimiter;
                     float maxDelta = useSlew ? FfbSpikeMaxLsbPerMs : 0f;
                     if (maxDelta > 0f)
                     {
                         float delta = raw - _slewLimitedFfb;
-                        if (delta >  maxDelta) delta =  maxDelta;
-                        else if (delta < -maxDelta) delta = -maxDelta;
+                        if (delta >  maxDelta) { delta =  maxDelta; tamed = true; }
+                        else if (delta < -maxDelta) { delta = -maxDelta; tamed = true; }
                         _slewLimitedFfb += delta;
                     }
                     else
@@ -926,14 +951,17 @@ namespace TrueforceForAll.Core
                             float softExcess = spikeCap * magExcess / (spikeCap + magExcess);
                             float factor = (baseline + softExcess) / absT;
                             t = (int)(t * factor);
+                            tamed = true;
                         }
                     }
 
                     if (t >  32767) t =  32767;
                     if (t < -32768) t = -32768;
                     ffbCur = (ushort)(t + 0x8000);
+                    if (tamed) _spikeTameCount++;
                 }
                 _lastCurrent = ffbCur;
+                _lastFfbOutput = (short)(ffbCur - 0x8000);
                 BuildPacket(_packetBuf, _seq++, ffbCur, _window);
             }
             else
@@ -942,6 +970,7 @@ namespace TrueforceForAll.Core
                 // any native FFB through.
                 for (int i = 0; i < Window; i++) _window[i] = 0x8000;
                 _lastCurrent = 0x8000;
+                _lastFfbOutput = 0;
                 _smoothedFfb = 0f;
                 BuildSilentPacket(_packetBuf, _seq++);
             }

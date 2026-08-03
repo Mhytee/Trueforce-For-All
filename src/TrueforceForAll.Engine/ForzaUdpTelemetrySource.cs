@@ -140,9 +140,16 @@ namespace TrueforceForAll.Core
 
         private readonly int _port;
         private readonly IPAddress _bindAddress;
-        private readonly IPEndPoint _forwardTo;   // null = no forwarding
+        // Forward destination + its send-only socket. Both are swappable while
+        // the source runs (UpdateForward), because toggling the forward must NOT
+        // rebind the receive socket. They're volatile: the receive loop reads
+        // them per packet while the UI thread swaps them. A torn read pairs an
+        // old socket with a new endpoint (or the reverse) — harmless for a
+        // connectionless UDP send, and the forward is fire-and-forget inside a
+        // swallow anyway.
+        private volatile IPEndPoint _forwardTo;   // null = no forwarding
         private UdpClient _udp;
-        private Socket _forwardSocket;            // separate socket so a forward send error can't kill the receive socket
+        private volatile Socket _forwardSocket;   // separate socket so a forward send error can't kill the receive socket
         private Thread _thread;
         private volatile bool _stopping;
         private int _running;
@@ -333,6 +340,58 @@ namespace TrueforceForAll.Core
             _forwardSocket = null;
         }
 
+        /// <summary>Change (or clear) the forward destination on a LIVE source
+        /// without touching the receive socket or its thread. The forward is a
+        /// separate send-only socket, so this costs at most a couple of dropped
+        /// forward copies during the swap and never a break in the telemetry our
+        /// own parse feeds to the effects. Toggling the forward therefore no
+        /// longer forces a rebind of the receive port — a rebind that, when
+        /// SimHub is also bound to that port, hands Forza's datagrams to SimHub
+        /// until a plugin restart and leaves a Mode B wheel dead (the "toggling
+        /// udp forward mid-play cuts ffb and tf" bug). Safe to call from any
+        /// thread.</summary>
+        public void UpdateForward(IPEndPoint forwardTo)
+        {
+            // Build the replacement socket up front so the no-forwarder window is
+            // as short as possible. A build failure degrades to "no forward"
+            // rather than throwing into the caller.
+            Socket newSock = null;
+            if (forwardTo != null)
+            {
+                try { newSock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp); }
+                catch { newSock = null; forwardTo = null; }
+            }
+
+            Socket old = _forwardSocket;
+            if (forwardTo == null)
+            {
+                // Turning forwarding off: drop the endpoint first so the receive
+                // loop's guard stops forwarding before the socket goes away.
+                _forwardTo     = null;
+                _forwardSocket = null;
+            }
+            else
+            {
+                // Publish the socket before the endpoint so the loop never pairs
+                // the new endpoint with a torn-down socket; the reverse pairing
+                // (old socket, new endpoint) is a harmless connectionless send.
+                _forwardSocket = newSock;
+                _forwardTo     = forwardTo;
+            }
+
+            // Disposing while the receive thread may be mid-SendTo on `old` at
+            // worst throws ObjectDisposed there, which its swallow absorbs.
+            if (old != null && !ReferenceEquals(old, _forwardSocket))
+            {
+                try { old.Close();   } catch { }
+                try { old.Dispose(); } catch { }
+            }
+
+            Log(forwardTo != null
+                ? $"Forza UDP forward now targeting {forwardTo} (receive socket kept, no telemetry blip)."
+                : "Forza UDP forward disabled (receive socket kept, no telemetry blip).");
+        }
+
         private void ReceiveLoop()
         {
             var remoteEp = new IPEndPoint(IPAddress.Any, 0);
@@ -368,7 +427,13 @@ namespace TrueforceForAll.Core
                 // bytes go through the gap bridge on a COPY: short raceOn=0
                 // gaps get masked for SimHub while our own parse (below)
                 // always sees the game's real session state.
-                if (_forwardSocket != null && _forwardTo != null)
+                // Snapshot the forward target once: UpdateForward may swap either
+                // field mid-packet from the UI thread, and a captured pair keeps
+                // this send self-consistent (a stale socket/endpoint pairing is a
+                // harmless connectionless UDP send).
+                var fwdSock = _forwardSocket;
+                var fwdTo   = _forwardTo;
+                if (fwdSock != null && fwdTo != null)
                 {
                     try
                     {
@@ -376,7 +441,7 @@ namespace TrueforceForAll.Core
                         GapBridge.Process(fwdBuf, len,
                             System.Diagnostics.Stopwatch.GetTimestamp(),
                             System.Diagnostics.Stopwatch.Frequency);
-                        _forwardSocket.SendTo(fwdBuf, 0, len, SocketFlags.None, _forwardTo);
+                        fwdSock.SendTo(fwdBuf, 0, len, SocketFlags.None, fwdTo);
                         Interlocked.Increment(ref _packetsForwarded);
                     }
                     catch (Exception)

@@ -1105,7 +1105,8 @@ namespace TrueforceForAll.Plugin
         private string ExpectedCommunityListKey()
         {
             string kind = _communityKind;
-            if (_communityMode == "mine") return "mine/" + kind;
+            if (_communityMode == "mine")
+                return "mine/" + kind + "/" + string.Join("+", SelectedGamesSorted());
             if (IsCommunityBroadened())
                 return "browse/" + kind + "/" + string.Join("+", SelectedGamesSorted())
                        + "/" + (_communitySearch ?? "").Trim();
@@ -1138,7 +1139,12 @@ namespace TrueforceForAll.Plugin
             _communitySearch = "";
             _communitySelectedGames.Clear();
             string ag = _plugin?.ActiveGame;
-            if (!string.IsNullOrEmpty(ag)) _communitySelectedGames.Add(ag);
+            // Mine-mode defaults to "All games" (empty selection): the view
+            // exists to show every upload across games, and seeding the
+            // active game made it read as game-scoped. Browse keeps the
+            // active-game default scope.
+            if (!string.IsNullOrEmpty(ag) && _communityMode != "mine")
+                _communitySelectedGames.Add(ag);
             // Latch: the default game scope has been established at least
             // once. While false, an empty game filter means "the active game
             // wasn't known yet" (fresh session), NOT a user-chosen All-games
@@ -1156,8 +1162,9 @@ namespace TrueforceForAll.Plugin
         // would have adopted the game).
         private bool _communityScopeEverSet;
 
-        // Search applies to every browse kind; the game chips only to car /
-        // game presets. Both hidden in "mine" mode.
+        // Search applies to every browse kind; the game chips to car / game
+        // presets in BOTH browse and mine mode (mine filters locally from
+        // its cached fetch). Search stays hidden in "mine" mode.
         private void ConfigureCommunityFilterVisibility()
         {
             bool mine = _communityMode == "mine";
@@ -1165,17 +1172,99 @@ namespace TrueforceForAll.Plugin
             if (CommunitySearchRow != null)
                 CommunitySearchRow.Visibility = mine ? Visibility.Collapsed : Visibility.Visible;
             if (CommunityGameChips != null)
-                CommunityGameChips.Visibility = (!mine && isCarOrGame)
+                CommunityGameChips.Visibility = isCarOrGame
                     ? Visibility.Visible : Visibility.Collapsed;
         }
+
+        // Cap on auto-shown game chips (excluding "All games" and the "+N
+        // more" opener). The active game, current selections, and the busiest
+        // games fill the visible row (selections are never hidden); everything
+        // else folds into the flyout so the row's height stays bounded as the
+        // community's game list grows.
+        private const int CommunityGameChipCap = 8;
+
+        // Distinguishes the "+N more" opener from the "All games" chip in the
+        // sync loop (both would otherwise read Tag-as-string == null).
+        private static readonly object MoreGamesChipTag = new object();
+
+        private Popup _communityMoreGamesPopup;
 
         private void RebuildCommunityGameChips()
         {
             if (CommunityGameChips == null || _plugin == null) return;
+            // A rebuild replaces the "+N more" opener, orphaning an open
+            // flyout; drop the field first so its Closed handler doesn't
+            // schedule a redundant rebuild, then close it.
+            var stale = _communityMoreGamesPopup;
+            _communityMoreGamesPopup = null;
+            if (stale != null) stale.IsOpen = false;
             CommunityGameChips.Children.Clear();
-            var games = _plugin.GetCommunityFilterGames();
 
-            var all = new CheckBox
+            bool mine = _communityMode == "mine";
+            Dictionary<string, int> counts;
+            HashSet<string> all;
+            if (mine)
+            {
+                // My uploads: chips come from the uploads themselves (the
+                // games YOU shared for, with per-upload counts). The filter
+                // applies locally in the mine fetch branch; no server game
+                // list involved. Selected games are kept in the set so a
+                // pick never disappears while checked.
+                counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                string wantKind = string.IsNullOrEmpty(_communityKind) ? "car" : _communityKind;
+                if (_myUploadsCache != null)
+                    foreach (var s in _myUploadsCache)
+                    {
+                        if (s == null || string.IsNullOrEmpty(s.Game)) continue;
+                        string k = string.IsNullOrEmpty(s.Kind) ? "car" : s.Kind;
+                        if (!string.Equals(k, wantKind, StringComparison.Ordinal)) continue;
+                        counts.TryGetValue(s.Game, out int n);
+                        counts[s.Game] = n + 1;
+                    }
+                all = new HashSet<string>(counts.Keys, StringComparer.OrdinalIgnoreCase);
+                foreach (var g in _communitySelectedGames) all.Add(g);
+            }
+            else
+            {
+                counts = _plugin.GetCommunityGameUploadCounts();
+                all = new HashSet<string>(_plugin.GetCommunityFilterGames(),
+                                          StringComparer.OrdinalIgnoreCase);
+                if (counts != null)
+                    foreach (var g in counts.Keys) all.Add(g);
+            }
+            Func<string, int> countOf = g =>
+            {
+                int n = 0;
+                if (counts != null) counts.TryGetValue(g, out n);
+                return n;
+            };
+
+            // Visible order: active game, then the user's current picks, then
+            // busiest-first until the cap. Selections always stay visible (the
+            // row must show the live filter state), so the cap only limits the
+            // topped-up tail.
+            var visible    = new List<string>();
+            var visibleSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Action<string> take = g =>
+            {
+                if (!string.IsNullOrEmpty(g) && visibleSet.Add(g)) visible.Add(g);
+            };
+            // Mine-mode has no active-game pin: the whole point is every
+            // upload across games, so busiest-first plus selections only.
+            if (!mine) take(_plugin.ActiveGame);
+            foreach (var g in SelectedGamesSorted()) take(g);
+            foreach (var g in all.OrderByDescending(countOf)
+                                 .ThenBy(x => x, StringComparer.OrdinalIgnoreCase))
+            {
+                if (visible.Count >= CommunityGameChipCap) break;
+                take(g);
+            }
+            var overflow = all.Where(g => !visibleSet.Contains(g))
+                              .OrderByDescending(countOf)
+                              .ThenBy(x => x, StringComparer.OrdinalIgnoreCase)
+                              .ToList();
+
+            var allChip = new CheckBox
             {
                 Content   = "All games",
                 Style     = (Style)FindResource("ToggleChipButton"),
@@ -1183,10 +1272,10 @@ namespace TrueforceForAll.Plugin
                 Tag       = null,
                 ToolTip   = "Browse presets from every game.",
             };
-            all.Click += CommunityGameChip_Click;
-            CommunityGameChips.Children.Add(all);
+            allChip.Click += CommunityGameChip_Click;
+            CommunityGameChips.Children.Add(allChip);
 
-            foreach (var g in games)
+            foreach (var g in visible)
             {
                 var chip = new CheckBox
                 {
@@ -1198,6 +1287,111 @@ namespace TrueforceForAll.Plugin
                 chip.Click += CommunityGameChip_Click;
                 CommunityGameChips.Children.Add(chip);
             }
+
+            if (overflow.Count > 0)
+                CommunityGameChips.Children.Add(BuildMoreGamesChip(overflow, countOf));
+
+            // Ask the plugin for the server-side game counts; when they land
+            // with games the cache didn't have, rebuild so those get offered
+            // too. TTL-cached and in-flight-deduped, and the callback only
+            // fires when the game set actually grew, so this can't
+            // rebuild-loop. Mine-mode chips come from the user's own uploads
+            // instead, so no server list is needed there.
+            if (!mine)
+                _plugin.PrefetchCommunityGames(() =>
+                {
+                    try { Dispatcher.BeginInvoke(new Action(RebuildCommunityGameChips)); }
+                    catch { }
+                });
+        }
+
+        // The "+N more" opener plus its flyout: a themed popup listing the
+        // folded-away games as checkboxes (busiest first, upload count in the
+        // label). Checking one inside the flyout filters immediately; the chip
+        // row itself is rebuilt only after the popup closes so fresh picks get
+        // promoted to visible chips without slamming the open flyout shut
+        // between clicks.
+        private UIElement BuildMoreGamesChip(List<string> overflow, Func<string, int> countOf)
+        {
+            var opener = new CheckBox
+            {
+                Content = "+" + overflow.Count + " more",
+                Style   = (Style)FindResource("ToggleChipButton"),
+                Tag     = MoreGamesChipTag,
+                ToolTip = "Every other game with shared presets.",
+            };
+            var list = new StackPanel();
+            foreach (var g in overflow)
+            {
+                int n = countOf(g);
+                var item = new CheckBox
+                {
+                    Content    = n > 0 ? $"{g} ({n})" : g,
+                    Tag        = g,
+                    IsChecked  = _communitySelectedGames.Contains(g),
+                    Margin     = new Thickness(2),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xE6)),
+                };
+                item.Click += CommunityMoreGameItem_Click;
+                list.Children.Add(item);
+            }
+            var popup = new Popup
+            {
+                PlacementTarget    = opener,
+                Placement          = PlacementMode.Bottom,
+                StaysOpen          = false,
+                AllowsTransparency = true,
+                Child = new Border
+                {
+                    Background      = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A)),
+                    BorderBrush     = new SolidColorBrush(Color.FromRgb(0x3A, 0x6B, 0xBE)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius    = new CornerRadius(3),
+                    Padding         = new Thickness(10, 8, 10, 8),
+                    Child = new ScrollViewer
+                    {
+                        MaxHeight = 260,
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        Content   = list,
+                    },
+                },
+            };
+            popup.Closed += (s, e) =>
+            {
+                opener.IsChecked = false;
+                if (!ReferenceEquals(_communityMoreGamesPopup, popup)) return;
+                _communityMoreGamesPopup = null;
+                // Deferred so the click that closed the popup finishes against
+                // the current chip row before it gets torn down; skipped when a
+                // later rebuild already replaced the row.
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (opener.Parent == CommunityGameChips) RebuildCommunityGameChips();
+                }));
+            };
+            opener.Click += (s, e) =>
+            {
+                bool open = opener.IsChecked == true;
+                _communityMoreGamesPopup = open ? popup : null;
+                popup.IsOpen = open;
+            };
+            return opener;
+        }
+
+        private void CommunityMoreGameItem_Click(object sender, RoutedEventArgs e)
+        {
+            var cb = sender as CheckBox;
+            string g = cb?.Tag as string;
+            if (g == null) return;
+            if (cb.IsChecked == true) _communitySelectedGames.Add(g);
+            else _communitySelectedGames.Remove(g);
+            // Keep the main row truthful (a flyout pick clears All-games;
+            // clearing the last pick re-selects it) WITHOUT a rebuild, which
+            // would close this popup mid-multi-select. Promotion of the new
+            // pick to a visible chip happens when the popup closes.
+            SyncCommunityGameChipChecks();
+            if (CommunityPanel?.Visibility == Visibility.Visible)
+                _ = CommunityRefreshAsync();
         }
 
         private void CommunityGameChip_Click(object sender, RoutedEventArgs e)
@@ -1214,18 +1408,25 @@ namespace TrueforceForAll.Plugin
                 if (cb.IsChecked == true) _communitySelectedGames.Add(g);
                 else _communitySelectedGames.Remove(g);
             }
-            // Sync chip check states (a specific pick clears All; clearing the
-            // last specific pick re-selects All). Programmatic IsChecked sets
-            // don't fire Click, so this won't recurse.
+            SyncCommunityGameChipChecks();
+            if (CommunityPanel?.Visibility == Visibility.Visible)
+                _ = CommunityRefreshAsync();
+        }
+
+        // Sync chip check states (a specific pick clears All; clearing the
+        // last specific pick re-selects All). Programmatic IsChecked sets
+        // don't fire Click, so this won't recurse. The "+N more" opener is
+        // skipped: its checked state means "flyout open", not a filter.
+        private void SyncCommunityGameChipChecks()
+        {
             bool allMode = _communitySelectedGames.Count == 0;
             foreach (var child in CommunityGameChips.Children)
             {
                 if (!(child is CheckBox c)) continue;
+                if (ReferenceEquals(c.Tag, MoreGamesChipTag)) continue;
                 string tag = c.Tag as string;
                 c.IsChecked = tag == null ? allMode : _communitySelectedGames.Contains(tag);
             }
-            if (CommunityPanel?.Visibility == Visibility.Visible)
-                _ = CommunityRefreshAsync();
         }
 
         private void CommunitySearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -2497,6 +2698,22 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 carShareMatchesUpload = string.Equals(
                     carShareCurrentHash, carShareOvr.CommunityUploadedBodyHash, StringComparison.Ordinal);
             }
+            // Clear-default: the inverse of Set-as-default, acting on CARS
+            // rather than rows. Enabled when the checked set (or the single
+            // selection) contains a row that IS its car's current default;
+            // the count labels how many distinct cars would be cleared.
+            // Computed BEFORE the pack-mode early return below so the button
+            // never carries a stale enabled state into pack mode.
+            int clearableCars = checkedCount > 0
+                ? _carRows.Where(r => r.IsChecked && r.Active)
+                          .Select(r => r.CarId)
+                          .Distinct(StringComparer.Ordinal)
+                          .Count()
+                : (anySelected && sel.Active ? 1 : 0);
+            CarClearDefaultBtn.IsEnabled = clearableCars > 0;
+            CarClearDefaultBtn.Content   = clearableCars > 1
+                ? $"Clear default ({clearableCars})"
+                : "Clear default";
             // Multi-checked + all eligible (not built-in) repurposes
             // Share into "Share pack" - the button feels like the
             // natural surface for "do something with this multi-select"
@@ -2916,7 +3133,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             var picked = PickMultipleFromList(
                 $"Set default games for '{sel.Name}'",
-                "Check every game this preset should auto-load for. Unchecking a game clears its current binding.",
+                "Check every game this preset should auto-load for. Unchecking a game reverts it to its usual default (a game always has one: its built-in preset, or the one created when the game was first seen).",
                 known, before);
             if (picked == null) return;
 
@@ -3414,9 +3631,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     "Delete car presets",
                     $"Delete {bulk.Count} car preset(s)?{detail}",
                     DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
-                foreach (var r in bulk) _plugin.DeleteCarPreset(r.CarId, r.PresetName);
+                int deletedCount = 0;
+                foreach (var r in bulk)
+                    if (_plugin.DeleteCarPreset(r.CarId, r.PresetName)) deletedCount++;
                 ReloadCars();
-                SetLib(CarLibStatus, $"Deleted {bulk.Count} car preset(s).");
+                SetLib(CarLibStatus, deletedCount == bulk.Count
+                    ? $"Deleted {deletedCount} car preset(s)."
+                    : $"Deleted {deletedCount} of {bulk.Count} car preset(s); the rest couldn't be removed (see the SimHub log).");
                 return;
             }
 
@@ -3428,9 +3649,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (TrueforceDialog.Show(Window.GetWindow(this), "Delete car preset", warning,
                 DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
             string deleted = sel.PresetName;
-            _plugin.DeleteCarPreset(sel.CarId, sel.PresetName);
+            bool ok = _plugin.DeleteCarPreset(sel.CarId, sel.PresetName);
             ReloadCars();
-            SetLib(CarLibStatus, $"Deleted '{deleted}'.");
+            SetLib(CarLibStatus, ok
+                ? $"Deleted '{deleted}'."
+                : $"Couldn't delete '{deleted}' (see the SimHub log).");
         }
 
         private void CarSetActive_Click(object sender, RoutedEventArgs e)
@@ -3476,6 +3699,63 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 string suffix = alreadyActive > 0 ? $" ({alreadyActive} already the default)" : "";
                 SetLib(CarLibStatus, $"Set {applied} preset(s) as their car's default{suffix}.");
             }
+        }
+
+        // Inverse of Set as default: the car goes back to no per-car preset
+        // (game preset only). Acts on the CAR of each relevant row; the
+        // preset files stay in the library, so no confirm dialog. Bulk mode
+        // clears each checked row's car once (only rows that ARE their
+        // car's default count; checked non-default rows are ignored).
+        private void CarClearDefault_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            // Bulk convention (matches CarDelete_Click / CarSetActive_Click):
+            // when ANY row is checked, act on the checked set only and never
+            // fall through to the highlighted row, even if no checked row is
+            // clearable.
+            if (_carRows.Any(r => r.IsChecked))
+            {
+                var checkedActive = _carRows.Where(r => r.IsChecked && r.Active).ToList();
+                if (checkedActive.Count == 0) return;
+                var carIds = checkedActive
+                    .Select(r => r.CarId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                if (!ConfirmActiveCarDiscardForClear(carIds)) return;
+                foreach (var id in carIds) _plugin.ClearCarDefaultPreset(id);
+                ReloadCars();
+                var lastRow = checkedActive.Last();
+                SelectCarRow(lastRow.CarId, lastRow.PresetName);
+                SetLib(CarLibStatus, carIds.Count == 1
+                    ? $"Cleared the default for '{carIds[0]}'. It uses the game preset now."
+                    : $"Cleared the default for {carIds.Count} cars. They use the game preset now.");
+                return;
+            }
+
+            var sel = SelectedCar;
+            if (sel == null || !sel.Active) return;
+            if (!ConfirmActiveCarDiscardForClear(new[] { sel.CarId })) return;
+            _plugin.ClearCarDefaultPreset(sel.CarId);
+            ReloadCars();
+            SelectCarRow(sel.CarId, sel.PresetName);
+            SetLib(CarLibStatus, $"Cleared the default for '{sel.CarId}'. It uses the game preset now.");
+        }
+
+        // Clearing the ACTIVE car's default also discards its unsaved live
+        // tuning (ClearCarDefaultPreset routes the active car through
+        // ClearActiveCarPreset). The header picker's None row confirms that
+        // discard; mirror it here so the manager can't silently lose work.
+        // Non-active cars never touch live state, so no dialog for those.
+        private bool ConfirmActiveCarDiscardForClear(IEnumerable<string> carIds)
+        {
+            string active = _plugin?.ActiveCarId;
+            if (string.IsNullOrEmpty(active)) return true;
+            if (!carIds.Contains(active, StringComparer.Ordinal)) return true;
+            if (!_plugin.IsActiveCarPresetDirty()) return true;
+            return TrueforceDialog.Show(Window.GetWindow(this),
+                "Clear car preset?",
+                "Clearing the current car's default also discards its unsaved tuning.\n\nCancel to keep editing and save first.",
+                DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") == true;
         }
 
         private void CarEdit_Click(object sender, RoutedEventArgs e)
@@ -4059,6 +4339,16 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
         private readonly System.Collections.ObjectModel.ObservableCollection<CommunityRow> _communityRows =
             new System.Collections.ObjectModel.ObservableCollection<CommunityRow>();
+        // Last "My uploads" fetch (all kinds unioned), so the mine-mode game
+        // chips filter locally instead of refetching per chip click. The
+        // Refresh button (force), a sort change, an account change, and the
+        // TTL all bypass it; Delete prunes it in place so a removed row
+        // can't resurrect.
+        private List<PresetSummary> _myUploadsCache;
+        private string _myUploadsCacheSort;
+        private string _myUploadsCacheUser;
+        private DateTime _myUploadsCacheUtc;
+        private static readonly TimeSpan MyUploadsCacheTtl = TimeSpan.FromMinutes(2);
         private bool _communityFetchInFlight;
         private string _communitySort = "wilson";
         // Tracks which (game, carId) the displayed list represents so we
@@ -4337,13 +4627,39 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     // the active segment so toggling to My Uploads on
                     // the Games tab shows only game-preset uploads,
                     // not the whole bundle.
-                    var all = await _plugin.FetchMyCommunityPresetsAsync(capturedSort, 100);
+                    List<PresetSummary> all;
+                    string authUser = _plugin.AuthSignedInUserId ?? "";
+                    bool cacheFresh = _myUploadsCache != null && !force
+                        && string.Equals(_myUploadsCacheSort, capturedSort, StringComparison.Ordinal)
+                        && string.Equals(_myUploadsCacheUser, authUser, StringComparison.Ordinal)
+                        && (DateTime.UtcNow - _myUploadsCacheUtc) < MyUploadsCacheTtl;
+                    if (cacheFresh) all = _myUploadsCache;
+                    else
+                    {
+                        all = await _plugin.FetchMyCommunityPresetsAsync(capturedSort, 100);
+                        if (all != null)
+                        {
+                            _myUploadsCache     = all;
+                            _myUploadsCacheSort = capturedSort;
+                            _myUploadsCacheUser = authUser;
+                            _myUploadsCacheUtc  = DateTime.UtcNow;
+                        }
+                    }
                     if (all != null)
                     {
                         string wantKind = string.IsNullOrEmpty(capturedKind) ? "car" : capturedKind;
-                        results = all.Where(s => string.Equals(
+                        var kindRows = all.Where(s => string.Equals(
                             string.IsNullOrEmpty(s?.Kind) ? "car" : s.Kind,
                             wantKind, StringComparison.Ordinal)).ToList();
+                        // The game chips filter locally here (the fetch
+                        // already returned everything): empty = all games.
+                        results = capturedGames.Count == 0
+                            ? kindRows
+                            : kindRows.Where(s => !string.IsNullOrEmpty(s?.Game)
+                                && capturedGames.Contains(s.Game, StringComparer.OrdinalIgnoreCase)).ToList();
+                        // Chips reflect the games across ALL this kind's
+                        // uploads (unfiltered), now that the cache is fresh.
+                        RebuildCommunityGameChips();
                     }
                 }
                 else if (capturedBroaden)
@@ -4455,7 +4771,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // local). RelabelCommunityScopeRadio reads this on the next
             // tick.
             _lastFetchWasTrending = capturedTrending;
-            _communityListedCarKey = capturedMode == "mine" ? "mine/" + capturedKind
+            _communityListedCarKey = capturedMode == "mine" ? "mine/" + capturedKind + "/" + string.Join("+", capturedGames)
                 : capturedBroaden          ? "browse/" + capturedKind + "/" + string.Join("+", capturedGames) + "/" + capturedSearch
                 : capturedKind == "engine" ? "engine"
                 : capturedKind == "pack"   ? "pack"
@@ -4990,6 +5306,10 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // Drop the cached browse list this preset was in so it doesn't reappear
             // from cache on the next open (and trending reflects the removal).
             _plugin.InvalidateBrowseCacheForKind(sel.Summary.Kind, sel.Summary.Game, sel.Summary.CarId);
+            // Prune the mine-mode cache too, so the local game-chip filter
+            // can't resurrect the deleted row within the cache TTL.
+            if (sel.Summary.Id != null)
+                _myUploadsCache?.RemoveAll(s => string.Equals(s?.Id, sel.Summary.Id, StringComparison.Ordinal));
             // The active-card 'Top community presets' surface keeps its own in-memory
             // copy and won't re-read the (now invalidated) disk cache until it's
             // reset; nudge it so a car preset you just deleted doesn't linger there.

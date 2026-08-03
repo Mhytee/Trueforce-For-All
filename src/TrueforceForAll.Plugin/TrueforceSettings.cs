@@ -44,23 +44,24 @@ namespace TrueforceForAll.Plugin
         // and ignore MAIRA entirely.
         public bool MairaFfbPassthrough { get; set; } = true;
 
-        // Drive the wheel rim's RGB rev/shift LEDs from SimHub telemetry over
-        // HID++ (separate channel from the Trueforce stream). Scoped to iRacing:
-        // iRacing's native rev lights ride its Trueforce SDK hook, so MAIRA
-        // users who disable in-game Trueforce lose them; this puts them back.
-        // Default off (new hardware-output feature, opt-in).
-        // On by default: it is gated to iRacing AND to MAIRA passthrough
-        // being live (no PID on the HID++ pipe), so default-on only ever
-        // drives LEDs in the safe iRacing+MAIRA configuration. Other games
-        // and the no-MAIRA iRacing path never see it.
-        public bool RpmLedsEnabled { get; set; } = true;
+        // Drive the wheel's rev lights while Telemetry Based FFB (Mode B) is
+        // on. On by default: Mode B means the game's own FFB is quiet on the
+        // HID++ pipe (tap-proven, fail-closed in the gate), so the 0x807A
+        // LED writes are safe. A toggle exists because Mode B will reach
+        // games that drive the wheel's rev lights natively; there the user
+        // turns ours off. The iRacing (MAIRA passthrough) LED path is NOT
+        // gated by this: it is on whenever the passthrough is live, which
+        // is the equivalent safe condition.
+        // (Replaces RpmLedsEnabled, retired 2026-08-01: one master switch
+        // labeled "iRacing" silently gated the Mode B lights too, and a
+        // stored false darkened the wheel with no visible cause.)
+        public bool ModeBRevLightsEnabled { get; set; } = true;
 
-        // Gate for the rim-LED / MAIRA-passthrough settings section. Hidden
-        // from the public UI until a tester types the access code (MAIRA or
-        // TEST) in the box at the bottom of the settings page. The MAIRA
-        // side is still in PR and unvalidated on RS50/G923, so this keeps
-        // the half-feature out of sight for normal users. Once true it
-        // stays unlocked for that install.
+        // Retired unlock for the old rim-LED / MAIRA-passthrough settings
+        // section (access codes MAIRA / TEST). The section is permanently
+        // hidden since 2026-08-01: Marvin declined the passthrough, so the
+        // UI stays parked until a MAIRA fork revives it. The property stays
+        // so old settings files and backups deserialize cleanly.
         public bool RpmLedUnlocked { get; set; } = false;
 
         // One-time latch for the iRacing "disable native Trueforce in app.ini"
@@ -245,6 +246,16 @@ namespace TrueforceForAll.Plugin
         [JsonIgnore]
         public static readonly TimeSpan CommunityCacheTtl = TimeSpan.FromDays(7);
 
+        // Shorter TTL for a PARTIAL fetch (at least one fact type came back
+        // empty). Empty is ambiguous: the community may genuinely have no
+        // redline for that car, or that one call may have failed while its
+        // siblings succeeded. The full TTL would freeze a failed call's result
+        // as fact for a week, so the car would keep running on its estimated
+        // redline (wrong rev lights, wrong buzz) with no way to notice.
+        // Retrying in hours costs one request and covers both cases.
+        [JsonIgnore]
+        public static readonly TimeSpan CommunityCachePartialTtl = TimeSpan.FromHours(3);
+
         // ---- Message of the Day (MOTD) -------------------------------------
         // How much of the MOTD feed the user wants on the top strip. PORTABLE
         // (a genuine user choice). Selecting None warns in the UI that important
@@ -390,6 +401,42 @@ namespace TrueforceForAll.Plugin
         // once, when they update to the build that made the home tile default-on,
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
+
+        // TF4ALL Remote dash: rev-strip fill direction. false = left to right
+        // (default); true = outside-in, both ends lighting first and
+        // converging on the center like center-converge shift lights.
+        // Surfaced in the Settings tab's "Remote dashboard" section; the dash
+        // reads it live (Dash.RevOutsideIn) so a change applies instantly.
+        public bool DashRevStripOutsideIn { get; set; } = false;
+
+        // TF4ALL Remote dash: which tab the dash opens on when SimHub starts.
+        // Remember-last wins while on (the dash reopens where it was left,
+        // surviving restarts); with it off, DashDefaultTab is the fixed
+        // opening tab. DashLastTab is bookkeeping, not a user choice: written
+        // on every tab tap, read only when DashRememberLastTab is true.
+        // Indices match the dash tab bar: 0=Drive, 1=Car facts, 2=Effects,
+        // 3=Presets, 4=Visualizer (clamped at read for forward compat).
+        public bool DashRememberLastTab { get; set; } = true;
+        public int  DashDefaultTab      { get; set; } = 0;
+        public int  DashLastTab         { get; set; } = 0;
+
+        // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
+        // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
+        // user's display order; DashTabsDisabled hides tabs without losing
+        // their position. Sanitized at read (GetDashTabFullOrder): unknown
+        // indices drop, missing ones append in factory order, so an empty
+        // list means factory order and a tab added by an update shows up
+        // enabled for everyone, customized layouts included.
+        // MUST default EMPTY: SimHub's settings loader deserializes with a
+        // bare JsonSerializer (ObjectCreationHandling.Auto), which APPENDS
+        // the stored array onto a pre-populated initializer list instead of
+        // replacing it; a non-empty default here made every restart prepend
+        // the factory order and silently revert the user's layout.
+        // At least one tab always stays enabled: the Settings editor blocks
+        // disabling the last one and the reader falls back to Drive if a
+        // hand-edited file disables everything.
+        public List<int> DashTabOrder     { get; set; } = new List<int>();
+        public List<int> DashTabsDisabled { get; set; } = new List<int>();
 
         // FFB pass-through tuning. Scale lets users dial down the felt strength
         // when their wheel firmware applies a different gain to ep3 cur than
@@ -567,21 +614,26 @@ namespace TrueforceForAll.Plugin
         // a missing key = off. Only games with enough telemetry are offered
         // (IsModeBCapableGame: the Forza titles FM8 / FH4 / FH5 / FH6, run with
         // the game's own force feedback and vibration at 0). The tuning below
-        // is global (shared across games); defaults are the first on-wheel
-        // recipe (2026-07-03), G PRO-validated on FH6 2026-07-08. ----
+        // is global (shared across games); defaults are the owner's G PRO
+        // recipe as dialed in on the wheel (re-snapshot 2026-08-01 evening
+        // from the live wheel after the drift sessions, values rounded to
+        // what the sliders display; strength is the one per-wheel value,
+        // see ApplyWheelDefaults). ----
         public Dictionary<string, bool> ModeBGameEnabled { get; set; }
             = new Dictionary<string, bool>();
-        public float ModeBSatGain   { get; set; } = 1.0f;    // peak torque fraction
-        public float ModeBRiseGamma { get; set; } = 0.5f;    // <1 = weight arrives in normal cornering
+        public float ModeBSatGain   { get; set; } = 0.50f; // peak torque fraction; the G PRO default (owner 2026-08-01). RS50/G923 get their own via ApplyWheelDefaults.
+        public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
-        public float ModeBDropFloor { get; set; } = 0.20f;   // torque left past the limit
+        public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit
         public float ModeBEmaMs     { get; set; } = 40f;     // input smoothing time constant
         public float ModeBSign      { get; set; } = 1f;      // SAT direction (BSIGN; -1 flips)
-        public float ModeBDamper    { get; set; } = 0.15f;   // "Damping" slider: velocity damping (Mode B only)
-        public float ModeBCenter    { get; set; } = 0.10f;   // "Centering" slider: speed-scaled centering (Mode B only)
-        public float ModeBLatGain     { get; set; } = 0.6f;  // cornering weight: +gain per lateral g (BLAT)
-        public float ModeBCounterGain { get; set; } = 0.5f;  // countersteer force on rear breakaway (BCS)
-        public float ModeBDirSoft     { get; set; } = 0.12f; // center flat-spot width (BDIRK); 0 = raw linear
+        public float ModeBDamper    { get; set; } = 0.07f;   // "Damping" slider: velocity damping (Mode B only)
+        public float ModeBCenter    { get; set; } = 0.25f;   // "Centering" slider: speed-scaled centering (Mode B only)
+        public float ModeBLatGain     { get; set; } = 0.60f; // cornering weight: +gain per lateral g (BLAT)
+        public float ModeBDirSoft     { get; set; } = 0f;    // center flat-spot width (BDIRK); 0 = raw linear (Direct centering + the damper own center calm now)
+        public float ModeBLockupRecoverMs { get; set; } = 30f; // "Lockup recovery" slider (BRECOVER): how fast force returns after lockup/wheelspin eases
+        public float ModeBLockupPoint { get; set; } = 0.8f; // |slip ratio| treated as full lockup (BLOCKPT); higher = wheel keeps its weight deeper into braking before lightening (owner 2026-07-24 on-wheel)
+        public float ModeBMinForce  { get; set; } = 0.05f;   // "Min force" slider (BMINF): smallest force the wheel renders; lifts faint detail above the motor's friction floor. G PRO/RS50 default 0.05; G923 0.25 via ApplyWheelDefaults.
 
         // Mode B feel features (the haptic-engine layers 6-11, all validated
         // on-wheel and graduated to default ON there; the Mode B master
@@ -590,9 +642,18 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBSuspensionLoad     { get; set; } = true;   // steering load from suspension compression
         public bool  ModeBEarlyTorquePeak    { get; set; } = true;   // torque plateaus at 75% utilization
         public bool  ModeBRoadKick           { get; set; } = true;   // one-wheel bump kick in the force channel
-        public float ModeBRoadKickGain       { get; set; } = 1.0f;   // kick strength
-        public bool  ModeBSlideCounterGrowth { get; set; } = true;   // countersteer force grows with slide depth
+        public float ModeBRoadKickGain       { get; set; } = 0.40f;  // kick strength
+        public bool  ModeBReversalDamp       { get; set; } = true;   // fade force while a slide is caught back toward center, so the direction switch stops snapping (MBREV); default ON 2026-08-01 (mountain-drift validation)
+        public float ModeBReversalDampGain   { get; set; } = 0.50f;  // reversal-damping strength, 0..1 (BREVG)
+        public bool  ModeBPhaseLead          { get; set; } = true;   // lead the force ahead of the wheel to cancel telemetry-loop lag so a released wheel settles instead of oscillating (MBLEAD); default ON 2026-08-01
+        public float ModeBPhaseLeadMs        { get; set; } = 40f;    // phase-lead prediction horizon in ms (BLEAD)
+        public bool  ModeBCenterPd           { get; set; } = true;   // centering springs on the wheel's OWN position (HID reader) with a velocity look-ahead, so the pull toward straight is fresh and cannot ring (MBCPD); default ON 2026-08-01
+        public float ModeBCenterLeadMs       { get; set; } = 40f;    // direct-centering look-ahead in ms (BCLEAD): how far ahead of the wheel's motion the spring aims
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
+        public bool  ModeBFrictionCircle     { get; set; } = true;   // friction-circle braking law replaces the lockup gate (BCIRCLE); default ON as of 0.2.5 (owner on-wheel: generally better than the gate)
+        public bool  ModeBLongitudinalGripLearn { get; set; } = true;  // auto braking-grip: circle/gate radius follows each car's grip-cal peak instead of the manual point (BLEARN); default ON as of 0.2.5
+        public float ModeBGripTrim { get; set; } = 1.0f; // radius = trim x grip-cal peak when auto braking-grip is on (BGTRIM; 1 = the raw detected grip)
+        public bool  ModeBLateralDemand { get; set; } = true; // base the SAT force on LATERAL (cornering) grip so straight-line braking cannot pump the feedback loop (BLDEM); default ON 2026-08-01 (mountain-drift validation)
 
         // Cross-wheel FFB sync policy. Mode B / FFB tuning is wheel-specific (a
         // curve dialed in on a G PRO is wrong on a G923), so the Mode B settings
@@ -759,6 +820,14 @@ namespace TrueforceForAll.Plugin
         // travels in cloud backup. Empty until a wheel is first detected; sticky
         // across unplugs and restarts (only overwritten by a new detection).
         public string LastUsedWheel { get; set; } = "";
+
+        // One-shot wheel-defaults latch: the chassis the per-wheel Mode B
+        // defaults were last evaluated for on THIS PC (see ApplyWheelDefaults).
+        // The defaults only ever apply while the tuning is an untouched shipped
+        // recipe, so tuned setups are never touched; the latch stops
+        // re-evaluation on every reconnect. Per-PC hardware state like
+        // LastUsedWheel: machine-local, never travels.
+        public string WheelDefaultsApplied { get; set; } = "";
 
         // Cloud-backup sync bookkeeping (Phase 2). The Storage object `version` of
         // the backup this PC last pushed or pulled. MACHINE-LOCAL: each PC tracks its
@@ -1302,6 +1371,11 @@ namespace TrueforceForAll.Plugin
         public RedlineConsensus      Redline { get; set; }
         public EngineLayoutConsensus Layout  { get; set; }
         public CarNameConsensus      Name    { get; set; }
+        // At least one fact type came back empty, so this entry expires on the
+        // short TTL (CommunityCachePartialTtl) instead of the full one. Absent
+        // in older cache files, which deserialize to false and keep the full
+        // TTL: harmless, and they age out on their own.
+        public bool Partial { get; set; }
     }
 
     /// <summary>Per-download bookkeeping for community presets the user

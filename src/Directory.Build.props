@@ -7,7 +7,7 @@
        fails silently as a dead wheel). CI can still override for a release via
        -p:Version=X.Y.Z. Keep this in step with the release version. -->
   <PropertyGroup>
-    <Version Condition="'$(Version)' == ''">0.2.4</Version>
+    <Version Condition="'$(Version)' == ''">0.2.5</Version>
   </PropertyGroup>
 
 </Project>

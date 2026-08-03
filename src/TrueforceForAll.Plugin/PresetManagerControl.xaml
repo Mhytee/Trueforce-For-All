@@ -441,6 +441,8 @@
                                  second "name" button here. -->
                             <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource SharePrimaryButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
                                     ToolTip="Make this the preset that loads for this car by default. With multiple rows checked, sets each as its own car's default (one per car; it won't apply if two rows target the same car)."/>
+                            <Button x:Name="CarClearDefaultBtn" Content="Clear default" Style="{StaticResource RowButton}" Click="CarClearDefault_Click" IsEnabled="False"
+                                    ToolTip="Remove this car's default preset so it falls back to the game preset instead."/>
                             <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
                                     ToolTip="Open this car preset on the Effects tab to change its values. Saving over a built-in makes a copy."/>
                             <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>

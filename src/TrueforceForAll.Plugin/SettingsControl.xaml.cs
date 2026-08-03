@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -309,6 +309,9 @@ namespace TrueforceForAll.Plugin
                     try { _plugin.NoteUserActivity(); } catch { }
                     _plugin.AutoRatchetBumped += OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally += OnMasterGainChangedExternally;
+                    // Dash remote edits mutate the same ActiveXxx POCOs the
+                    // sliders bind; re-pull so an open panel tracks them.
+                    _plugin.DashRemoteChanged += OnDashRemoteChanged;
                     // Auth identity change (sign-in, sign-out, refresh
                     // that flipped to a different email) must reset
                     // the per-session latches so the next user's
@@ -341,6 +344,7 @@ namespace TrueforceForAll.Plugin
                     _plugin.CommunityEnabledChanged -= OnCommunityEnabledChanged;
                     _plugin.AutoRatchetBumped -= OnAutoRatchetBumped;
                     _plugin.MasterGainChangedExternally -= OnMasterGainChangedExternally;
+                    _plugin.DashRemoteChanged -= OnDashRemoteChanged;
                     _plugin.LibraryReloaded -= OnLibraryReloadedRefreshUi;
                 }
             };
@@ -425,6 +429,16 @@ namespace TrueforceForAll.Plugin
             }));
         }
 
+        // A dash-remote action changed effect / audio / car-fact state; re-pull
+        // everything (dash edits are already persisted plugin-side, so unlike
+        // the master-gain path there is no per-control dirty bookkeeping to do;
+        // RefreshFromPlugin suppresses change events while it loads values).
+        private void OnDashRemoteChanged()
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnDashRemoteChanged)); return; }
+            try { RefreshFromPlugin(); } catch { }
+        }
+
         /// <summary>Pull all visible UI values from the plugin's effective settings.</summary>
         public void RefreshFromPlugin()
         {
@@ -473,6 +487,19 @@ namespace TrueforceForAll.Plugin
                     BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
                     RefreshBetaUpdateNote();
                 }
+                if (RemoteRevLtrRadio != null && RemoteRevOutsideInRadio != null)
+                {
+                    bool outsideIn = _plugin.Settings?.DashRevStripOutsideIn == true;
+                    RemoteRevOutsideInRadio.IsChecked = outsideIn;
+                    RemoteRevLtrRadio.IsChecked = !outsideIn;
+                }
+                if (RemoteDashRememberTabCheck != null)
+                    RemoteDashRememberTabCheck.IsChecked = _plugin.Settings?.DashRememberLastTab != false;
+                if (RemoteDashDefaultTabCombo != null)
+                    RemoteDashDefaultTabCombo.IsEnabled = _plugin.Settings?.DashRememberLastTab == false;
+                // Populates the default-tab combo too (enabled tabs only, in
+                // the user's order) and re-selects the stored default.
+                RebuildRemoteDashTabsEditor();
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
@@ -577,16 +604,18 @@ namespace TrueforceForAll.Plugin
                     ModeBSignCheck.IsChecked    = mbs.ModeBSign < 0f;
                     ModeBStrengthSlider.Value   = mbs.ModeBSatGain;
                     ModeBStrengthText.Text      = mbs.ModeBSatGain.ToString("F2");
-                    ModeBDirSoftSlider.Value    = mbs.ModeBDirSoft;
-                    ModeBDirSoftText.Text       = mbs.ModeBDirSoft.ToString("F2");
+                    // Center feel (ModeBDirSoft) is code-only now (BDIRK): Direct
+                    // centering + damping own center calm, so the slider left the UI.
                     ModeBDamperSlider.Value     = mbs.ModeBDamper;
                     ModeBDamperText.Text        = mbs.ModeBDamper.ToString("F2");
+                    ModeBMinForceSlider.Value   = mbs.ModeBMinForce;
+                    ModeBMinForceText.Text      = mbs.ModeBMinForce.ToString("F2");
+                    ModeBRecoverSlider.Value    = mbs.ModeBLockupRecoverMs;
+                    ModeBRecoverText.Text       = mbs.ModeBLockupRecoverMs.ToString("F0");
                     ModeBCenterSlider.Value     = mbs.ModeBCenter;
                     ModeBCenterText.Text        = mbs.ModeBCenter.ToString("F2");
                     ModeBLatSlider.Value        = mbs.ModeBLatGain;
                     ModeBLatText.Text           = mbs.ModeBLatGain.ToString("F2");
-                    ModeBCounterSlider.Value    = mbs.ModeBCounterGain;
-                    ModeBCounterText.Text       = mbs.ModeBCounterGain.ToString("F2");
                     ModeBPeakSlider.Value       = mbs.ModeBPeakUtil;
                     ModeBPeakText.Text          = mbs.ModeBPeakUtil.ToString("F2");
                     ModeBFloorSlider.Value      = mbs.ModeBDropFloor;
@@ -601,8 +630,21 @@ namespace TrueforceForAll.Plugin
                     ModeBRoadKickCheck.IsChecked    = mbs.ModeBRoadKick;
                     ModeBRoadKickGainSlider.Value   = mbs.ModeBRoadKickGain;
                     ModeBRoadKickGainText.Text      = mbs.ModeBRoadKickGain.ToString("F2");
-                    ModeBSlideGrowthCheck.IsChecked = mbs.ModeBSlideCounterGrowth;
+                    ModeBReversalDampCheck.IsChecked = mbs.ModeBReversalDamp;
+                    ModeBReversalGainSlider.Value    = mbs.ModeBReversalDampGain;
+                    ModeBReversalGainText.Text       = mbs.ModeBReversalDampGain.ToString("F2");
+                    ModeBPhaseLeadCheck.IsChecked    = mbs.ModeBPhaseLead;
+                    ModeBPhaseLeadSlider.Value       = mbs.ModeBPhaseLeadMs;
+                    ModeBPhaseLeadText.Text          = mbs.ModeBPhaseLeadMs.ToString("F0");
+                    // "Adaptive grip & braking feel" master reflects grip auto-cal;
+                    // it drives friction-circle + brake-learn together on toggle.
                     ModeBGripCalCheck.IsChecked     = mbs.ModeBGripAutoCal;
+                    UpdateModeBGripLimitVisibility();   // hide the grip-limit slider while the learner owns the limit
+                    ModeBLateralDemandCheck.IsChecked = mbs.ModeBLateralDemand;
+                    // Direct centering is always on (hidden MBCPD failsafe only);
+                    // its look-ahead slider lives under Centering.
+                    ModeBCenterLeadSlider.Value  = mbs.ModeBCenterLeadMs;
+                    ModeBCenterLeadText.Text     = mbs.ModeBCenterLeadMs.ToString("F0");
                 }
                 if (ModeBContentionWarning != null)
                     ModeBContentionWarning.Visibility = _plugin.ModeBContentionDetected
@@ -648,15 +690,13 @@ namespace TrueforceForAll.Plugin
 
                 CaptureExeOverrideBox.Text = _plugin.ActiveCaptureExeOverride ?? "";
 
-                // Rim rev/shift LEDs (iRacing)
-                if (AccessCodeStatus != null && _plugin.Settings?.RpmLedUnlocked == true)
-                    AccessCodeStatus.Text = "Test features unlocked.";
-                if (RpmLedEnabledCheck != null)
-                    RpmLedEnabledCheck.IsChecked = _plugin.Settings?.RpmLedsEnabled == true;
+                // Rim rev/shift LEDs (hidden iRacing section + Mode B toggle)
                 if (MairaPassthroughCheck != null)
                     MairaPassthroughCheck.IsChecked = _plugin.Settings?.MairaFfbPassthrough == true;
                 if (RpmLedStatusText != null)
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
+                if (ModeBRevLightsCheck != null)
+                    ModeBRevLightsCheck.IsChecked = _plugin.Settings?.ModeBRevLightsEnabled != false;
 
                 // Forza section
                 var fz = _plugin.Settings?.Forza;
@@ -1266,16 +1306,14 @@ namespace TrueforceForAll.Plugin
                 // UDP telemetry section: Forza is the only UDP game, so its
                 // config is always shown as the body of the expander.
                 UpdateUdpSectionVisibility();
-                if (RpmLedSection != null)
+                if (RpmLedSection != null && RpmLedSection.Visibility != System.Windows.Visibility.Collapsed)
                 {
-                    // Gated only on the MAIRA / TEST access-code unlock now (the
-                    // passthrough side is still in PR, so it stays out of the
-                    // public UI). No longer tied to iRacing being the active
-                    // game: it lives in Settings as a normal collapsible section.
-                    var want = (_plugin.Settings?.RpmLedUnlocked == true)
-                        ? System.Windows.Visibility.Visible
-                        : System.Windows.Visibility.Collapsed;
-                    if (RpmLedSection.Visibility != want) RpmLedSection.Visibility = want;
+                    // Permanently hidden (2026-08-01): Marvin declined the MAIRA
+                    // passthrough PR, so the section describes a link that will
+                    // never go live. The IPC listener stays armed (a MAIRA fork
+                    // could still publish), and iRacing lights are on by default
+                    // whenever that happens; there is nothing left to configure.
+                    RpmLedSection.Visibility = System.Windows.Visibility.Collapsed;
                 }
 
                 // "Pick device manually..." buttons (Diagnostics + the
@@ -1885,6 +1923,16 @@ namespace TrueforceForAll.Plugin
         {
             string diag = _plugin?.WheelQuietDiagnostic;
             bool wantQuiet = !string.IsNullOrEmpty(diag);
+
+            // When G HUB is running the quiet diagnostic's top cause IS "G HUB is
+            // running", which the dedicated red G HUB banner (also in this group)
+            // already states, so the card showed the same problem as two warnings.
+            // Drop the diagnostic copy in exactly that case; a different, higher-
+            // ranked quiet cause (plugin disabled, master gain 0) is not the G HUB
+            // string and still shows alongside the banner.
+            if (wantQuiet && string.Equals(diag, TrueforcePlugin.GHubQuietDiagnosticMessage, StringComparison.Ordinal))
+                wantQuiet = false;
+
             if (wantQuiet && WheelQuietDiagnosticText != null && WheelQuietDiagnosticText.Text != diag)
                 WheelQuietDiagnosticText.Text = diag;
 
@@ -2694,6 +2742,11 @@ namespace TrueforceForAll.Plugin
         private bool IsCarPresetBuiltin(string carId, string presetName)
         {
             if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
+            // Agree with the core's suffix-agnostic classification: a user
+            // file named like a factory preset is treated as built-in by
+            // every save/delete path, so the Share gate must too, or one row
+            // gets contradictory built-in-vs-local treatment on one screen.
+            if (_plugin != null && _plugin.IsCarPresetBuiltin(carId, presetName)) return true;
             var perCar = _plugin?.GetCarPresets(carId);
             if (perCar == null) return false;
             return perCar.TryGetValue(presetName, out var entry)
@@ -3908,7 +3961,10 @@ namespace TrueforceForAll.Plugin
             };
         }
 
-        // GAME-preset picker. Applies a game-library preset.
+        // GAME-preset picker. Applies a game-library preset and, when a game
+        // is active, binds it as that game's default in the same step
+        // (select-is-default, matching the car picker's semantics). The old
+        // separate "Set as default" link is gone.
         private void HeaderPresetCombo_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -3939,6 +3995,17 @@ namespace TrueforceForAll.Plugin
                 TrueforceDialog.Show(null, "Trueforce For All", $"Could not apply '{pick.Name}' (preset missing).", DialogKind.Error);
                 return;
             }
+            // No active game (browsing presets from the menu / no game
+            // running): apply-only, there is nothing to bind against.
+            // Also apply-only during offline preset/car edits: there the
+            // pick is a temporary comparison baseline, not a choice of what
+            // this game should auto-load (during a car edit _activeGame is
+            // even pinned to the EDITED car's game). The removed
+            // Set-as-default button had the same car-edit suppression.
+            if (!string.IsNullOrEmpty(_plugin.ActiveGame)
+                && !_plugin.IsOfflineEditing
+                && !_plugin.IsOfflineEditingCar)
+                _plugin.SetDefaultPresetForActiveGame(pick.Name);
             ClearDirty();
             RefreshFromPlugin();
         }
@@ -4260,43 +4327,56 @@ namespace TrueforceForAll.Plugin
         }
 
         // One handler for every Mode B tunable slider (main + Advanced
-        // tuning). Writes all of them back in one pass (cheap, and keeps the
-        // readouts in lockstep), then re-applies live.
-        // INVARIANT: every slider's Min/Max in the XAML must cover the full
-        // clamp range of the matching SetModeBParam access code. WPF clamps a
-        // value loaded above the slider Max down to the Max, and the next
-        // write-all pass here would persist that clamped value, silently
-        // clobbering a dev-code setting outside the slider's range.
+        // tuning). Writes ONLY the slider that fired: the old write-all pass
+        // raced the dash's Tele-FFB knobs (a phone edit landing mid-drag was
+        // silently overwritten with this panel's stale slider positions) and
+        // was the reason slider ranges had to cover access-code clamp
+        // ranges. Readouts still refresh in one pass so they stay in
+        // lockstep with settings changed elsewhere.
+        // Slider ranges SHOULD still cover the matching SetModeBParam
+        // access-code clamp range: WPF clamps a loaded out-of-range value to
+        // the slider Max, and dragging THAT slider would persist the clamp.
         private void ModeBSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             var s = _plugin.Settings;
-            s.ModeBSatGain     = (float)ModeBStrengthSlider.Value;
-            s.ModeBDirSoft     = (float)ModeBDirSoftSlider.Value;
-            s.ModeBDamper      = (float)ModeBDamperSlider.Value;
-            s.ModeBCenter      = (float)ModeBCenterSlider.Value;
-            s.ModeBLatGain     = (float)ModeBLatSlider.Value;
-            s.ModeBCounterGain = (float)ModeBCounterSlider.Value;
-            s.ModeBPeakUtil    = (float)ModeBPeakSlider.Value;
-            s.ModeBDropFloor   = (float)ModeBFloorSlider.Value;
-            s.ModeBRiseGamma   = (float)ModeBRiseSlider.Value;
-            s.ModeBEmaMs       = (float)ModeBSmoothSlider.Value;
+            if      (ReferenceEquals(sender, ModeBStrengthSlider)) s.ModeBSatGain         = (float)ModeBStrengthSlider.Value;
+            else if (ReferenceEquals(sender, ModeBDamperSlider))   s.ModeBDamper          = (float)ModeBDamperSlider.Value;
+            else if (ReferenceEquals(sender, ModeBCenterSlider))   s.ModeBCenter          = (float)ModeBCenterSlider.Value;
+            else if (ReferenceEquals(sender, ModeBLatSlider))      s.ModeBLatGain         = (float)ModeBLatSlider.Value;
+            else if (ReferenceEquals(sender, ModeBPeakSlider))     s.ModeBPeakUtil        = (float)ModeBPeakSlider.Value;
+            else if (ReferenceEquals(sender, ModeBFloorSlider))    s.ModeBDropFloor       = (float)ModeBFloorSlider.Value;
+            else if (ReferenceEquals(sender, ModeBRiseSlider))     s.ModeBRiseGamma       = (float)ModeBRiseSlider.Value;
+            else if (ReferenceEquals(sender, ModeBSmoothSlider))   s.ModeBEmaMs           = (float)ModeBSmoothSlider.Value;
+            else if (ReferenceEquals(sender, ModeBRecoverSlider))  s.ModeBLockupRecoverMs = (float)ModeBRecoverSlider.Value;
+            else if (ReferenceEquals(sender, ModeBMinForceSlider)) s.ModeBMinForce        = (float)ModeBMinForceSlider.Value;
             ModeBStrengthText.Text = s.ModeBSatGain.ToString("F2");
-            ModeBDirSoftText.Text  = s.ModeBDirSoft.ToString("F2");
             ModeBDamperText.Text   = s.ModeBDamper.ToString("F2");
             ModeBCenterText.Text   = s.ModeBCenter.ToString("F2");
             ModeBLatText.Text      = s.ModeBLatGain.ToString("F2");
-            ModeBCounterText.Text  = s.ModeBCounterGain.ToString("F2");
             ModeBPeakText.Text     = s.ModeBPeakUtil.ToString("F2");
             ModeBFloorText.Text    = s.ModeBDropFloor.ToString("F2");
             ModeBRiseText.Text     = s.ModeBRiseGamma.ToString("F2");
             ModeBSmoothText.Text   = s.ModeBEmaMs.ToString("F0");
+            ModeBRecoverText.Text  = s.ModeBLockupRecoverMs.ToString("F0");
+            ModeBMinForceText.Text = s.ModeBMinForce.ToString("F2");
             _plugin.ApplyModeBFromSettings();
             SchedulePersistDebounced();
         }
 
+        // Show the global "Grip limit" slider only when per-car grip auto-cal is
+        // OFF. With it on, the learner owns the per-car limit and the global
+        // slider would just double-scale it, so it is hidden to avoid confusion.
+        private void UpdateModeBGripLimitVisibility()
+        {
+            if (ModeBGripLimitRow == null || ModeBGripCalCheck == null) return;
+            ModeBGripLimitRow.Visibility = ModeBGripCalCheck.IsChecked == true
+                ? System.Windows.Visibility.Collapsed
+                : System.Windows.Visibility.Visible;
+        }
+
         // Feel-feature checkboxes (compressor, suspension load, early torque
-        // peak, road kick, slide counter growth, grip auto-cal).
+        // peak, road kick, grip auto-cal).
         private void ModeBFeel_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -4305,8 +4385,23 @@ namespace TrueforceForAll.Plugin
             s.ModeBSuspensionLoad     = ModeBSuspLoadCheck.IsChecked == true;
             s.ModeBEarlyTorquePeak    = ModeBEarlyPeakCheck.IsChecked == true;
             s.ModeBRoadKick           = ModeBRoadKickCheck.IsChecked == true;
-            s.ModeBSlideCounterGrowth = ModeBSlideGrowthCheck.IsChecked == true;
-            s.ModeBGripAutoCal        = ModeBGripCalCheck.IsChecked == true;
+            s.ModeBReversalDamp       = ModeBReversalDampCheck.IsChecked == true;
+            s.ModeBPhaseLead          = ModeBPhaseLeadCheck.IsChecked == true;
+            // One "Adaptive grip & braking feel" master toggle drives the whole
+            // learned-limit stack together: per-car grip auto-cal, the friction-
+            // circle braking law, and the learned braking-grip radius. They ship
+            // on and reinforce each other, so exposing them as three separate A/B
+            // checkboxes only invited half-on states. The access codes BCIRCLE /
+            // BLEARN still flip friction-circle / brake-learn independently for
+            // dev A/B (which can desync them from the master until it's toggled).
+            bool adaptive = ModeBGripCalCheck.IsChecked == true;
+            s.ModeBGripAutoCal           = adaptive;
+            s.ModeBFrictionCircle        = adaptive;
+            s.ModeBLongitudinalGripLearn = adaptive;
+            UpdateModeBGripLimitVisibility();   // grip-limit slider only shows in manual mode (adaptive off)
+            s.ModeBLateralDemand         = ModeBLateralDemandCheck.IsChecked == true;
+            // ModeBCenterPd stays untouched here: Direct centering is always on
+            // (default true) with only the hidden MBCPD dev code as a failsafe.
             _plugin.ApplyModeBFeel();
             try { _plugin.PersistSettings(); } catch { }
         }
@@ -4319,6 +4414,53 @@ namespace TrueforceForAll.Plugin
             ModeBRoadKickGainText.Text = v.ToString("F2");
             _plugin.ApplyModeBFeel();
             SchedulePersistDebounced();
+        }
+
+        private void ModeBReversalGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBReversalGainSlider.Value;
+            _plugin.Settings.ModeBReversalDampGain = v;
+            ModeBReversalGainText.Text = v.ToString("F2");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        private void ModeBPhaseLeadSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBPhaseLeadSlider.Value;
+            _plugin.Settings.ModeBPhaseLeadMs = v;
+            ModeBPhaseLeadText.Text = v.ToString("F0");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        private void ModeBCenterLeadSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            float v = (float)ModeBCenterLeadSlider.Value;
+            _plugin.Settings.ModeBCenterLeadMs = v;
+            ModeBCenterLeadText.Text = v.ToString("F0");
+            _plugin.ApplyModeBFeel();
+            SchedulePersistDebounced();
+        }
+
+        // "Reset tuning to defaults": restore the whole Mode B recipe (every
+        // slider + feel toggle) to the shipped baseline. Confirms first because
+        // it discards custom tuning with no undo; leaves the per-game enable and
+        // each car's learned grip calibration alone. RefreshFromPlugin re-syncs
+        // the controls from the now-default settings.
+        private void ModeBReset_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
+                "Reset Telemetry Based FFB",
+                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices and each car's learned grip calibration are kept.",
+                DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
+            if (ok != true) return;
+            _plugin.ResetModeBTuningToDefaults();
+            RefreshFromPlugin();
         }
 
         private void StationarySpringStrengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -4735,21 +4877,11 @@ namespace TrueforceForAll.Plugin
                 : name;
         }
 
-        // Built-in presets are stored with a trailing " (default)" suffix.
-        // That's the structural marker the rest of the plugin keys off
-        // (IsBuiltinPreset, refresh-on-load, export stripping, name
-        // validator). For UI display we relabel to " (built-in)" so the
-        // word "default" only ever means the per-game auto-load binding
-        // (Set as default / "default for this game").
+        // Built-in presets are stored with a trailing " (default)" suffix;
+        // UI surfaces relabel it " (built-in)". Shared with the dash remote
+        // via BuiltinPresets.ToDisplayName (rationale documented there).
         private static string ToBuiltinDisplay(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return name;
-            const string oldSuffix = " (default)";
-            const string newSuffix = " (built-in)";
-            return name.EndsWith(oldSuffix, StringComparison.Ordinal)
-                ? name.Substring(0, name.Length - oldSuffix.Length) + newSuffix
-                : name;
-        }
+            => BuiltinPresets.ToDisplayName(name);
 
         /// <summary>Modal name-prompt for car preset save. Disallows empty
         /// names, the suffix "(default)" (built-in territory), and names
@@ -6130,6 +6262,271 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] Persist UpdateCheckIntervalHours failed: " + ex.Message);
+            }
+        }
+
+        // Remote dash rev-strip direction radios (Settings tab). Persists the
+        // flag; the dash reads it live via Dash.RevOutsideIn each poll, so
+        // the strip flips without reloading the dashboard.
+        private void RemoteRevDirection_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashRevStripOutsideIn = RemoteRevOutsideInRadio?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashRevStripOutsideIn failed: " + ex.Message);
+            }
+        }
+
+        // Remote dash opening-tab prefs (Settings tab). Remember-last wins
+        // while on, so the default-tab dropdown greys out; both only steer
+        // which tab the dash STARTS on at the next SimHub launch (the dash
+        // keeps its current tab for this session).
+        private void RemoteDashRememberTab_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            bool remember = RemoteDashRememberTabCheck?.IsChecked == true;
+            _plugin.Settings.DashRememberLastTab = remember;
+            if (RemoteDashDefaultTabCombo != null)
+                RemoteDashDefaultTabCombo.IsEnabled = !remember;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashRememberLastTab failed: " + ex.Message);
+            }
+        }
+
+        private void RemoteDashDefaultTab_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (!(RemoteDashDefaultTabCombo?.SelectedItem is ComboBoxItem item)) return;
+            if (!int.TryParse(item.Tag as string, out int tab)) return;
+            _plugin.Settings.DashDefaultTab = tab;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashDefaultTab failed: " + ex.Message);
+            }
+        }
+
+        // ---------- TF4ALL Dash tab layout editor ----------
+        // One row per dash tab: enable checkbox + up/down reorder buttons.
+        // Rebuilt wholesale after every change (six rows, cheap). The
+        // plugin's GetDashTabFullOrder is the single sanitizer for the
+        // stored layout, and RefreshDashTabSlots pushes the result to the
+        // dash live, so changes apply with no dashboard reload. Display
+        // names are indexed by SCREEN index (0=Drive .. 5=Tele-FFB) and
+        // shared with the default-tab dropdown.
+        private static readonly string[] RemoteDashTabNames =
+            { "Home", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB" };
+
+        private static string RemoteDashTabName(int tab) =>
+            tab >= 0 && tab < RemoteDashTabNames.Length ? RemoteDashTabNames[tab] : "Tab " + tab;
+
+        // Layout signature of the last-built editor; unchanged signature =
+        // skip the rebuild (see below).
+        private string _remoteDashTabsSignature;
+
+        private void RebuildRemoteDashTabsEditor()
+        {
+            if (RemoteDashTabsPanel == null || _plugin?.Settings == null) return;
+            // Building rows fires Checked/SelectionChanged; hold events off
+            // without clobbering an outer hydration pass's own suppression.
+            bool prevSuppress = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                var order = _plugin.GetDashTabFullOrder();
+                var disabled = new HashSet<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+                int enabledCount = 0;
+                int firstEnabled = 0;
+                bool anyEnabled = false;
+                foreach (int t in order)
+                    if (!disabled.Contains(t))
+                    {
+                        enabledCount++;
+                        if (!anyEnabled) { firstEnabled = t; anyEnabled = true; }
+                    }
+
+                // Normalize the stored default when its tab is hidden or
+                // unknown: the dash startup read snaps to the first enabled
+                // tab anyway, so COMMIT that snap instead of displaying a
+                // value the disk does not hold. Without this the fallback
+                // was uncommittable (re-picking the shown item fires no
+                // SelectionChanged) and re-enabling the tab weeks later
+                // silently resurrected the stale default.
+                int def = _plugin.Settings.DashDefaultTab;
+                if (anyEnabled && def != firstEnabled
+                    && (def < 0 || def >= RemoteDashTabNames.Length || disabled.Contains(def)))
+                {
+                    _plugin.Settings.DashDefaultTab = firstEnabled;
+                    try { _plugin.PersistSettings(); }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Persist DashDefaultTab failed: " + ex.Message);
+                    }
+                }
+
+                // Skip no-op rebuilds: RefreshFromPlugin runs on every dash
+                // action (DashRemoteChanged fires per phone tap), and a
+                // wholesale Children.Clear mid mouse-press swallows the
+                // click (the pressed control leaves the visual tree) and
+                // resets an open default-tab dropdown. Only a real layout
+                // or default change rebuilds.
+                string sig = string.Join(",", order) + "|"
+                    + string.Join(",", _plugin.Settings.DashTabsDisabled ?? new List<int>()) + "|"
+                    + _plugin.Settings.DashDefaultTab;
+                if (sig == _remoteDashTabsSignature && RemoteDashTabsPanel.Children.Count > 0)
+                    return;
+                _remoteDashTabsSignature = sig;
+
+                RemoteDashTabsPanel.Children.Clear();
+                for (int pos = 0; pos < order.Count; pos++)
+                {
+                    int tab = order[pos];
+                    bool on = !disabled.Contains(tab);
+                    var row = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Margin = new Thickness(0, 2, 0, 0),
+                    };
+                    var up = new Button
+                    {
+                        Content = "▲", Width = 26, Height = 20, FontSize = 10,
+                        Padding = new Thickness(0),
+                        IsEnabled = pos > 0,
+                        ToolTip = "Move this tab left on the dash",
+                    };
+                    int posUp = pos;
+                    up.Click += (s, args) => RemoteDashTabMove(posUp, -1);
+                    row.Children.Add(up);
+                    var down = new Button
+                    {
+                        Content = "▼", Width = 26, Height = 20, FontSize = 10,
+                        Padding = new Thickness(0), Margin = new Thickness(4, 0, 0, 0),
+                        IsEnabled = pos < order.Count - 1,
+                        ToolTip = "Move this tab right on the dash",
+                    };
+                    int posDown = pos;
+                    down.Click += (s, args) => RemoteDashTabMove(posDown, +1);
+                    row.Children.Add(down);
+                    var check = new CheckBox
+                    {
+                        Content = RemoteDashTabName(tab),
+                        IsChecked = on,
+                        Margin = new Thickness(10, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        // The dash needs at least one screen, so the last
+                        // enabled tab's checkbox locks itself.
+                        IsEnabled = !(on && enabledCount == 1),
+                    };
+                    if (on && enabledCount == 1)
+                        check.ToolTip = "At least one tab must stay on";
+                    int tabId = tab;
+                    check.Checked += (s, args) => RemoteDashTabToggle(tabId, true);
+                    check.Unchecked += (s, args) => RemoteDashTabToggle(tabId, false);
+                    row.Children.Add(check);
+                    RemoteDashTabsPanel.Children.Add(row);
+                }
+
+                // Default-tab dropdown mirrors the layout: enabled tabs only,
+                // in display order. A stored default that is now disabled
+                // shows as the first enabled tab, which is exactly what the
+                // plugin's startup read snaps to, so the combo never lies.
+                if (RemoteDashDefaultTabCombo != null)
+                {
+                    RemoteDashDefaultTabCombo.Items.Clear();
+                    foreach (int t in order)
+                    {
+                        if (disabled.Contains(t)) continue;
+                        RemoteDashDefaultTabCombo.Items.Add(new ComboBoxItem
+                        {
+                            Tag = t.ToString(),
+                            Content = RemoteDashTabName(t),
+                        });
+                    }
+                    SelectComboByTag(RemoteDashDefaultTabCombo,
+                        _plugin.Settings.DashDefaultTab.ToString());
+                    if (RemoteDashDefaultTabCombo.SelectedIndex < 0
+                        && RemoteDashDefaultTabCombo.Items.Count > 0)
+                        RemoteDashDefaultTabCombo.SelectedIndex = 0;
+                }
+            }
+            finally { _suppressEvents = prevSuppress; }
+        }
+
+        private void RemoteDashTabMove(int pos, int delta)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var order = _plugin.GetDashTabFullOrder();
+            int other = pos + delta;
+            if (pos < 0 || pos >= order.Count || other < 0 || other >= order.Count) return;
+            int tmp = order[pos]; order[pos] = order[other]; order[other] = tmp;
+            SaveRemoteDashTabLayout(order, null);
+        }
+
+        private void RemoteDashTabToggle(int tab, bool on)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var disabled = new List<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+            if (on)
+            {
+                disabled.RemoveAll(t => t == tab);
+            }
+            else if (!disabled.Contains(tab))
+            {
+                disabled.Add(tab);
+                // The last enabled tab's checkbox is locked, but guard
+                // anyway (a rebuild can race a queued click): never let the
+                // layout go all-disabled.
+                bool anyEnabled = false;
+                foreach (int t in _plugin.GetDashTabFullOrder())
+                    if (!disabled.Contains(t)) { anyEnabled = true; break; }
+                if (!anyEnabled) { RebuildRemoteDashTabsEditor(); return; }
+            }
+            SaveRemoteDashTabLayout(null, disabled);
+        }
+
+        // Persists the layout, pushes it to the live dash slot map, and
+        // rebuilds the editor (which also refreshes the default-tab combo).
+        // Lists are fresh copies, never mutated after being handed to
+        // Settings: the settings serializer may walk them concurrently.
+        private void SaveRemoteDashTabLayout(List<int> order, List<int> disabled)
+        {
+            if (_plugin?.Settings == null) return;
+            if (order != null) _plugin.Settings.DashTabOrder = order;
+            if (disabled != null) _plugin.Settings.DashTabsDisabled = disabled;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist dash tab layout failed: " + ex.Message);
+            }
+            _plugin.RefreshDashTabSlots();
+            RebuildRemoteDashTabsEditor();
+        }
+
+        // TF4ALL Dash phone-access funnel (header phone button + Settings
+        // tab). Opens our QR dialog (DashPhoneWindow) deep-linked to the
+        // dash, so scanning lands straight on TF4ALL Dash instead of
+        // SimHub's dashboard list. Our own dialog rather than SimHub's
+        // MobileAccessAssistant: that one has no copyable URL and no room
+        // for the same-network / add-to-home-screen guidance.
+        private void DashPhoneAccess_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                new DashPhoneWindow { Owner = Window.GetWindow(this) }.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Dash phone-access window failed: " + ex.Message);
             }
         }
 
@@ -9365,12 +9762,25 @@ namespace TrueforceForAll.Plugin
                     "Enter a name of at least 2 characters.", DialogKind.Info);
                 return;
             }
-            // Same unified official-name flow as the header / Preset Manager
-            // buttons: local write + a gated confirm/correct community share
-            // (no auto-submit). Keeps every name-set entry point consistent.
+            // Unified official-name flow: local write + a self-gating silent
+            // community submit (sharing on = submit, opted out = local-only),
+            // exactly like the redline Set above. No confirm/correct modal.
             CarNameShareFlow.SetNameAndMaybeShare(_plugin, game, carId, name,
                 Window.GetWindow(this));
             RefreshFromPlugin();
+        }
+
+        // Enter in the name box saves it, same as clicking Save. Gated on the
+        // Save button being live (a valid, changed name), so a stray Enter on an
+        // empty or unchanged field is a silent no-op rather than popping the
+        // "min 2 characters" nag. Consuming the key stops the bell either way.
+        private void CarFactsName_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key != System.Windows.Input.Key.Enter) return;
+            e.Handled = true;
+            if (CarFactsNameSaveBtn != null
+                && CarFactsNameSaveBtn.Visibility == Visibility.Visible)
+                CarFactsNameSave_Click(sender, null);
         }
 
         // Enter in the redline box applies it, same as clicking Set.
@@ -10177,12 +10587,11 @@ namespace TrueforceForAll.Plugin
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "MAIRA / TEST   Unlock the iRacing rev lights section (in Settings).\n" +
             "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BCS countersteer force, BDIRK center feel, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -10249,23 +10658,24 @@ namespace TrueforceForAll.Plugin
                     if (pn == "MODEB" || pn == "BSIGN" || pn == "BSAT"
                         || pn == "BPEAK" || pn == "BFLOOR" || pn == "BFULL" || pn == "BSPD"
                         || pn == "BRISE" || pn == "BEMA" || pn == "BDAMP" || pn == "BCENTER"
-                        || pn == "BLAT" || pn == "BCS" || pn == "BDIRK")
+                        || pn == "BLAT" || pn == "BDIRK"
+                        || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
+                        || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
+                        || pn == "MBREV" || pn == "BREVG"
+                       
+                        || pn == "MBLEAD" || pn == "BLEAD"
+                        || pn == "BMINF" || pn == "MBCPD" || pn == "BCLEAD")
                     {
                         string st = _plugin.SetModeBParam(pn, mbVal);
-                        if (pn == "MODEB")
-                        {
-                            // Keep the Telemetry Based FFB tab checkbox in
-                            // sync without re-firing its handler (the plugin
-                            // setter already ran above).
-                            var prevSuppress = _suppressEvents;
-                            _suppressEvents = true;
-                            try
-                            {
-                                if (ModeBEnabledCheck != null)
-                                    ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
-                            }
-                            finally { _suppressEvents = prevSuppress; }
-                        }
+                        // Re-sync ALL controls from the now-updated settings
+                        // (RefreshFromPlugin suppresses its own events).
+                        // Without this, a code-set value sat in Settings while
+                        // its slider/checkbox stayed stale, and a later drag
+                        // of that stale slider (ModeBSlider_ValueChanged) or
+                        // the write-all ModeBFeel_Changed silently persisted
+                        // the stale control state back over it, reverting the
+                        // code.
+                        RefreshFromPlugin();
                         AccessCodeBox.Text = string.Empty;
                         if (AccessCodeStatus != null) AccessCodeStatus.Text = "Set " + st + " (live).";
                         return;
@@ -11135,29 +11545,22 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            bool ok = code.Equals("MAIRA", StringComparison.OrdinalIgnoreCase)
-                   || code.Equals("TEST", StringComparison.OrdinalIgnoreCase);
-            if (!ok)
+            if (code.Equals("MAIRA", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("TEST", StringComparison.OrdinalIgnoreCase))
             {
-                // Give a visible result for a typed-but-unrecognized code instead
-                // of swallowing it silently (blank input stays silent).
-                if (!string.IsNullOrWhiteSpace(code) && AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Code not recognized. Type HELP to list valid codes.";
+                // Retired 2026-08-01: the iRacing/MAIRA section is permanently
+                // hidden (passthrough declined). Answer instead of silently
+                // ignoring a code that used to work.
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "The iRacing section is retired. Rev lights now have a toggle on the Telemetry FFB tab.";
                 return;
             }
 
-            if (!_plugin.Settings.RpmLedUnlocked)
-            {
-                _plugin.Settings.RpmLedUnlocked = true;
-                _plugin.PersistSettings();
-            }
-            AccessCodeBox.Text = string.Empty;
-            // The unlock persists. The section now lives in Settings as a normal
-            // collapsible "iRacing" section, shown whenever unlocked.
-            if (AccessCodeStatus != null)
-                AccessCodeStatus.Text = "iRacing section unlocked. It's in Settings, just below.";
-            if (RpmLedSection != null)
-                RpmLedSection.Visibility = System.Windows.Visibility.Visible;
+            // Give a visible result for a typed-but-unrecognized code instead
+            // of swallowing it silently (blank input stays silent).
+            if (!string.IsNullOrWhiteSpace(code) && AccessCodeStatus != null)
+                AccessCodeStatus.Text = "Code not recognized. Type HELP to list valid codes.";
         }
 
         private void ResetNotices_Click(object sender, RoutedEventArgs e)
@@ -11208,14 +11611,14 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // ---------- Rim rev/shift LEDs (iRacing) ----------
+        // ---------- Rim rev/shift LEDs ----------
 
-        private void RpmLedEnabled_Changed(object sender, RoutedEventArgs e)
+        private void ModeBRevLights_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.RpmLedsEnabled = RpmLedEnabledCheck.IsChecked == true;
+            _plugin.Settings.ModeBRevLightsEnabled = ModeBRevLightsCheck.IsChecked == true;
             _plugin.PersistSettings();
-            if (!_plugin.Settings.RpmLedsEnabled) _plugin.TurnOffRpmLeds();
+            if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
         }
 
         private void MairaPassthrough_Changed(object sender, RoutedEventArgs e)
@@ -11392,10 +11795,10 @@ namespace TrueforceForAll.Plugin
             string activeP = _plugin.ActivePresetName;
             if (string.IsNullOrEmpty(activeP)) return;  // nothing to revert to
             string label = EffectLabel(which);
-            if (TrueforceDialog.Show(null, "Trueforce For All",
-                    $"Revert {label} to the saved values in preset '{activeP}'? Your unsaved {label} changes will be discarded.",
-                    DialogKind.Destructive, okLabel: "Revert", cancelLabel: "Cancel") != true)
-                return;
+            // No confirm: the button only appears while that section is dirty,
+            // it says Revert, and it discards exactly the unsaved changes the
+            // dirty marker is already showing. A modal on every revert was
+            // friction with nothing to protect.
             // Car-scoped sections: revert discards the unsaved per-car DRAFT,
             // restoring this car's saved override (or the game default if none),
             // rather than reverting the global section to the active preset.
@@ -11422,18 +11825,15 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Per-effect Save popover. Adaptive choices:
-        ///   • "For this car (id)": snapshots the section's current values into
-        ///     the per-car override (toggles the override on). Only when the
-        ///     section has a per-car concept AND a car is identified.
-        ///   • "Update preset 'X'" (suffixed "(game default)" when X is this
-        ///     game's bound auto-load default): overwrites the active user
-        ///     preset in place. It does NOT change the game-default binding;
-        ///     that's the header "Set as default" button's job.
-        ///   • "Save as game defaults": when there's no active preset or it's a
-        ///     built-in, forks to a new user preset and binds it as the default.
-        /// RevLimiter (the one draft-model section) additionally offers "Both"
-        /// and reset-to-default choices.</summary>
+        /// <summary>Per-effect Save popover, simplified 2026-07-22 (owner
+        /// call: the adaptive five-way stack read as a wall). Exactly three
+        /// choices, matching the dash's save chooser: This car only / Game
+        /// preset / Both, with detail in tooltips. Reset-to-default stays
+        /// reachable as a quiet link (this modal is its only entrance) since
+        /// it is a different verb than saving. With no car detected (or a
+        /// section with no per-car concept) there is no choice to make, so
+        /// the popover is skipped and the save goes straight to the game
+        /// preset.</summary>
         private void ShowEffectSavePopover(EffectKind which)
         {
             string carId       = _plugin.ActiveCarId;
@@ -11443,6 +11843,12 @@ namespace TrueforceForAll.Plugin
             bool   builtin     = hasPreset && _plugin.IsBuiltinPreset(activeP);
             string label       = EffectLabel(which);
             bool   carScope    = SectionHasCarScope(which);
+
+            if (!carScope || !carDetected)
+            {
+                SaveEffectSectionToGamePreset(which);
+                return;
+            }
 
             var win = new Window
             {
@@ -11470,141 +11876,61 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 10),
             });
 
-            // Choice 1: per-car override. Only when the section has a per-car
-            // concept AND a car is actually identified, there's nothing to save
-            // "for this car" with no car, so we hide the option rather than show
-            // it disabled.
-            Button carBtn = null;
-            if (carScope && carDetected)
-            {
-                carBtn = new Button
-                {
-                    Content = $"For this car ({carId})",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                    ToolTip = "Saves these settings just for this car. Won't affect global tuning or other cars.",
-                };
-                sp.Children.Add(carBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = $"Toggles 'Override for this car' on and snapshots the current {label} values into the per-car override.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                });
-            }
-
-            // Choice 1b: "Both" — set as the game default AND keep this car
-            // pinned with its own override in one action.
-            Button bothBtn = null;
-            if (SectionUsesDraftModel(which) && carDetected)
-            {
-                bothBtn = new Button
-                {
-                    Content = "Both (game default + keep for this car)",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                    ToolTip = "Saves these values as the game default for other cars AND pins them to this car as its own override, so this car won't follow future default changes.",
-                };
-                sp.Children.Add(bothBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = "Updates the game default and keeps this car's override.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                });
-            }
-
-            // Choice 1c: reset this car to the game default. A "reset" is itself
-            // a draft (preview the default, then Save to commit or Revert to
-            // restore the override), so this just enters the reset-draft and
-            // closes. When already in a reset draft, offer to COMMIT it (drop
-            // the car's saved override so it follows the default).
             var kind = (TrueforcePlugin.SectionKind)(int)which;
-            if (SectionUsesDraftModel(which) && carDetected && _plugin.IsSectionResetDraft(kind))
-            {
-                var followBtn = new Button
-                {
-                    Content = "Follow game default (remove this car's override)",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                    ToolTip = "Commits the reset: this car drops its own override and follows the game default from now on.",
-                };
-                sp.Children.Add(followBtn);
-                followBtn.Click += (s, args) =>
-                {
-                    _plugin.CommitSectionFollowDefault(kind);
-                    ClearEffectDirty(which);
-                    RefreshFromPlugin();
-                    win.DialogResult = true;
-                };
-            }
-            else if (SectionUsesDraftModel(which) && carDetected && _plugin.IsSectionOverridden(kind))
-            {
-                var resetBtn = new Button
-                {
-                    Content = "Reset to game default (preview)",
-                    Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                    ToolTip = "Previews this car following the game default. Drive to try it, then Save to keep it (drops this car's override) or Revert to restore your override.",
-                };
-                sp.Children.Add(resetBtn);
-                sp.Children.Add(new TextBlock
-                {
-                    Text = "Previews the game default for this car. Nothing is removed until you Save; Revert restores your override.",
-                    FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                });
-                resetBtn.Click += (s, args) =>
-                {
-                    _plugin.ResetSectionToDefaultDraft(kind);
-                    RefreshFromPlugin();
-                    win.DialogResult = true;
-                };
-            }
+            bool hasGame = !string.IsNullOrEmpty(_plugin.ActiveGame);
 
-            // Choice 2: update game defaults, fork from built-in, or save as new.
-            // With no game active (editing presets while no game is running) there's
-            // nothing to bind a default to, so drop the "game defaults" framing and
-            // talk plainly about the preset. The active preset also isn't always the
-            // game's bound default (you can apply a preset without binding it), so the
-            // "(game default)" annotation only shows when it genuinely is.
-            bool   hasGame = !string.IsNullOrEmpty(_plugin.ActiveGame);
-            string presetLabel;
-            string presetHint;
-            if (!hasPreset)
+            // Exactly three choices; tooltips carry the contextual detail
+            // the old per-option explainer paragraphs spelled out inline.
+            var carBtn = new Button
             {
-                presetLabel = hasGame ? "Save as game defaults" : "Save as new preset";
-                presetHint  = hasGame
-                    ? "Saves your current tuning as a new preset and binds it as this game's default."
-                    : "Saves your current tuning as a new preset.";
-            }
-            else if (builtin)
-            {
-                presetLabel = hasGame ? "Save as game defaults" : "Save as new preset";
-                presetHint  = hasGame
-                    ? $"'{activeP}' is a built-in default that can't be overwritten. Saves your current tuning as a new user preset (named after the game) and binds it as this game's default. The built-in stays available as fallback."
-                    : $"'{activeP}' is a built-in that can't be overwritten. Saves your current tuning as a new user preset.";
-            }
-            else
-            {
-                bool isDefault = hasGame
-                    && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
-                presetLabel = isDefault
-                    ? $"Update preset '{activeP}' (game default)"
-                    : $"Update preset '{activeP}'";
-                presetHint  = isDefault
-                    ? $"Overwrites '{activeP}' (this game's default preset) with your current tuning. Per-car preset files are independent and not touched."
-                    : $"Overwrites '{activeP}' with your current tuning. Won't change which preset is this game's default. Per-car preset files are independent and not touched.";
-            }
+                Content = "This car only",
+                Height = 32, Margin = new Thickness(0, 0, 0, 6),
+                ToolTip = $"Saves the current {label} values into this car's preset ({carId}). "
+                    + "Other cars and the game preset are untouched. On a built-in car preset, saves a copy as a new user preset.",
+            };
+            sp.Children.Add(carBtn);
+
+            string presetTip = !hasPreset
+                ? (hasGame
+                    ? "No preset is active: saves your tuning as a new preset and makes it this game's default."
+                    : "No preset is active: saves your tuning as a new preset.")
+                : builtin
+                    ? $"'{activeP}' is built-in and can't be overwritten: saves a copy as a new user preset and makes it this game's default."
+                    : $"Overwrites '{activeP}' with the current {label} values. Cars follow it unless they have their own override.";
             var presetBtn = new Button
             {
-                Content = presetLabel,
+                Content = "Game preset",
                 Height = 32, Margin = new Thickness(0, 0, 0, 6),
-                Style = TryFindResource("PopoverPrimaryButton") as Style,   // green accent: this is the recommended save
+                ToolTip = presetTip,
             };
             sp.Children.Add(presetBtn);
-            sp.Children.Add(new TextBlock
+
+            var bothBtn = new Button
             {
-                Text = presetHint,
-                FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 12),
-            });
+                Content = "Both",
+                Height = 32, Margin = new Thickness(0, 0, 0, 12),
+                ToolTip = "Saves to the game preset AND pins this car with its own copy, "
+                    + "so the car keeps these values even if the game preset changes later.",
+            };
+            sp.Children.Add(bothBtn);
+
+            // Contextual "recommended" highlight (green): point at the save that
+            // fits the current setup instead of always Game preset.
+            //   no car preset bound                 -> Game preset
+            //   effect already in the car's preset  -> This car only
+            //   car preset bound, effect not yet in it -> Both
+            var greenStyle = TryFindResource("PopoverPrimaryButton") as Style;
+            bool carPresetActive = !string.IsNullOrEmpty(_plugin.GetActiveCarPresetName(carId));
+            if (!carPresetActive)
+                presetBtn.Style = greenStyle;
+            else if (_plugin.IsSectionInSavedCarOverride(kind))
+                carBtn.Style = greenStyle;
+            else
+                bothBtn.Style = greenStyle;
+
+            // No reset-to-default entry here (owner call 2026-07-22): setting
+            // the car's preset to None in the picker covers "follow the game
+            // default", so the per-section reset link only added noise.
 
             var btnRow = new StackPanel
             {
@@ -11617,71 +11943,106 @@ namespace TrueforceForAll.Plugin
 
             win.Content = sp;
 
-            if (carBtn != null)
+            carBtn.Click += (s, args) =>
             {
-                carBtn.Click += (s, args) =>
-                {
-                    ApplyEffectSaveForCar(which);
-                    win.DialogResult = true;
-                };
-            }
-            if (bothBtn != null)
-            {
-                bothBtn.Click += (s, args) =>
-                {
-                    if (!_plugin.SaveSectionToBoth((TrueforcePlugin.SectionKind)(int)which))
-                    {
-                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                        return;   // leave the popover open + dirty bit set
-                    }
-                    ClearEffectDirty(which);
-                    RefreshFromPlugin();
-                    win.DialogResult = true;
-                };
-            }
+                ApplyEffectSaveForCar(which);
+                win.DialogResult = true;
+            };
             presetBtn.Click += (s, args) =>
             {
-                // Fork paths (no preset / built-in) always capture whole
-                // state -- a freshly-forked preset IS the snapshot. The
-                // scope modal only applies when overwriting an existing
-                // user preset, where "just this section" is a real choice.
-                if (!hasPreset)
-                {
-                    _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
-                    SaveAsNewPresetFromUi();
-                    win.DialogResult = true;
-                    return;
-                }
-                if (builtin)
-                {
-                    _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
-                    ForkAndSaveAsGamePreset();
-                    win.DialogResult = true;
-                    return;
-                }
-
-                // Per-section Save: save ONLY this section. The ★ Save all
-                // button up top is what commits every dirty section, so we
-                // don't prompt about other dirty sections here (that was
-                // redundant with Save all). Patch only the targeted section
-                // into the in-memory snapshot + write GeneralSettings; other
-                // sections keep their saved values and their dirty bits remain.
-                _plugin.PromoteSectionToGlobal((TrueforcePlugin.SectionKind)(int)which);
-                if (!_plugin.SaveSectionToActivePreset((TrueforcePlugin.SectionKind)(int)which))
-                {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                    return;   // don't clear the dirty bit on a failed write
-                }
-                ClearEffectDirty(which);
-                // Overwrite the active preset only. Binding it as the game's
-                // auto-load default is a separate, explicit action (the header
-                // "Set as default" button), so saving an edit never silently
-                // changes which preset this game loads.
-                RefreshFromPlugin();
+                if (!SaveEffectSectionToGamePreset(which)) return;   // keep open + dirty on a failed write
+                win.DialogResult = true;
+            };
+            bothBtn.Click += (s, args) =>
+            {
+                // Game half first (may fork with a naming prompt), then re-pin
+                // the car copy and run the car half, which itself forks on a
+                // built-in car preset. The snapshot runs AFTER the preset save
+                // so SavePresetAs's draft fold can't empty the car copy (the
+                // dash's BOTH had exactly that bug); this also replaces the
+                // old SaveSectionToBoth call, whose either-half-OK return hid
+                // car-half failures on factory car presets.
+                if (!SaveEffectSectionToGamePreset(which)) return;
+                _plugin.SnapshotSectionToCarOverride(kind);
+                ApplyEffectSaveForCar(which);
                 win.DialogResult = true;
             };
 
             win.ShowDialog();
+        }
+
+        /// <summary>Release the car layer's claim on a section after a game-side
+        /// save, surfacing the one car-file write that used to be swallowed: if
+        /// patching the bound car preset to follow the new game default fails
+        /// (e.g. a read-only car folder), warn instead of reporting a clean save,
+        /// because the car would otherwise silently revert on the next load.</summary>
+        private void ReleaseCarSectionOrWarn(TrueforcePlugin.SectionKind kind)
+        {
+            if (!_plugin.ReleaseSectionFromCarLayer(kind))
+                TrueforceDialog.Show(null, "Trueforce For All",
+                    "Saved to the game preset, but couldn't update this car's own preset to follow it, so this car may revert to its previous value after a restart. See the SimHub log for details.",
+                    DialogKind.Warning);
+        }
+
+        /// <summary>Save one section into the active game preset: in place on
+        /// a user preset; fork (with the naming prompt) when the active
+        /// preset is built-in or absent. Shared by the save popover's Game
+        /// preset / Both choices and by the no-car path that skips the
+        /// popover entirely. Returns false on a failed in-place write, a
+        /// failed fork, or a cancelled name prompt (callers keep the popover
+        /// open and the dirty bit set, and the Both flow skips the car
+        /// half).</summary>
+        private bool SaveEffectSectionToGamePreset(EffectKind which)
+        {
+            string activeP   = _plugin.ActivePresetName;
+            bool   hasPreset = !string.IsNullOrEmpty(activeP);
+            bool   builtin   = hasPreset && _plugin.IsBuiltinPreset(activeP);
+            var    kind      = (TrueforcePlugin.SectionKind)(int)which;
+
+            // Two-phase promote around every branch: the copy half runs
+            // before the preset write (so the snapshot sees the section's
+            // live values), but the destructive half - releasing the car
+            // layer's claim, which patches the SAVED car preset file - only
+            // runs after the write is CONFIRMED. A cancel or failure used to
+            // leave the car file already stripped (2026-07 audit blocker).
+            //
+            // Fork paths (no preset / built-in) always capture whole state --
+            // a freshly-forked preset IS the snapshot.
+            if (!hasPreset)
+            {
+                _plugin.CopySectionToGlobals(kind);
+                if (!SaveAsNewPresetFromUi()) return false;
+                ReleaseCarSectionOrWarn(kind);
+                // The fork's own refresh ran BEFORE the release and can
+                // re-light this effect against the pre-release baseline;
+                // recompute now that the baseline is settled.
+                ClearEffectDirty(which);
+                RefreshFromPlugin();
+                return true;
+            }
+            if (builtin)
+            {
+                _plugin.CopySectionToGlobals(kind);
+                if (!ForkAndSaveAsGamePreset()) return false;
+                ReleaseCarSectionOrWarn(kind);
+                ClearEffectDirty(which);
+                RefreshFromPlugin();
+                return true;
+            }
+
+            // Per-section save: patch ONLY this section into the active
+            // preset; other sections keep their saved values and their dirty
+            // bits remain (the ★ Save all button commits everything at once).
+            _plugin.CopySectionToGlobals(kind);
+            if (!_plugin.SaveSectionToActivePreset(kind))
+            {
+                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                return false;
+            }
+            ReleaseCarSectionOrWarn(kind);
+            ClearEffectDirty(which);
+            RefreshFromPlugin();
+            return true;
         }
 
         /// <summary>Per-car save for one effect: writes the section's
@@ -11726,9 +12087,25 @@ namespace TrueforceForAll.Plugin
                 string fallbackName = !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName)
                     ? _plugin.ActiveCarDisplayName : carId;
                 string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : fallbackName;
+                // A factory default's stripped name ("Car_455 (default)")
+                // is still the factory DISK name: a user file saved under
+                // it is shadowed by the builtin merge (invisible in the
+                // dropdown, inert after restart). Suggest the car's
+                // display name instead.
+                if (_plugin.IsCarPresetBuiltin(carId, suggestion)) suggestion = fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
-                bool silentOk = !string.IsNullOrEmpty(suggestion)
-                                && (existing == null || !existing.ContainsKey(suggestion));
+                // Taken name: append (n) instead of falling back to the
+                // type-a-name prompt (owner call 2026-07-22). The prompt
+                // only remains for the no-suggestion edge.
+                if (!string.IsNullOrEmpty(suggestion))
+                {
+                    string baseSuggestion = suggestion;
+                    int n = 2;
+                    while ((existing != null && existing.ContainsKey(suggestion))
+                           || _plugin.IsCarPresetBuiltin(carId, suggestion))
+                        suggestion = $"{baseSuggestion} ({n++})";
+                }
+                bool silentOk = !string.IsNullOrEmpty(suggestion);
                 if (silentOk)
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
@@ -11785,11 +12162,15 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Save current full state as a new named preset (same flow
         /// as the existing "Save as new" preset library button).</summary>
-        private void SaveAsNewPresetFromUi()
+        // Returns false when the user cancels the prompt / declines the
+        // overwrite, or the save fails - callers that stage destructive
+        // follow-ups (the popover's release of a car section) must not run
+        // them on a cancel that saved nothing.
+        private bool SaveAsNewPresetFromUi()
         {
             string suggested = _plugin.ActiveGame ?? "My preset";
             string name = PromptForName("Save as new preset", "Preset name:", suggested);
-            if (string.IsNullOrWhiteSpace(name)) return;
+            if (string.IsNullOrWhiteSpace(name)) return false;
             name = name.Trim();
             // Confirm overwrite if the name collides.
             bool exists = false;
@@ -11799,11 +12180,21 @@ namespace TrueforceForAll.Plugin
                     "Overwrite preset?",
                     $"A preset called '{name}' already exists. Overwrite?",
                     DialogKind.Confirm) != true)
-                return;
+                return false;
+            bool reused = false;
             if (!_plugin.SavePresetAs(name))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                return;
+                // Duplicate-content refusal reuses the identical preset
+                // instead of dead-ending (parity with ForkAndSaveAsGamePreset
+                // and the dash). Any other failure is a real error.
+                string dup = ReuseDuplicateOrNull();
+                if (dup == null)
+                {
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    return false;
+                }
+                name   = dup;
+                reused = true;
             }
             // Bind it as this game's default so the save actually sticks across
             // sessions (a "save to game defaults" that didn't bind would leave
@@ -11816,7 +12207,23 @@ namespace TrueforceForAll.Plugin
             // Tell the Preset Manager the local library just changed so the
             // newly-saved game preset shows up in its list automatically.
             _presetManager?.OnLocalLibraryChanged();
-            FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{name}' ✓");
+            FlashSaveStatus(HeaderGameSaveStatus, reused
+                ? $"Same as '{name}', now active ✓"
+                : $"Saved as '{name}' ✓");
+            return true;
+        }
+
+        // When SavePresetAs refused because the current tuning is content-
+        // identical to an existing preset (LastLocalDuplicateName set), switch
+        // to that preset - preserving the user's personal FFB scale, which is
+        // excluded from the identity hash and must not be yanked by a save -
+        // instead of dead-ending. Returns the reused preset's name, or null
+        // when the refusal was not a duplicate one (caller shows the error).
+        private string ReuseDuplicateOrNull()
+        {
+            string dup = _plugin.LastLocalDuplicateName;
+            if (string.IsNullOrEmpty(dup)) return null;
+            return _plugin.ApplyPresetKeepingPersonalFfb(dup) ? dup : null;
         }
 
         // ---------- Preset library ----------
@@ -11824,41 +12231,12 @@ namespace TrueforceForAll.Plugin
         private void RefreshPresetSection()
         {
             if (_plugin == null) return;
-
-            string game     = _plugin.ActiveGame;
-            string activeP  = _plugin.ActivePresetName;
-
+            // The active-preset dropdowns live in the header context card;
+            // rebuilt by RefreshGamePresetPicker / RefreshCarPresetPicker.
+            // The old conditional "Set as default" button is gone: picking a
+            // preset while a game is active now binds it in the same step.
             UpdateHeaderPresetDisplay();
-
-            // The active-preset dropdown + its inline buttons live in the header
-            // context card. The pickers are rebuilt by RefreshGamePresetPicker /
-            // RefreshCarPresetPicker (via UpdateHeaderPresetDisplay above); here
-            // we just refresh the conditional "Set as default" button.
-            UpdateSetDefaultButton();
         }
-
-        /// <summary>Show the inline "Set as default" button (next to the game
-        /// preset dropdown) only when a game is loaded AND the active preset is
-        /// not already that game's auto-load default. Picking a preset applies
-        /// it without binding it as the default, so this is the one remaining
-        /// affordance to make the binding; it self-hides once bound.</summary>
-        private void UpdateSetDefaultButton()
-        {
-            if (HeaderSetDefaultBtn == null || _plugin == null) return;
-            string activeP = _plugin.ActivePresetName;
-            bool gameDetected = !string.IsNullOrEmpty(_plugin.ActiveGame);
-            bool hasActive    = !string.IsNullOrEmpty(activeP);
-            bool isDefault    = hasActive
-                && string.Equals(activeP, _plugin.DefaultPresetForActiveGame, StringComparison.Ordinal);
-            // Hidden during car-edit: the loaded game preset is a temporary
-            // baseline for the car edit, not a preset the user chose to make the
-            // running game's default.
-            bool carEdit = _plugin.IsOfflineEditingCar;
-            HeaderSetDefaultBtn.Visibility = (gameDetected && hasActive && !isDefault && !carEdit)
-                ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private string SelectedPresetName => _plugin?.ActivePresetName;
 
         // The old global "Save preset" chooser (save to this car / game default
         // / both, in one modal) was removed: the two header Save buttons now
@@ -11969,14 +12347,28 @@ namespace TrueforceForAll.Plugin
                 string fallbackName = !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName)
                     ? _plugin.ActiveCarDisplayName : carId;
                 string suggestion = onBuiltin ? TrueforcePlugin.ToDiskName(activeName) : fallbackName;
+                // A factory default's stripped name ("Car_455 (default)")
+                // is still the factory DISK name: a user file saved under
+                // it is shadowed by the builtin merge (invisible in the
+                // dropdown, inert after restart). Suggest the car's
+                // display name instead.
+                if (_plugin.IsCarPresetBuiltin(carId, suggestion)) suggestion = fallbackName;
                 var existing = _plugin.GetCarPresets(carId);
                 // Silent fork: suggest the stripped builtin name (or the
-                // carId when forking fresh). When that name is free, save
-                // without a dialog. The user clicked Save with intent to
-                // save THIS car's tuning - asking them to type a name they
-                // can't really disagree with is friction.
-                bool silentOk = !string.IsNullOrEmpty(suggestion)
-                                && (existing == null || !existing.ContainsKey(suggestion));
+                // carId when forking fresh). The user clicked Save with
+                // intent to save THIS car's tuning - asking them to type
+                // a name they can't really disagree with is friction, so
+                // a taken name gets (n) appended instead of a prompt
+                // (owner call 2026-07-22).
+                if (!string.IsNullOrEmpty(suggestion))
+                {
+                    string baseSuggestion = suggestion;
+                    int n = 2;
+                    while ((existing != null && existing.ContainsKey(suggestion))
+                           || _plugin.IsCarPresetBuiltin(carId, suggestion))
+                        suggestion = $"{baseSuggestion} ({n++})";
+                }
+                bool silentOk = !string.IsNullOrEmpty(suggestion);
                 if (silentOk)
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
@@ -12020,9 +12412,12 @@ namespace TrueforceForAll.Plugin
         /// the game (or after the built-in being forked, minus the
         /// " (default)" suffix) and bind it as the game's default. If a
         /// preset with that name already exists, append " (1)", " (2)" until
-        /// unique. Falls back to the Save as… name prompt when there's no
-        /// game context to derive a name from.</summary>
-        private void ForkAndSaveAsGamePreset()
+        /// unique. When the current tuning is content-identical to an
+        /// existing preset, reuses that preset instead of dead-ending on
+        /// the duplicate rule. Falls back to the Save as… name prompt when
+        /// there's no game context to derive a name from. Returns false
+        /// only on a real save failure.</summary>
+        private bool ForkAndSaveAsGamePreset()
         {
             string activeP = _plugin.ActivePresetName;
             string game    = _plugin.ActiveGame;
@@ -12035,9 +12430,9 @@ namespace TrueforceForAll.Plugin
                 baseName = game;
             else
             {
-                // No game and no built-in to fork from. Fall back to name prompt.
-                SaveAsNewPresetFromUi();
-                return;
+                // No game and no built-in to fork from. Fall back to name
+                // prompt; its outcome propagates so a cancel isn't success.
+                return SaveAsNewPresetFromUi();
             }
 
             string newName = baseName;
@@ -12049,10 +12444,23 @@ namespace TrueforceForAll.Plugin
                 while (existing.Contains(newName)) newName = $"{baseName} ({i++})";
             }
 
+            bool reused = false;
             if (!_plugin.SavePresetAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                return;
+                // Content-identical to an existing preset: reuse that preset
+                // instead of dead-ending on the duplicate rule (the dash's
+                // BOTH got this treatment first; the desktop fork hit the
+                // same wall against a leftover earlier fork on 2026-07-22).
+                // LastLocalDuplicateName is only set by the duplicate-content
+                // refusal; anything else is a real failure.
+                string dup = ReuseDuplicateOrNull();
+                if (dup == null)
+                {
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    return false;
+                }
+                newName = dup;
+                reused  = true;
             }
             // Auto-bind as game's default if a game is loaded.
             if (!string.IsNullOrEmpty(game))
@@ -12062,7 +12470,10 @@ namespace TrueforceForAll.Plugin
             // Tell the Preset Manager the local library changed so the fork
             // shows up in its list without a manual refresh.
             _presetManager?.OnLocalLibraryChanged();
-            FlashSaveStatus(HeaderGameSaveStatus, $"Saved as '{newName}' ✓");
+            FlashSaveStatus(HeaderGameSaveStatus, reused
+                ? $"Same as '{newName}', now active ✓"
+                : $"Saved as '{newName}' ✓");
+            return true;
         }
 
         private void SaveAsPreset_Click(object sender, RoutedEventArgs e)
@@ -12083,14 +12494,28 @@ namespace TrueforceForAll.Plugin
                     DialogKind.Confirm) != true)
                 return;
 
+            bool reused = false;
             if (!_plugin.SavePresetAs(name))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
-                return;
+                // Duplicate-content refusal: reuse the identical preset rather
+                // than dead-end. SavePresetAs already folded the active car's
+                // draft edits into the globals, so a bare error would leave
+                // that promotion stranded; reusing the identical preset makes
+                // the folded state the live+saved state consistently.
+                string dup = ReuseDuplicateOrNull();
+                if (dup == null)
+                {
+                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    return;
+                }
+                name   = dup;
+                reused = true;
             }
             ClearDirty();
             RefreshFromPlugin();
             _presetManager?.OnLocalLibraryChanged();
+            if (reused)
+                FlashSaveStatus(HeaderGameSaveStatus, $"Same as '{name}', now active ✓");
         }
 
         // Car-side "Save as new…": save the active car's current tuning under a
@@ -12137,17 +12562,8 @@ namespace TrueforceForAll.Plugin
 
         // Per-preset Delete and Clear-default live in the preset manager (Presets
         // tab) now; the inline buttons were removed in the unified-picker refactor.
-
-        // Inline "Set as default" next to the game preset dropdown. Binds the
-        // active preset as this game's auto-load default; the button then
-        // self-hides (active == default) via UpdateSetDefaultButton.
-        private void HeaderSetDefault_Click(object sender, RoutedEventArgs e)
-        {
-            string name = SelectedPresetName;
-            if (_plugin == null || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(_plugin.ActiveGame)) return;
-            _plugin.SetDefaultPresetForActiveGame(name);
-            RefreshFromPlugin();
-        }
+        // The header's inline "Set as default" went next (select-is-default:
+        // picking a preset in the header combo binds it to the active game).
 
         // ---------- Export / Import (Backup & sync) ----------
         //
@@ -13457,6 +13873,7 @@ namespace TrueforceForAll.Plugin
             // Normalize line endings: GitHub bodies usually arrive with \r\n.
             string[] lines = body.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
             bool prevWasBlank = false;
+            bool imageNoteShown = false;
             for (int i = 0; i < lines.Length; i++)
             {
                 string raw = lines[i] ?? "";
@@ -13473,6 +13890,28 @@ namespace TrueforceForAll.Plugin
                     continue;
                 }
                 prevWasBlank = false;
+
+                // Markdown images (![alt](url), or link-wrapped [![...]).
+                // This renderer is text-only (and WPF wouldn't animate a
+                // release GIF anyway), so image lines are dropped instead of
+                // showing as raw markdown. One dim pointer per body tells
+                // in-app readers where the visuals live.
+                if (trimmed.StartsWith("![", StringComparison.Ordinal)
+                    || trimmed.StartsWith("[![", StringComparison.Ordinal))
+                {
+                    if (!imageNoteShown)
+                    {
+                        imageNoteShown = true;
+                        panel.Children.Add(new TextBlock
+                        {
+                            Text = "(screenshots on the GitHub release page)",
+                            FontSize = 11,
+                            Opacity = 0.55,
+                            Margin = new Thickness(0, 0, 0, 2),
+                        });
+                    }
+                    continue;
+                }
 
                 // Blockquote ("> ..." lines), including GitHub alert callouts
                 // ("> [!WARNING]" etc.). Consecutive quote lines collapse into
