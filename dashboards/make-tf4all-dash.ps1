@@ -33,14 +33,18 @@ $CLEAR   = '#00FFFFFF'
 # Built with the unary comma per row: a bare @(@(..),@(..)) flattens in
 # PowerShell and the rows stop being rows.
 $TEMP_STOPS = @()
-$TEMP_STOPS += , @(40,  61, 111, 181)   # blue, stone cold
-$TEMP_STOPS += , @(60,  55, 214, 122)   # green, in its window
-$TEMP_STOPS += , @(85, 232, 212,  77)   # yellow
-$TEMP_STOPS += , @(100, 232, 163, 61)   # orange
-$TEMP_STOPS += , @(115, 229,  72, 77)   # red
+$TEMP_STOPS += , @(10,   31,  63, 122)   # deep blue, frozen
+$TEMP_STOPS += , @(40,   61, 111, 181)   # blue, stone cold
+$TEMP_STOPS += , @(60,   55, 214, 122)   # green, in its window
+$TEMP_STOPS += , @(85,  232, 212,  77)   # yellow
+$TEMP_STOPS += , @(100, 232, 163,  61)   # orange
+$TEMP_STOPS += , @(115, 229,  72,  77)   # red
+$TEMP_STOPS += , @(140, 138,  14,  18)   # deep red, cooked
 
-function TempColorJs([string]$tileColor) {
-    $js = 'if(isNaN(v)||v<=0)return "' + $tileColor + '";var s=['
+# Emits the ramp up to "c holds the colour", so the block fill and the
+# label on top are computed from one piece of arithmetic.
+function TempRampJs([string]$emptyReturn) {
+    $js = 'if(isNaN(v)||v<=0){' + $emptyReturn + '}var s=['
     $js += (($TEMP_STOPS | ForEach-Object { '[' + ($_ -join ',') + ']' }) -join ',')
     # Driven by s.length, so adding or moving a stop needs no edit here.
     $js += '];var L=s.length-1;var c=s[0];if(v>=s[L][0])c=s[L];' +
@@ -48,10 +52,24 @@ function TempColorJs([string]$tileColor) {
            'var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,' +
            's[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,' +
            's[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}' +
-           'var o="#FF";for(var k=1;k<4;k++){var n=Math.round(c[k]);' +
-           'if(n<0)n=0;if(n>255)n=255;var x=n.toString(16);' +
-           'if(x.length<2)x="0"+x;o+=x;}return o'
+           'break;}}}'
     $js
+}
+
+function TempColorJs([string]$tileColor) {
+    (TempRampJs ('return "' + $tileColor + '";')) +
+    'var o="#FF";for(var k=1;k<4;k++){var n=Math.round(c[k]);' +
+    'if(n<0)n=0;if(n>255)n=255;var x=n.toString(16);' +
+    'if(x.length<2)x="0"+x;o+=x;}return o'
+}
+
+# The ends of the ramp are dark enough to swallow dark text, so the label
+# picks its own contrast from the fill it is sitting on rather than being
+# a fixed colour that only works across the middle of the range.
+function TempTextColorJs([string]$emptyColor) {
+    (TempRampJs ('return "' + $emptyColor + '";')) +
+    'var lum=(c[1]*299+c[2]*587+c[3]*114)/1000;' +
+    'return lum>140?"#FF101216":"#FFF2F4F8"'
 }
 
 # Same ramp in PowerShell, for the preview renderer (it draws static
@@ -78,6 +96,12 @@ function TempColor([double]$v) {
         }
     }
     '#FF' + ('{0:X2}{1:X2}{2:X2}' -f [int][math]::Round($c[1]), [int][math]::Round($c[2]), [int][math]::Round($c[3]))
+}
+
+function TempTextColor([double]$v) {
+    $c = [System.Drawing.ColorTranslator]::FromHtml((TempColor $v))
+    $lum = ($c.R * 299 + $c.G * 587 + $c.B * 114) / 1000
+    if ($lum -gt 140) { '#FF101216' } else { '#FFF2F4F8' }
 }
 $BACKDROP= '#F60D0F13'   # overlay backdrop (near-opaque)
 
@@ -651,6 +675,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # breakpoints so a tyre that read amber still does. Games disagree on
     # units and on core vs surface, so this stays a relative cue.
     $tempScale = TempColorJs $script:TILE
+    $tempText  = TempTextColorJs $script:MUTED
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
@@ -684,7 +709,8 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
             $items.Add($b)
         }
         $tv = New-Text "d$slot-tt$q-v" $cx ($cy + $tyH / 2 - 15) $tyW 30 17 '' '#FF101216' 1 @{
-            Text = BindJS 'Text' ($vJs + 'return isNaN(v)||v<=0?"--":Math.round(v)')
+            Text      = BindJS 'Text'      ($vJs + 'return isNaN(v)||v<=0?"--":Math.round(v)')
+            TextColor = BindJS 'TextColor' ($vJs + $tempText)
         } 'Bold'
         $tv.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($tv)
@@ -2235,7 +2261,7 @@ $tq  = @(86, 84, 79, 108)
 $tqc = @($tq | ForEach-Object { TempColor $_ })
 for ($i = 0; $i -lt 4; $i++) {
     $ovDriveTab["d3-tt$i"]    = @{ Show = $true; BackgroundColor = $tqc[$i] }
-    $ovDriveTab["d3-tt$i-v"]  = @{ Show = $true; Text = ([string]$tq[$i]) }
+    $ovDriveTab["d3-tt$i-v"]  = @{ Show = $true; Text = ([string]$tq[$i]); TextColor = (TempTextColor $tq[$i]) }
 }
 # Pedals and steering around the gear, on by default: throttle carrying
 # the car through the corner, brake released, a touch of right lock.

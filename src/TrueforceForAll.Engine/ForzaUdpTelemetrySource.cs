@@ -1,4 +1,4 @@
-// Forza UDP "Data Out" telemetry source. Listens on a configurable port for
+﻿// Forza UDP "Data Out" telemetry source. Listens on a configurable port for
 // the binary packets Forza Horizon 5 / Forza Motorsport (2023) emit when the
 // user enables UDP RACE TELEMETRY in Settings → HUD and Gameplay.
 //
@@ -192,16 +192,6 @@ namespace TrueforceForAll.Core
         private bool _gearOneIsFirst;
         private int  _gearOneFirstFrames;
         private int  _gearNeutralLowFrames;
-
-        // TEMPORARY: the owner reports 1st reading as N while driving, which
-        // neither the sentinel nor the documented 0=R/1=N/2=1st mapping
-        // explains. Logs the gear byte with rpm and speed so the gear the car
-        // is really in is unambiguous, on every change plus a sample every
-        // two seconds while moving. Bounded so a session cannot be flooded.
-        // Remove once the mapping is settled.
-        private int _gearDiagLeft = 140;
-        private int _gearDiagLast = -1;
-        private int _gearDiagTick;
 
         /// <summary>Latest display-only dash fields (tyre temps, fuel, lap
         /// times, position), or null before the first packet carrying a dash
@@ -699,25 +689,6 @@ namespace TrueforceForAll.Core
                     _sentinelSinceTick = 0;
                     _lastGoodGear = gearByte;
                 }
-                // TEMPORARY DIAGNOSTIC, see the field declarations.
-                if (_gearDiagLeft > 0
-                    && (rawGear != _gearDiagLast
-                        || (speedMs > 2f && unchecked(nowTick - _gearDiagTick) >= 2000)))
-                {
-                    _gearDiagLast = rawGear;
-                    _gearDiagTick = nowTick;
-                    _gearDiagLeft--;
-                    Logger?.Invoke($"[TF4ALL] Forza gear diag: raw={rawGear} shown='{GearString(gearByte)}'"
-                        + $" rpm={ReadFloat(buf, OFF_CURRENT_RPM):F0}"
-                        + $" max={ReadFloat(buf, OFF_ENGINE_MAX_RPM):F0}"
-                        + $" kmh={speedMs * 3.6f:F0} accel={accelByte} brake={brakeByte}"
-                        // Tyre temps ride along: the dash colours them against
-                        // Celsius thresholds and Forza's unit for this field is
-                        // not something to take on faith. A warm tyre reading
-                        // ~200 is Fahrenheit; ~90 is Celsius.
-                        + $" tyreFL={ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL):F0}"
-                        + $" tyreRR={ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12):F0}");
-                }
                 // Steer is a signed byte (read the byte, reinterpret as sbyte)
                 // normalized to ~[-1, 1]. Sign matches Forza's convention
                 // (+ = right); the spring's downstream invert was tuned on
@@ -730,10 +701,18 @@ namespace TrueforceForAll.Core
                 // plugin polls instead.
                 var ex = new ForzaDashExtras
                 {
-                    TireTempFL = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL),
-                    TireTempFR = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 4),
-                    TireTempRL = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 8),
-                    TireTempRR = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12),
+                    // Forza sends these in FAHRENHEIT, which the Data Out docs
+                    // never state. Byte tracing on the owner's rig settled it:
+                    // a tyre sat at 51 at rest and reached 158 after twenty
+                    // seconds of wheelspin. Read as Celsius that is a tyre
+                    // starting warm and ending as a smoking ruin; read as
+                    // Fahrenheit it is 10 C warming to 70 C, which is what
+                    // actually happened. Converted here so everything
+                    // downstream gets Celsius, like every other source.
+                    TireTempFL = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL)),
+                    TireTempFR = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 4)),
+                    TireTempRL = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 8)),
+                    TireTempRR = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12)),
                     Brake01       = brakeByte / 255.0f,
                     Clutch01      = buf[dashBase + DASH_CLUTCH]    / 255.0f,
                     Handbrake01   = buf[dashBase + DASH_HANDBRAKE] / 255.0f,
@@ -1018,6 +997,11 @@ namespace TrueforceForAll.Core
             byte gear = buf[dashBase + DASH_GEAR];
             return gear <= 11;
         }
+
+        /// <summary>Fahrenheit to Celsius, leaving a zero alone: zero is how
+        /// this packet says "not reported", and 0 F would read as a plausible
+        /// -18 C instead.</summary>
+        private static float FToC(float f) => f == 0f ? 0f : (f - 32f) * 5f / 9f;
 
         // Two scales in the wild, both starting reverse at 0. The documented
         // one is 0=R, 1=N, 2=1st; FH6 numbers forward gears from 1 and puts
