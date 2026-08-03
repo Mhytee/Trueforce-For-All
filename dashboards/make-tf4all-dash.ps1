@@ -392,6 +392,18 @@ function New-Ring([string]$name, $cx, $cy, $r, [string]$color, [int]$thickness, 
     $ring
 }
 
+# Driver input, OUR frame first and SimHub second. Ours carries whatever
+# source is live, which for Forza is the game's own UDP at frame rate and
+# needs no "Also forward to SimHub", and for everything else is the same
+# data SimHub has anyway. Ours is 0..1, SimHub's is 0..100. Clutch and
+# handbrake report -1 when the source has no such channel, which fails the
+# >0 test and hands over to SimHub exactly like a missing value.
+function PedalJs([string]$P, [string]$ours, [string]$sim) {
+    'var v=100*(1*$prop("' + $P + '.' + $ours + '"));' +
+    'if(!(v>0))v=1*$prop("' + $script:SIM + $sim + '");' +
+    'if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'
+}
+
 function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items = [System.Collections.Generic.List[object]]::new()
     $slotProp = $P + '.Drive.Slot' + $slot
@@ -938,10 +950,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $lblW = $barW + $barGap - 2
     $amber = '#FFE8A33D'
     $pedals = @(
-        @('thr', 'Throttle',  $script:GREEN,         ('var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
-        @('brk', 'Brake',     $script:RED,           ('var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
-        @('clu', 'Clutch',    $script:SCOPE_PURPLE,  ('var v=1*$prop("' + $SIM + 'Clutch");if(!(v>0))v=100*(1*$prop("' + $P + '.Clutch"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')),
-        @('hbr', 'Handbrake', $amber,                ('var v=1*$prop("' + $SIM + 'Handbrake");if(!(v>0))v=100*(1*$prop("' + $P + '.Handbrake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'))
+        @('thr', 'Throttle',  $script:GREEN,         (PedalJs $P 'Throttle'  'Throttle')),
+        @('brk', 'Brake',     $script:RED,           (PedalJs $P 'Brake'     'Brake')),
+        @('clu', 'Clutch',    $script:SCOPE_PURPLE,  (PedalJs $P 'Clutch'    'Clutch')),
+        @('hbr', 'Handbrake', $amber,                (PedalJs $P 'Handbrake' 'Handbrake'))
     )
     $barX0 = $ix + ($iw - ($barW * $pedals.Count + $barGap * ($pedals.Count - 1))) / 2
     for ($pi = 0; $pi -lt $pedals.Count; $pi++) {
@@ -1846,8 +1858,8 @@ $pedTop2 = 60; $pedTop1 = 135; $pedBot = 418
 $pedTopJs = 'return ' + $twoRows + '?' + $pedTop2 + ':' + $pedTop1
 $pedHJs   = 'return ' + $twoRows + '?' + ($pedBot - $pedTop2) + ':' + ($pedBot - $pedTop1)
 foreach ($pd in @(
-    @('brk', 302, ('var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'), $RED),
-    @('thr', 488, ('var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'), $GREEN))) {
+    @('brk', 302, (PedalJs $P 'Brake'    'Brake'),    $RED),
+    @('thr', 488, (PedalJs $P 'Throttle' 'Throttle'), $GREEN))) {
     $pk = $pd[0]; $px = $pd[1]; $pJs = $pd[2]; $pCol = $pd[3]
     $tr = New-Rect "dr-ped-$pk-bg" $px $pedTop2 10 ($pedBot - $pedTop2) $TILE @{
         Top    = BindJS 'Top'    $pedTopJs

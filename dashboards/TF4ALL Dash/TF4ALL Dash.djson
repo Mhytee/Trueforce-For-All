@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "4a4530c8-1a13-4d9d-991a-68c997c0adfc",
+    "Id":  "6e7173f1-a95e-42e3-9798-daa23ad0d622",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "00a41681-f4e7-43b9-8efd-3af07da15a66",
+                        "ScreenId":  "3393b992-adec-4c69-a427-d34611a33bda",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "444a2c62-4354-4023-a7d0-a01b07b8ea78",
+                        "ScreenId":  "165696fb-118b-403d-920f-6f7eb31135ed",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "722eeb62-46e5-44b5-b0c8-c1be9cc19229",
+                        "ScreenId":  "dc777205-5fbf-4d60-87f1-a39dc37017a8",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c1e2a28a-6d8a-404f-b162-fd44013dc28e",
+                        "ScreenId":  "08633311-424a-42e7-87c9-14da82761f73",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "821a0d7c-d32f-4e04-b163-9006ae5c8103",
+                        "ScreenId":  "7ff48081-d263-4789-8d2a-924c7664dc1b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "af6827dd-c687-4f99-8b86-1196400ca819",
+                        "ScreenId":  "3250b166-cd44-4dc6-b886-e1d425fd5624",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8eb4ddcf-e265-4612-abf4-cc39c5079eff",
+                        "ScreenId":  "9a27e335-29ac-4db1-b415-a92a4d421105",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -53187,7 +53187,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return hh"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return hh"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -53195,7 +53195,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return 418-hh"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return 418-hh"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -53307,7 +53307,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return hh"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return hh"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -53315,7 +53315,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return 418-hh"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;var H=$prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?358:283;var hh=Math.max(2,H*v/100);return 418-hh"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -59178,7 +59178,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -59186,7 +59186,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -59314,7 +59314,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -59322,7 +59322,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -59450,7 +59450,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -59458,7 +59458,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -59586,7 +59586,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -59594,7 +59594,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -69627,7 +69627,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -69635,7 +69635,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -69763,7 +69763,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -69771,7 +69771,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -69899,7 +69899,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -69907,7 +69907,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70035,7 +70035,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
+                                                                                          "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,88*v/100)"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -70043,7 +70043,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
+                                                                                       "Expression":  "var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 144-Math.max(2,88*v/100)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81476,7 +81476,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -81484,7 +81484,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81628,7 +81628,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -81636,7 +81636,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81780,7 +81780,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -81788,7 +81788,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81932,7 +81932,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -81940,7 +81940,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -93701,7 +93701,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -93709,7 +93709,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Throttle\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Throttle\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -93853,7 +93853,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -93861,7 +93861,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Brake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Brake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -94005,7 +94005,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -94013,7 +94013,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Clutch\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Clutch\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -94157,7 +94157,7 @@
                                                            "Height":  {
                                                                           "Formula":  {
                                                                                           "Interpreter":  1,
-                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return Math.max(2,306*v/100)})()"
                                                                                       },
                                                                           "Mode":  2,
                                                                           "TargetPropertyName":  "Height"
@@ -94165,7 +94165,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(!(v\u003e0))v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,94*v/100)})():(function(){var v=100*(1*$prop(\"TrueforcePlugin.Dash.Handbrake\"));if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.Handbrake\");if(isNaN(v))v=0;if(v\u003e100)v=100;if(v\u003c0)v=0;return 362-Math.max(2,306*v/100)})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
