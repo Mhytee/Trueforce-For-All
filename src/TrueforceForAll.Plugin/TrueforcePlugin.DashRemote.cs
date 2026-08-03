@@ -892,6 +892,8 @@ namespace TrueforceForAll.Plugin
             // from the same accelerations the crash duck reads so the box
             // works on any telemetry source we support.
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
+            this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
+            this.AttachDelegate("Dash.DrivePedals", () => Settings?.DashDrivePedals != false);
 
             // ---------- properties: Forza dash extras ----------
             // A Forza player usually has "Also forward to SimHub" off, which

@@ -443,6 +443,17 @@ namespace TrueforceForAll.Plugin
         // report none, which is why this is opt-in rather than always on).
         public bool DashFlagsEnabled { get; set; } = false;
 
+        // TF4ALL Dash rev strip: false spans the full width of every screen
+        // (default); true narrows it to the middle column, which on the Drive
+        // tab is the space above the gear between the two box columns.
+        public bool DashRevStripCentered { get; set; } = false;
+
+        // TF4ALL Dash Drive tab: thin throttle and brake bars either side of
+        // the gear with a steering indicator beneath it. Uses space the gear
+        // column has spare, and is independent of the Inputs box, which shows
+        // the same three in a card.
+        public bool DashDrivePedals { get; set; } = true;
+
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
         // user's display order; DashTabsDisabled hides tabs without losing

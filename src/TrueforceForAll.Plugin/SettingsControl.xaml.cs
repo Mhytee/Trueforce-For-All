@@ -6370,6 +6370,10 @@ namespace TrueforceForAll.Plugin
                 }
                 if (RemoteDashFlagsCheck != null)
                     RemoteDashFlagsCheck.IsChecked = _plugin.Settings?.DashFlagsEnabled == true;
+                if (RemoteDashPedalsCheck != null)
+                    RemoteDashPedalsCheck.IsChecked = _plugin.Settings?.DashDrivePedals != false;
+                if (RemoteDashRevCenteredCheck != null)
+                    RemoteDashRevCenteredCheck.IsChecked = _plugin.Settings?.DashRevStripCentered == true;
                 bool twoRows = _plugin.Settings?.DashDriveTwoRows != false;
                 if (RemoteDashDriveTwoRowsRadio != null) RemoteDashDriveTwoRowsRadio.IsChecked = twoRows;
                 if (RemoteDashDriveOneRowRadio != null) RemoteDashDriveOneRowRadio.IsChecked = !twoRows;
@@ -6381,6 +6385,28 @@ namespace TrueforceForAll.Plugin
                 if (RemoteDashDriveSlot1Label != null) RemoteDashDriveSlot1Label.Opacity = twoRows ? 1.0 : 0.5;
             }
             finally { _suppressEvents = prevSuppress; }
+        }
+
+        private void RemoteDashPedals_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashDrivePedals = RemoteDashPedalsCheck?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist DashDrivePedals failed: " + ex.Message);
+            }
+        }
+
+        private void RemoteDashRevCentered_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashRevStripCentered = RemoteDashRevCenteredCheck?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist DashRevStripCentered failed: " + ex.Message);
+            }
         }
 
         private void RemoteDashFlags_Changed(object sender, RoutedEventArgs e)

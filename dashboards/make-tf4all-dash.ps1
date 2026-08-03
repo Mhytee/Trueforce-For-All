@@ -167,13 +167,30 @@ function KeypadOverlay([string]$P) {
 # remote double as rev lights in race.
 function RevStrip([string]$P) {
     $items = [System.Collections.Generic.List[object]]::new()
-    $items.Add((New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' $null 0))
+    # Span is a user choice (Dash.RevCentered): the full width of the
+    # screen, or just the middle column, which on the Drive tab is the
+    # space above the gear between the two box columns. Every segment,
+    # socket and the backing bar bind their Left and Width to it, so the
+    # switch applies live with no dashboard reload.
+    # Centred span is 300..500, matching the gear column on the Drive tab.
+    # Whole-pixel pitch on purpose: these numbers land in JS source, and a
+    # fractional one would be written with the machine's decimal separator.
+    $cenX = 300; $cenW = 200
+    $segLeftJs  = { param($i) 'return $prop("' + $P + '.RevCentered")?' + (305 + $i * 12) + ':' + (2 + $i * 50) }
+    $segWidthJs = 'return $prop("' + $P + '.RevCentered")?10:46'
+    $bg = New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' @{
+        Left  = BindJS 'Left'  ('return $prop("' + $P + '.RevCentered")?' + $cenX + ':0')
+        Width = BindJS 'Width' ('return $prop("' + $P + '.RevCentered")?' + $cenW + ':800')
+    } 0
+    $items.Add($bg)
     # Unlit sockets: a faint 1px outline per LED position, always visible,
     # so the strip is discoverable before the first rev (an all-dark strip
     # read as empty chrome). Lit segments draw over them.
     for ($i = 0; $i -lt 16; $i++) {
         $x = 2 + $i * 50
         $sock = New-Rect "rev-sock$i" $x 1 46 10 $script:CLEAR $null 2
+        $sock.Bindings['Left']  = BindJS 'Left'  (& $segLeftJs $i)
+        $sock.Bindings['Width'] = BindJS 'Width' $segWidthJs
         $sock.BorderStyle.BorderColor = '#FF39404C'
         $sock.BorderStyle.BorderTop = 1; $sock.BorderStyle.BorderBottom = 1
         $sock.BorderStyle.BorderLeft = 1; $sock.BorderStyle.BorderRight = 1
@@ -197,6 +214,8 @@ function RevStrip([string]$P) {
         $cOut = if ($pair -lt 4) { $script:GREEN } elseif ($pair -lt 6) { $amber } else { $script:RED }
         $seg = New-Rect "rev-seg$i" $x 1 46 10 $cLtr @{
             BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.RevOutsideIn")?"' + $cOut + '":"' + $cLtr + '"')
+            Left  = BindJS 'Left'  (& $segLeftJs $i)
+            Width = BindJS 'Width' $segWidthJs
         } 2
         # RevFlash: steady true below redline, wheel-synced blink at/above.
         $seg.Bindings['Visible'] = BindJS 'Visible' ('var t=$prop("' + $P + '.RevOutsideIn")?' + $tOut + ':' + $tLtr + ';return (1*$prop("' + $P + '.RpmPct"))>=t && $prop("' + $P + '.RevFlash")')
@@ -437,6 +456,24 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $pnl.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pnl)
         $t = New-Text "d$slot-hm-$gid-l" ($ix + 10) ($gy + 6) ($iw - 20) 14 10 $glabel $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+        # Audio needs an explicit off: the steppers switch capture ON when
+        # it is off (reaching for the gain means you want to hear it), so
+        # without this there is no way back.
+        if ($gonProp -ne '') {
+            $pillW = 42
+            $px = $ix + $iw - 10 - $pillW
+            $r = New-Rect "d$slot-hm-$gid-pill-bg" $px ($gy + 4) $pillW 18 $script:PANEL @{
+                BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $gonProp + '")?"' + $script:TILEON + '":"' + $script:PANEL + '"')
+            } 4
+            $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+            $t = New-Text "d$slot-hm-$gid-pill-t" $px ($gy + 4) $pillW 18 10 '' $script:WHITE 1 @{
+                Text      = BindJS 'Text'      ('return $prop("' + $gonProp + '")?"ON":"OFF"')
+                TextColor = BindJS 'TextColor' ('return $prop("' + $gonProp + '")?"' + $script:WHITE + '":"' + $script:MUTED + '"')
+            } 'Bold'
+            $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+            $b = New-Button "d$slot-hm-$gid-pill" $px ($gy + 4) $pillW 18 'DashFxAudioToggle'
+            $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+        }
         # An audio gain the capture is not using reads as off, not as a
         # number that is doing nothing.
         $valJs = if ($gonProp -ne '') {
@@ -1595,6 +1632,50 @@ $spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
 } 'Bold'
 $s7.Add($spd)
 
+# Pedals around the gear (Dash.DrivePedals): thin throttle and brake
+# bars either side of it with steering underneath, using space the gear
+# column has spare. Brake left, throttle right, matching a pedal box.
+# Independent of the Inputs box, which shows the same three in a card.
+$pedOn = '$prop("' + $P + '.DrivePedals")'
+$pedTopJs = 'return ' + $twoRows + '?60:135'
+$pedH = 200
+foreach ($pd in @(
+    @('brk', 302, ('var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'), $RED),
+    @('thr', 488, ('var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'), $GREEN))) {
+    $pk = $pd[0]; $px = $pd[1]; $pJs = $pd[2]; $pCol = $pd[3]
+    $tr = New-Rect "dr-ped-$pk-bg" $px 60 10 $pedH $TILE @{
+        Top    = BindJS 'Top'    $pedTopJs
+        Height = BindJS 'Height' ('return ' + $pedH)
+    } 5
+    $tr.Bindings['Visible'] = BindJS 'Visible' ('return ' + $pedOn)
+    $s7.Add($tr)
+    # Fills upward from the bar's bottom edge, which moves with the layout.
+    $fl = New-Rect "dr-ped-$pk" $px 258 10 2 $pCol $null 5
+    $fl.Bindings['Height'] = BindJS 'Height' ($pJs + 'return Math.max(2,' + $pedH + '*v/100)')
+    $fl.Bindings['Top']    = BindJS 'Top'    ($pJs + 'var b=' + $twoRows + '?260:335;return b-Math.max(2,' + $pedH + '*v/100)')
+    $fl.Bindings['Visible'] = BindJS 'Visible' ('return ' + $pedOn)
+    $s7.Add($fl)
+}
+# Steering under the gear: centre-origin, hidden when the source reports
+# no steering rather than sitting convincingly straight.
+$steerVis = 'return ' + $pedOn + ' && (1*$prop("' + $P + '.Steer"))>-1.5'
+$stBg = New-Rect 'dr-st-bg' 302 312 196 8 $TILE @{
+    Top = BindJS 'Top' ('return ' + $twoRows + '?312:387')
+} 4
+$stBg.Bindings['Visible'] = BindJS 'Visible' $steerVis
+$s7.Add($stBg)
+$stTick = New-Rect 'dr-st-tick' 399 309 2 14 '#FF39404C' @{
+    Top = BindJS 'Top' ('return ' + $twoRows + '?309:384')
+} 0
+$stTick.Bindings['Visible'] = BindJS 'Visible' $steerVis
+$s7.Add($stTick)
+$stDot = New-Rect 'dr-st' 393 310 12 12 $WHITE @{
+    Top = BindJS 'Top' ('return ' + $twoRows + '?310:385')
+} 6
+$stDot.Bindings['Left'] = BindJS 'Left' ('var s=1*$prop("' + $P + '.Steer");if(s<-1)s=-1;if(s>1)s=1;return 394+s*92')
+$stDot.Bindings['Visible'] = BindJS 'Visible' $steerVis
+$s7.Add($stDot)
+
 # Four content boxes. Slot order matches the plugin: TL, TR, BL, BR.
 # The top pair simply hides in the one-row layout; the bottom pair grows
 # up into the space it leaves, so nothing is wasted on a phone.
@@ -2002,6 +2083,15 @@ for ($i = 0; $i -lt 4; $i++) {
     $ovDriveTab["d3-tt$i"]    = @{ Show = $true; BackgroundColor = $tqc[$i] }
     $ovDriveTab["d3-tt$i-v"]  = @{ Show = $true; Text = ([string]$tq[$i]) }
 }
+# Pedals and steering around the gear, on by default: throttle carrying
+# the car through the corner, brake released, a touch of right lock.
+$ovDriveTab['dr-ped-thr-bg'] = @{ Show = $true }
+$ovDriveTab['dr-ped-thr']    = @{ Show = $true; Top = 90; Height = 170 }
+$ovDriveTab['dr-ped-brk-bg'] = @{ Show = $true }
+$ovDriveTab['dr-ped-brk']    = @{ Show = $true }
+$ovDriveTab['dr-st-bg']      = @{ Show = $true }
+$ovDriveTab['dr-st-tick']    = @{ Show = $true }
+$ovDriveTab['dr-st']         = @{ Show = $true; Left = 408 }
 
 Render-Preview $s1 $ovDrive   (Join-Path $OutDir 'TF4ALL Dash.djson.00.png')
 Render-Preview $s2 $ovFacts   (Join-Path $OutDir 'TF4ALL Dash.djson.01.png')

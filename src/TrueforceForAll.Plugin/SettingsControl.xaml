@@ -3062,6 +3062,13 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tyre and fuel readouts come from the game, so what they show depends on what that game reports."/>
 
+                    <CheckBox x:Name="RemoteDashPedalsCheck" Content="Show pedals and steering around the gear" Margin="0,14,0,0"
+                              Checked="RemoteDashPedals_Changed" Unchecked="RemoteDashPedals_Changed"
+                              ToolTip="Thin throttle and brake bars either side of the gear on the Drive tab, with steering underneath."/>
+                    <CheckBox x:Name="RemoteDashRevCenteredCheck" Content="Narrow the rev strip to the middle" Margin="0,8,0,0"
+                              Checked="RemoteDashRevCentered_Changed" Unchecked="RemoteDashRevCentered_Changed"
+                              ToolTip="Spans only the middle column instead of the full width, which on the Drive tab is the space above the gear."/>
+
                     <CheckBox x:Name="RemoteDashFlagsCheck" Content="Show race flags on the dash" Margin="0,14,0,0"
                               Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
                               ToolTip="A coloured band across the top of the dash whenever a flag is out."/>

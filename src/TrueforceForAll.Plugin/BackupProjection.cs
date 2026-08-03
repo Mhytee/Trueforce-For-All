@@ -53,6 +53,7 @@ namespace TrueforceForAll.Plugin
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
             "DashDriveSlots", "DashDriveTwoRows", "DashFlagsEnabled",
+            "DashRevStripCentered", "DashDrivePedals",
             "DashTabOrder", "DashTabsDisabled",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
