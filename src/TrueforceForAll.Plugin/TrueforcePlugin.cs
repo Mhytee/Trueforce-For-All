@@ -5759,10 +5759,11 @@ namespace TrueforceForAll.Plugin
             // Ramp-gated, menus get a true zero stream: wheel free AND silent.
             float centerGain = _pModeBCenterGain * _mbRamp
                 * (float)Math.Min(_lastSpeedKmh / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
-            // Slide-duck (MBCDUCK): ease centering out as the rear breaks away (same
-            // gate as the trail spring, current tick since ComputeModeBForce ran
-            // first) so it stops fighting the countersteer in a slide but stays full
-            // for grip driving. _mbOverEma ~0 gripping = untouched.
+            // Slide-duck (MBCDUCK): ease centering out as the rear breaks away, so it
+            // stops pulling toward straight while the aligning force is pushing toward
+            // the countersteer angle, but stays full for grip driving where the two
+            // agree. Reads _mbOverEma from the current tick (ComputeModeBForce ran
+            // first); ~0 gripping = untouched.
             if (_mbCenterDuckOn)
                 centerGain *= (float)ModeBComposer.SlideDuck(
                     _pModeBCenterDuck,

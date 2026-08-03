@@ -229,11 +229,21 @@ namespace TrueforceForAll.Core
         }
 
         /// <summary>Slide duck: a multiplier that eases a stability force OUT as the
-        /// rear breaks away. The centering spring pulls toward STRAIGHT, but during a
-        /// slide the wheel's stable home is the COUNTERSTEER angle, so centering
-        /// fights the trail spring (different equilibria). Fade centering down with
-        /// the same rear-breakaway gate the trail spring uses, so it stays full for
-        /// grip driving and stops fighting the countersteer in a slide.
+        /// rear breaks away. Centering pulls toward STRAIGHT, but with the car yawing
+        /// the front slip angle reaches zero at a NONZERO steering angle, so the SAT
+        /// aligning force pushes toward the countersteer instead. Two different
+        /// resting places, and the wheel settles at neither. Fade centering down on
+        /// the rear-breakaway gate so it stays full for grip driving (where both want
+        /// the same place and simply sum) and hands the slide to the aligning force.
+        ///
+        /// NOTE this used to be described as centering "fighting the trail spring".
+        /// That was always a mis-description: the conflicting equilibrium belongs to
+        /// the SAT term, and the trail spring only ever changed that force's SHAPE,
+        /// never where it wanted the wheel. The duck is therefore untouched by the
+        /// trail spring's retirement on 2026-08-02, and the 2026-08-01 on-wheel
+        /// validation that judged the drift recipe "significantly more stable" had
+        /// this working and the trail spring inert, so this is one of the terms that
+        /// actually earned that result.
         /// <paramref name="amount"/>: 0 = never duck (untouched) .. 1 = fully gone at
         /// full slide. <paramref name="slideGate01"/>: 0 = gripping .. 1 = full slide.
         /// Returns the multiplier: 1 gripping, (1 - amount) at full slide,
