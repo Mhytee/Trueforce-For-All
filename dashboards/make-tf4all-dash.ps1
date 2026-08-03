@@ -325,10 +325,15 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $base = $script:sel + '=="' + $k + '"' + $script:rowCond
         if ($dataJs) { 'return ' + $base + ' && (' + $dataJs + ')' } else { 'return ' + $base }
     }
+    # The notice claims something about the GAME, so it waits until there is
+    # a car on a track to claim it. Paused or between sessions the value is
+    # missing for a reason that has nothing to do with what the title
+    # reports, and saying otherwise was simply wrong.
     function NoDataVis([string]$k, [string]$dataJs) {
-        'return ' + $script:sel + '=="' + $k + '"' + $script:rowCond + ' && !(' + $dataJs + ')'
+        'return ' + $script:sel + '=="' + $k + '"' + $script:rowCond +
+        ' && $prop("' + $script:PN + '.SessionLive") && !(' + $dataJs + ')'
     }
-    $script:sel = $sel; $script:rowCond = $rowCond
+    $script:sel = $sel; $script:rowCond = $rowCond; $script:PN = $P
 
     $panel = New-Rect "d$slot-panel" $x $y $w $h $script:PANEL
     $panel.Bindings['Visible'] = BindJS 'Visible' ('return ' + $sel + '!="None"' + $rowCond)
@@ -570,20 +575,41 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # of leaving it pinned to the top.
     $cy0 = ($iy + 30 + $y + $h - 12) / 2 - ($tyH + 5)
     $fzTemp = @('TempFL', 'TempFR', 'TempRL', 'TempRR')
+    # Games that measure across the tread report it in three bands, and the
+    # spread across a tyre is the useful part: an outer edge running away
+    # from the middle is the camber/pressure story a single average hides.
+    # Forza sends one temperature per tyre and nothing more, so the split
+    # appears only where the game actually measures it and the single block
+    # stands in otherwise. Bands run outer-to-inner on the left of the car
+    # and inner-to-outer on the right, so the inner edges face each other
+    # the way they do on the car.
+    $bandOrder = @(@('Outer', 'Middle', 'Inner'), @('Inner', 'Middle', 'Outer'))
+    $tempScale = 'if(isNaN(v)||v<=0)return "' + $script:TILE + '";' +
+                 'return v<60?"#FF3D6FB5":(v<85?"' + $script:GREEN + '":(v<100?"#FFE8A33D":"' + $script:RED + '"))'
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
         # ours first, SimHub's as the fallback
         $vJs = 'var v=1*$prop("' + $P + '.Forza.' + $fzTemp[$q] + '");' +
                'if(!(v>0))v=1*$prop("' + $SIM + $tyreProps[$q] + '");'
+        $hasBands = '(1*$prop("' + $SIM + $tyreProps[$q] + 'Middle"))>0'
         # cold -> blue, working -> green, hot -> amber, overheating -> red
-        $colJs = $vJs + 'if(isNaN(v)||v<=0)return "' + $script:TILE + '";' +
-                 'return v<60?"#FF3D6FB5":(v<85?"' + $script:GREEN + '":(v<100?"#FFE8A33D":"' + $script:RED + '"))'
+        $colJs = $vJs + $tempScale
         $r = New-Rect "d$slot-tt$q" $cx $cy $tyW $tyH $script:TILE @{
             BackgroundColor = BindJS 'BackgroundColor' $colJs
         } 6
-        $r.Bindings['Visible'] = BindJS 'Visible' $vis
+        $r.Bindings['Visible'] = BindJS 'Visible' ($vis -replace '^return ', ('return !(' + $hasBands + ') && '))
         $items.Add($r)
+        $bandW = ($tyW - 4) / 3
+        for ($bi = 0; $bi -lt 3; $bi++) {
+            $band = $bandOrder[$q % 2][$bi]
+            $bJs = 'var v=1*$prop("' + $SIM + $tyreProps[$q] + $band + '");'
+            $b = New-Rect "d$slot-tt$q-$($band.ToLower())" ($cx + $bi * ($bandW + 2)) $cy $bandW $tyH $script:TILE @{
+                BackgroundColor = BindJS 'BackgroundColor' ($bJs + $tempScale)
+            } 3
+            $b.Bindings['Visible'] = BindJS 'Visible' ($vis -replace '^return ', ('return (' + $hasBands + ') && '))
+            $items.Add($b)
+        }
         $tv = New-Text "d$slot-tt$q-v" $cx ($cy + $tyH / 2 - 15) $tyW 30 17 '' '#FF101216' 1 @{
             Text = BindJS 'Text' ($vJs + 'return isNaN(v)||v<=0?"--":Math.round(v)')
         } 'Bold'

@@ -906,6 +906,16 @@ namespace TrueforceForAll.Plugin
             // Horizon leaves parts of it empty, and only the FM2023 packet
             // carries wear at all.
             this.AttachDelegate("Dash.Forza.Live",     () => ForzaUdpSource?.DashExtras != null);
+            // Is there a car on a track right now. The Drive boxes use it to
+            // decide whether an absent value is a limit of the GAME or just
+            // this moment: "this game does not report tyre temperatures" is a
+            // claim about the title, and pausing is not evidence for it.
+            // Frames are arriving, and where a source knows the difference
+            // (Forza keeps sending while paused), it says we are on track.
+            // A SimHub-fed game has no such flag, so there the stall watchdog
+            // is the whole test, which is right: pausing stops its frames.
+            this.AttachDelegate("Dash.SessionLive", () =>
+                !_telemetryStalled && (_telemetrySource?.IsSessionActive ?? true));
             this.AttachDelegate("Dash.Forza.TempFL",   () => ForzaUdpSource?.DashExtras?.TireTempFL ?? 0f);
             this.AttachDelegate("Dash.Forza.TempFR",   () => ForzaUdpSource?.DashExtras?.TireTempFR ?? 0f);
             this.AttachDelegate("Dash.Forza.TempRL",   () => ForzaUdpSource?.DashExtras?.TireTempRL ?? 0f);

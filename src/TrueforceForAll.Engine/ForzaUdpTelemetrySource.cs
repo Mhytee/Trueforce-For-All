@@ -329,6 +329,12 @@ namespace TrueforceForAll.Core
         {
             if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
 
+            // Gear scale is a property of the title, so a restart re-learns
+            // it rather than carrying a previous game's answer into this one.
+            _gearOneIsFirst = false;
+            _gearOneFirstFrames = 0;
+            _gearNeutralLowFrames = 0;
+
             try
             {
                 // ExclusiveAddressUse=false so a SimHub install also bound to
@@ -742,7 +748,15 @@ namespace TrueforceForAll.Core
                     ex.TireWearRL = ReadFloat(buf, OFF_TIRE_WEAR_FL + 8);
                     ex.TireWearRR = ReadFloat(buf, OFF_TIRE_WEAR_FL + 12);
                 }
-                DashExtras = ex;
+                // Only replace the snapshot while a car is actually loaded.
+                // Pausing or dropping to a menu zeroes the dash block, and
+                // publishing that made the dash announce "this game does not
+                // report tyre temperatures" the moment the driver hit pause,
+                // which is a claim about the title, not about the moment.
+                // Keeping the last live snapshot freezes those boxes instead,
+                // which is what a real dash does.
+                if (maxRpm > 0f)
+                    DashExtras = ex;
             }
 
             // Forza's accel fields are already m/s² (no g→m/s² conversion
