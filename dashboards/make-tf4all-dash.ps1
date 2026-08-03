@@ -372,6 +372,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $bb = New-Button "d$slot-cf-r$($st[0])" $sx ($iy + 94) $stepW 30 $st[1]
         $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
     }
+    # The tab's provenance line: where the redline came from and the
+    # observed ceiling, so a wrong buzz point is diagnosable here too.
+    $t = New-Text "d$slot-cf-info" $ix ($iy + 128) $iw 22 12 '' $script:GRAY 0 @{
+        Text = BindJS 'Text' ('var m=1*$prop("' + $P + '.MaxRpm");var s=""+($prop("' + $P + '.RedlineSource")||"");' +
+                              'var t=m>0?("MAX "+m):"";if(s!=""&&s!="none")t+=(t!=""?"   ":"")+s.toUpperCase();return t')
+    }
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
 
     # ---------------- GAINS (ours) -----------------------------------
     # Live like the Home tab: steppers on master gain, the value opens
@@ -395,11 +402,30 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
     $t = New-Text "d$slot-hm-mgl" $ix ($iy + 68) $iw 18 12 'MASTER GAIN' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-hm-ag" $ix ($iy + 88) $iw 'Audio' ('return $prop("' + $P + '.Fx.Audio.On")?(1*$prop("' + $P + '.AudioGain")).toFixed(2):"off"') $vis 17 | ForEach-Object { $items.Add($_) }
-    $b = New-Button "d$slot-hm-ag-tap" $ix ($iy + 86) $iw 30 'DashFxAudioToggle'
+    # Audio row with the Home tab's full set: the label toggles it, the
+    # value opens the keypad, and it gets its own steppers.
+    $t = New-Text "d$slot-hm-agl" $ix ($iy + 90) 58 26 14 'Audio' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $b = New-Button "d$slot-hm-ag-tgl" $ix ($iy + 88) 58 30 'DashFxAudioToggle'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    BoxLine "d$slot-hm-on" $ix ($iy + 118) $iw 'Plugin' ('return $prop("' + $P + '.PluginOn")?"on":"off"') $vis 17 | ForEach-Object { $items.Add($_) }
-    $b = New-Button "d$slot-hm-on-tap" $ix ($iy + 116) $iw 30 'DashPluginToggle'
+    $agValX = $ix + 62; $agValW = $iw - 62 - 92
+    $t = New-Text "d$slot-hm-ag-v" $agValX ($iy + 88) $agValW 30 17 '' $script:WHITE 2 @{
+        Text = BindJS 'Text' ('return $prop("' + $P + '.Fx.Audio.On")?(1*$prop("' + $P + '.AudioGain")).toFixed(2):"off"')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $b = New-Button "d$slot-hm-ag-tap" $agValX ($iy + 88) $agValW 30 'DashAudioGainOpen'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    foreach ($st in @(@('adn', 'DashAudioGainDown', '-', 0), @('aup', 'DashAudioGainUp', '+', 46))) {
+        $sx = $ix + $iw - 88 + $st[3]
+        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 88) 40 30 $script:TILE
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 88) 40 30 20 $st[2] $script:WHITE 1 $null 'Bold'
+        $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
+        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 88) 40 30 $st[1]
+        $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
+    }
+    BoxLine "d$slot-hm-on" $ix ($iy + 124) $iw 'Plugin' ('return $prop("' + $P + '.PluginOn")?"on":"off"') $vis 17 | ForEach-Object { $items.Add($_) }
+    $b = New-Button "d$slot-hm-on-tap" $ix ($iy + 122) $iw 30 'DashPluginToggle'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
 
     # ---------------- PRESETS (ours) ---------------------------------
@@ -716,6 +742,25 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $z1 = New-Rect "d$slot-sc-z1" $ix $l1mid $iw 2 $script:SCOPE_GRID $null 0
     $z1.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($z1)
+    # The full screen carries its colour key in a top-right legend, which
+    # has nowhere to go here without colliding with the header and the
+    # badges. Each lane gets its own tinted label instead, which says the
+    # same thing closer to the thing it describes.
+    $lt1 = New-Text "d$slot-sc-lg1t" $ix ($l1y + 1) 70 16 10 'GAME FFB' $script:SCOPE_AMBER 0
+    $lt1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($lt1)
+
+    # Clip threshold rails, dotted like the full screen: the force line
+    # reaching them IS the clip, which is what the badge then reports.
+    $railOff = ($scLane / 2) * 0.98
+    foreach ($side in @(-1, 1)) {
+        $ry = $l1mid + 1 - $side * $railOff
+        for ($seg = 0; $seg -lt 12; $seg++) {
+            $rx = $ix + $seg * ($iw / 12)
+            $rail = New-Rect "d$slot-sc-rail$($side)_$seg" $rx $ry ($iw / 24) 2 '#66E5484D' $null 0
+            $rail.Bindings['Visible'] = BindJS 'Visible' $vis
+            $items.Add($rail)
+        }
+    }
     $clipGlowJs = '(1*$prop("' + $P + '.Scope.FfbClipGlow"))'
     $trace = New-Chart "d$slot-sc-tr" ($ix - 10) ($l1y - 10) ($iw + 20) ($scLane + 20) $script:SCOPE_AMBER 2 90 ('return 1*$prop("' + $P + '.Scope.Ffb77")')
     $trace.Bindings['LineColor'] = BindJS 'LineColor' ('var g=' + $clipGlowJs + ';if(g<0)g=0;if(g>1)g=1;var r=Math.round(227+g*2).toString(16);var q=Math.round(164-g*92).toString(16);var w=Math.round(69+g*8).toString(16);if(r.length<2)r="0"+r;if(q.length<2)q="0"+q;if(w.length<2)w="0"+w;return "#FF"+r+q+w')
@@ -727,6 +772,8 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $z2 = New-Rect "d$slot-sc-z2" $ix $l2mid $iw 2 $script:SCOPE_GRID $null 0
     $z2.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($z2)
+    $lt2 = New-Text "d$slot-sc-lg2t" $ix ($l2y + 1) 70 16 10 'TRUEFORCE' $script:SCOPE_PURPLE 0
+    $lt2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($lt2)
     $cols = 39
     $cw = $iw / $cols
     for ($c = 0; $c -lt $cols; $c++) {
@@ -745,12 +792,18 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # vertically centred. Visual content (tyres, both circles, radar, the
     # visualizer lanes) already sizes itself from the box height and is
     # deliberately left alone, as is the panel.
-    $textDy = [math]::Max(0, ($h - 212) / 2)
-    if ($textDy -gt 0) {
-        foreach ($it in $items) {
-            if ([string]$it.Name -match "^d$slot-(cf|hm|pr|lt|fu|dl|rel)") {
-                $it.Top = [double]$it.Top + $textDy
-            }
+    # Measure each text group's real bounding box and centre THAT in the
+    # panel, rather than assuming a nominal content height: the groups
+    # differ (car facts is three rows, relative is five), so a fixed
+    # offset leaves some of them sitting visibly high.
+    if ($h -gt 212) {
+        foreach ($g in 'cf', 'hm', 'pr', 'lt', 'fu', 'dl', 'rel') {
+            $members = @($items | Where-Object { [string]$_.Name -match "^d$slot-$g(-|\d)" })
+            if ($members.Count -eq 0) { continue }
+            $minTop = ($members | ForEach-Object { [double]$_.Top } | Measure-Object -Minimum).Minimum
+            $maxBot = ($members | ForEach-Object { [double]$_.Top + [double]$_.Height } | Measure-Object -Maximum).Maximum
+            $dy = ($y + ($h - ($maxBot - $minTop)) / 2) - $minTop
+            if ($dy -gt 0) { foreach ($m in $members) { $m.Top = [double]$m.Top + $dy } }
         }
     }
     $items
@@ -1818,6 +1871,7 @@ $ovDriveTab['d0-cf-rdn-bg'] = @{ Show = $true }
 $ovDriveTab['d0-cf-rdn-t']  = @{ Show = $true }
 $ovDriveTab['d0-cf-rup-bg'] = @{ Show = $true }
 $ovDriveTab['d0-cf-rup-t']  = @{ Show = $true }
+$ovDriveTab['d0-cf-info']   = @{ Show = $true; Text = 'MAX 8100   COMMUNITY' }
 # slot 1: lap times
 $ovDriveTab['d1-lt-h']      = @{ Show = $true }
 $ovDriveTab['d1-lt-cur']    = @{ Show = $true; Text = '01:24.318' }
@@ -1836,6 +1890,9 @@ $ovDriveTab['d2-sc-clip-bg']  = @{ Show = $true }
 $ovDriveTab['d2-sc-clip-t']   = @{ Show = $true }
 $ovDriveTab['d2-sc-spike-bg'] = @{ Show = $true }
 $ovDriveTab['d2-sc-spike-t']  = @{ Show = $true }
+$ovDriveTab['d2-sc-lg1t'] = @{ Show = $true }
+$ovDriveTab['d2-sc-lg2t'] = @{ Show = $true }
+foreach ($side in @(-1, 1)) { for ($seg = 0; $seg -lt 12; $seg++) { $ovDriveTab["d2-sc-rail$($side)_$seg"] = @{ Show = $true } } }
 $scLane = ((212 - 46) - 16) / 2
 $l2mid  = 228 + 10 + 26 + $scLane + 16 + $scLane / 2
 for ($i = 0; $i -lt 39; $i++) {
