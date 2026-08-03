@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "4d32e02d-7d83-4594-8db0-00c3647bb9dc",
+    "Id":  "f3938f38-1e92-4d0f-a854-97742da26170",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "09791527-89a3-40ff-8e0a-718d8845b195",
+                        "ScreenId":  "1b1e21a1-9ebc-44fc-afeb-25ea41454561",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8f5216c6-baf7-4937-99f4-d8c3113fee93",
+                        "ScreenId":  "9267b89c-3fe6-4ab0-9bd0-d62b8cb2394a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "2677d8e8-6fc3-4900-b681-3260dfd7eba4",
+                        "ScreenId":  "a01e1c5b-bdda-42b5-aedb-c6809ae4351a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "51e3ebd0-6b2a-4e93-8ffb-79bb631f5776",
+                        "ScreenId":  "a84b9ab0-498b-42a7-b90c-68b993e10d19",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "cfefdb38-ebec-494a-ac28-1b147a9b4e2a",
+                        "ScreenId":  "87e1b2f8-b42a-4cb8-8044-d6d7ce17c9a7",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "16bc0250-6131-486f-98ac-26142f810960",
+                        "ScreenId":  "0506cb78-e038-4982-979c-7a5e115c1458",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9982e684-53c4-46c5-bee4-50331cef2e4f",
+                        "ScreenId":  "603fcbdc-147b-4cf8-ac88-963555356499",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -55963,7 +55963,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56015,7 +56015,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56067,7 +56067,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56119,7 +56119,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56211,7 +56211,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56263,7 +56263,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56315,7 +56315,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56367,7 +56367,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56459,7 +56459,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56511,7 +56511,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56563,7 +56563,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56615,7 +56615,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56707,7 +56707,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56759,7 +56759,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56811,7 +56811,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -56863,7 +56863,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66372,7 +66372,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66424,7 +66424,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66476,7 +66476,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66528,7 +66528,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66620,7 +66620,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66672,7 +66672,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66724,7 +66724,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66776,7 +66776,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66868,7 +66868,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66920,7 +66920,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -66972,7 +66972,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -67024,7 +67024,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -67116,7 +67116,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -67168,7 +67168,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -67220,7 +67220,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -67272,7 +67272,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77317,7 +77317,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77385,7 +77385,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77453,7 +77453,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77521,7 +77521,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77637,7 +77637,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77705,7 +77705,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77773,7 +77773,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77841,7 +77841,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -77957,7 +77957,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -78025,7 +78025,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -78093,7 +78093,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -78161,7 +78161,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -78277,7 +78277,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -78345,7 +78345,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -78413,7 +78413,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -78481,7 +78481,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -89502,7 +89502,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -89570,7 +89570,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -89638,7 +89638,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -89706,7 +89706,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -89822,7 +89822,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -89890,7 +89890,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -89958,7 +89958,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90026,7 +90026,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90142,7 +90142,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeft\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90210,7 +90210,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90278,7 +90278,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90346,7 +90346,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90462,7 +90462,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\");if(!(v\u003e0))v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRight\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90530,7 +90530,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90598,7 +90598,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -90666,7 +90666,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";return v\u003c60?\"#FF3D6FB5\":(v\u003c85?\"#FF37D67A\":(v\u003c100?\"#FFE8A33D\":\"#FFE5484D\"))"
+                                                                                                   "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\");if(isNaN(v)||v\u003c=0)return \"#FF232936\";var s=[[60,55,214,122],[85,232,212,77],[100,232,163,61],[115,229,72,77]];var c=s[0];if(v\u003e=s[3][0])c=s[3];else if(v\u003es[0][0]){for(var i=0;i\u003c3;i++){if(v\u003c=s[i+1][0]){var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,s[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,s[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}var o=\"#FF\";for(var k=1;k\u003c4;k++){var n=Math.round(c[k]);if(n\u003c0)n=0;if(n\u003e255)n=255;var x=n.toString(16);if(x.length\u003c2)x=\"0\"+x;o+=x;}return o"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"

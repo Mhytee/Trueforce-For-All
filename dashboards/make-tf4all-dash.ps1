@@ -21,6 +21,59 @@ $WHITE   = '#FFF2F4F8'
 $MUTED   = '#FF8B93A7'
 $GRAY    = '#FF6B7280'
 $CLEAR   = '#00FFFFFF'
+
+# Tyre temperature ramp: green, yellow, orange, red, interpolated rather
+# than stepped, because a tyre does not change state at a threshold and
+# the drift toward the next colour IS the reading. Breakpoints match the
+# old stepped scale, so a tyre that read amber still does. One table:
+# the dash formula and the preview renderer are both generated from it,
+# so a thumbnail can never show a colour the dash would not.
+# Built with the unary comma per row: a bare @(@(..),@(..)) flattens in
+# PowerShell and the rows stop being rows.
+$TEMP_STOPS = @()
+$TEMP_STOPS += , @(60,  55, 214, 122)   # green
+$TEMP_STOPS += , @(85, 232, 212,  77)   # yellow
+$TEMP_STOPS += , @(100, 232, 163, 61)   # orange
+$TEMP_STOPS += , @(115, 229,  72, 77)   # red
+
+function TempColorJs([string]$tileColor) {
+    $js = 'if(isNaN(v)||v<=0)return "' + $tileColor + '";var s=['
+    $js += (($TEMP_STOPS | ForEach-Object { '[' + ($_ -join ',') + ']' }) -join ',')
+    $js += '];var c=s[0];if(v>=s[3][0])c=s[3];' +
+           'else if(v>s[0][0]){for(var i=0;i<3;i++){if(v<=s[i+1][0]){' +
+           'var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,' +
+           's[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,' +
+           's[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}' +
+           'var o="#FF";for(var k=1;k<4;k++){var n=Math.round(c[k]);' +
+           'if(n<0)n=0;if(n>255)n=255;var x=n.toString(16);' +
+           'if(x.length<2)x="0"+x;o+=x;}return o'
+    $js
+}
+
+# Same ramp in PowerShell, for the preview renderer (it draws static
+# colors and never evaluates the formula above).
+function TempColor([double]$v) {
+    if ($v -le 0) { return $script:TILE }
+    $st = $script:TEMP_STOPS
+    $c = $st[0]
+    if ($v -ge $st[3][0]) { $c = $st[3] }
+    elseif ($v -gt $st[0][0]) {
+        for ($i = 0; $i -lt 3; $i++) {
+            if ($v -le $st[$i + 1][0]) {
+                $t = ($v - $st[$i][0]) / ($st[$i + 1][0] - $st[$i][0])
+                # Every element parenthesised: PowerShell's comma binds
+                # tighter than + and *, so a bare expression here becomes
+                # (0, x) * $t and dies on op_Multiply.
+                $c = @(0,
+                    ($st[$i][1] + ($st[$i + 1][1] - $st[$i][1]) * $t),
+                    ($st[$i][2] + ($st[$i + 1][2] - $st[$i][2]) * $t),
+                    ($st[$i][3] + ($st[$i + 1][3] - $st[$i][3]) * $t))
+                break
+            }
+        }
+    }
+    '#FF' + ('{0:X2}{1:X2}{2:X2}' -f [int][math]::Round($c[1]), [int][math]::Round($c[2]), [int][math]::Round($c[3]))
+}
 $BACKDROP= '#F60D0F13'   # overlay backdrop (near-opaque)
 
 function BindJS([string]$target, [string]$expr) {
@@ -587,8 +640,12 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # and inner-to-outer on the right, so the inner edges face each other
     # the way they do on the car.
     $bandOrder = @(@('Outer', 'Middle', 'Inner'), @('Inner', 'Middle', 'Outer'))
-    $tempScale = 'if(isNaN(v)||v<=0)return "' + $script:TILE + '";' +
-                 'return v<60?"#FF3D6FB5":(v<85?"' + $script:GREEN + '":(v<100?"#FFE8A33D":"' + $script:RED + '"))'
+    # A tyre does not change state at a threshold, so the colour does not
+    # step at one either: it is interpolated between four stops, and the
+    # drift toward the next colour IS the reading. Stops keep the old
+    # breakpoints so a tyre that read amber still does. Games disagree on
+    # units and on core vs surface, so this stays a relative cue.
+    $tempScale = TempColorJs $script:TILE
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
@@ -2170,7 +2227,7 @@ $ovDriveTab['d2-sc-tr'] = @{ Show = $true; Points = $scPts }
 # slot 3: tyre temps as coloured blocks
 $ovDriveTab['d3-tt-h'] = @{ Show = $true }
 $tq  = @(86, 84, 79, 108)
-$tqc = @($GREEN, $GREEN, $GREEN, $RED)
+$tqc = @($tq | ForEach-Object { TempColor $_ })
 for ($i = 0; $i -lt 4; $i++) {
     $ovDriveTab["d3-tt$i"]    = @{ Show = $true; BackgroundColor = $tqc[$i] }
     $ovDriveTab["d3-tt$i-v"]  = @{ Show = $true; Text = ([string]$tq[$i]) }
