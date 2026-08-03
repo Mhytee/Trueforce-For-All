@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "59f8a807-51a9-47aa-926e-e42bb54314b4",
+    "Id":  "41b0c433-f60e-4b17-9369-d2c33b135988",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "fd6fed5f-ed1c-4e4a-8623-8d98825aac78",
+                        "ScreenId":  "43b149f4-1903-4d20-8728-3fab8ca48939",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -5718,7 +5718,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "ec901420-0c49-4449-81e9-5e4afd98ffda",
+                        "ScreenId":  "b819f3ee-9d31-4927-9200-0b380cd2a543",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14591,7 +14591,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f4322b61-bf90-4ebe-90ad-e191be8296c1",
+                        "ScreenId":  "3056d8c2-5059-4126-a3e6-d8d8f7243778",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -25498,7 +25498,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8da83f93-f7ac-4177-9712-e3a553bd4f22",
+                        "ScreenId":  "525252d8-f5c9-4449-913a-b5df4aa997e9",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -30380,7 +30380,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8acdca82-dae6-4f84-b884-b572dbc8d8f8",
+                        "ScreenId":  "75b093ab-2130-4828-903f-d45583799003",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -41777,7 +41777,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "24074689-c5d5-4a74-a55e-ac7003f630bb",
+                        "ScreenId":  "affe7104-f176-491d-bcf0-19b9bbe624a5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -49887,7 +49887,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "1f7e2898-e190-413b-be4d-b4ecdc59e095",
+                        "ScreenId":  "614420f7-99a8-499e-a028-36bd796cb819",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -51969,7 +51969,7 @@
                                           "Height":  68,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52014,7 +52014,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -52061,7 +52061,7 @@
                                           "Height":  68,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52106,7 +52106,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -52153,7 +52153,7 @@
                                           "Height":  68,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52198,7 +52198,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -52245,7 +52245,7 @@
                                           "Height":  68,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52290,7 +52290,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -52401,7 +52401,7 @@
                                           "Height":  68,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52446,7 +52446,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -52493,7 +52493,7 @@
                                           "Height":  68,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52538,7 +52538,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -52585,7 +52585,7 @@
                                           "Height":  68,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52630,7 +52630,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -52677,7 +52677,7 @@
                                           "Height":  68,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -52722,7 +52722,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -53337,7 +53337,7 @@
                                           "Height":  140,
                                           "Left":  81,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  63,
                                           "Visible":  true,
                                           "Width":  140,
                                           "BorderBottom":  1,
@@ -53381,7 +53381,7 @@
                                           "Height":  70,
                                           "Left":  116,
                                           "Opacity":  100,
-                                          "Top":  93,
+                                          "Top":  98,
                                           "Visible":  true,
                                           "Width":  70,
                                           "BorderBottom":  1,
@@ -53425,7 +53425,7 @@
                                           "Height":  14,
                                           "Left":  144,
                                           "Opacity":  100,
-                                          "Top":  121,
+                                          "Top":  126,
                                           "Visible":  true,
                                           "Width":  14,
                                           "BorderBottom":  0,
@@ -53449,7 +53449,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 121-g*46.6666666666667"
+                                                                                       "Expression":  "var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 126-g*46.6666666666667"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -53589,7 +53589,7 @@
                                           "Height":  140,
                                           "Left":  81,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  63,
                                           "Visible":  true,
                                           "Width":  140,
                                           "BorderBottom":  2,
@@ -53633,7 +53633,7 @@
                                           "Height":  105,
                                           "Left":  98.5,
                                           "Opacity":  100,
-                                          "Top":  75.5,
+                                          "Top":  80.5,
                                           "Visible":  true,
                                           "Width":  105,
                                           "BorderBottom":  1,
@@ -53677,7 +53677,7 @@
                                           "Height":  16,
                                           "Left":  143,
                                           "Opacity":  100,
-                                          "Top":  120,
+                                          "Top":  125,
                                           "Visible":  true,
                                           "Width":  16,
                                           "BorderBottom":  0,
@@ -53709,7 +53709,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 120-(b/m)*u*70"
+                                                                                       "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 125-(b/m)*u*70"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -60862,7 +60862,7 @@
                                           "Height":  68,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -60907,7 +60907,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -60954,7 +60954,7 @@
                                           "Height":  68,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -60999,7 +60999,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -61046,7 +61046,7 @@
                                           "Height":  68,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -61091,7 +61091,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -61138,7 +61138,7 @@
                                           "Height":  68,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -61183,7 +61183,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -61294,7 +61294,7 @@
                                           "Height":  68,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -61339,7 +61339,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -61386,7 +61386,7 @@
                                           "Height":  68,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  60,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -61431,7 +61431,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  77,
+                                          "Top":  79,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -61478,7 +61478,7 @@
                                           "Height":  68,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -61523,7 +61523,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -61570,7 +61570,7 @@
                                           "Height":  68,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  136,
+                                          "Top":  138,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -61615,7 +61615,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  155,
+                                          "Top":  157,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -62230,7 +62230,7 @@
                                           "Height":  140,
                                           "Left":  579,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  63,
                                           "Visible":  true,
                                           "Width":  140,
                                           "BorderBottom":  1,
@@ -62274,7 +62274,7 @@
                                           "Height":  70,
                                           "Left":  614,
                                           "Opacity":  100,
-                                          "Top":  93,
+                                          "Top":  98,
                                           "Visible":  true,
                                           "Width":  70,
                                           "BorderBottom":  1,
@@ -62318,7 +62318,7 @@
                                           "Height":  14,
                                           "Left":  642,
                                           "Opacity":  100,
-                                          "Top":  121,
+                                          "Top":  126,
                                           "Visible":  true,
                                           "Width":  14,
                                           "BorderBottom":  0,
@@ -62342,7 +62342,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 121-g*46.6666666666667"
+                                                                                       "Expression":  "var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 126-g*46.6666666666667"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -62482,7 +62482,7 @@
                                           "Height":  140,
                                           "Left":  579,
                                           "Opacity":  100,
-                                          "Top":  58,
+                                          "Top":  63,
                                           "Visible":  true,
                                           "Width":  140,
                                           "BorderBottom":  2,
@@ -62526,7 +62526,7 @@
                                           "Height":  105,
                                           "Left":  596.5,
                                           "Opacity":  100,
-                                          "Top":  75.5,
+                                          "Top":  80.5,
                                           "Visible":  true,
                                           "Width":  105,
                                           "BorderBottom":  1,
@@ -62570,7 +62570,7 @@
                                           "Height":  16,
                                           "Left":  641,
                                           "Opacity":  100,
-                                          "Top":  120,
+                                          "Top":  125,
                                           "Visible":  true,
                                           "Width":  16,
                                           "BorderBottom":  0,
@@ -62602,7 +62602,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 120-(b/m)*u*70"
+                                                                                       "Expression":  "var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 125-(b/m)*u*70"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70195,7 +70195,7 @@
                                           "Height":  71,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -70227,7 +70227,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70256,7 +70256,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -70283,7 +70283,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70311,7 +70311,7 @@
                                           "Height":  71,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -70343,7 +70343,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70372,7 +70372,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -70399,7 +70399,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70427,7 +70427,7 @@
                                           "Height":  71,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -70459,7 +70459,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70488,7 +70488,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -70515,7 +70515,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70543,7 +70543,7 @@
                                           "Height":  71,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -70575,7 +70575,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70604,7 +70604,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -70631,7 +70631,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70739,7 +70739,7 @@
                                           "Height":  71,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -70771,7 +70771,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70800,7 +70800,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -70827,7 +70827,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70855,7 +70855,7 @@
                                           "Height":  71,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -70887,7 +70887,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70916,7 +70916,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -70943,7 +70943,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -70971,7 +70971,7 @@
                                           "Height":  71,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -71003,7 +71003,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -71032,7 +71032,7 @@
                                           "Height":  30,
                                           "Left":  84,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -71059,7 +71059,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -71087,7 +71087,7 @@
                                           "Height":  71,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -71119,7 +71119,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -71148,7 +71148,7 @@
                                           "Height":  30,
                                           "Left":  164,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -71175,7 +71175,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -71899,7 +71899,7 @@
                                           "Height":  146,
                                           "Left":  78,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  275,
                                           "Visible":  true,
                                           "Width":  146,
                                           "BorderBottom":  1,
@@ -71923,7 +71923,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?275:127"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -71975,7 +71975,7 @@
                                           "Height":  73,
                                           "Left":  114.5,
                                           "Opacity":  100,
-                                          "Top":  306.5,
+                                          "Top":  311.5,
                                           "Visible":  true,
                                           "Width":  73,
                                           "BorderBottom":  1,
@@ -71999,7 +71999,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?306.5:115.5"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?311.5:184.5"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -72051,7 +72051,7 @@
                                           "Height":  14,
                                           "Left":  144,
                                           "Opacity":  100,
-                                          "Top":  336,
+                                          "Top":  341,
                                           "Visible":  true,
                                           "Width":  14,
                                           "BorderBottom":  0,
@@ -72075,7 +72075,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 336-g*48.6666666666667})():(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 166-g*76.6666666666667})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 341-g*48.6666666666667})():(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 235-g*76.6666666666667})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -72239,7 +72239,7 @@
                                           "Height":  146,
                                           "Left":  78,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  275,
                                           "Visible":  true,
                                           "Width":  146,
                                           "BorderBottom":  2,
@@ -72263,7 +72263,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?275:127"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -72315,7 +72315,7 @@
                                           "Height":  109.5,
                                           "Left":  96.25,
                                           "Opacity":  100,
-                                          "Top":  288.25,
+                                          "Top":  293.25,
                                           "Visible":  true,
                                           "Width":  109.5,
                                           "BorderBottom":  1,
@@ -72339,7 +72339,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?288.25:86.75"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?293.25:155.75"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -72391,7 +72391,7 @@
                                           "Height":  16,
                                           "Left":  143,
                                           "Opacity":  100,
-                                          "Top":  335,
+                                          "Top":  340,
                                           "Visible":  true,
                                           "Width":  16,
                                           "BorderBottom":  0,
@@ -72423,7 +72423,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 335-(b/m)*u*73})():(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 165-(b/m)*u*115})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 340-(b/m)*u*73})():(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 234-(b/m)*u*115})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -73150,7 +73150,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:56"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:115"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80512,7 +80512,7 @@
                                           "Height":  71,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -80544,7 +80544,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80573,7 +80573,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -80600,7 +80600,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80628,7 +80628,7 @@
                                           "Height":  71,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -80660,7 +80660,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80689,7 +80689,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -80716,7 +80716,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80744,7 +80744,7 @@
                                           "Height":  71,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -80776,7 +80776,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80805,7 +80805,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -80832,7 +80832,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80860,7 +80860,7 @@
                                           "Height":  71,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -80892,7 +80892,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80921,7 +80921,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -80948,7 +80948,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81056,7 +81056,7 @@
                                           "Height":  71,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -81088,7 +81088,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81117,7 +81117,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -81144,7 +81144,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81172,7 +81172,7 @@
                                           "Height":  71,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  272,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -81204,7 +81204,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?272:163"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81233,7 +81233,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  290.5,
+                                          "Top":  292.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -81260,7 +81260,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290.5:80"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?292.5:185"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81288,7 +81288,7 @@
                                           "Height":  71,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -81320,7 +81320,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81349,7 +81349,7 @@
                                           "Height":  30,
                                           "Left":  582,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -81376,7 +81376,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81404,7 +81404,7 @@
                                           "Height":  71,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  351,
+                                          "Top":  353,
                                           "Visible":  true,
                                           "Width":  54,
                                           "BorderBottom":  0,
@@ -81436,7 +81436,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?351:142"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?353:247"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -81465,7 +81465,7 @@
                                           "Height":  30,
                                           "Left":  662,
                                           "Opacity":  100,
-                                          "Top":  371.5,
+                                          "Top":  373.5,
                                           "Visible":  true,
                                           "Width":  54,
                                           "Rotation":  0,
@@ -81492,7 +81492,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?371.5:164"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?373.5:269"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -82216,7 +82216,7 @@
                                           "Height":  146,
                                           "Left":  576,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  275,
                                           "Visible":  true,
                                           "Width":  146,
                                           "BorderBottom":  1,
@@ -82240,7 +82240,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?275:127"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -82292,7 +82292,7 @@
                                           "Height":  73,
                                           "Left":  612.5,
                                           "Opacity":  100,
-                                          "Top":  306.5,
+                                          "Top":  311.5,
                                           "Visible":  true,
                                           "Width":  73,
                                           "BorderBottom":  1,
@@ -82316,7 +82316,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?306.5:115.5"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?311.5:184.5"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -82368,7 +82368,7 @@
                                           "Height":  14,
                                           "Left":  642,
                                           "Opacity":  100,
-                                          "Top":  336,
+                                          "Top":  341,
                                           "Visible":  true,
                                           "Width":  14,
                                           "BorderBottom":  0,
@@ -82392,7 +82392,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 336-g*48.6666666666667})():(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 166-g*76.6666666666667})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 341-g*48.6666666666667})():(function(){var g=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");if(isNaN(g))g=0;if(g\u003e1.5)g=1.5;if(g\u003c-1.5)g=-1.5;return 235-g*76.6666666666667})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -82556,7 +82556,7 @@
                                           "Height":  146,
                                           "Left":  576,
                                           "Opacity":  100,
-                                          "Top":  270,
+                                          "Top":  275,
                                           "Visible":  true,
                                           "Width":  146,
                                           "BorderBottom":  2,
@@ -82580,7 +82580,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?270:58"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?275:127"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -82632,7 +82632,7 @@
                                           "Height":  109.5,
                                           "Left":  594.25,
                                           "Opacity":  100,
-                                          "Top":  288.25,
+                                          "Top":  293.25,
                                           "Visible":  true,
                                           "Width":  109.5,
                                           "BorderBottom":  1,
@@ -82656,7 +82656,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?288.25:86.75"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?293.25:155.75"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -82708,7 +82708,7 @@
                                           "Height":  16,
                                           "Left":  641,
                                           "Opacity":  100,
-                                          "Top":  335,
+                                          "Top":  340,
                                           "Visible":  true,
                                           "Width":  16,
                                           "BorderBottom":  0,
@@ -82740,7 +82740,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 335-(b/m)*u*73})():(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 165-(b/m)*u*115})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 340-(b/m)*u*73})():(function(){var u=1*$prop(\"TrueforcePlugin.Dash.Drive.Util\");if(isNaN(u))u=0;if(u\u003e1.3)u=1.3;var a=1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\");var b=1*$prop(\"TrueforcePlugin.Dash.Drive.GLong\");var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m\u003c0.05){a=0;b=0;m=1;}return 234-(b/m)*u*115})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -83467,7 +83467,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:56"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?268:115"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"

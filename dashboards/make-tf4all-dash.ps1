@@ -471,7 +471,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $wearProps = @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight')
     $tyW = 54; $tyH = [math]::Min(74, ($h - 70) / 2); $gapX = 26
     $cx0 = $ix + ($iw - ($tyW * 2 + $gapX)) / 2
-    $cy0 = $iy + 32
+    # The blocks are capped at 74 tall, so in the taller one-row box the
+    # grid does not grow; centre it in the space below the header instead
+    # of leaving it pinned to the top.
+    $cy0 = ($iy + 30 + $y + $h - 12) / 2 - ($tyH + 5)
     $fzTemp = @('TempFL', 'TempFR', 'TempRL', 'TempRR')
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
@@ -558,7 +561,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddHead 'gc' 'G CIRCLE' 'GCircle'))
     $gr  = [math]::Min(($iw - 24) / 2, ($h - 66) / 2)
     $gcx = $ix + $iw / 2
-    $gcy = $iy + 32 + $gr
+    # Centre in the area below the header rather than hanging off the top
+    # of it. In the tall one-row box the radius is capped by WIDTH, so the
+    # circle cannot grow into the extra height and would otherwise sit
+    # well above centre. The dots position off these constants, so this
+    # has to be right here: a post-hoc shift would move the rings and
+    # leave the bound dots behind.
+    $gcy = ($iy + 30 + $y + $h - 12) / 2
     $items.Add((New-Ring "d$slot-gc-r1" $gcx $gcy $gr '#FF39404C' 1 $vis))
     $items.Add((New-Ring "d$slot-gc-r2" $gcx $gcy ($gr / 2) '#FF2A303A' 1 $vis))
     $gLatJs = 'var g=1*$prop("' + $P + '.Drive.GLat");if(isNaN(g))g=0;if(g>1.5)g=1.5;if(g<-1.5)g=-1.5;'
@@ -632,11 +641,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # the ones that do not.
     $vis = KeyVis 'Radar' $dOpp
     $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
+    # Square, so width caps it in the tall box: centre rather than pin.
     $rdSize = [math]::Min($iw, $h - 52)
     $radar = [ordered]@{
         '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RadarItem, SimHub.Plugins'
         BackgroundColor = $script:CLEAR
-        Height = [double]$rdSize; Left = [double]($ix + ($iw - $rdSize) / 2); Top = [double]($iy + 30)
+        Height = [double]$rdSize; Left = [double]($ix + ($iw - $rdSize) / 2)
+        Top = [double](($iy + 30 + $y + $h - 12) / 2 - $rdSize / 2)
         Visible = $true; Width = [double]$rdSize
         Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
         Name = "d$slot-rd"
