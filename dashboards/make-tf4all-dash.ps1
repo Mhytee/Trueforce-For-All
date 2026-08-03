@@ -344,39 +344,45 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # live on this screen too, so the flow never leaves the Drive tab.
     $vis = KeyVis 'CarFacts' $null
     $items.Add((AddHead 'cf' 'CAR FACTS' 'CarFacts'))
-    $t = New-Text "d$slot-cf-car" $ix ($iy + 24) $iw 34 19 '' $script:WHITE 0 @{
+    $t = New-Text "d$slot-cf-car" $ix ($iy + 26) $iw 36 19 '' $script:WHITE 0 @{
         Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-cf-eng" $ix ($iy + 62) $iw 'Engine' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")') $vis 17 | ForEach-Object { $items.Add($_) }
-    $b = New-Button "d$slot-cf-eng-tap" $ix ($iy + 60) $iw 32 'DashEngineLayoutOpen'
+    # Engine and redline share one value column so the two readouts line
+    # up: the redline needs room for its steppers, so that column's right
+    # edge is what the engine value is measured against too.
+    $stepW = 34; $stepGap = 16
+    $valX = $ix + 66; $valW = $iw - 66 - ($stepW * 2 + 8) - $stepGap
+    $t = New-Text "d$slot-cf-engl" $ix ($iy + 72) 62 26 14 'Engine' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $t = New-Text "d$slot-cf-eng-v" $valX ($iy + 70) $valW 30 17 '' $script:WHITE 2 @{
+        Text = BindJS 'Text' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $b = New-Button "d$slot-cf-eng-tap" $ix ($iy + 70) $iw 30 'DashEngineLayoutOpen'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
     # Redline row with the tab's own controls: minus / plus 50 either
     # side and the value itself opening the keypad.
-    $t = New-Text "d$slot-cf-redl" $ix ($iy + 96) 62 26 14 'Redline' $script:MUTED 0
+    $t = New-Text "d$slot-cf-redl" $ix ($iy + 112) 62 26 14 'Redline' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Gap between the value and the steppers so the number is not jammed
-    # against the minus tile.
-    $stepW = 34; $stepGap = 16
-    $valX = $ix + 66; $valW = $iw - 66 - ($stepW * 2 + 8) - $stepGap
-    $t = New-Text "d$slot-cf-red-v" $valX ($iy + 94) $valW 30 17 '' $script:WHITE 2 @{
+    $t = New-Text "d$slot-cf-red-v" $valX ($iy + 110) $valW 30 17 '' $script:WHITE 2 @{
         Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $b = New-Button "d$slot-cf-red-tap" $valX ($iy + 94) $valW 30 'DashRedlineOpen'
+    $b = New-Button "d$slot-cf-red-tap" $valX ($iy + 110) $valW 30 'DashRedlineOpen'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    foreach ($st in @(@('dn', 'DashRedlineDown', '-', 0), @('up', 'DashRedlineUp', '+', $stepW + 8))) {
+    foreach ($st in @(@('dn', 'DashRedlineDown', '-', 0), @('up', 'DashRedlineUp', '+', ($stepW + 8)))) {
         $sx = $ix + $iw - ($stepW * 2 + 8) + $st[3]
-        $r = New-Rect "d$slot-cf-r$($st[0])-bg" $sx ($iy + 94) $stepW 30 $script:TILE
+        $r = New-Rect "d$slot-cf-r$($st[0])-bg" $sx ($iy + 110) $stepW 30 $script:TILE
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $tt = New-Text "d$slot-cf-r$($st[0])-t" $sx ($iy + 94) $stepW 30 20 $st[2] $script:WHITE 1 $null 'Bold'
+        $tt = New-Text "d$slot-cf-r$($st[0])-t" $sx ($iy + 110) $stepW 30 20 $st[2] $script:WHITE 1 $null 'Bold'
         $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-        $bb = New-Button "d$slot-cf-r$($st[0])" $sx ($iy + 94) $stepW 30 $st[1]
+        $bb = New-Button "d$slot-cf-r$($st[0])" $sx ($iy + 110) $stepW 30 $st[1]
         $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
     }
     # The tab's provenance line: where the redline came from and the
     # observed ceiling, so a wrong buzz point is diagnosable here too.
-    $t = New-Text "d$slot-cf-info" $ix ($iy + 128) $iw 22 12 '' $script:GRAY 0 @{
+    $t = New-Text "d$slot-cf-info" $ix ($iy + 150) $iw 22 12 '' $script:GRAY 0 @{
         Text = BindJS 'Text' ('var m=1*$prop("' + $P + '.MaxRpm");var s=""+($prop("' + $P + '.RedlineSource")||"");' +
                               'var t=m>0?("MAX "+m):"";if(s!=""&&s!="none")t+=(t!=""?"   ":"")+s.toUpperCase();return t')
     }
@@ -391,68 +397,53 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $vis = KeyVis 'Home' $null
     $items.Add((AddHead 'hm' 'GAINS' 'Home'))
     $half = ($iw - 8) / 2
-    # Master gain is the hero, as on the tab: caption, big centred value
-    # with the tap zone hugging the digits, wide minus / plus underneath.
-    $t = New-Text "d$slot-hm-mg-l" $ix ($iy + 20) $iw 14 11 'MASTER GAIN' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-hm-mg" $ix ($iy + 34) $iw 34 30 '' $script:WHITE 1 @{
-        Text = BindJS 'Text' ('return (1*$prop("' + $P + '.MasterGain")).toFixed(2)')
+    # Wheel state on the header row, as on the tab. It is the one thing
+    # here that is not a gain, and the reason to glance at this box when
+    # the wheel goes quiet.
+    $t = New-Text "d$slot-hm-wheel" $ix ($iy + 1) $iw 18 12 '' $script:GREEN 2 @{
+        Text      = BindJS 'Text'      ('return $prop("' + $P + '.WheelOk")?"WHEEL OK":"WHEEL OFFLINE"')
+        TextColor = BindJS 'TextColor' ('return $prop("' + $P + '.WheelOk")?"' + $script:GREEN + '":"' + $script:RED + '"')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Dead space beside the number must not open the keypad (tab rule).
-    $b = New-Button "d$slot-hm-mg-tap" ($ix + $iw / 2 - 44) ($iy + 34) 88 34 'DashMasterGainOpen'
-    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    foreach ($st in @(@('mgdn', 'DashMasterGainDown', '-', 0), @('mgup', 'DashMasterGainUp', '+', $half + 8))) {
-        $sx = $ix + $st[3]
-        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 70) $half 28 $script:TILE
-        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 70) $half 28 22 $st[2] $script:WHITE 1 $null 'Bold'
-        $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 70) $half 28 $st[1]
-        $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
-    }
-    # Audio gain gets the same controls on one row: it is the secondary
-    # gain here, and two hero blocks do not fit a card this size.
-    $agStep = 34
-    $t = New-Text "d$slot-hm-ag-l" $ix ($iy + 104) 54 26 11 'AUDIO' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $agValW = $iw - 54 - ($agStep * 2 + 8) - 14
-    $t = New-Text "d$slot-hm-ag" ($ix + 54) ($iy + 102) $agValW 28 19 '' $script:WHITE 2 @{
-        Text = BindJS 'Text' ('return $prop("' + $P + '.Fx.Audio.On")?(1*$prop("' + $P + '.AudioGain")).toFixed(2):"off"')
-    } 'Bold'
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $b = New-Button "d$slot-hm-ag-tap" ($ix + 54) ($iy + 102) $agValW 28 'DashAudioGainOpen'
-    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    foreach ($st in @(@('agdn', 'DashAudioGainDown', '-', 0), @('agup', 'DashAudioGainUp', '+', $agStep + 8))) {
-        $sx = $ix + $iw - ($agStep * 2 + 8) + $st[3]
-        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 102) $agStep 28 $script:TILE
-        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 102) $agStep 28 20 $st[2] $script:WHITE 1 $null 'Bold'
-        $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 102) $agStep 28 $st[1]
-        $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
-    }
-    # State tiles side by side, the tab's own pattern: each tile carries
-    # its state in both its colour and its caption.
+    # Both gains get the tab's treatment: caption, big centred value with
+    # the tap zone hugging the digits, wide minus / plus underneath.
+    # Dropping the on/off tiles freed the room for the second one.
     # Parenthesised on purpose: PowerShell's comma binds tighter than +,
     # so a bare concatenation here swallows the element after it.
-    $toggles = @(
-        @('on',  'DashPluginToggle',  ($P + '.PluginOn'),    'PLUGIN ON', 'PLUGIN OFF', 0),
-        @('aud', 'DashFxAudioToggle', ($P + '.Fx.Audio.On'), 'AUDIO ON',  'AUDIO OFF',  ($half + 8))
+    $gainRows = @(
+        @('mg', 'MASTER GAIN', ($P + '.MasterGain'), 'DashMasterGainOpen', 'DashMasterGainDown', 'DashMasterGainUp', ''),
+        @('ag', 'AUDIO GAIN',  ($P + '.AudioGain'),  'DashAudioGainOpen',  'DashAudioGainDown',  'DashAudioGainUp',  ($P + '.Fx.Audio.On'))
     )
-    foreach ($tg in $toggles) {
-        $tid = $tg[0]; $tact = $tg[1]; $tprop = $tg[2]; $tOn = $tg[3]; $tOff = $tg[4]
-        $tx = $ix + $tg[5]
-        $r = New-Rect "d$slot-hm-$tid-bg" $tx ($iy + 138) $half 30 $script:TILE @{
-            BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $tprop + '")?"' + $script:TILEON + '":"' + $script:TILE + '"')
+    $gy = $iy + 22
+    foreach ($gRow in $gainRows) {
+        $gid = $gRow[0]; $glabel = $gRow[1]; $gprop = $gRow[2]
+        $gopen = $gRow[3]; $gdn = $gRow[4]; $gup = $gRow[5]; $gonProp = $gRow[6]
+        $t = New-Text "d$slot-hm-$gid-l" $ix $gy $iw 14 11 $glabel $script:MUTED 0
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+        # An audio gain the capture is not using reads as off, not as a
+        # number that is doing nothing.
+        $valJs = if ($gonProp -ne '') {
+            'return $prop("' + $gonProp + '")?(1*$prop("' + $gprop + '")).toFixed(2):"off"'
+        } else {
+            'return (1*$prop("' + $gprop + '")).toFixed(2)'
         }
-        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $t = New-Text "d$slot-hm-$tid-t" $tx ($iy + 138) $half 30 12 '' $script:WHITE 1 @{
-            Text = BindJS 'Text' ('return $prop("' + $tprop + '")?"' + $tOn + '":"' + $tOff + '"')
+        $t = New-Text "d$slot-hm-$gid" $ix ($gy + 15) $iw 34 28 '' $script:WHITE 1 @{
+            Text = BindJS 'Text' $valJs
         } 'Bold'
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-        $b = New-Button "d$slot-hm-$tid" $tx ($iy + 138) $half 30 $tact
+        # Dead space beside the number must not open the keypad (tab rule).
+        $b = New-Button "d$slot-hm-$gid-tap" ($ix + $iw / 2 - 42) ($gy + 15) 84 34 $gopen
         $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+        foreach ($st in @(@(($gid + 'dn'), $gdn, '-', 0), @(($gid + 'up'), $gup, '+', ($half + 8)))) {
+            $sx = $ix + $st[3]
+            $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($gy + 51) $half 28 $script:TILE
+            $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+            $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($gy + 51) $half 28 22 $st[2] $script:WHITE 1 $null 'Bold'
+            $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
+            $bb = New-Button "d$slot-hm-$($st[0])" $sx ($gy + 51) $half 28 $st[1]
+            $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
+        }
+        $gy += 84
     }
 
     # ---------------- PRESETS (ours) ---------------------------------
@@ -788,7 +779,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add($z1)
     # Clip threshold rails, dotted like the full screen: the force line
     # reaching them IS the clip, which is what the badge then reports.
-    $railOff = ($scLane / 2) * 0.98
+    # 0.98 of the lane is where the trace clips, but a 2px dash drawn
+    # centred on that line half-hangs out of the panel. Pull it in by the
+    # dash height so the rails stay inside the lightened area.
+    $railOff = [math]::Min(($scLane / 2) * 0.98, ($scLane / 2) - 4)
     foreach ($side in @(-1, 1)) {
         $ry = $l1mid + 1 - $side * $railOff
         for ($seg = 0; $seg -lt 12; $seg++) {
