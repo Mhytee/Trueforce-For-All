@@ -173,6 +173,10 @@ namespace TrueforceForAll.Core
 
         public Action<string> Logger { get; set; }
 
+        // TEMPORARY: bounded gear-byte tracing, see the diagnostic in Parse.
+        private int _gearDiagLeft = 80;
+        private int _gearDiagLast = -1;
+
         /// <summary>Latest display-only dash fields (tyre temps, fuel, lap
         /// times, position), or null before the first packet carrying a dash
         /// block. Reference-atomic snapshot: the receive thread replaces it
@@ -600,6 +604,20 @@ namespace TrueforceForAll.Core
                 accelByte = buf[dashBase + DASH_ACCEL];
                 brakeByte = buf[dashBase + DASH_BRAKE];
                 gearByte  = buf[dashBase + DASH_GEAR];
+                // TEMPORARY DIAGNOSTIC (gear reads "10" mid-shift on the
+                // owner's rig and a two-frame debounce did not clear it, so
+                // the raw bytes are needed rather than another guess). Logs
+                // each gear-byte change with its neighbours, capped so a
+                // session cannot be flooded. Remove once the cause is known.
+                if (_gearDiagLeft > 0 && gearByte != _gearDiagLast)
+                {
+                    _gearDiagLast = gearByte;
+                    _gearDiagLeft--;
+                    Logger?.Invoke($"[TF4ALL] Forza gear diag: byte={gearByte} -> '{GearString(gearByte)}'"
+                        + $" clutch={buf[dashBase + 73]} handbrake={buf[dashBase + 74]}"
+                        + $" steer={unchecked((sbyte)buf[dashBase + DASH_STEER])}"
+                        + $" len={len} dashBase={dashBase}");
+                }
                 // Steer is a signed byte (read the byte, reinterpret as sbyte)
                 // normalized to ~[-1, 1]. Sign matches Forza's convention
                 // (+ = right); the spring's downstream invert was tuned on

@@ -4302,16 +4302,32 @@ namespace TrueforceForAll.Plugin
             // gets them: SimHub's own properties are empty for that setup, and
             // the two biggest numbers on the screen would otherwise read N and
             // "--" while every box around them worked.
-            // Forza can report a gear for a single frame mid-shift that is not
-            // the gear the car is in (it surfaced as a brief "10" between
-            // gears, which is what byte 11 maps to). A change has to be seen
-            // on two consecutive frames before it reaches the dash: that costs
-            // about one frame, which is imperceptible, and removes the
-            // flicker. Display only; the force path still reads frame.Gear
-            // directly, so shift effects are untouched.
+            // Forza reports a gear mid-shift that the car is not in: it shows
+            // as "10" between gears, which is what gear byte 11 maps to. A
+            // two-frame debounce did NOT clear it, so the bad value persists
+            // longer than a frame and the filter is on plausibility instead:
+            // gears change one step at a time, so a numeric jump of more than
+            // one is not believed until it has held for ~8 frames (about a
+            // seventh of a second). A real skip-shift still lands, just that
+            // much later; N and R are never numeric so they show at once.
+            // Display only: the force path reads frame.Gear directly, so
+            // shift effects are untouched either way.
             string gNow = frame.Gear ?? "";
-            if (gNow == _dashGearPending) _dashLiveGear = gNow;
-            else _dashGearPending = gNow;
+            if (int.TryParse(gNow, out int gNext)
+                && int.TryParse(_dashLiveGear, out int gCur)
+                && Math.Abs(gNext - gCur) > 1)
+            {
+                if (++_dashGearOddFrames >= 8)
+                {
+                    _dashLiveGear = gNow;
+                    _dashGearOddFrames = 0;
+                }
+            }
+            else
+            {
+                _dashLiveGear = gNow;
+                _dashGearOddFrames = 0;
+            }
             _dashLiveSpeedKmh = (float)frame.SpeedKmh;
             // Driver inputs for the Drive tab's inputs box. Steering is the
             // interesting one: SimHub has no universal steering property (see

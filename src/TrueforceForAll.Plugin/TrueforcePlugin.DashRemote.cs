@@ -213,8 +213,8 @@ namespace TrueforceForAll.Plugin
         private volatile float _dashLiveRpm;
         // Gear + speed for the Drive tab, stashed from the same frame.
         private volatile string _dashLiveGear = "";
-        // Candidate gear awaiting a second frame; see the stash in DispatchFrame.
-        private string _dashGearPending = "";
+        // How long an implausible gear jump has been held; see DispatchFrame.
+        private int _dashGearOddFrames;
         private volatile float _dashLiveSpeedKmh;
         // Driver inputs for the Drive tab's inputs box. Steer is -2 when the
         // active source reports no steering at all.
