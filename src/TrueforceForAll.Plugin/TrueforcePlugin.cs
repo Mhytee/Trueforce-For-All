@@ -4422,6 +4422,9 @@ namespace TrueforceForAll.Plugin
                 _lastFrontSlipRatio = 0f;   // no signed slip on a scalar source: gate stays open
                 _lastFrontSlipRatioAbs = 0f; // friction circle: full lateral share
             }
+            // Same grip model Telemetry FFB uses, kept running for the dash
+            // whether or not its force path is. See DashUpdateModelGrip.
+            DashUpdateModelGrip();
             // Suspension-load input: front suspension compression vs its own
             // slow baseline = live front-axle load ratio. The baseline EMA
             // (~3 s) learns the car's ride height, so the ratio reads dive,

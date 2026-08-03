@@ -217,22 +217,75 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashLiveGear = "";
         private volatile float _dashLiveSpeedKmh;
 
-        // Rolling reference for the measured grip circle: the hardest combined
-        // load this car has actually taken. Every car and surface has its own
-        // ceiling, so a fixed number would read 40% in a road car and peg in a
-        // race car. Floored at 0.8 g so a gentle cruise cannot make itself the
-        // reference and report 100%, and it bleeds down slowly so one kerb
-        // strike does not flatten the scale for the rest of the session.
+        // Telemetry FFB's own grip model, run for the dash while its force
+        // path is off. Utilization was never a product of composing a force:
+        // it is an EMA of the front combined-slip channel over the learned
+        // grip peak, and both of those exist whenever telemetry does. Kept in
+        // its own EMA so a dash box can never perturb the FFB state, and fed
+        // from DispatchFrame, which runs regardless.
+        private volatile float _dashModelGripEma;
+        private volatile float _dashModelUtil;
+        private volatile bool  _dashGripChannelSeen;
+
+        // Fallback reference for games with no slip channel at all: the
+        // hardest combined load this car has actually taken. Every car and
+        // surface has its own ceiling, so a fixed number would read 40% in a
+        // road car and peg in a race car. Floored at 0.8 g so a gentle cruise
+        // cannot make itself the reference and report being at the limit, and
+        // it bleeds down slowly so one kerb strike does not flatten the scale.
         private const float DashGripFloorG = 0.8f;
         private float _dashGripPeakG = DashGripFloorG;
         private int   _dashGripCarKey;
 
-        /// <summary>Combined lateral/longitudinal load as a fraction of the
-        /// hardest this car has managed. Available whenever the game reports
-        /// accelerations, with or without Telemetry FFB.</summary>
+        private int _dashGripTick;
+
+        /// <summary>Runs the grip half of the Telemetry FFB model on the
+        /// telemetry thread, so the friction circle reads the same number
+        /// whether or not that model is driving the wheel. Mirrors the EMA and
+        /// the peak divisor in ComputeModeBForce, including the asymmetry:
+        /// breaking away tracks fast because the go-light cue must be instant,
+        /// re-gripping is slowed 4x because a tyre reloads over its relaxation
+        /// length rather than snapping.</summary>
+        private void DashUpdateModelGrip()
+        {
+            float combined = _lastFrontCombined;
+            if (combined > 0f) _dashGripChannelSeen = true;
+            if (!_dashGripChannelSeen) return;
+
+            int now = Environment.TickCount;
+            int last = _dashGripTick;
+            _dashGripTick = now;
+            // First frame, or a gap (paused, alt-tabbed): seed rather than
+            // integrate across it.
+            double dtMs = last == 0 ? 0 : unchecked(now - last);
+            if (dtMs <= 0 || dtMs > 250)
+            {
+                _dashModelGripEma = combined;
+            }
+            else
+            {
+                double tau = Math.Max(2f, _pModeBEmaMs);
+                float alpha = (float)(1.0 - Math.Exp(-dtMs / tau));
+                float a = combined >= _dashModelGripEma
+                    ? alpha
+                    : (float)(1.0 - Math.Exp(-dtMs / (4.0 * tau)));
+                _dashModelGripEma += (combined - _dashModelGripEma) * a;
+            }
+            double peakBase = _mbAutoCalOn ? 1.0 : _pModeBPeakU;
+            double peakDiv  = Math.Max(0.2, peakBase * (double)_mbCalPeak);
+            _dashModelUtil  = (float)TrueforceForAll.Core.ModeBComposer
+                .UtilizationFloor(_dashModelGripEma / peakDiv);
+        }
+
+        /// <summary>Grip in use for the friction circle, with Telemetry FFB's
+        /// force path switched off. Same model and same numbers where the game
+        /// gives a slip channel; measured load against this car's hardest where
+        /// it does not.</summary>
         private float DashMeasuredGripUse()
         {
             if (_telemetryStalled) return 0f;
+            if (_dashGripChannelSeen) return _dashModelUtil;
+
             float lat = _lastSwayAccel / 9.81f, lon = _lastSurgeAccel / 9.81f;
             if (float.IsNaN(lat) || float.IsNaN(lon)) return 0f;
             float g = (float)Math.Sqrt(lat * lat + lon * lon);
