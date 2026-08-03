@@ -414,11 +414,14 @@ namespace TrueforceForAll.Plugin
         // surviving restarts); with it off, DashDefaultTab is the fixed
         // opening tab. DashLastTab is bookkeeping, not a user choice: written
         // on every tab tap, read only when DashRememberLastTab is true.
-        // Indices match the dash tab bar: 0=Drive, 1=Car facts, 2=Effects,
-        // 3=Presets, 4=Visualizer (clamped at read for forward compat).
+        // These are SCREEN indices, not positions in the bar: 0=Gains,
+        // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB,
+        // 6=Drive (clamped at read for forward compat). Both default to
+        // Drive, which leads the factory order and is the screen the dash
+        // exists for; 0 would open on Gains, which now ships switched off.
         public bool DashRememberLastTab { get; set; } = true;
-        public int  DashDefaultTab      { get; set; } = 0;
-        public int  DashLastTab         { get; set; } = 0;
+        public int  DashDefaultTab      { get; set; } = 6;
+        public int  DashLastTab         { get; set; } = 6;
 
         // TF4ALL Dash "Drive" screen: what each of the four corner boxes shows,
         // in slot order (top-left, top-right, bottom-left, bottom-right), plus

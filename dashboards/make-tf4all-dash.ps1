@@ -2143,8 +2143,11 @@ function PreviewChrome([double]$pct, [int]$activeSlot) {
     for ($i = 0; $i -lt 16; $i++) {
         if ($pct -ge (50 + $i * 3.125)) { $o["rev-seg$i"] = @{ Show = $true } }
     }
-    # Factory tab order (Drive leads), matching DashTabFactoryOrder.
-    $slotNames = @('DRIVE', 'GAINS', 'CAR FACTS', 'EFFECTS', 'TELE-FFB', 'PRESETS', 'VISUALIZER')
+    # The factory tab bar exactly as a fresh install shows it: order from
+    # DashTabFactoryOrder, minus the tabs DashTabFactoryDisabled starts off
+    # (Gains, whose box on the Drive tab covers it). Keep this in step with
+    # both, or the thumbnails advertise a layout nobody gets.
+    $slotNames = @('DRIVE', 'CAR FACTS', 'VISUALIZER', 'EFFECTS', 'TELE-FFB', 'PRESETS')
     $pitch = 784 / $slotNames.Count
     for ($i = 0; $i -lt $slotNames.Count; $i++) {
         $bgc = if ($i -eq $activeSlot) { $TILEON } else { $TILE }
@@ -2162,7 +2165,7 @@ $pvGame   = 'Assetto Corsa'
 $pvCar    = 'Mazda MX-5 Cup'
 $pvPreset = 'Assetto Corsa (default)'
 
-$ovDrive = PreviewChrome 78 1
+$ovDrive = PreviewChrome 78 -1   # Gains is off by default: no tab highlighted
 $ovDrive['wheel']    = @{ Text = 'WHEEL OK'; TextColor = $GREEN }
 $ovDrive['gamecar']  = @{ Text = "$pvGame  -  $pvCar" }
 $ovDrive['preset']   = @{ Text = "PRESET  $pvPreset" }
@@ -2174,7 +2177,7 @@ $ovDrive['plug-t']   = @{ Text = 'PLUGIN ON' }
 $ovDrive['aud-bg']   = @{ BackgroundColor = $TILEON }
 $ovDrive['aud-t']    = @{ Text = 'AUDIO HAPTICS ON' }
 
-$ovFacts = PreviewChrome 78 2
+$ovFacts = PreviewChrome 78 1
 $ovFacts['cf-car']       = @{ Text = $pvCar }
 $ovFacts['cf-eng-value'] = @{ Text = 'Inline 4  (community)' }
 $ovFacts['cf-rl-value']  = @{ Text = '7200 rpm' }
@@ -2202,7 +2205,7 @@ $ovPresets['pr-carp-value'] = @{ Text = '(none saved for this car)' }
 # column bindings use). Wave amplitude deliberately exceeds 1 so the
 # preview shows the clip feature: the pinned sections read at the rails
 # with the marker strips lit over them.
-$ovScope = PreviewChrome 78 6
+$ovScope = PreviewChrome 78 2
 $ffbPts = @(); $clipPosPts = @(); $clipNegPts = @()
 for ($i = 0; $i -lt 120; $i++) {
     $v = 0.88 * [math]::Sin($i / 8.5) + 0.36 * [math]::Sin($i / 2.9 + 1.3)
@@ -2266,13 +2269,13 @@ $ovDriveTab['d0-cf-rdn-t']  = @{ Show = $true }
 $ovDriveTab['d0-cf-rup-bg'] = @{ Show = $true }
 $ovDriveTab['d0-cf-rup-t']  = @{ Show = $true }
 $ovDriveTab['d0-cf-info']   = @{ Show = $true; Text = 'MAX 8100   COMMUNITY' }
-# slot 1: lap times
-$ovDriveTab['d1-lt-h']      = @{ Show = $true }
-$ovDriveTab['d1-lt-cur']    = @{ Show = $true; Text = '01:24.318' }
-$ovDriveTab['d1-lt-last-l'] = @{ Show = $true }
-$ovDriveTab['d1-lt-last-v'] = @{ Show = $true; Text = '01:25.902' }
-$ovDriveTab['d1-lt-best-l'] = @{ Show = $true }
-$ovDriveTab['d1-lt-best-v'] = @{ Show = $true; Text = '01:23.771' }
+# slot 1: tyre temps
+$ovDriveTab['d1-tt-h'] = @{ Show = $true }
+$tq  = @(86, 84, 79, 108)
+for ($i = 0; $i -lt 4; $i++) {
+    $ovDriveTab["d1-tt$i"]   = @{ Show = $true; BackgroundColor = (TempColor $tq[$i]) }
+    $ovDriveTab["d1-tt$i-v"] = @{ Show = $true; Text = ([string]$tq[$i]); TextColor = (TempTextColor $tq[$i]) }
+}
 # slot 2: the Visualizer in miniature, two lanes exactly like the tab.
 # Geometry mirrors DriveBox: box y=228 h=212 -> inner y 238, lanes of 75
 # with a 16 px gap, force line on top and haptic envelope below.
@@ -2302,16 +2305,17 @@ $scPts = @()
 for ($i = 0; $i -lt 90; $i++) { $scPts += (0.72 * [math]::Sin($i / 7.5) + 0.24 * [math]::Sin($i / 2.6 + 0.8)) }
 $ovDriveTab['d2-sc-tr'] = @{ Show = $true; Points = $scPts }
 # The preview shows the SHIPPED defaults, so boxes that are not part of
-# the default set (inputs, circles, relative, radar) have no override
-# here and correctly stay hidden in the thumbnail.
-# slot 3: tyre temps as coloured blocks
-$ovDriveTab['d3-tt-h'] = @{ Show = $true }
-$tq  = @(86, 84, 79, 108)
-$tqc = @($tq | ForEach-Object { TempColor $_ })
-for ($i = 0; $i -lt 4; $i++) {
-    $ovDriveTab["d3-tt$i"]    = @{ Show = $true; BackgroundColor = $tqc[$i] }
-    $ovDriveTab["d3-tt$i-v"]  = @{ Show = $true; Text = ([string]$tq[$i]); TextColor = (TempTextColor $tq[$i]) }
-}
+# the default set (lap times, wear, fuel, delta, gains, presets, friction,
+# relative, radar, inputs) have no override here and correctly stay hidden
+# in the thumbnail.
+# slot 3: the g circle
+$ovDriveTab['d3-gc-h']   = @{ Show = $true }
+$ovDriveTab['d3-gc-r1']  = @{ Show = $true }
+$ovDriveTab['d3-gc-r2']  = @{ Show = $true }
+# Mid corner: loaded left and braking, so the dot sits up and right of
+# centre under the felt-force convention the live dot uses.
+$ovDriveTab['d3-gc-dot'] = @{ Show = $true; Left = 690; Top = 300 }
+$ovDriveTab['d3-gc-v']   = @{ Show = $true; Text = '0.82 g' }
 # Pedals and steering around the gear, on by default: throttle carrying
 # the car through the corner, brake released, a touch of right lock.
 $ovDriveTab['dr-ped-thr-bg'] = @{ Show = $true }
@@ -2329,7 +2333,9 @@ Render-Preview $s4 $ovPresets (Join-Path $OutDir 'TF4ALL Dash.djson.03.png')
 Render-Preview $s5 $ovScope   (Join-Path $OutDir 'TF4ALL Dash.djson.04.png')
 Render-Preview $s6 $ovModeB   (Join-Path $OutDir 'TF4ALL Dash.djson.05.png')
 Render-Preview $s7 $ovDriveTab (Join-Path $OutDir 'TF4ALL Dash.djson.06.png')
-Copy-Item (Join-Path $OutDir 'TF4ALL Dash.djson.00.png') (Join-Path $OutDir 'TF4ALL Dash.djson.png') -Force
+# Cover art is the Drive tab: it leads the factory order and is what the
+# dashboard is for. Screen 00 is Gains, which ships switched off.
+Copy-Item (Join-Path $OutDir 'TF4ALL Dash.djson.06.png') (Join-Path $OutDir 'TF4ALL Dash.djson.png') -Force
 
 $itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count + $s5.Count + $s6.Count + $s7.Count
 Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count) visualizer=$($s5.Count) teleffb=$($s6.Count) drivetab=$($s7.Count); previews: main + 7 screens)"

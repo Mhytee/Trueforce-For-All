@@ -98,7 +98,16 @@ namespace TrueforceForAll.Plugin
         // install keeps its saved order and picks Drive up at the END, since
         // the sanitizer appends unknown-to-the-stored-list tabs rather than
         // reordering what the user chose.
-        private static readonly int[] DashTabFactoryOrder = { 6, 0, 1, 2, 5, 3, 4 };
+        private static readonly int[] DashTabFactoryOrder = { 6, 0, 1, 4, 2, 5, 3 };
+        // Tabs a fresh install starts with switched OFF. Gains is here
+        // because the Drive tab's own gains box covers it, so the tab is a
+        // duplicate for most people; it is one checkbox away in Settings.
+        // Applied ONLY when the user has never touched the tab editor (an
+        // empty DashTabOrder), so nobody's existing layout is rearranged by
+        // an update, and an empty disabled list still means "all on" for
+        // anyone who has configured tabs. It cannot be a default on the
+        // settings field itself: see project-settings-json-append-landmine.
+        private static readonly int[] DashTabFactoryDisabled = { 0 };
         private volatile int[] _dashTabSlots = new int[0];
 
         // ------------------------------------------------------------------
@@ -127,7 +136,7 @@ namespace TrueforceForAll.Plugin
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.
         private static readonly string[] DashDriveFactorySlots =
-            { "CarFacts", "LapTimes", "Scope", "TyreTemps" };
+            { "CarFacts", "TyreTemps", "Scope", "GCircle" };
         internal const int DashDriveSlotCount = 4;
         // Cached sanitized slots, refreshed alongside the tab slot map so the
         // property getters never re-walk settings per poll.
@@ -177,6 +186,19 @@ namespace TrueforceForAll.Plugin
             return order;
         }
 
+        /// <summary>Which tabs are switched off right now. A stored order is
+        /// the signal that the user has been through the tab editor, so from
+        /// then on their disabled list is taken literally, empty included.
+        /// Before that they are on factory settings and get the factory set.
+        /// Shared with the Settings editor so both agree on what is off.</summary>
+        internal List<int> DashEffectiveDisabledTabs()
+        {
+            var stored = Settings?.DashTabsDisabled;
+            if (stored != null && stored.Count > 0) return new List<int>(stored);
+            bool configured = Settings?.DashTabOrder != null && Settings.DashTabOrder.Count > 0;
+            return configured ? new List<int>() : new List<int>(DashTabFactoryDisabled);
+        }
+
         /// <summary>Rebuild the slot map from settings. Called at Init, by
         /// the Settings-tab editor after any layout change, and by the
         /// restore/import/account-switch paths that rewrite the layout; if
@@ -189,8 +211,8 @@ namespace TrueforceForAll.Plugin
             // import, account switch) picks both up.
             _dashDriveSlots = GetDashDriveSlots();
             var order = GetDashTabFullOrder();
-            var disabled = Settings?.DashTabsDisabled;
-            if (disabled != null && disabled.Count > 0)
+            var disabled = DashEffectiveDisabledTabs();
+            if (disabled.Count > 0)
                 order.RemoveAll(t => disabled.Contains(t));
             if (order.Count == 0) order.Add(0);   // hand-edited file disabled everything
             _dashTabSlots = order.ToArray();

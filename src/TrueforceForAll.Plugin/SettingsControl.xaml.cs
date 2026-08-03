@@ -6465,7 +6465,10 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var order = _plugin.GetDashTabFullOrder();
-                var disabled = new HashSet<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+                // Effective, not stored: on a fresh install the factory-off
+                // tabs must show unticked here or the editor disagrees with
+                // the dash it is editing.
+                var disabled = new HashSet<int>(_plugin.DashEffectiveDisabledTabs());
                 int enabledCount = 0;
                 int firstEnabled = 0;
                 bool anyEnabled = false;
@@ -6502,8 +6505,11 @@ namespace TrueforceForAll.Plugin
                 // click (the pressed control leaves the visual tree) and
                 // resets an open default-tab dropdown. Only a real layout
                 // or default change rebuilds.
+                // Sorted: a set's enumeration order is not part of its
+                // contract, and an unstable signature rebuilds on every tap.
+                var disabledSig = new List<int>(disabled); disabledSig.Sort();
                 string sig = string.Join(",", order) + "|"
-                    + string.Join(",", _plugin.Settings.DashTabsDisabled ?? new List<int>()) + "|"
+                    + string.Join(",", disabledSig) + "|"
                     + _plugin.Settings.DashDefaultTab;
                 if (sig == _remoteDashTabsSignature && RemoteDashTabsPanel.Children.Count > 0)
                     return;
@@ -6597,7 +6603,7 @@ namespace TrueforceForAll.Plugin
         private void RemoteDashTabToggle(int tab, bool on)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            var disabled = new List<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+            var disabled = _plugin.DashEffectiveDisabledTabs();
             if (on)
             {
                 disabled.RemoveAll(t => t == tab);
@@ -6623,6 +6629,18 @@ namespace TrueforceForAll.Plugin
         private void SaveRemoteDashTabLayout(List<int> order, List<int> disabled)
         {
             if (_plugin?.Settings == null) return;
+            // The first edit of any kind freezes what the user is currently
+            // looking at before applying their change. Without it, reordering
+            // tabs on a fresh install would write an order, which flips the
+            // layout from "factory" to "configured", which reads the empty
+            // disabled list literally and silently switches a factory-off tab
+            // back on. After this both lists are taken at face value.
+            if (order == null &&
+                (_plugin.Settings.DashTabOrder == null || _plugin.Settings.DashTabOrder.Count == 0))
+                order = _plugin.GetDashTabFullOrder();
+            if (disabled == null &&
+                (_plugin.Settings.DashTabsDisabled == null || _plugin.Settings.DashTabsDisabled.Count == 0))
+                disabled = _plugin.DashEffectiveDisabledTabs();
             if (order != null) _plugin.Settings.DashTabOrder = order;
             if (disabled != null) _plugin.Settings.DashTabsDisabled = disabled;
             try { _plugin.PersistSettings(); }
